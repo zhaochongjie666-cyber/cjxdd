@@ -1,182 +1,158 @@
-# OpenCode Wireflow - 任务流程编排系统
+# Plan Workflow Skills
 
-基于 OpenCode 的 Skill，使用 Python 脚本和 JSON 文件实现任务流程编排。
+基于 OpenCode Skill 的 JSON-first 计划工作流。
 
-## 项目结构
+当前推荐入口是 `plan-workflow`：
 
+- 先生成或维护 `JSON plan`
+- 再按需生成 `Mermaid`
+- 最后进入执行态并推进状态
+
+如果你要的是“自然语言任务 -> 协调者自动拆计划 -> 再进入执行”，请优先使用 `task-orchestrator`：
+
+- `task-orchestrator`：上层协调器，负责接自然语言任务、选模板、生成实例计划
+- `plan-workflow`：下层执行系统，负责创建执行态、查看状态、推进任务
+
+最短调用关系：
+
+```text
+User Task
+  -> task-orchestrator
+  -> plans/instances/xxx.json
+  -> plan-workflow create/start
+  -> .opencode/plan/xxx.json
+  -> plan-workflow status/complete-task/verify-task
 ```
+
+## 目录
+
+```text
 .
 ├── skills/
-│   └── wireflow/
-│       ├── SKILL.md          # 技能文档 - 使用指南
-│       ├── EXAMPLES.md       # 使用示例
-│       └── scripts/
-│           ├── __init__.py   # Python 包初始化
-│           └── wireflow.py   # 核心 Python 脚本
-├── agents/
-│   └── wireflow-primary.md   # Wireflow 主代理配置
-└── README.md                 # 项目说明
+│   ├── plan-workflow/
+│   │   ├── SKILL.md
+│   │   └── scripts/
+│   │       ├── __init__.py
+│   │       └── plan_workflow.py
+│   ├── plan-creator/
+│   │   ├── SKILL.md
+│   │   └── scripts/plan_creator.py
+│   └── plan-engine/
+│       ├── SKILL.md
+│       ├── EXAMPLES.md
+│       └── scripts/plan_engine.py
+└── README.md
 ```
 
-## 功能特性
+## 推荐工作流
 
-- **可视化流程**: 使用 Mermaid 图表和 ASCII 视图展示流程
-- **状态管理**: 支持 pending/active/verifying/completed/failed/skipped 六种状态
-- **依赖关系**: 支持顺序执行、并行执行、条件分支、回退边
-- **父子节点**: 支持层级结构的任务组织
-- **进度追踪**: 实时显示完成百分比和进度条
-- **历史记录**: 完整的操作日志追踪
-- **动态修改**: 支持运行时添加节点和边
-- **Python 驱动**: 使用 Python 3 实现核心逻辑
-- **JSON 存储**: 使用 JSON 文件持久化流程状态
+### 0. 自然语言任务协调
 
-## 快速开始
-
-### 1. 创建流程
+如果你先只有一句自然语言任务，先走 `task-orchestrator`：
 
 ```bash
-python skills/wireflow/scripts/wireflow.py create \
-  --id "my-flow" \
-  --name "我的流程" \
-  --nodes '[
-    {"id": "step1", "label": "第一步", "description": "分析需求"},
-    {"id": "step2", "label": "第二步", "description": "实现功能"}
-  ]' \
-  --edges '[{"from": "step1", "to": "step2"}]'
+python skills/task-orchestrator/scripts/init_task_orchestration.py \
+  --task "给登录模块新增短信验证码登录，并补测试" \
+  --plan-id login-sms
 ```
 
-### 2. 执行流程
+如果希望生成计划后直接进入执行态：
 
-完成每个节点后:
 ```bash
-# 标记完成并进入验证
-python skills/wireflow/scripts/wireflow.py advance \
-  --pipeline-id "my-flow" \
-  --note "已完成第一步"
+python skills/task-orchestrator/scripts/init_task_orchestration.py \
+  --task "修复登录后 session 偶发失效问题，并验证回归" \
+  --plan-id fix-login-session \
+  --execute
+```
 
-# 验证通过
-python skills/wireflow/scripts/wireflow.py seal \
-  --pipeline-id "my-flow" \
+### 1. 生成计划
+
+```bash
+python skills/plan-workflow/scripts/plan_workflow.py generate \
+  --description "用户登录：需求分析→设计→实现→测试" \
+  --format both \
+  --output login-plan.mermaid \
+  --json-output login-plan.json
+```
+
+### 2. 启动执行
+
+```bash
+python skills/plan-workflow/scripts/plan_workflow.py start \
+  --plan-id login-feature \
+  --name "登录功能开发" \
+  --from-json login-plan.json
+```
+
+### 3. 推进计划
+
+```bash
+python skills/plan-workflow/scripts/plan_workflow.py complete-task \
+  --plan-id login-feature \
+  --note "已完成实现"
+
+python skills/plan-workflow/scripts/plan_workflow.py verify-task \
+  --plan-id login-feature \
   --result passed \
-  --note "质量合格"
+  --note "验证通过"
 ```
 
-### 3. 查看状态
+### 4. 查看状态
 
 ```bash
-python skills/wireflow/scripts/wireflow.py status --pipeline-id "my-flow"
-python skills/wireflow/scripts/wireflow.py render --pipeline-id "my-flow" --format both
+python skills/plan-workflow/scripts/plan_workflow.py status \
+  --plan-id login-feature \
+  --json
 ```
 
-## 命令列表
+## 统一 CLI
 
-| 命令 | 功能 |
-|------|------|
-| `create` | 创建新流程 |
-| `advance` | 推进到验证阶段 |
-| `seal` | 验证节点结果 |
-| `fail` | 标记节点失败 |
-| `rollback` | 回退到上一个节点 |
-| `status` | 查看流程状态 |
-| `render` | 渲染流程图 |
-| `list` | 列出所有流程 |
-| `reset` | 重置流程 |
-| `add-node` | 动态添加节点 |
-| `add-edge` | 动态添加边 |
+`skills/plan-workflow/scripts/plan_workflow.py` 目前提供这些主命令：
 
-## 完整示例
+- `generate`：从自然语言或 JSON 生成 JSON plan / Mermaid
+- `start`：生成计划并立即创建执行态
+- `create`：从 JSON / Mermaid / tasks JSON 创建执行态
+- `import`：兼容式导入 JSON / Mermaid 到执行态
+- `parse`：将 Mermaid 解析回 JSON 结构
+- `status`：查看计划状态
+- `complete-task`：将当前任务推进到验证态
+- `verify-task`：验证当前任务
+- `reject-task`：将当前任务标记失败
+- `fallback-task`：沿回退边回到目标任务
+- `replan`：保留已完成任务并替换未完成部分
+- `reset`：重置整个计划或单个任务
+- `add-task`：运行时插入任务
+- `add-dep`：运行时新增依赖
+- `render`：渲染 ASCII / Mermaid
+- `list`：列出已有执行态计划
 
-### 软件开发流程
+## 数据层次
 
-```bash
-# 创建流程
-python skills/wireflow/scripts/wireflow.py create \
-  --id "feature-xyz" \
-  --name "Feature XYZ 开发" \
-  --nodes '[
-    {"id": "analyze", "label": "需求分析", "artifact": "requirements.md"},
-    {"id": "design", "label": "设计", "artifact": "design.md"},
-    {"id": "implement", "label": "实现", "artifact": "code"},
-    {"id": "test", "label": "测试", "artifact": "test results"}
-  ]' \
-  --edges '[
-    {"from": "test", "to": "implement", "label": "测试失败", "is_fallback": true}
-  ]'
+推荐明确区分三层数据：
 
-# 执行流程
-python skills/wireflow/scripts/wireflow.py advance --pipeline-id feature-xyz --note "分析完成"
-python skills/wireflow/scripts/wireflow.py seal --pipeline-id feature-xyz --result passed --note "质量合格"
+1. `JSON plan`
+   - 包含 `tasks` / `dependencies`
+   - 是计划定义层
+   - 应提交到版本库
 
-# 查看状态
-python skills/wireflow/scripts/wireflow.py status --pipeline-id feature-xyz
-```
+2. `Mermaid`
+   - 是可视化展示层
+   - 可由 JSON plan 再生成
 
-## Python API 使用
+3. `.opencode/plan/*.json`
+   - 是执行状态层
+   - 由 `plan-engine` 写入
+   - 不要替代原始计划定义文件
 
-```python
-from skills.wireflow.scripts.wireflow import WireflowEngine
+## 兼容入口
 
-# 创建引擎
-engine = WireflowEngine(".opencode/wireflow")
+旧入口仍保留：
 
-# 创建流程
-pipeline = engine.create_pipeline(
-    "my-flow",
-    "我的流程",
-    [
-        {"id": "step1", "label": "第一步"},
-        {"id": "step2", "label": "第二步"},
-    ],
-    [{"from": "step1", "to": "step2"}]
-)
+- `skills/plan-creator/`
+- `skills/plan-engine/`
 
-# 推进节点
-result = engine.advance_node(pipeline, "完成第一步")
+新增上层协调入口：
 
-# 验证通过
-result = engine.seal_node(pipeline, "passed", "质量合格")
+- `skills/task-orchestrator/`
 
-# 渲染视图
-print(engine.render_ascii(pipeline))
-print(engine.render_mermaid(pipeline))
-```
-
-## 数据存储
-
-所有流程状态存储在 `.opencode/wireflow/` 目录下:
-- `{pipeline_id}.json` - 流程数据文件
-
-JSON 格式:
-```json
-{
-  "id": "my-flow",
-  "name": "我的流程",
-  "current_node_id": "step1",
-  "nodes": [...],
-  "edges": [...],
-  "history": [...]
-}
-```
-
-## 文档
-
-- [技能文档](./skills/wireflow/SKILL.md) - 完整使用指南
-- [示例文档](./skills/wireflow/EXAMPLES.md) - 详细示例
-
-## 技术实现
-
-基于 Python 3 开发，主要特性:
-
-- **dataclasses**: 数据模型定义
-- **argparse**: 命令行接口
-- **json**: 数据持久化
-- **pathlib**: 文件操作
-- **typing**: 类型提示
-
-## 灵感来源
-
-本工具参考了 pi-coding-agent 的 piflow.ts 实现，使用 Python 和 JSON 重新实现。
-
-## License
-
-MIT
+但它们现在只是兼容包装。新请求默认应使用 `plan-workflow`。

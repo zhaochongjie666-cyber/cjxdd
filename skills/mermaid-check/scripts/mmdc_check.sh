@@ -19,7 +19,7 @@ fi
 
 check_with_mmdc() {
     local file="$1"
-    local slug="$(basename "$file" .flow.mermaid)"
+    local slug="$(basename "$file")"
     local tmpout="$(mktemp /tmp/_mmdc_XXXXXX.svg)"
 
     if "$MMDC" -i "$file" -o "$tmpout" -q 2>&1; then
@@ -42,16 +42,19 @@ if [ ! -d "$l1_dir" ]; then
 fi
 
 flows=()
-while IFS= read -r -d '' f; do
-    flows+=("$f")
-done < <(find "$l1_dir" -name '*.flow.mermaid' -print0 2>/dev/null || true)
+if [ -f "$l1_dir/project.flow.mermaid" ]; then
+    flows+=("$l1_dir/project.flow.mermaid")
+elif [ -f "$l1_dir/flow.mermaid" ]; then
+    echo -e "${YELLOW}Deprecated: using legacy flow.mermaid; rename to project.flow.mermaid${NC}"
+    flows+=("$l1_dir/flow.mermaid")
+fi
 
 if [ ${#flows[@]} -eq 0 ]; then
-    echo -e "${YELLOW}No flow.mermaid files found${NC}"
+    echo -e "${YELLOW}No project-level project.flow.mermaid found${NC}"
     exit 0
 fi
 
-echo "Checking ${#flows[@]} flow.mermaid files..."
+echo "Checking project-level project.flow.mermaid..."
 echo ""
 
 for f in "${flows[@]}"; do

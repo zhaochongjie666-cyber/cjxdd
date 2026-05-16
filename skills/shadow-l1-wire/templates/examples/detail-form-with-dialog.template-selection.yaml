@@ -1,0 +1,79 @@
+page_name: "传感器配置"
+page_goal: "修改关键参数并在提交前完成确认"
+task: "edit-single"
+domain: "sensor-config"
+
+template_bundle:
+  layout:
+    - "layout/detail-form"
+  collection: []
+  overlay:
+    - "overlay/dialog-centered"
+  detail:
+    - "detail/form-section"
+  state:
+    - "state/error"
+    - "state/success"
+
+context_pack:
+  views:
+    - "templates/views/DataListView.vue"
+  components:
+    - "templates/components/WireForm.vue"
+    - "templates/components/WireInput.vue"
+    - "templates/components/WireSelect.vue"
+    - "templates/components/WireDialog.vue"
+    - "templates/components/WireButton.vue"
+    - "templates/components/WireBadge.vue"
+  references:
+    - "references/component-library.md#浮层语义约定"
+    - "references/template-index.md#组合-b-详情页-确认弹窗"
+
+excluded:
+  templates:
+    - "layout/dashboard"
+    - "collection/table"
+    - "overlay/drawer-right"
+    - "collection/pagination"
+  reasons:
+    - "当前页面主任务不是总览和指标展示"
+    - "当前页面不是多记录列表浏览"
+    - "当前确认交互需要阻塞式确认弹窗而不是抽屉"
+    - "单对象编辑页不需要分页"
+
+selection_rationale:
+  primary_view_reason: "页面主任务是 edit-single，重点是查看并修改单个对象，因此选择 layout/detail-form。"
+  overlay_reason: "提交前需要进行阻塞式确认，避免误提交，因此选择 overlay/dialog-centered。"
+  state_reason: "该页面至少需要覆盖提交失败和提交成功两类结果反馈。"
+
+review_focus:
+  - "检查表单分组是否围绕业务对象组织，而不是字段平铺。"
+  - "检查“保存”动作是否明确打开确认弹窗，而不是让用户直接提交。"
+  - "检查 dialog 是否写清 trigger / close / after_close。"
+  - "检查保存失败时错误提示是否在表单或弹窗内可见。"
+  - "检查成功后页面回落到哪里，是否保留已修改内容或刷新详情。"
+
+trace:
+  source_input: "references/selector-input-contract.md"
+  selector_rule: "references/template-selector.md"
+  generated_from: "sensor-config 详情编辑页示例 v1"
+
+input_snapshot:
+  interactions:
+    - "form-section"
+    - "dialog-centered"
+  states:
+    - "error"
+    - "success"
+  primary_actions:
+    - label: "保存"
+      target: "dialog-centered"
+    - label: "取消"
+      target: "form-section"
+  overlay_rules:
+    - type: "dialog-centered"
+      trigger: "点击“保存”"
+      close: "取消 / 右上角关闭"
+      after_close: "回到详情表单并保留已填写内容"
+  table_rules: {}
+  filter_rules: {}

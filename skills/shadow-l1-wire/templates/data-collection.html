@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>数据采集页 - Wireframe</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui; background: #e0e0e0; padding: 32px; }
+    .wire-container { display: flex; min-height: 1080px; }
+    .wire-sidebar { width: 240px; background: #304156; color: #fff; flex-shrink: 0; }
+    .wire-sidebar-logo { height: 60px; display: flex; align-items: center; padding: 0 20px; background: #263445; font-size: 16px; font-weight: 700; }
+    .wire-menu { list-style: none; padding: 0; margin: 0; }
+    .wire-menu-item { padding: 14px 20px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-size: 14px; color: #bfcbd9; }
+    .wire-menu-item:hover, .wire-menu-item.active { background: #263445; color: #409eff; }
+    .wire-header { height: 60px; background: #fff; border-bottom: 1px solid #e6e6e6; display: flex; align-items: center; padding: 0 20px; }
+    .wire-header-title { font-size: 18px; font-weight: 600; color: #303133; }
+    .wire-header-actions { margin-left: auto; display: flex; gap: 12px; align-items: center; }
+    .wire-main { flex: 1; background: #f0f2f5; padding: 20px; }
+    .wire-breadcrumb { display: flex; gap: 8px; font-size: 14px; color: #606266; margin-bottom: 16px; }
+    .wire-card { background: #fff; border-radius: 4px; padding: 20px; margin-bottom: 16px; }
+    .wire-card-title { font-size: 16px; font-weight: 600; color: #303133; margin-bottom: 16px; }
+    .wire-form { background: #fff; padding: 24px; border-radius: 4px; }
+    .wire-form-row { display: flex; gap: 16px; margin-bottom: 18px; }
+    .wire-form-item { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+    .wire-form-label { font-size: 14px; color: #606266; }
+    .wire-input { border: 1px solid #dcdfe6; border-radius: 4px; padding: 8px 12px; font-size: 14px; }
+    .wire-select { border: 1px solid #dcdfe6; border-radius: 4px; padding: 8px 12px; font-size: 14px; background: #fff; }
+    .wire-textarea { border: 1px solid #dcdfe6; border-radius: 4px; padding: 8px 12px; font-size: 14px; min-height: 80px; }
+    .wire-btn { padding: 8px 16px; border-radius: 4px; font-size: 14px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+    .wire-btn-primary { background: #409eff; color: #fff; }
+    .wire-btn-success { background: #67c23a; color: #fff; }
+    .wire-btn-default { background: #fff; color: #606266; border: 1px solid #dcdfe6; }
+    .wire-badge { padding: 2px 8px; border-radius: 4px; font-size: 12px; display: inline-block; }
+    .wire-badge-success { background: #f0f9eb; color: #67c23a; }
+    .wire-badge-warning { background: #fdf6ec; color: #e6a23c; }
+    .wire-badge-info { background: #ecf5ff; color: #409eff; }
+    .wire-tabs { display: flex; border-bottom: 2px solid #e4e7ed; margin-bottom: 16px; }
+    .wire-tab-item { padding: 12px 20px; cursor: pointer; font-size: 14px; color: #606266; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+    .wire-tab-item.active { color: #409eff; border-bottom-color: #409eff; }
+    .wire-upload-area { border: 2px dashed #dcdfe6; border-radius: 8px; padding: 40px; text-align: center; background: #fafafa; cursor: pointer; }
+    .wire-upload-icon { font-size: 48px; color: #909399; margin-bottom: 12px; }
+    .wire-upload-text { font-size: 14px; color: #606266; }
+    .wire-upload-hint { font-size: 12px; color: #909399; margin-top: 8px; }
+    .wire-progress { height: 8px; background: #ebeef5; border-radius: 4px; overflow: hidden; margin-top: 12px; }
+    .wire-progress-bar { height: 100%; background: #409eff; border-radius: 4px; }
+    .wire-file-list { list-style: none; }
+    .wire-file-item { display: flex; align-items: center; padding: 12px; border-bottom: 1px solid #ebeef5; gap: 12px; }
+    .wire-file-name { flex: 1; font-size: 14px; }
+    .wire-file-size { font-size: 12px; color: #909399; }
+    .wire-file-status { font-size: 12px; }
+    [data-node] { position: relative; }
+    [data-node]::after {
+      content: attr(data-node);
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      background: #409eff;
+      color: #fff;
+      font-size: 10px;
+      padding: 1px 4px;
+      border-radius: 3px;
+      opacity: 0.7;
+    }
+  </style>
+</head>
+<body>
+
+<div class="wire-container">
+  <!-- ━━ 侧边栏 ━━ -->
+  <aside class="wire-sidebar">
+    <div class="wire-sidebar-logo">📡 数据采集</div>
+    <ul class="wire-menu">
+      <li class="wire-menu-item active">
+        <span>📋</span>
+        <span>采集任务</span>
+      </li>
+      <li class="wire-menu-item">
+        <span>📤</span>
+        <span>数据上传</span>
+      </li>
+      <li class="wire-menu-item">
+        <span>📊</span>
+        <span>采集监控</span>
+      </li>
+      <li class="wire-menu-item">
+        <span>⚙️</span>
+        <span>采集配置</span>
+      </li>
+    </ul>
+  </aside>
+
+  <!-- ━━ 主内容区 ━━ -->
+  <div style="flex: 1; display: flex; flex-direction: column;">
+    <header class="wire-header">
+      <span class="wire-header-title">新建采集任务</span>
+      <div class="wire-header-actions">
+        <span class="wire-badge wire-badge-info">帮助</span>
+      </div>
+    </header>
+
+    <main class="wire-main">
+      <div class="wire-breadcrumb">
+        <span>首页</span>
+        <span>/</span>
+        <span>采集任务</span>
+        <span>/</span>
+        <span style="color: #303133;">新建任务</span>
+      </div>
+
+      <!-- 标签页 -->
+      <div class="wire-card" style="padding: 0;">
+        <div class="wire-tabs">
+          <div class="wire-tab-item active" data-node="B02-N01">基本信息</div>
+          <div class="wire-tab-item" data-node="B02-N02">采集配置</div>
+          <div class="wire-tab-item" data-node="B02-N03">数据上传</div>
+          <div class="wire-tab-item" data-node="B02-N04">任务预览</div>
+        </div>
+      </div>
+
+      <!-- 基本信息表单 -->
+      <div class="wire-form" data-node="B02-N05">
+        <div class="wire-card-title">基本信息</div>
+        <div class="wire-form-row">
+          <div class="wire-form-item">
+            <label class="wire-form-label">任务名称 <span style="color: #f56c6c;">*</span></label>
+            <input class="wire-input" placeholder="请输入任务名称" data-node="B02-N06" />
+          </div>
+          <div class="wire-form-item">
+            <label class="wire-form-label">任务类型 <span style="color: #f56c6c;">*</span></label>
+            <select class="wire-select" data-node="B02-N07">
+              <option>请选择任务类型</option>
+              <option>图像采集</option>
+              <option>点云采集</option>
+              <option>视频采集</option>
+              <option>多传感器同步采集</option>
+            </select>
+          </div>
+        </div>
+        <div class="wire-form-row">
+          <div class="wire-form-item">
+            <label class="wire-form-label">采集车辆</label>
+            <select class="wire-select" data-node="B02-N08">
+              <option>请选择采集车辆</option>
+              <option>车辆A - 沪A12345</option>
+              <option>车辆B - 沪B67890</option>
+            </select>
+          </div>
+          <div class="wire-form-item">
+            <label class="wire-form-label">计划采集时间</label>
+            <input class="wire-input" type="text" placeholder="请选择日期" data-node="B02-N09" />
+          </div>
+        </div>
+        <div class="wire-form-row">
+          <div class="wire-form-item">
+            <label class="wire-form-label">采集路线</label>
+            <select class="wire-select" data-node="B02-N10">
+              <option>请选择采集路线</option>
+              <option>城市道路-环线A</option>
+              <option>高速公路-G2</option>
+              <option>停车场-P1</option>
+            </select>
+          </div>
+          <div class="wire-form-item">
+            <label class="wire-form-label">负责人</label>
+            <input class="wire-input" placeholder="请输入负责人" data-node="B02-N11" />
+          </div>
+        </div>
+        <div class="wire-form-row">
+          <div class="wire-form-item" style="flex: 2;">
+            <label class="wire-form-label">任务描述</label>
+            <textarea class="wire-textarea" placeholder="请输入任务描述" data-node="B02-N12"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- 数据上传区域 -->
+      <div class="wire-form" data-node="B02-N13">
+        <div class="wire-card-title">数据上传</div>
+        <div class="wire-upload-area" data-node="B02-N14">
+          <div class="wire-upload-icon">📁</div>
+          <div class="wire-upload-text">将文件拖到此处，或 <span style="color: #409eff;">点击上传</span></div>
+          <div class="wire-upload-hint">支持 .bag, .pcd, .jpg, .mp4 格式，单个文件不超过 2GB</div>
+        </div>
+
+        <!-- 上传进度 -->
+        <div style="margin-top: 16px;">
+          <div class="wire-file-list">
+            <li class="wire-file-item">
+              <span>📄</span>
+              <span class="wire-file-name">scene_001.bag</span>
+              <span class="wire-file-size">1.2 GB</span>
+              <span class="wire-file-status">
+                <span class="wire-badge wire-badge-success">上传完成</span>
+              </span>
+            </li>
+            <li class="wire-file-item">
+              <span>📄</span>
+              <span class="wire-file-name">scene_002.bag</span>
+              <span class="wire-file-size">856 MB</span>
+              <span class="wire-file-status">
+                <span class="wire-badge wire-badge-warning">上传中 65%</span>
+              </span>
+            </li>
+          </div>
+          <div class="wire-progress">
+            <div class="wire-progress-bar" style="width: 65%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 操作按钮 -->
+      <div class="wire-card" style="padding: 12px 20px; display: flex; justify-content: flex-end; gap: 12px;">
+        <button class="wire-btn wire-btn-default" data-node="B02-N15">取消</button>
+        <button class="wire-btn wire-btn-default" data-node="B02-N16">保存草稿</button>
+        <button class="wire-btn wire-btn-primary" data-node="B02-N17">提交任务</button>
+      </div>
+    </main>
+  </div>
+</div>
+
+</body>
+</html>

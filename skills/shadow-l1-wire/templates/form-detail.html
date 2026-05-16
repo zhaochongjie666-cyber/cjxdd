@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>表单详情页 - Wireframe</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui; background: #e0e0e0; padding: 32px; }
+    .wire-container { display: flex; min-height: 1080px; }
+    .wire-sidebar { width: 240px; background: #304156; color: #fff; flex-shrink: 0; }
+    .wire-sidebar-logo { height: 60px; display: flex; align-items: center; padding: 0 20px; background: #263445; font-size: 16px; font-weight: 700; }
+    .wire-menu { list-style: none; padding: 0; margin: 0; }
+    .wire-menu-item { padding: 14px 20px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-size: 14px; color: #bfcbd9; }
+    .wire-menu-item:hover, .wire-menu-item.active { background: #263445; color: #409eff; }
+    .wire-header { height: 60px; background: #fff; border-bottom: 1px solid #e6e6e6; display: flex; align-items: center; padding: 0 20px; }
+    .wire-header-title { font-size: 18px; font-weight: 600; color: #303133; }
+    .wire-header-actions { margin-left: auto; display: flex; gap: 12px; align-items: center; }
+    .wire-main { flex: 1; background: #f0f2f5; padding: 20px; }
+    .wire-breadcrumb { display: flex; gap: 8px; font-size: 14px; color: #606266; margin-bottom: 16px; }
+    .wire-card { background: #fff; border-radius: 4px; padding: 20px; margin-bottom: 16px; }
+    .wire-card-title { font-size: 16px; font-weight: 600; color: #303133; margin-bottom: 16px; }
+    .wire-form { background: #fff; padding: 24px; border-radius: 4px; }
+    .wire-form-row { display: flex; gap: 16px; margin-bottom: 18px; }
+    .wire-form-item { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+    .wire-form-label { font-size: 14px; color: #606266; }
+    .wire-input { border: 1px solid #dcdfe6; border-radius: 4px; padding: 8px 12px; font-size: 14px; }
+    .wire-select { border: 1px solid #dcdfe6; border-radius: 4px; padding: 8px 12px; font-size: 14px; background: #fff; }
+    .wire-textarea { border: 1px solid #dcdfe6; border-radius: 4px; padding: 8px 12px; font-size: 14px; min-height: 80px; }
+    .wire-btn { padding: 8px 16px; border-radius: 4px; font-size: 14px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+    .wire-btn-primary { background: #409eff; color: #fff; }
+    .wire-btn-success { background: #67c23a; color: #fff; }
+    .wire-btn-default { background: #fff; color: #606266; border: 1px solid #dcdfe6; }
+    .wire-btn-warning { background: #e6a23c; color: #fff; }
+    .wire-btn-danger { background: #f56c6c; color: #fff; }
+    .wire-badge { padding: 2px 8px; border-radius: 4px; font-size: 12px; display: inline-block; }
+    .wire-badge-success { background: #f0f9eb; color: #67c23a; }
+    .wire-badge-warning { background: #fdf6ec; color: #e6a23c; }
+    .wire-badge-info { background: #ecf5ff; color: #409eff; }
+    .wire-tabs { display: flex; border-bottom: 2px solid #e4e7ed; margin-bottom: 16px; }
+    .wire-tab-item { padding: 12px 20px; cursor: pointer; font-size: 14px; color: #606266; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+    .wire-tab-item.active { color: #409eff; border-bottom-color: #409eff; }
+    .wire-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 4px; overflow: hidden; }
+    .wire-table th { background: #fafafa; padding: 12px 16px; text-align: left; font-size: 14px; color: #606266; font-weight: 600; border-bottom: 1px solid #ebeef5; }
+    .wire-table td { padding: 12px 16px; font-size: 14px; color: #303133; border-bottom: 1px solid #ebeef5; }
+    .wire-desc-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .wire-desc-item { display: flex; flex-direction: column; gap: 4px; }
+    .wire-desc-label { font-size: 13px; color: #909399; }
+    .wire-desc-value { font-size: 14px; color: #303133; }
+    .wire-timeline { position: relative; padding-left: 24px; }
+    .wire-timeline::before { content: ''; position: absolute; left: 8px; top: 0; bottom: 0; width: 2px; background: #e4e7ed; }
+    .wire-timeline-item { position: relative; padding-bottom: 20px; }
+    .wire-timeline-dot { position: absolute; left: -20px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: #409eff; border: 2px solid #fff; box-shadow: 0 0 0 2px #409eff; }
+    .wire-timeline-time { font-size: 12px; color: #909399; margin-bottom: 4px; }
+    .wire-timeline-content { font-size: 14px; color: #303133; }
+    [data-node] { position: relative; }
+    [data-node]::after {
+      content: attr(data-node);
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      background: #409eff;
+      color: #fff;
+      font-size: 10px;
+      padding: 1px 4px;
+      border-radius: 3px;
+      opacity: 0.7;
+    }
+  </style>
+</head>
+<body>
+
+<div class="wire-container">
+  <!-- ━━ 侧边栏 ━━ -->
+  <aside class="wire-sidebar">
+    <div class="wire-sidebar-logo">📊 数据中台</div>
+    <ul class="wire-menu">
+      <li class="wire-menu-item">
+        <span>📊</span>
+        <span>仪表盘</span>
+      </li>
+      <li class="wire-menu-item active">
+        <span>📋</span>
+        <span>数据管理</span>
+      </li>
+      <li class="wire-menu-item">
+        <span>📡</span>
+        <span>数据采集</span>
+      </li>
+    </ul>
+  </aside>
+
+  <!-- ━━ 主内容区 ━━ -->
+  <div style="flex: 1; display: flex; flex-direction: column;">
+    <header class="wire-header">
+      <span class="wire-header-title">数据详情 - DATA-001</span>
+      <div class="wire-header-actions">
+        <button class="wire-btn wire-btn-default" style="padding: 6px 12px;">返回</button>
+      </div>
+    </header>
+
+    <main class="wire-main">
+      <div class="wire-breadcrumb">
+        <span>首页</span>
+        <span>/</span>
+        <span>数据管理</span>
+        <span>/</span>
+        <span style="color: #303133;">DATA-001</span>
+      </div>
+
+      <!-- 标签页 -->
+      <div class="wire-card" style="padding: 0;">
+        <div class="wire-tabs">
+          <div class="wire-tab-item active" data-node="B06-N01">基本信息</div>
+          <div class="wire-tab-item" data-node="B06-N02">标注数据</div>
+          <div class="wire-tab-item" data-node="B06-N03">质量报告</div>
+          <div class="wire-tab-item" data-node="B06-N04">操作日志</div>
+        </div>
+      </div>
+
+      <!-- 基本信息 -->
+      <div class="wire-card">
+        <div class="wire-card-title">基本信息</div>
+        <div class="wire-desc-list" data-node="B06-N05">
+          <div class="wire-desc-item">
+            <span class="wire-desc-label">数据ID</span>
+            <span class="wire-desc-value">DATA-001</span>
+          </div>
+          <div class="wire-desc-item">
+            <span class="wire-desc-label">数据名称</span>
+            <span class="wire-desc-value">城市道路场景_001</span>
+          </div>
+          <div class="wire-desc-item">
+            <span class="wire-desc-label">数据类型</span>
+            <span class="wire-desc-value">点云</span>
+          </div>
+          <div class="wire-desc-item">
+            <span class="wire-desc-label">标注状态</span>
+            <span class="wire-desc-value"><span class="wire-badge wire-badge-success">已标注</span></span>
+          </div>
+          <div class="wire-desc-item">
+            <span class="wire-desc-label">采集车辆</span>
+            <span class="wire-desc-value">沪A12345</span>
+          </div>
+          <div class="wire-desc-item">
+            <span class="wire-desc-label">采集时间</span>
+            <span class="wire-desc-value">2024-01-15 10:30</span>
+          </div>
+          <div class="wire-desc-item">
+            <span class="wire-desc-label">文件大小</span>
+            <span class="wire-desc-value">1.2 GB</span>
+          </div>
+          <div class="wire-desc-item">
+            <span class="wire-desc-label">标注员</span>
+            <span class="wire-desc-value">张三</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 编辑表单 -->
+      <div class="wire-form" data-node="B06-N06">
+        <div class="wire-card-title">编辑信息</div>
+        <div class="wire-form-row">
+          <div class="wire-form-item">
+            <label class="wire-form-label">数据名称</label>
+            <input class="wire-input" value="城市道路场景_001" />
+          </div>
+          <div class="wire-form-item">
+            <label class="wire-form-label">数据标签</label>
+            <input class="wire-input" value="城市道路, 白天, 晴天" />
+          </div>
+        </div>
+        <div class="wire-form-row">
+          <div class="wire-form-item">
+            <label class="wire-form-label">备注</label>
+            <textarea class="wire-textarea">该数据采集于城市主干道，包含多个路口场景。</textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- 操作日志 -->
+      <div class="wire-card">
+        <div class="wire-card-title" data-node="B06-N07">操作日志</div>
+        <div class="wire-timeline">
+          <div class="wire-timeline-item">
+            <div class="wire-timeline-dot"></div>
+            <div class="wire-timeline-time">2024-01-15 14:30</div>
+            <div class="wire-timeline-content">张三 完成标注，标注质量 98.5%</div>
+          </div>
+          <div class="wire-timeline-item">
+            <div class="wire-timeline-dot" style="background: #e6a23c; box-shadow: 0 0 0 2px #e6a23c;"></div>
+            <div class="wire-timeline-time">2024-01-15 11:00</div>
+            <div class="wire-timeline-content">李四 开始标注</div>
+          </div>
+          <div class="wire-timeline-item">
+            <div class="wire-timeline-dot" style="background: #909399; box-shadow: 0 0 0 2px #909399;"></div>
+            <div class="wire-timeline-time">2024-01-15 10:30</div>
+            <div class="wire-timeline-content">系统 创建数据记录</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 操作按钮 -->
+      <div class="wire-card" style="padding: 12px 20px; display: flex; justify-content: flex-end; gap: 12px;">
+        <button class="wire-btn wire-btn-default" data-node="B06-N08">取消</button>
+        <button class="wire-btn wire-btn-default" data-node="B06-N09">导出数据</button>
+        <button class="wire-btn wire-btn-primary" data-node="B06-N10">保存修改</button>
+      </div>
+    </main>
+  </div>
+</div>
+
+</body>
+</html>
