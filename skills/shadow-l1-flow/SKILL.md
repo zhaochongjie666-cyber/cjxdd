@@ -103,6 +103,8 @@ B02-N09: 质检员通过质检 → POST /api/reviews/:id/approve (Reviewer 角�
 - 每个节点下游（spec/wire/L2/L5 Plan）能消费吗？
 - **每个用户交互节点是否都能对应到 API 端点？**
 
+传导完整性和下游消费清单见 `references/l1-conduction-map.md` 和 `references/forward-chain-contract.md`。
+
 ### 思维框架：Who / What / Why / How
 
 所有架构设计的底层思维。每设计一个元素（节点/边/泳道/入口），必须能回答：
@@ -358,6 +360,8 @@ flowchart TD
 
 快速检查：`bash skills/shadow-l1-flow/scripts/gate-check-l1.sh <slug>`
 语义检查：`bash skills/shadow-l1-flow/scripts/check-semantic-gate-l1.sh <slug>`
+
+门禁详细语义说明见 `references/gate-l1.md` 和 `references/gate-semantics.md`。Mermaid 渲染验证见 `references/mermaid-check.md`，语法规范见 `references/mermaid-spec.md`。
 
 通过后创建 `{迭代门禁目录}/l1.{slug}.passed`（门禁目录为 `.shadow/iterations/{当前迭代}/gate/`）。
 失败时输出到对话：列出具体失败项、文件路径和缺失说明。

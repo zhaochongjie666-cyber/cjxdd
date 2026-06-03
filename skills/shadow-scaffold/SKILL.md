@@ -59,7 +59,7 @@ version: "1.0.0"
 | Go | testing (go test) | golangci-lint | gofmt | gorm/sqlx |
 | Java | JUnit 5 + Mockito | checkstyle | spotless | spring-boot-starter |
 
-**原则**：只装开发必需的最少依赖，不多装。
+**原则**：只装开发必需的最少依赖，不多装。各技术栈详细依赖清单见 `references/tech-stacks.md`。
 
 ### Step 3: 测试框架配置
 

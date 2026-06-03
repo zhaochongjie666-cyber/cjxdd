@@ -70,6 +70,45 @@ version: "1.0.0"
 | Batch 7 | 前端页面、组件 | Batch 6 |
 | Batch 8 | E2E 测试（Playwright .spec.ts） | Batch 5-7 |
 
+### 2.5 全局约束（跨文件实现约束）
+
+在逐文件指令之前，先列出**横切关注点**的实现约束。这些约束影响多个文件，不适合放在单个文件的指令中，但 coder 必须在所有文件中遵守。
+
+**什么时候需要**：项目存在多租户隔离、统一认证/错误格式、跨聚合事件、统一分页、审计日志、事务边界等横切关注点时，必须包含全局约束段。
+
+**约束收集**：从 L1.5 architecture.md 安全设计/性能设计/文件清单、event-contract.md、spec.md 异常处理表推导。
+
+**全局约束段的格式**（写在文件清单之后、Batch 1 之前）：
+
+```markdown
+## 全局约束
+
+### 多租户隔离
+- 所有仓储查询加 `tenant_id` WHERE 条件
+- `tenant_id` 从 JWT 提取，禁止从请求体接受
+- 跨租户访问 → 403 + 审计日志
+
+### 认证与授权
+- 所有写操作挂 RBAC 中间件，角色从 JWT 解析
+- 未认证 → 401，权限不足 → 403
+
+### 统一错误格式
+- `{ code: UPPER_SNAKE_CASE, message: string, details?: any }`
+- code 与 spec.md ERROR_CODE 一致
+
+### 事件发布
+- 聚合状态变更后发布领域事件，载荷与 event-contract.md 一致
+- 进程内：聚合方法返回事件列表，应用服务统一发布
+
+### 分页
+- `?page=1&per_page=20`，返回 `{ items, total, page, per_page }`
+
+### 事务边界
+- 单聚合内强一致（单事务），跨聚合最终一致（事件驱动）
+```
+
+**原则**：全局约束只写"跨文件的行为约定"，具体实现由 Batch 4/5 的文件指令覆盖。
+
 ### 3. 逐文件展开实现指令
 
 对每个文件，从上游文档中提取并内联所有 coder 需要的信息：
@@ -284,29 +323,7 @@ test('annotator completes annotation workflow', async ({ page }) => {
 - 每个测试对应 uat-script.md 中的一个 P0 剧本
 - 测试文件放在 `e2e/` 目录下
 
-**通用交互模式参考**（非标注平台项目的 E2E 模式）：
-
-列表操作（拖拽排序、批量操作）：
-```typescript
-import { test, expect } from '@playwright/test'
-
-test('user drags card between columns', async ({ page }) => {
-  await page.goto('/boards/b1')
-  const todoColumn = page.locator('[data-state="column-todo"]')
-  const doneColumn = page.locator('[data-state="column-done"]')
-  const card = todoColumn.locator('[data-action="drag-card"]').first()
-  await card.dragTo(doneColumn)
-  await expect(doneColumn.locator('[data-action="drag-card"]')).toHaveCount(1)
-})
-
-test('user filters list and selects items', async ({ page }) => {
-  await page.goto('/items')
-  await page.selectOption('[data-action="filter-status"]', 'active')
-  await page.click('[data-action="select-all"]')
-  await page.click('[data-action="bulk-delete"]')
-  await expect(page.locator('[data-state="empty"]')).toBeVisible()
-})
-```
+**通用交互模式**: 参见 `references/e2e-patterns.md`（拖拽排序、批量操作等模式）
 
 逐文件检查：
 - 每个方法是否覆盖了 spec.md 中对应的 RXX 规则
@@ -339,14 +356,18 @@ Harness 计划（本层写的）:
 
 `.shadow/L5-plan/{slug}/harness-plan.md`
 
-一份自包含的执行计划，按 Batch 分组，每个文件包含：
-1. 上下文（一句话）
-2. 规则映射（RXX + BXX-NYY）
-3. 聚合定义（后端）
-4. 类/函数完整签名
-5. 逐方法实现指令（校验 + 状态 + 事件 + 错误）
-6. 测试断言（具体代码级断言）
-7. 验证命令
+一份自包含的执行计划，结构如下：
+
+1. **文件清单**（按 Batch 分组，每个文件标注聚合/类型和规则映射）
+2. **全局约束**（跨文件实现约束：多租户、认证、错误格式、事件发布、分页、事务边界等）
+3. **逐文件指令**（每个文件包含）：
+   - 上下文（一句话）
+   - 规则映射（RXX + BXX-NYY）
+   - 聚合定义（后端）
+   - 类/函数完整签名
+   - 逐方法实现指令（校验 + 状态 + 事件 + 错误）
+   - 测试断言（具体代码级断言）
+   - 验证命令
 
 ## 约束
 
@@ -367,144 +388,6 @@ Harness 计划（本层写的）:
 - **穷举测试断言**：测试断言数 ≥ 校验条件数 + 正常路径数。每个方法末尾标注 `✅ 穷举: 测试 N / 校验 M + 正常 P ≥ N`
 - 无业务冗余：不复制 spec 的业务叙述原文（如"标注员可对任务创建标注"），只内联 coder 需要的技术指令（如 `create(cls, task_id: UUID, annotator_id: UUID) -> Annotation`）。自包含不等于复制粘贴——技术细节必须内联，业务背景一句话带过
 
-## 简单项目示例：自动驾驶数据平台
+## 完整示例
 
-### 文件清单
-
-| Batch | 文件 | 聚合/类型 | 规则 |
-|-------|------|----------|------|
-| Batch 1 | backend/domain/aggregates/collection.py | Collection 聚合根 | collection-R01~R05 |
-| Batch 1 | backend/domain/aggregates/annotation.py | Annotation 聚合根 | annotation-R01~R06 |
-| Batch 1 | backend/domain/aggregates/simulation.py | Simulation 聚合根 | simulation-R01~R04 |
-| Batch 1 | backend/domain/events.py | 领域事件 | all cross-context |
-
-### 逐文件指令示例（Batch 1: 领域模型）
-
-#### 文件: backend/domain/aggregates/annotation.py
-
-**上下文**: Annotation 聚合根，管理标注的创建、值添加、提交、状态流转（EMPTY → IN_PROGRESS → SUBMITTED → APPROVED / REJECTED）。
-
-**规则**: annotation-R02 (B02-N07), annotation-R03 (B02-N08), annotation-R06 (B02-N11)
-
-**聚合定义**:
-- 聚合根: Annotation（唯一入口）
-- 聚合边界: 包含 Annotation（根）, AnnotationValue[]（值对象）。不包含 Task（通过 task_id 引用）, Review（独立聚合）
-- 一致性: create/add_value 单事务原子。submit 状态变更 + 事件发布单事务
-
-**类签名**:
-```python
-class Annotation:
-    annotation_id: UUID
-    task_id: UUID
-    annotator_id: UUID
-    type: AnnotationType        # BBOX_2D | BBOX_3D | SEMANTIC
-    status: AnnotationStatus    # EMPTY → IN_PROGRESS → SUBMITTED → APPROVED / REJECTED
-    values: list[AnnotationValue]
-    created_at: datetime
-    submitted_at: datetime | None
-```
-
-**方法**:
-
-#### create(cls, task_id: UUID, annotator_id: UUID, type: AnnotationType) -> Annotation
-- 校验: task_id 非 None
-- 校验: type in (BBOX_2D, BBOX_3D, SEMANTIC)
-- 状态: 初始状态 EMPTY
-- 事件: 发布 AnnotationCreated(annotation_id, task_id, type)
-- 错误: type 无效 → INVALID_TYPE
-- 测试:
-  ```python
-  def test_create_annotation_with_2d_type():
-      ann = Annotation.create(uuid4(), uuid4(), AnnotationType.BBOX_2D)
-      assert ann.type == AnnotationType.BBOX_2D
-      assert ann.status == AnnotationStatus.EMPTY
-
-  def test_create_annotation_rejects_invalid_type():
-      with pytest.raises(ValueError, match="INVALID_TYPE"):
-          Annotation.create(uuid4(), uuid4(), "invalid")
-
-  def test_create_annotation_generates_id():
-      ann = Annotation.create(uuid4(), uuid4(), AnnotationType.BBOX_3D)
-      assert ann.annotation_id is not None
-  ```
-  ✅ `穷举: 测试 3 / 校验 1 + 正常 2 ≥ 3`
-
-#### submit(self) -> None
-- 校验: self.status == IN_PROGRESS
-- 校验: len(self.values) > 0
-- 状态: IN_PROGRESS → SUBMITTED
-- 事件: 发布 AnnotationSubmitted(annotation_id, task_id)
-- 错误: status 非 IN_PROGRESS → INVALID_STATUS
-- 错误: values 为空 → EMPTY_ANNOTATION
-- 测试:
-  ```python
-  def test_submit_with_values_succeeds():
-      ann = Annotation.create(uuid4(), uuid4(), AnnotationType.BBOX_2D)
-      ann.add_value(AnnotationValue(label="car", bbox=[100, 200, 300, 400]))
-      ann.submit()
-      assert ann.status == AnnotationStatus.SUBMITTED
-      assert ann.submitted_at is not None
-
-  def test_submit_without_values_rejected():
-      ann = Annotation.create(uuid4(), uuid4(), AnnotationType.BBOX_2D)
-      with pytest.raises(ValueError, match="EMPTY_ANNOTATION"):
-          ann.submit()
-
-  def test_submit_when_already_submitted_rejected():
-      ann = Annotation.create(uuid4(), uuid4(), AnnotationType.BBOX_2D)
-      ann.add_value(AnnotationValue(label="car", bbox=[100, 200, 300, 400]))
-      ann.submit()
-      with pytest.raises(ValueError, match="INVALID_STATUS"):
-          ann.submit()
-
-  def test_submit_publishes_event():
-      ann = Annotation.create(uuid4(), uuid4(), AnnotationType.BBOX_2D)
-      ann.add_value(AnnotationValue(label="car", bbox=[100, 200, 300, 400]))
-      events_before = len(ann.domain_events)
-      ann.submit()
-      assert len(ann.domain_events) == events_before + 1
-      assert ann.domain_events[-1].event_type == "AnnotationSubmitted"
-  ```
-  ✅ `穷举: 测试 4 / 校验 2 + 正常 2 ≥ 4`
-
-#### rework(self, new_values: list[AnnotationValue]) -> None
-- 校验: self.status == REJECTED
-- 状态: REJECTED → SUBMITTED
-- 副作用: 替换 self.values 为 new_values
-- 事件: 发布 AnnotationSubmitted(annotation_id, task_id)
-- 错误: status 非 REJECTED → INVALID_STATUS
-- 错误: new_values 为空 → EMPTY_ANNOTATION
-- 测试:
-  ```python
-  def test_rework_succeeds():
-      ann = Annotation.create(uuid4(), uuid4(), AnnotationType.BBOX_2D)
-      ann.add_value(AnnotationValue(label="car", bbox=[100, 200, 300, 400]))
-      ann.submit()
-      ann.reject("标签不精确")
-      ann.rework([AnnotationValue(label="vehicle", bbox=[100, 200, 300, 400])])
-      assert ann.status == AnnotationStatus.SUBMITTED
-
-  def test_rework_rejects_empty_values():
-      ann = Annotation.create(uuid4(), uuid4(), AnnotationType.BBOX_2D)
-      ann.add_value(AnnotationValue(label="car", bbox=[100, 200, 300, 400]))
-      ann.submit()
-      ann.reject("标签不精确")
-      with pytest.raises(ValueError, match="EMPTY_ANNOTATION"):
-          ann.rework([])
-
-  def test_rework_rejects_wrong_status():
-      ann = Annotation.create(uuid4(), uuid4(), AnnotationType.BBOX_2D)
-      with pytest.raises(ValueError, match="INVALID_STATUS"):
-          ann.rework([AnnotationValue(label="car", bbox=[100, 200, 300, 400])])
-
-  def test_rework_publishes_event():
-      ann = Annotation.create(uuid4(), uuid4(), AnnotationType.BBOX_2D)
-      ann.add_value(AnnotationValue(label="car", bbox=[100, 200, 300, 400]))
-      ann.submit()
-      ann.reject("标签不精确")
-      events_before = len(ann.domain_events)
-      ann.rework([AnnotationValue(label="vehicle", bbox=[100, 200, 300, 400])])
-      assert len(ann.domain_events) == events_before + 1
-      assert ann.domain_events[-1].event_type == "AnnotationSubmitted"
-  ```
-  ✅ `穷举: 测试 4 / 校验 2 + 正常 2 ≥ 4`
+自动驾驶数据平台的 Harness 计划完整示例（文件清单 + 全局约束 + 逐文件指令）见 [references/harness-example.md](references/harness-example.md)。

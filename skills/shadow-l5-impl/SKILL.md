@@ -121,6 +121,8 @@ L5-Plan: .shadow/L5-plan/user-service/harness-plan.md
 
 ### 层内自检
 
+完成后运行 L5 门禁检查。门禁详细说明见 `references/gate-l5.md`，语义 gate 报告模板见 `references/l5-semantic-gate-report-template.md`。
+
 执行下方 L5 门禁检查。检查 Harness 计划覆盖度、实现完整性、追溯完整性。
 
 ### 门禁检查项

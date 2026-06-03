@@ -267,3 +267,5 @@ Spec 特化：异常写用户能懂的话，不写裸 HTTP 状态码。规则中
 ## 层内自检
 
 完成后加载 `shadow-l1-flow` skill 执行 L1 门禁自检（只检查本 agent 产出物相关的检查项）。全部 L1 agent 完成后执行完整 L1 gate 检查。
+
+传导映射（spec → L1.5/L5）见 `references/spec-conduction.md`。

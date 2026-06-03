@@ -37,19 +37,12 @@ HTML 的堆砌行为会导致：`<div><div><div>...` 无限嵌套，结构混乱
 
 **关于 `templates/` 目录**：`templates/` 下的 HTML/Vue 文件是**布局和交互参考**，不是产出模板。agent 读这些文件理解布局模式（sidebar 宽度、表格列数、表单分组等），然后用 SVG 重新表达。产出永远是 `.svg` 文件，不得产出 `.html` 或 `.vue` 文件。
 
-## 为什么选择 SVG而非 HTML
+## 为什么选择 SVG 而非 HTML
 
 | 格式 | 模型行为 | 结果 |
 |------|---------|------|
 | **SVG** | 画图思维 → 规划布局、尺寸、位置 | 清晰的设计图、视觉层次分明 |
 | **HTML** | 写代码思维 → 堆砌标签 | 结构混乱、样式重复、不思考设计 |
-
-**SVG 的设计优势**：
-- **全局布局**：架构师一眼看到页面分区（导航/主内容/侧边栏）
-- **视觉语言**：颜色/透明度/分组天然表达层次，无需 CSS
-- **坐标思维**：模型被迫规划 x/y 坐标，而非随意堆砌
-- **设计师视角**：接近草图思维，而非代码思维
-- **轻量输出**：一个 SVG 文件 = 整个页面设计，而非 HTML + CSS + JS
 
 ## 怎么做
 
@@ -117,8 +110,6 @@ Pre-work → Pass 1（骨架）→ Pass 2+3 合并（内容+标注+状态）→ 
     操作: 点击新建采集→填写路线→创建
   场景 2: 采集详情页（显示任务状态为 DRAFT）
     操作: 点击开始采集→状态变为 COLLECTING
-  场景 3: 采集地图页（地图上可打点）
-    操作: 点击记录打点→地图出现打点标记
   ...
 
 旅程 J-04（标注员，主线）:
@@ -161,18 +152,12 @@ Pre-work → Pass 1（骨架）→ Pass 2+3 合并（内容+标注+状态）→ 
   page-collection-detail:  采集详情页，入口 /collections/:id
   page-task-list:          任务列表页，入口 /tasks
   page-annotator:          标注编辑器，入口 /tasks/:id/annotate
-  page-review:             质检页面，入口 /reviews/:id
-  page-simulation-player:  仿真播放器，入口 /simulations/:id
-  page-simulation-report:  仿真报告页，入口 /simulations/:id/report
-  dialog-confirm-submit:   提交确认弹窗
-  dialog-reject-reason:    驳回原因弹窗
   ...
 
 用户路径（从旅程串联提取）：
   采集线: collection-map → collection-detail → collection-map → ...
   标注线: task-list → annotator → submit → task-list
   质检线: review → approve/reject → review
-  仿真线: simulation-player → simulation-report → ...
 ```
 
 **检查**：§0 覆盖表中的每个场景是否至少有 1 个页面？没有就补充。
@@ -186,12 +171,9 @@ Pre-work → Pass 1（骨架）→ Pass 2+3 合并（内容+标注+状态）→ 
 |-------------|-------------|---------|---------|
 | create-collection | 点击新建→填写路线→创建 | J-01 | page-collection-map |
 | start-collection | 点击开始采集 | J-01 | page-collection-detail |
-| record-waypoint | 点击记录打点 | J-01 | page-collection-map |
 | open-task | 点击任务→进入编辑器 | J-04 | page-task-list |
 | create-annotation | 创建标注→选择标签→保存 | J-04 | page-annotator |
 | submit-annotation | 点击提交→确认弹窗→确认 | J-04 | page-annotator |
-| approve-review | 点击通过按钮 | J-05 | page-review |
-| reject-review | 点击驳回→输入原因→确认 | J-05 | page-review |
 ```
 
 **检查**：每条旅程的每个操作是否都有 `data-action`？没有就补充。
@@ -203,8 +185,6 @@ Pre-work → Pass 1（骨架）→ Pass 2+3 合并（内容+标注+状态）→ 
 - flow 中是否有"用户可见"的节点未被任何旅程覆盖？→ 可能是系统自动触发的页面，新增
 - spec 中是否有"用户交互类"规则未被任何旅程覆盖？→ 可能是 wire 漏了，补充
 - 纯后台规则（如定时任务、事件处理）不需要在 wire 中体现
-
-**目的**：确保旅程驱动没漏掉"用户自己想不到但系统需要"的页面（如管理员后台）。
 
 ---
 
@@ -226,7 +206,7 @@ Pre-work → Pass 1（骨架）→ Pass 2+3 合并（内容+标注+状态）→ 
 | 看总览和统计 | `layout/dashboard` |
 | 查看详情/编辑单条对象 | `layout/detail-form` |
 
-**检查**：每个页面有且仅有 1 个布局类型。布局模式详情见 `template-index.md` §1。
+**检查**：每个页面有且仅有 1 个布局类型。布局模式详情见 `template-index.md` §1。模板选择决策树和匹配算法见 `references/template-selector.md`，选择工作流见 `references/template-selection-workflow.md`、`references/selector-input-contract.md`、`references/selector-output-contract.md`。
 
 ### 4.2 绘制骨架 SVG
 
@@ -239,40 +219,12 @@ page-task-list 骨架布局：
 ├──────────────────────────────────────┤
 │ Sidebar (侧边栏) │ Main (主内容区)    │ y=60
 │ width=220        │ width=780          │
-│ color=#fafafa   │ color=#fff         │
 ├──────────────────────────────────────┤
 │ Footer (状态栏)                       │ y=660, height=40
 └──────────────────────────────────────┘
 ```
 
-```svg
-<svg viewBox="0 0 1000 700" width="1000" height="700">
-  <!-- Pass 1: 大块骨架 — 仅分区 + 尺寸，无内容无标注 -->
-
-  <!-- Header 骨架 -->
-  <g id="header">
-    <rect x="0" y="0" width="1000" height="60" fill="#f5f5f5" stroke="#ccc" stroke-width="1"/>
-    <text x="20" y="38" font-size="16" fill="#666">[Header — 导航栏]</text>
-  </g>
-
-  <!-- Sidebar 骨架 -->
-  <g id="sidebar">
-    <rect x="0" y="60" width="220" height="600" fill="#fafafa" stroke="#ccc" stroke-width="1"/>
-    <text x="110" y="360" font-size="14" fill="#999" text-anchor="middle">[Sidebar — 导航菜单]</text>
-  </g>
-
-  <!-- Main 骨架 -->
-  <g id="main">
-    <rect x="220" y="60" width="780" height="600" fill="#fff" stroke="#ccc" stroke-width="1"/>
-    <text x="610" y="360" font-size="14" fill="#999" text-anchor="middle">[Main — 主内容区]</text>
-  </g>
-
-  <!-- Footer 骨架 -->
-  <g id="footer">
-    <rect x="0" y="660" width="1000" height="40" fill="#f0f0f0" stroke="#ccc" stroke-width="1"/>
-  </g>
-</svg>
-```
+> SVG `<g>` 分组结构、data-* 属性完整定义、metadata 格式、viewBox 规则、visibility 切换规则详见 **`references/wire-svg-spec.md`**。
 
 布局模板参考：
 - `layout/data-list`：Header + Sidebar + (Filter + Table + Pagination)
@@ -283,8 +235,8 @@ page-task-list 骨架布局：
 
 - [ ] 所有页面清单中的页面都有骨架 SVG
 - [ ] 每个页面骨架包含 header/sidebar/main/footer（或等价业务分区）
-- [ ] 每个骨架的尺寸一致（见 §6 品味引导 — "比例就是秩序"）
-- [ ] 骨架不含任何业务内容、交互元素、data-*（见 §4 Pass 1 目标）
+- [ ] 每个骨架的尺寸一致（见品味引导 — "比例就是秩序"）
+- [ ] 骨架不含任何业务内容、交互元素、data-*
 - [ ] 弹窗/抽屉有独立的骨架占位
 
 ---
@@ -307,76 +259,9 @@ page-task-list 骨架布局：
 | `detail/*` | form-section / desc-list / tabs |
 | `overlay/*` | dialog-centered / drawer-right / drawer-left |
 
-**原则**：只加载当前页面真正需要的模板。完整定义见 `template-index.md` §2。
-
 ### 5.2 在骨架上填充内容
 
-在 Pass 1 的每个 `<g>` 分区内，添加内容区域：
-
-```svg
-<svg viewBox="0 0 1000 700" width="1000" height="700">
-  <!-- Pass 2: 小块填充 — 叠加在 Pass 1 骨架上 -->
-
-  <!-- Header 内容 -->
-  <g id="header-content">
-    <!-- Logo -->
-    <text x="20" y="38" font-size="18" fill="#333" font-weight="bold">标注平台</text>
-    <!-- 导航链接 -->
-    <text x="200" y="38" font-size="14" fill="#666">项目</text>
-    <text x="260" y="38" font-size="14" fill="#666">任务</text>
-    <text x="320" y="38" font-size="14" fill="#666">审核</text>
-    <!-- 用户菜单 -->
-    <rect x="880" y="15" width="100" height="30" rx="4" fill="#eee"/>
-    <text x="930" y="35" font-size="14" fill="#333" text-anchor="middle">张三 ▼</text>
-  </g>
-
-  <!-- Sidebar 内容（导航菜单项） -->
-  <g id="sidebar-content">
-    <rect x="10" y="75" width="200" height="36" fill="#e6f7ff" rx="4"/>
-    <text x="25" y="98" font-size="14" fill="#1890ff">📋 我的任务</text>
-    <text x="195" y="98" font-size="12" fill="#ff4d4f" text-anchor="end">3</text>
-    
-    <rect x="10" y="120" width="200" height="36" fill="transparent" rx="4"/>
-    <text x="25" y="143" font-size="14" fill="#666">📊 项目概览</text>
-    
-    <rect x="10" y="165" width="200" height="36" fill="transparent" rx="4"/>
-    <text x="25" y="188" font-size="14" fill="#666">⚙️ 设置</text>
-  </g>
-
-  <!-- Main 内容（任务列表 + 筛选 + 分页） -->
-  <g id="main-content">
-    <!-- 页面标题 -->
-    <text x="240" y="95" font-size="20" fill="#333" font-weight="bold">我的任务</text>
-    
-    <!-- 筛选区 -->
-    <rect x="240" y="110" width="740" height="40" fill="#fafafa" rx="4" stroke="#eee"/>
-    <text x="260" y="135" font-size="13" fill="#666">类型: [全部 ▼]</text>
-    <text x="400" y="135" font-size="13" fill="#666">状态: [待处理 ▼]</text>
-    <rect x="620" y="113" width="80" height="34" rx="4" fill="#1890ff"/>
-    <text x="660" y="134" font-size="13" fill="#fff" text-anchor="middle">查询</text>
-    
-    <!-- 任务表格 -->
-    <rect x="240" y="160" width="740" height="440" fill="#fff" stroke="#eee"/>
-    <!-- 表头 -->
-    <rect x="240" y="160" width="740" height="40" fill="#fafafa" stroke="#eee"/>
-    <text x="260" y="185" font-size="13" fill="#666" font-weight="bold">任务名称</text>
-    <text x="480" y="185" font-size="13" fill="#666" font-weight="bold">类型</text>
-    <text x="600" y="185" font-size="13" fill="#666" font-weight="bold">状态</text>
-    <text x="780" y="185" font-size="13" fill="#666" font-weight="bold">操作</text>
-    <!-- 数据行 1 -->
-    <rect x="240" y="200" width="740" height="45" fill="#fff" stroke="#f0f0f0"/>
-    <text x="260" y="226" font-size="14" fill="#333">文本标注 - 正面情绪</text>
-    <text x="480" y="226" font-size="13" fill="#666">文本</text>
-    <text x="600" y="226" font-size="13" fill="#faad14">待处理</text>
-    <rect x="740" y="207" width="70" height="30" rx="4" fill="#1890ff"/>
-    <text x="775" y="227" font-size="13" fill="#fff" text-anchor="middle">开始标注</text>
-    <!-- 数据行 2 ... -->
-    
-    <!-- 分页 -->
-    <text x="600" y="635" font-size="13" fill="#999">1 2 3 ... 10</text>
-  </g>
-</svg>
-```
+在 Pass 1 的每个 `<g>` 分区内，添加内容区域（导航链接、筛选区、表格表头+数据行、分页、表单字段、弹窗内容结构等）。
 
 **内容填充规则**：
 - 只写示意文本（"任务名称"、"查询"、"1 2 3..."），不追求精确数据
@@ -390,7 +275,7 @@ page-task-list 骨架布局：
 - [ ] 表单字段有示意标签和输入区
 - [ ] 表格有表头和≥1 行示意数据
 - [ ] 弹窗/抽屉有内容结构
-- [ ] 不包含 data-* 标注、不画状态变体（见 §5 Pass 2 目标）
+- [ ] 不包含 data-* 标注、不画状态变体
 
 ---
 
@@ -415,125 +300,28 @@ page-task-list 骨架布局：
 | `data-ux="primary\|secondary\|..."` | 交互角色语义 | `data-ux="primary"` |
 | `data-journey="J-XX"` | 旅程编号（可选） | `data-journey="J-01"` |
 
-```svg
-<!-- 在 Pass 2 内容上用 data-* 标注 -->
-<g id="action-create-annotation"
-   data-node="B02-N07"
-   data-rule="annotation-R02"
-   data-action="create-annotation"
-   data-target="api.POST./api/annotations"
-   data-ux="primary">
-  <rect x="900" y="60" width="280" height="36" rx="4" fill="#1890ff"/>
-  <text x="1040" y="84" font-size="14" fill="#fff" text-anchor="middle">+ 创建标注</text>
-</g>
-
-<g id="page-annotator"
-   data-page="AnnotatorPage"
-   data-route="/tasks/:id/annotate"
-   data-state="normal">
-  <!-- Pass 2 内容不变，仅添加 data-page 标识 -->
-</g>
-```
+> data-* 属性完整定义（格式、目标类型前缀、data-ux 语义、data-page/route/state）、metadata 格式、visibility 切换规则详见 **`references/wire-svg-spec.md`**。
 
 ### 6.2 添加状态变体
 
-每个页面的状态变体在单独的 `<g>` 中绘制，用 `data-state` 区分。从旅程的"用户看到的场景"列中提取：
-
-| 页面 | 旅程中的状态场景 | 对应 data-state |
-|------|----------------|----------------|
-| page-task-list | "显示任务列表，3个待处理" | normal |
-| page-task-list | "加载中..." | loading |
-| page-task-list | "暂无任务" | empty |
-| page-task-list | "服务器错误" | error |
+每个页面的状态变体在单独的 `<g>` 中绘制，用 `data-state` 区分。从旅程的"用户看到的场景"列中提取。
 
 每个页面至少画 4 类状态变体：`normal`、`loading`、`empty`、`error`。涉及提交/保存/审核的页面还必须画 `success`、`disabled` 或 `pending`。
 
-```svg
-<!-- 状态变体（各状态用独立 data-state 标识） -->
-<g id="page-task-list-normal" data-page="TaskList" data-state="normal">
-  <!-- 引用 Pass 2 的 normal 内容 -->
-</g>
-
-<g id="page-task-list-loading" data-page="TaskList" data-state="loading">
-  <rect x="240" y="160" width="740" height="440" fill="#fff" stroke="#eee"/>
-  <text x="610" y="380" font-size="16" fill="#999" text-anchor="middle">加载中...</text>
-</g>
-
-<g id="page-task-list-empty" data-page="TaskList" data-state="empty">
-  <rect x="240" y="160" width="740" height="440" fill="#fafafa" stroke="#eee"/>
-  <text x="610" y="360" font-size="16" fill="#ccc" text-anchor="middle">暂无待处理任务</text>
-  <text x="610" y="390" font-size="13" fill="#999" text-anchor="middle">完成标注后，任务会自动出现在这里</text>
-</g>
-
-<g id="page-task-list-error" data-page="TaskList" data-state="error">
-  <rect x="240" y="160" width="740" height="440" fill="#fff2f0" stroke="#ffccc7"/>
-  <text x="610" y="360" font-size="16" fill="#ff4d4f" text-anchor="middle">加载失败</text>
-  <rect x="570" y="380" width="80" height="30" rx="4" fill="#ff4d4f"/>
-  <text x="610" y="400" font-size="13" fill="#fff" text-anchor="middle">重试</text>
-</g>
-```
+> 各状态（normal/loading/empty/error/success/disabled/pending）的详细视觉要求、文案规则、SVG 示例详见 **`references/wire-state-guide.md`**。
 
 ### 6.3 写入 metadata（代码实现摘要 + 旅程覆盖摘要）
 
 在 SVG 末尾用 `<metadata>` 写入两份内容：
 
-**1) 代码实现摘要**（下游 L1.5/L5 消费）：
-
-```svg
-<metadata id="wire-contract">
-pages:
-  - id: page-task-list
-    route: /tasks
-    component: TaskListPage
-    states: [normal, loading, empty, error]
-  interactions:
-  - id: action-create-annotation
-    node: B02-N07
-    rule: annotation-R02
-    action: create-annotation
-    target: api.POST./api/annotations
-    implement: frontend/src/pages/AnnotatorPage.tsx
-  - id: action-submit-annotation
-    node: B02-N08
-    rule: annotation-R03
-    action: submit-annotation
-    target: dialog-confirm-submit
-    implement: frontend/src/pages/AnnotatorPage.tsx
-</metadata>
-```
-
-**2) 旅程覆盖摘要**（供 L2 覆盖矩阵验证、Agent Worker 审查）：
-
-```svg
-<metadata id="wire-coverage">
-journey_coverage:
-  pages:
-    - id: page-collection-map
-      journeys: [J-01, J-02, J-03]
-      personas: [P-01]
-    - id: page-task-list
-      journeys: [J-04, J-06]
-      personas: [P-02]
-    - id: page-annotator
-      journeys: [J-04, J-06]
-      personas: [P-02]
-    - id: page-review
-      journeys: [J-05]
-      personas: [P-03]
-    - id: page-simulation-player
-      journeys: [J-07, J-08]
-      personas: [P-04]
-  uncovered_journeys: []
-  coverage_report:
-    total_journeys: 8
-    covered_journeys: 8
-    coverage: 100%
-</metadata>
-```
+1. **`wire-contract`**：代码实现摘要（下游 L1.5/L5 消费）— 包含页面清单（id/route/component/states）和交互清单（id/node/rule/action/target/implement）
+2. **`wire-coverage`**：旅程覆盖摘要（供 L2 覆盖矩阵验证）— 包含每个页面的关联旅程和画像
 
 **约束**：
 - `uncovered_journeys` 必须为空。不为空时 wire 不可进入下一层
 - L1 Gate 会检查 `wire-coverage` 中的 `coverage` 是否为 100%
+
+> metadata 完整格式和字段定义详见 **`references/wire-svg-spec.md`** §4。
 
 ### 6.4 Pass 3 检查点
 
@@ -565,24 +353,7 @@ Pass 3（细节契约）:
   ✅ 检查：L1 Gate 全部通过 → 产出最终 wire.svg
 ```
 
-下游必须按代码实现契约传导：
-- L1.5：从 `data-page/data-route/data-action/data-target/data-state` 生成页面清单、组件清单、API 清单和状态管理边界
-- L5 Harness：每个前端文件指令引用对应 SVG `id`，并声明 props/state/actions/events/ui-contract
-- L4：每个 `data-action` 至少有一个交互测试或 E2E 场景覆盖
-- L5：实现文件头必须引用 `L1-Wire` 区域或 `data-action`，UI 行为不能少于 SVG 契约
-
-## SVG 设计原则
-
-| 原则 | 说明 |
-|------|------|
-| **先规划布局** | 先划分页面区域（header/sidebar/main/footer），再画元素 |
-| **先列全页面** | 所有页面、弹窗、抽屉、空状态页、错误页都必须在 SVG 中可见 |
-| **用颜色区分层次** | 主内容 `#fff`、侧边栏 `#fafafa`、header `#f5f5f5` |
-| **用分组组织元素** | `<g id="header">`、`<g id="main">` 分组便于理解 |
-| **标注交互节点** | 每个可点击元素必须有 `data-node/data-rule/data-action/data-target` |
-| **尺寸真实** | 用真实尺寸（如 1000x700），而非随意数值 |
-| **状态变体分组** | 用 `<g id="main-normal">`、`<g id="main-empty">` 区分状态 |
-| **传导到实现** | 关键页面/交互必须标注预期 route/component/api 或 implementation hint |
+下游传导：L1.5 从 data-* 生成页面/组件/API 清单；L5 引用 SVG id 声明契约；L4 覆盖每个 data-action；L5 实现不能少于 SVG 契约。详见 **`references/wire-svg-spec.md`** §7。
 
 ### 品味引导：有视觉分寸的线框图
 
@@ -603,39 +374,29 @@ Pass 3（细节契约）:
   所有表单标签: font-size=14, margin-bottom=8
 ```
 
-判断标准：把任意两个页面并列，能一眼看出属于同一系统？
+**克制比丰富更难。** 一个按钮解决的问题，不要用三个。留白不是浪费，是告诉用户"这里可以呼吸"。
 
-**克制比丰富更难。**
+**不要骗眼睛。** 线框图里的尺寸应该和最终实现一致。真实尺寸本身就是品味的一部分。
 
-- 一个按钮解决的问题，不要用三个
-- 一个弹窗承载的内容，不要拆成两个
-- 留白不是浪费，是告诉用户"这里可以呼吸"。表格行列之间给足 padding，按钮周围给够 margin
-
-判断标准：去掉页面中 30% 的元素，核心功能是否仍然清晰可达？如果可以 → 你的设计开始有品味了。
-
-**不要骗眼睛。** 线框图里的尺寸应该和最终实现一致。如果线框图画了一个 60px 的 Header，实现时变成了 56px —— 那线框图就失去了作为契约的价值。真实尺寸本身就是品味的一部分。
-
-**Pass 内的品味检查点：**
+**Pass 内的品味检查点**：
 
 ```
 Pass 1（骨架）：
   □ 所有页面 Header/Sidebar/Main 比例一致
-  □ 没有"这个页面宽一点、那个页面窄一点"的不统一
 
 Pass 2（内容）：
-  □ 按钮文字统一（全用"保存标注"还是全用"保存"？不要混用）
-  □ 表单项间距一致、对齐一致
+  □ 按钮文字统一、表单项间距一致
   □ 弹窗/抽屉不遮挡核心内容
 
 Pass 3（契约）：
-  □ data-ux="danger" 给真正的危险操作（删除、批量驳回），不是所有按钮都标 primary
-  □ 状态变体覆盖用户真正遇到的场景，而不是为了凑 4 个而编造
-  □ metadata 中 component 命名风格统一（PascalCase 就都用 PascalCase）
+  □ data-ux="danger" 给真正的危险操作
+  □ 状态变体覆盖用户真正遇到的场景
+  □ metadata 中 component 命名风格统一
 ```
 
 ### Pass 4：品味检验（Mental Check）
 
-不产生新文件，整体品味审视。通过标准：
+不产生新文件，整体品味审视。AI 审查契约和评分标准见 `references/ai-review-contract.md` 和 `references/ai-review-rubric.md`，审查 prompt 见 `references/ai-review-prompt.md`，各页面类型审查示例见 `references/ai-review-example-*.md`。通过标准：
 
 1. **去色**：去掉所有颜色后布局层次仍清晰。不能 → 在用颜色掩盖结构问题。
 2. **并列**：任意两页并列像同一系统。不像 → 视觉语言分裂。
@@ -649,20 +410,7 @@ Pass 3（契约）：
 
 这是项目级唯一线框图。与 project.flow.mermaid 一致，不按业务线拆分。所有业务线的页面、交互、状态都在同一张 wire.svg 中。
 
-一个 SVG 文件，包含：
-- 完整页面清单（页面/弹窗/抽屉/详情/列表/空状态/错误状态）
-- 页面布局规划（header/sidebar/main/footer 或等价业务分区）
-- 完整 UI/UX 设计（导航、表单、列表、筛选、排序、分页、批量操作、反馈、禁用态）
-- 关键交互元素（按钮/表单/列表/菜单/链接/弹窗/抽屉）
-- 状态变体（normal/loading/empty/error/success/disabled/pending）
-- `data-node` 标注（关联 flow 节点）
-- `data-rule` 标注（关联用户交互类规则）
-- `data-action` 标注（关联用户动作）
-- `data-target` 标注（关联页面、弹窗、抽屉或 API 目标）
-- `data-page/data-route/data-state` 标注（关联页面实现与状态管理）
-- `data-journey` 标注（可选的关联旅程编号）
-- `metadata#wire-coverage` 旅程覆盖摘要（全部旅程覆盖率达到 100% 方可进入下一层）
-- `metadata#wire-contract` 代码实现摘要（便于下游抽取代码实现清单）
+一个 SVG 文件，包含：完整页面清单 + 布局规划 + UI/UX 设计 + 交互元素 + 状态变体 + data-* 标注 + `metadata#wire-coverage`（旅程覆盖率 100%）+ `metadata#wire-contract`（代码实现摘要）。
 
 ## 约束
 
@@ -684,10 +432,11 @@ Pass 3（契约）：
 ### 3-Pass 生成约束
 
 - **必须按 3-Pass 顺序生成**：禁止直接生成完整 wire.svg。Pass 1 先出骨架，Pass 2 再填内容，Pass 3 最后加标注和状态
-- **每 pass 隔离**：每 pass 只做自己阶段的事。Pass 1 [见 §4 目标]；Pass 2 [见 §5 目标]；Pass 3 不改变 Pass 2 的布局和内容
+- **每 pass 隔离**：每 pass 只做自己阶段的事。Pass 1 不填内容；Pass 2 不标 data-*；Pass 3 不改变 Pass 2 的布局和内容
 - **每 pass 有检查点**：Pass 1 检查所有页面骨架完整；Pass 2 检查所有交互有 UI 占位；Pass 3 检查 L1 Gate 通过
 - **同一项目所有页面的 Header/Sidebar/Footer 尺寸必须一致**（见品味引导 — "比例就是秩序"）
 - 中间文件 `wire-skeleton.svg` 和 `wire-content.svg` 不在最终产出物中提交，仅 Pass 2/3 的生成输入
+- 组件库参考见 `references/component-library.md`
 
 ### 技术约束
 
@@ -728,58 +477,9 @@ Wire 特化：错误态文案给人看。空态有引导。按钮文案说清点
 | page-simulation-player | 仿真播放器 | J-07, J-08 | 播放回放、标记问题 |
 | page-simulation-report | 仿真报告页 | J-07 | 查看问题列表、导出报告 |
 
-### wire.svg 片段示例（标注编辑器核心区域）
+### wire.svg 片段示例
 
-```svg
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800">
-  <metadata id="wire-contract">
-    project: 自动驾驶数据平台
-    pages: page-collection-map, page-collection-detail, page-task-list, page-annotator, page-review, page-simulation-player, page-simulation-report
-  </metadata>
-
-  <!-- 标注编辑器主画面 -->
-  <rect x="20" y="60" width="860" height="520" rx="4" fill="#1a1a2e" stroke="#333"/>
-  <text x="450" y="320" font-size="14" fill="#666" text-anchor="middle">视频/点云画面区域</text>
-
-  <!-- 标注工具栏 -->
-  <g data-node="B02-N07" data-rule="annotation-R02" data-action="create-annotation">
-    <rect x="900" y="60" width="280" height="36" rx="4" fill="#1890ff"/>
-    <text x="1040" y="84" font-size="14" fill="#fff" text-anchor="middle">+ 创建标注</text>
-  </g>
-
-  <!-- 提交按钮 -->
-  <g data-node="B02-N08" data-rule="annotation-R03" data-action="submit-annotation" data-target="dialog-confirm-submit" data-ux="primary">
-    <rect x="900" y="520" width="280" height="36" rx="4" fill="#52c41a"/>
-    <text x="1040" y="544" font-size="14" fill="#fff" text-anchor="middle">提交质检</text>
-  </g>
-
-  <!-- 帧导航 -->
-  <g data-action="prev-frame" data-target="frame-viewer">
-    <text x="920" y="620" font-size="20" fill="#1890ff">◀ 上一帧</text>
-  </g>
-  <g data-action="next-frame" data-target="frame-viewer">
-    <text x="1100" y="620" font-size="20" fill="#1890ff">下一帧 ▶</text>
-  </g>
-
-  <!-- 空态 -->
-  <g data-state="empty" visibility="hidden">
-    <text x="450" y="320" font-size="16" fill="#999" text-anchor="middle">暂无标注</text>
-    <text x="450" y="350" font-size="14" fill="#1890ff" text-anchor="middle">点击"+ 创建标注"开始标注</text>
-  </g>
-
-  <!-- 加载态 -->
-  <g data-state="loading" visibility="hidden">
-    <text x="450" y="320" font-size="14" fill="#999" text-anchor="middle">加载帧数据...</text>
-  </g>
-
-  <metadata id="wire-coverage">
-    coverage: 100%
-    total_journeys: 8
-    covered_journeys: J-01, J-02, J-03, J-04, J-05, J-06, J-07, J-08
-    uncovered_journeys: []
-  </metadata>
-</svg>
-```
+标注编辑器核心区域 SVG 示例（含 data-* 标注、状态变体、metadata）详见 **`references/wire-svg-spec.md`** §8。
 
 ## 层内自检
 
