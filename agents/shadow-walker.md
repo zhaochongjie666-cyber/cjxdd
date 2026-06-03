@@ -126,9 +126,40 @@ L6 部署验证     ── 工具: shadow-l6-deploy
 | 流程节点 | L1 Flow + Spec + Wire + 下游 |
 | 规则 | L1 Spec + Wire + L1.5 + L2/L5/L6 |
 | API/聚合 | L1.5 + L5 Plan/L5 Impl/L6 |
+| 通信方式/事件传递 | L1.5 事件契约 + L5 Plan + L5 Impl + L2(如影响性能标准) + L6 |
 | 测试覆盖 | L2 + L5 + L6 |
 | 代码缺陷 | L5 当前批 + 重验 |
 | 部署配置 | L1.5 或 L6（视根因） |
+
+**单业务线变更传播**（多业务线项目，只改了 BXX 时）：
+
+| 改了什么（BXX 内） | 只需重跑 |
+|-------------------|---------|
+| BXX 事件归属 | BXX research + flow + spec，wire 视情况 |
+| BXX 术语 | BXX research + spec，下游视情况 |
+| BXX 聚合边界 | BXX research + spec + L1.5 聚合全景 |
+| 跨 BXX 事件 | 两侧 BXX research + flow + 全局事件流 |
+
+**回退决策树**（发现遗漏/错误时判断退到哪层）：
+
+```text
+遗漏是因为 → 画像不够全面   → 回 L1 Research §画像
+           → 旅程没穷举     → 回 L1 Research §旅程
+           → 节点没画       → 回 L1 Flow
+           → 规则没写       → 回 L1 Spec
+           → 页面没画       → 回 L1 Wire
+           → API/事件设计错 → 回 L1.5 Architecture
+```
+
+**需求变更记录**：在 status.md 末尾加 `## 变更记录` 段：
+
+```markdown
+## 变更记录
+
+| 时间 | 变更内容 | 影响范围 | 处理 |
+|------|---------|---------|------|
+| iter-1 L1 Research | "审批"实为"评论" | intent.md + business-landscape.md + B01 research.md | 重写意图 → 重收敛 |
+```
 
 ### 每个阶段的 5 步节奏
 
@@ -205,6 +236,27 @@ Shadow 用迭代隔离目录管理不同轮次：
 ```
 
 **新迭代创建**：当前迭代全 ✅ + 用户有新需求 → 自动递增 iter-{N+1}。
+
+**迭代产物隔离策略**：
+
+```text
+共享产物（跨迭代复用，原位修改）：
+  .shadow/L1-business/          ← 新迭代直接修改，不冻结
+  .shadow/L1.5-architecture/
+  .shadow/L2-e2e/
+  .shadow/L5-plan/
+
+迭代专属产物（每次迭代独立）：
+  .shadow/iterations/iter-N/
+    pipeline/status.md           ← 每次迭代独立的 status
+    gate/                        ← 每次迭代独立的 gate 标记
+
+新迭代开始时：
+  1. 复制 iter-N 的 status.md 为 iter-{N+1}/pipeline/status.md（清零状态）
+  2. 不冻结共享产物，直接在原位修改
+  3. 如需回滚 → 用 git revert 恢复到 iter-N 完成时的 commit
+  4. 新迭代从变更影响的最高层开始（不总是从 L0 开始）
+```
 
 ## 干活的底线
 
