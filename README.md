@@ -1,158 +1,95 @@
-# Plan Workflow Skills
+# Shadow — 带工具箱的工匠型开发体系
 
-基于 OpenCode Skill 的 JSON-first 计划工作流。
+基于 OpenCode Agent + Skill 的全链路软件开发体系。一个 Agent（Shadow Walker）带一套工具箱（12 个核心 Skill），从调研到部署一个人把项目做到能交付。
 
-当前推荐入口是 `plan-workflow`：
-
-- 先生成或维护 `JSON plan`
-- 再按需生成 `Mermaid`
-- 最后进入执行态并推进状态
-
-如果你要的是“自然语言任务 -> 协调者自动拆计划 -> 再进入执行”，请优先使用 `task-orchestrator`：
-
-- `task-orchestrator`：上层协调器，负责接自然语言任务、选模板、生成实例计划
-- `plan-workflow`：下层执行系统，负责创建执行态、查看状态、推进任务
-
-最短调用关系：
+## 架构
 
 ```text
-User Task
-  -> task-orchestrator
-  -> plans/instances/xxx.json
-  -> plan-workflow create/start
-  -> .opencode/plan/xxx.json
-  -> plan-workflow status/complete-task/verify-task
+Agent: shadow-walker（工匠，不是调度员）
+  ↓ 按需加载 skill
+Skills: 12 个核心工具 + 8 个小工具
+  ↓ 产出到 .shadow/ 目录
+产出: intent.md → flow → spec → wire → architecture → harness-plan → code → deploy
 ```
 
-## 目录
+### 流水线
 
 ```text
-.
-├── skills/
-│   ├── plan-workflow/
-│   │   ├── SKILL.md
-│   │   └── scripts/
-│   │       ├── __init__.py
-│   │       └── plan_workflow.py
-│   ├── plan-creator/
-│   │   ├── SKILL.md
-│   │   └── scripts/plan_creator.py
-│   └── plan-engine/
-│       ├── SKILL.md
-│       ├── EXAMPLES.md
-│       └── scripts/plan_engine.py
-└── README.md
+L0 发散调研      ── shadow-l0-research
+L1 业务层        ── shadow-l1-research → flow → spec → wire（串行）
+规模判定          ── .shadow/scale.md（S/M/L）
+L1.5 架构        ── shadow-l1p5-architecture
+搭脚手架          ── shadow-scaffold
+L2 验收场景      ── shadow-l2-e2e
+L5 执行计划      ── shadow-l5-plan
+L5 代码实现      ── shadow-l5-impl（按 Batch 串行）
+全链路审查        ── shadow-reviewer（必经）
+L6 部署验证      ── shadow-l6-deploy
 ```
 
-## 推荐工作流
+## 目录结构
 
-### 0. 自然语言任务协调
+```text
+agents/
+  shadow-walker.md          # 工匠型 Agent（345 行）
+  shadow-worker.md          # 旧 Agent（保留参考）
 
-如果你先只有一句自然语言任务，先走 `task-orchestrator`：
+skills/
+  shadow-l0-research/       # L0 发散笔记本（112 行）
+  shadow-l1-research/       # L1 DDD+EDD+IDDD 业务调研（468 行）
+  shadow-l1-flow/           # L1 MDD 流程总图（367 行）
+  shadow-l1-spec/           # L1 FDD 业务规格（271 行）
+  shadow-l1-wire/           # L1 SVG 线框图（486 行）
+  shadow-l1p5-architecture/ # L1.5 ADD 架构设计（357 行）
+  shadow-scaffold/          # 项目脚手架（255 行）
+  shadow-l2-e2e/            # L2 BDD 验收场景（250 行）
+  shadow-l5-plan/           # L5 Harness 精密执行计划（393 行）
+  shadow-l5-impl/           # L5 代码实现（159 行）
+  shadow-l6-deploy/         # L6 部署验证（247 行）
+  shadow-reviewer/          # 全链路审查（222 行）
+  skill-creator/            # Skill 创建标准（494 行）
+  shadow-reverse/           # 逆向已有系统
+  shadow-taste/             # 品味检查
+  shadow-trace-init/        # 追溯初始化
+  mermaid-check/            # Mermaid 渲染验证
+  docker-helper/            # Docker 问题排查
+  test-in-tmux/             # 测试运行
 
-```bash
-python skills/task-orchestrator/scripts/init_task_orchestration.py \
-  --task "给登录模块新增短信验证码登录，并补测试" \
-  --plan-id login-sms
+  # 每个 skill 目录结构：
+  skill-name/
+    SKILL.md                # 快速入门（< 500 行）
+    references/             # 详细指南（按需读取）
+    templates/              # 模板文件（部分 skill 有）
+    scripts/                # Gate 检查脚本（部分 skill 有）
 ```
 
-如果希望生成计划后直接进入执行态：
+## 设计原则
 
-```bash
-python skills/task-orchestrator/scripts/init_task_orchestration.py \
-  --task "修复登录后 session 偶发失效问题，并验证回归" \
-  --plan-id fix-login-session \
-  --execute
+### 渐进式披露
+
+每个 Skill 的 SKILL.md 是快速入门（< 500 行），详细内容在 `references/` 里按需读取。Walker 不会一次读完所有材料，而是跟着 SKILL.md 的流程走，遇到需要深入了解的环节才读对应的 reference。
+
+### 传导链追溯
+
+```text
+intent.md（为什么做）
+  → research.md（业务领域）
+    → project.flow.mermaid（BXX-NYY 节点编号）
+      → spec.md（RXX 规则编号）
+        → architecture.md（API 端点清单）
+          → harness-plan.md（逐方法实现指令 + 测试断言）
+            → 代码（@implements 标注节点和规则编号）
 ```
 
-### 1. 生成计划
+每条规则、每个 API 端点、每行代码都能追溯到业务意图。
 
-```bash
-python skills/plan-workflow/scripts/plan_workflow.py generate \
-  --description "用户登录：需求分析→设计→实现→测试" \
-  --format both \
-  --output login-plan.mermaid \
-  --json-output login-plan.json
-```
+### 全局约束（L5 Harness）
 
-### 2. 启动执行
+多租户隔离、认证授权、统一错误格式、事件发布、分页、事务边界等横切关注点在 Harness 计划中作为"全局约束"段定义，所有文件统一遵守。
 
-```bash
-python skills/plan-workflow/scripts/plan_workflow.py start \
-  --plan-id login-feature \
-  --name "登录功能开发" \
-  --from-json login-plan.json
-```
+## 快速开始
 
-### 3. 推进计划
-
-```bash
-python skills/plan-workflow/scripts/plan_workflow.py complete-task \
-  --plan-id login-feature \
-  --note "已完成实现"
-
-python skills/plan-workflow/scripts/plan_workflow.py verify-task \
-  --plan-id login-feature \
-  --result passed \
-  --note "验证通过"
-```
-
-### 4. 查看状态
-
-```bash
-python skills/plan-workflow/scripts/plan_workflow.py status \
-  --plan-id login-feature \
-  --json
-```
-
-## 统一 CLI
-
-`skills/plan-workflow/scripts/plan_workflow.py` 目前提供这些主命令：
-
-- `generate`：从自然语言或 JSON 生成 JSON plan / Mermaid
-- `start`：生成计划并立即创建执行态
-- `create`：从 JSON / Mermaid / tasks JSON 创建执行态
-- `import`：兼容式导入 JSON / Mermaid 到执行态
-- `parse`：将 Mermaid 解析回 JSON 结构
-- `status`：查看计划状态
-- `complete-task`：将当前任务推进到验证态
-- `verify-task`：验证当前任务
-- `reject-task`：将当前任务标记失败
-- `fallback-task`：沿回退边回到目标任务
-- `replan`：保留已完成任务并替换未完成部分
-- `reset`：重置整个计划或单个任务
-- `add-task`：运行时插入任务
-- `add-dep`：运行时新增依赖
-- `render`：渲染 ASCII / Mermaid
-- `list`：列出已有执行态计划
-
-## 数据层次
-
-推荐明确区分三层数据：
-
-1. `JSON plan`
-   - 包含 `tasks` / `dependencies`
-   - 是计划定义层
-   - 应提交到版本库
-
-2. `Mermaid`
-   - 是可视化展示层
-   - 可由 JSON plan 再生成
-
-3. `.opencode/plan/*.json`
-   - 是执行状态层
-   - 由 `plan-engine` 写入
-   - 不要替代原始计划定义文件
-
-## 兼容入口
-
-旧入口仍保留：
-
-- `skills/plan-creator/`
-- `skills/plan-engine/`
-
-新增上层协调入口：
-
-- `skills/task-orchestrator/`
-
-但它们现在只是兼容包装。新请求默认应使用 `plan-workflow`。
+1. 在 OpenCode 中配置 `shadow-walker` agent
+2. 告诉 walker 你要做什么：*"给我做一个 XX 系统"*
+3. Walker 自动走完 L0→L6 全流程
+4. 交付物在 `.shadow/` 目录 + 项目代码中
