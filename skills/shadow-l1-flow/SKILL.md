@@ -95,6 +95,8 @@ B02-N09: 质检员通过质检 → POST /api/reviews/:id/approve (Reviewer 角�
 
 这些映射需要在 project.flow.mermaid 中轻量标注，正式请求/响应契约再由 L1.5 API 端点清单细化。
 
+**体系全局视角**：想了解 L1 Flow 在整个 Shadow 体系（L0→L1→L1.5→Scaffold→L2→L5→L6）中的位置和上下游协作关系，参考 `references/system-architecture.mmd`（一张 mermaid 融合 Walker 架构 + 行为流 + 业务线）。画项目级流程图前看一眼，能更好把握 L1 Flow 的"上游从 L1 Research 来、下游到 L1 Spec/Wire 和 L1.5 去"的传导定位。
+
 ### 5. 检查完整性
 
 - 异常路径画了吗？
