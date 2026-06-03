@@ -1,0 +1,167 @@
+%%{init: {"theme": "base", "themeVariables": {"background": "#0B1220", "primaryColor": "#1E293B", "primaryTextColor": "#E2E8F0", "primaryBorderColor": "#475569", "lineColor": "#94A3B8", "secondaryColor": "#1E293B", "tertiaryColor": "#0F172A"}}}%%
+
+flowchart TB
+
+    %% ==================== ENTRY ====================
+    ENTRY(["👤 User Task<br/>做一个 XX 系统"]):::trigger
+    ENTRY --> W_INIT
+
+    %% ==================== Walker ====================
+    subgraph WALKER["🏗️ Shadow Walker · 工匠"]
+        direction TB
+        W_INIT["接活<br/>看 .shadow/ · 判类型 · 拿工具"]:::walker
+        W_RHYTHM["5 步节奏<br/>装工具 → 写 checklist<br/>按流程干 → 读 refs<br/>自检"]:::walker
+        W_CARD["底线<br/>不写存根 · 不用假实现<br/>不跳阶段 · 不糊弄"]:::walker
+        W_FAIL["卡住怎么办<br/>1 次重试 → 2 次换路<br/>3 次退回 → 4 次问用户"]:::walker
+    end
+
+    %% ==================== 行为流 ====================
+    W_INIT ==> L0
+    L0 ==> L1R
+    L1R ==> L1F
+    L1F ==> L1S
+    L1S ==> L1W
+    L1W ==> SCALE
+    SCALE ==> L1P5
+    L1P5 ==> SCAFF
+    SCAFF ==> L2
+    L2 ==> L5P
+    L5P ==> L5I
+    L5I ==> REV
+    REV ==> L6
+    L6 ==> DELIVER
+
+    %% ==================== 业务线（Bizlines） ====================
+    subgraph L0["📓 L0 · 发散调研"]
+        direction LR
+        B0A["自由发散<br/>行业 / 竞品 / 用户<br/>技术 / 事件 / 灵感"]:::biz
+        B0B["7 个笔记文件<br/>01-industry → 07-refs"]:::biz
+        B0C["无门禁"]:::biz
+    end
+
+    subgraph L1R["🧠 L1 Research · DDD+EDD+IDDD"]
+        direction TB
+        B1RA["意图定义<br/>intent.md"]:::biz
+        B1RB["业务全景<br/>business-landscape.md"]:::biz
+        B1RC["统一语言<br/>事件风暴<br/>限界上下文"]:::biz
+        B1RD["research.md<br/>每业务线独立"]:::biz
+        B1RE["外部调研<br/>≥ 3 来源"]:::biz
+        B1RA --> B1RB --> B1RC --> B1RD
+        B1RE -.-> B1RD
+    end
+
+    subgraph L1F["🌊 L1 Flow · MDD"]
+        direction TB
+        B1FA["项目级唯一总图<br/>project.flow.mermaid"]:::biz
+        B1FB["BXX-NYY 节点<br/>W3H 契约<br/>泳道 = 限界上下文"]:::biz
+        B1FC["API 预映射<br/>L1 Gate"]:::biz
+        B1FA --> B1FB --> B1FC
+    end
+
+    subgraph L1S["📋 L1 Spec · FDD"]
+        direction TB
+        B1SA["每规则 = 一特性<br/>RXX 编号"]:::biz
+        B1SB["按聚合分组<br/>标注 API 预映射"]:::biz
+        B1SC["异常写用户话<br/>含 ERROR_CODE"]:::biz
+        B1SA --> B1SB --> B1SC
+    end
+
+    subgraph L1W["🎨 L1 Wire · SVG"]
+        direction TB
+        B1WA["旅程驱动<br/>→ 页面清单"]:::biz
+        B1WB["3-Pass<br/>骨架 → 填充 → 契约"]:::biz
+        B1WC["data-* 标注<br/>metadata#wire-coverage<br/>100% 覆盖"]:::biz
+        B1WA --> B1WB --> B1WC
+    end
+
+    SCALE{{"📏 scale.md<br/>S / M / L<br/>业务线 · 规则 · 页面 · 依赖"}}:::scale
+
+    subgraph L1P5["🏛️ L1.5 Architecture · ADD+SDD+PDD"]
+        direction TB
+        B1PA["质量属性场景<br/>ADD 驱动"]:::biz
+        B1PB["安全设计 SDD<br/>性能设计 PDD"]:::biz
+        B1PC["API 端点清单<br/>事件契约<br/>聚合全景"]:::biz
+        B1PD["文件清单 + 分层<br/>docker-compose"]:::biz
+        B1PA --> B1PB --> B1PC --> B1PD
+    end
+
+    subgraph SCAFF["🔧 Scaffold · 7 步"]
+        direction LR
+        BS1["目录骨架"]:::biz
+        BS2["开发依赖"]:::biz
+        BS3["测试配置"]:::biz
+        BS4["Docker 服务"]:::biz
+        BS5["DB 迁移"]:::biz
+        BS6["Hello API"]:::biz
+        BS7["Smoke Test"]:::biz
+        BS1 --> BS2 --> BS3 --> BS4 --> BS5 --> BS6 --> BS7
+    end
+
+    subgraph L2["✅ L2 E2E · BDD+CM"]
+        direction TB
+        B2A["14 维覆盖矩阵<br/>业务线 × 页面 × 交互 × API"]:::biz
+        B2B["Given-When-Then<br/>真实浏览器操作"]:::biz
+        B2C["UAT 剧本<br/>uat-script.md"]:::biz
+        B2A --> B2B --> B2C
+    end
+
+    subgraph L5P["📐 L5 Plan · Harness"]
+        direction TB
+        B5PA["读全部上游<br/>9 个文件"]:::biz
+        B5PB["全局约束<br/>多租户 · 认证 · 错误<br/>事件 · 分页 · 事务"]:::biz
+        B5PC["Batch 1-8<br/>领域 → 接口 → 前端"]:::biz
+        B5PD["每方法<br/>校验+状态+事件+错误<br/>穷举测试断言"]:::biz
+        B5PA --> B5PB --> B5PC --> B5PD
+    end
+
+    subgraph L5I["⚙️ L5 Impl · TDD"]
+        direction LR
+        B5IA["Batch 1: 领域模型"]:::biz
+        B5IB["Batch 4: 基础设施"]:::biz
+        B5IC["Batch 5: 接口层"]:::biz
+        B5ID["Batch 7: 前端页面"]:::biz
+        B5IE["Batch 8: E2E 测试"]:::biz
+        B5IA --> B5IB --> B5IC --> B5ID --> B5IE
+    end
+
+    subgraph REV["🔍 Reviewer · 全链路"]
+        direction TB
+        BRA["传导一致性<br/>L1 → L1.5 → L5 → 代码"]:::biz
+        BRB["回溯链<br/>代码 @implements → RXX → BXX-NYY"]:::biz
+        BRA --> BRB
+    end
+
+    subgraph L6["🚀 L6 Deploy · 穷尽诊断"]
+        direction TB
+        B6A["Phase 0-3<br/>环境 · 构建 · 启动 · 健康"]:::biz
+        B6B["Phase 4-6<br/>API · Playwright · 漫游"]:::biz
+        B6C["Phase 7-9<br/>UAT · 报告 · 自检"]:::biz
+        B6D["3 轮漫游修复<br/>硬上限 · P0 必修"]:::biz
+        B6A --> B6B --> B6C --> B6D
+    end
+
+    DELIVER(["✅ DEPLOY_PASS<br/>真实用户可用"]):::deliver
+
+    %% ==================== 跨层关系 ====================
+    L1F -. "BXX-NYY" .-> L1S
+    L1S -. "RXX" .-> L1W
+    L1F -. "API 预映射" .-> L1P5
+    L1S -. "RXX" .-> L5P
+    L1W -. "data-*" .-> L5P
+    L1P5 -. "API + 事件" .-> L5P
+    L2 -. "e2e.md" .-> L5P
+    L1F -. "BXX-NYY" .-> REV
+    L1S -. "RXX" .-> REV
+    L5P -. "harness" .-> REV
+
+    %% ==================== style ====================
+    classDef trigger fill:#3D2C00,stroke:#FBBF24,color:#FEF3C7,stroke-width:2px
+    classDef walker fill:#1E1B4B,stroke:#818CF8,color:#E0E7FF,stroke-width:2px
+    classDef biz fill:#1E293B,stroke:#64748B,color:#E2E8F0,stroke-width:1.5px
+    classDef scale fill:#4A1D24,stroke:#FB7185,color:#FFE4E6,stroke-width:2px
+    classDef deliver fill:#173E2D,stroke:#34D399,color:#D1FAE5,stroke-width:3px
+
+    class ENTRY trigger
+    class W_INIT,W_RHYTHM,W_CARD,W_FAIL walker
+    class DELIVER deliver
+    class SCALE scale
