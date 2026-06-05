@@ -15,6 +15,7 @@ Skills: 12 个核心工具 + 8 个小工具
 ### 流水线
 
 ```text
+骨架生成        ── shadow-init           ← 新项目第一步
 L0 发散调研      ── shadow-l0-research
 L1 业务层        ── shadow-l1-research → flow → spec → wire（串行）
 规模判定          ── .shadow/scale.md（S/M/L）
@@ -34,6 +35,7 @@ agents/
   shadow-walker.md          # 工匠型 Agent
 
 skills/
+  shadow-init/              # 一键生成 .shadow/ 骨架（新项目第一步）
   shadow-l0-research/       # L0 发散笔记本（112 行）
   shadow-l1-research/       # L1 DDD+EDD+IDDD 业务调研（468 行）
   shadow-l1-flow/           # L1 MDD 流程总图（367 行）
@@ -53,6 +55,9 @@ skills/
   mermaid-check/            # Mermaid 渲染验证
   docker-helper/            # Docker 问题排查
   test-in-tmux/             # 测试运行
+
+shadow-schema.json         # 单一源真理：阶段表 / 存根模式 / scale 字段
+                           #   hooks/*.sh + plugins/shadow-hooks.ts 都从这读
 
   # 每个 skill 目录结构：
   skill-name/
@@ -105,17 +110,19 @@ intent.md（为什么做）
 
 1. 运行 `./install-to-opencode.sh`，把 agents/skills 软链到 `~/.config/opencode/`
 2. 在 OpenCode 中加载 `shadow-walker` agent
-3. 告诉 walker 你要做什么：*"给我做一个 XX 系统"*
-4. Walker 自动走完 L0→L6 全流程
-5. 交付物在 `.shadow/` 目录 + 项目代码中
+3. 在项目根运行 `bash skills/shadow-init/scripts/init.sh`（或 `bash ~/.config/opencode/skills/shadow-init/scripts/init.sh`）生成 `.shadow/` 骨架
+4. 告诉 walker 你要做什么：*"给我做一个 XX 系统"*
+5. Walker 自动走完 L0→L6 全流程
+6. 交付物在 `.shadow/` 目录 + 项目代码中
 
 ### Claude Code
 
 1. 运行 `./install-to-claude-code.sh`，把 agents 软链到 `~/.claude/agents/`、skills 软链到 `~/.claude/skills/`、hooks 软链到 `~/.claude/hooks/`、`settings.json` 软链到 `~/.claude/settings.json`（用户的旧 `settings.json` 会备份成 `settings.json.bak`）
-2. 在 Claude Code 中对 Claude 说：*"使用 shadow-walker subagent 给我做一个 XX 系统"*
-3. Walker 按需 `Skill` 加载工具，逐阶段推进到交付
-4. 工具名按 Claude Code 规范（`Read` / `Write` / `Bash` / `Glob` / `Grep` / `Skill` / `Task` / `WebFetch` / `WebSearch`），详见 walker frontmatter 的 `tools` 字段
-5. 两个安装脚本互不影响，可同时使用：OpenCode 用户用 `install-to-opencode.sh`，Claude Code 用户用 `install-to-claude-code.sh`
+2. 在项目根运行 `bash skills/shadow-init/scripts/init.sh`（或 `bash ~/.claude/skills/shadow-init/scripts/init.sh`）生成 `.shadow/` 骨架
+3. 在 Claude Code 中对 Claude 说：*"使用 shadow-walker subagent 给我做一个 XX 系统"*
+4. Walker 按需 `Skill` 加载工具，逐阶段推进到交付
+5. 工具名按 Claude Code 规范（`Read` / `Write` / `Bash` / `Glob` / `Grep` / `Skill` / `Task` / `WebFetch` / `WebSearch`），详见 walker frontmatter 的 `tools` 字段
+6. 两个安装脚本互不影响，可同时使用：OpenCode 用户用 `install-to-opencode.sh`，Claude Code 用户用 `install-to-claude-code.sh`
 
 #### 自动门禁（Hooks）
 

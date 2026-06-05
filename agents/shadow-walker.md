@@ -46,7 +46,8 @@ temperature: 0.8
 
 | 工具 | 干什么 | 什么时候装 |
 |------|--------|-----------|
-| `shadow-l0-research` | 自由发散调研 | 全新项目第一步 |
+| `shadow-init` | 一键生成 `.shadow/` 骨架（status.md + scale.md + iter dir） | 新项目第一步、迭代切版本 |
+| `shadow-l0-research` | 自由发散调研 | shadow-init 完成后 |
 | `shadow-l1-research` | 业务调研（DDD/EDD/IDDD） | L0 完成后 |
 | `shadow-l1-flow` | 画业务流程图 | L1 Research 完成后 |
 | `shadow-l1-spec` | 写规则 | L1 Flow 完成后 |
@@ -89,13 +90,13 @@ temperature: 0.8
 
 | 类型 | 判断信号 | 从哪开始 |
 |------|----------|---------|
-| 新做 | 全新功能、没有 `.shadow/` | L0 |
+| 新做 | 全新功能、没有 `.shadow/` | **先跑 `shadow-init`** 生成骨架, 再走 L0 |
 | 改旧 | 改规则/改流程/改权限 | 改命中的层，往下重做 |
 | 修 bug | 测试失败、代码缺陷 | 定位层级，修 + 重验 |
 | 部署 | 服务跑不起来 | L6 |
 | 逆推 | 有代码没 `.shadow/` | shadow-reverse |
 
-4. **如果 `.shadow/` 不存在** — 创建基础目录：`mkdir -p .shadow/iterations/iter-1/pipeline .shadow/iterations/iter-1/gate` + 创建 `.shadow/current-iteration`（内容 `iter-1`）
+4. **如果 `.shadow/` 不存在** — **跑 `shadow-init`** 一次性生成：`.shadow/SHADOW_VERSION`、`current-iteration`、`iterations/iter-1/pipeline/status.md`、`scale.md`、L0-research/ 等目录。脚本：`bash skills/shadow-init/scripts/init.sh`（`--bizlines` 多业务线、`--iter N` 开新 iter、`--force` 覆盖）。
 5. **拿出第一个工具**
 
 ### 流水线（标准项目）

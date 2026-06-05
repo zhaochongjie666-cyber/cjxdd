@@ -164,28 +164,37 @@ read_pending_stages() {
 # Scans given directories for Shadow "stub" anti-patterns.
 # Echoes "<file>:<line>: <pattern>" lines, capped at $1 (default 20).
 # Directories passed via stdin (one per line).
+# Patterns and excludes come from shadow-schema.json (single source of truth).
 scan_stub_patterns() {
     local cap="${1:-20}"
     local dirs
     dirs=$(cat)
 
     [[ -z "$dirs" ]] && return 0
+    load_shadow_schema || { echo ""; return 1; }
 
-    # Patterns from Walker hard rule #1 (no stubs) + #2 (no fake impls).
-    # Anchored to look like real statements, not strings inside a comment/docstring.
-    grep -rEn \
-        -e '^\s*pass\s*$' \
-        -e 'TODO' \
-        -e 'FIXME' \
-        -e 'raise NotImplementedError' \
-        -e 'InMemoryRepository' \
-        -e 'InMemoryEventBus' \
-        -e 'current_user\s*=\s*["'"'"']admin["'"'"']' \
-        --include="*.py" --include="*.ts" --include="*.tsx" \
-        --include="*.js" --include="*.jsx" --include="*.go" \
-        --include="*.java" --include="*.kt" --include="*.rs" \
-        $dirs 2>/dev/null \
-        | grep -vE '/(\.venv|node_modules|__pycache__|dist|build|\.git|target)/' \
+    local schema
+    schema="${SHADOW_SCHEMA:-$(_resolve_schema_path)}"
+
+    # Build grep -e args from JSON patterns (one -e per pattern).
+    local -a grep_args=()
+    while IFS= read -r p; do
+        [[ -n "$p" ]] && grep_args+=(-e "$p")
+    done < <(jq -r '.stub_patterns.patterns[]' "$schema")
+
+    # Build --include args from JSON ext_globs.
+    local -a include_args=()
+    while IFS= read -r g; do
+        [[ -n "$g" ]] && include_args+=(--include="$g")
+    done < <(jq -r '.stub_patterns.ext_globs[]' "$schema")
+
+    # Build grep -vE exclude regex from JSON excluded_dirs.
+    local dirs_alt
+    dirs_alt=$(jq -r '.stub_patterns.excluded_dirs | join("|")' "$schema")
+    local exclude_re="/($dirs_alt)/"
+
+    grep -rEn "${grep_args[@]}" "${include_args[@]}" $dirs 2>/dev/null \
+        | grep -vE "$exclude_re" \
         | head -n "$cap"
 }
 
@@ -198,28 +207,27 @@ scan_stub_in_file() {
     local cap="${2:-10}"
 
     [[ -z "$file" || ! -f "$file" ]] && return 0
-    # Skip binary / oversized / non-source files.
     [[ ! -r "$file" ]] && return 0
     local size
     size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null || echo 0)
     [[ "$size" -gt 524288 ]] && return 0   # > 512KB, skip
 
-    # Only scan recognized source extensions (avoid hitting .md, .txt, .json noise).
+    # Only scan recognized source extensions.
     case "$file" in
         *.py|*.ts|*.tsx|*.js|*.jsx|*.go|*.java|*.kt|*.rs) ;;
         *) return 0 ;;
     esac
 
-    # Reuse the same anti-patterns. Note: `grep -E` on a single file (not -r).
-    grep -En \
-        -e '^\s*pass\s*$' \
-        -e 'TODO' \
-        -e 'FIXME' \
-        -e 'raise NotImplementedError' \
-        -e 'InMemoryRepository' \
-        -e 'InMemoryEventBus' \
-        -e 'current_user\s*=\s*["'"'"']admin["'"'"']' \
-        "$file" 2>/dev/null \
+    load_shadow_schema || { echo ""; return 1; }
+    local schema
+    schema="${SHADOW_SCHEMA:-$(_resolve_schema_path)}"
+
+    local -a grep_args=()
+    while IFS= read -r p; do
+        [[ -n "$p" ]] && grep_args+=(-e "$p")
+    done < <(jq -r '.stub_patterns.patterns[]' "$schema")
+
+    grep -En "${grep_args[@]}" "$file" 2>/dev/null \
         | head -n "$cap"
 }
 
@@ -236,104 +244,63 @@ find_source_dirs() {
         2>/dev/null
 }
 
-# ─────────── Stage 表 (与 OpenCode shadow-flow plugin 对齐) ───────────
-# 用安全的 ASCII alias (避免 bash 数组 key 兼容性问题, 特别是中文/CJK 字符)
-# alias: status.md 中可能出现的显示名 (带空格或中文) → 内部 ID
-# 内部 ID 用下划线代替空格
-STAGE_ALIAS_L0="L0"
-STAGE_ALIAS_L1_RESEARCH="L1 Research"
-STAGE_ALIAS_L1_FLOW="L1 Flow"
-STAGE_ALIAS_L1_SPEC="L1 Spec"
-STAGE_ALIAS_L1_WIRE="L1 Wire"
-STAGE_ALIAS_L1P5="L1.5"
-STAGE_ALIAS_SCAFFOLD="Scaffold"
-STAGE_ALIAS_L2="L2"
-STAGE_ALIAS_L5_PLAN="L5 Plan"
-STAGE_ALIAS_L5_IMPL="L5 Impl"
-STAGE_ALIAS_REVIEWER="全链路审查"
-STAGE_ALIAS_L6="L6"
-STAGE_ALIAS_L6_FIX="L6 漫游修复"
+# ─────────── Stage 表 (从 shadow-schema.json 懒加载) ───────────
+# 单一源真理: ../shadow-schema.json 的 .stages[] 段.
+# 用 env var SHADOW_SCHEMA 覆盖路径 (主要用于测试).
+# 所有函数在第一次被调用时 load_shadow_schema 一次, 之后纯数组查表.
+declare -A STAGE_SKILL=()         # stage_id → skill_name
+declare -A STAGE_NUM=()           # stage_id → num
+declare -A STAGE_SKILL_NUM=()     # skill_name → num
+declare -A STAGE_OUTPUTS=()       # stage_id → "pat1 pat2 ..." (空格分隔)
+declare -A STAGE_ALIAS=()         # alias_string → stage_id
+_SCHEMA_LOADED=0
+_SHADOW_SCHEMA_PATH=""
 
-# 内部 ID → skill 名映射 (用 _ 代替空格, 安全)
-declare -A STAGE_SKILL=(
-    ["L0"]="shadow-l0-research"
-    ["L1_Research"]="shadow-l1-research"
-    ["L1_Flow"]="shadow-l1-flow"
-    ["L1_Spec"]="shadow-l1-spec"
-    ["L1_Wire"]="shadow-l1-wire"
-    ["L1.5"]="shadow-l1p5-architecture"
-    ["Scaffold"]="shadow-scaffold"
-    ["L2"]="shadow-l2-e2e"
-    ["L5_Plan"]="shadow-l5-plan"
-    ["L5_Impl"]="shadow-l5-impl"
-    ["Reviewer"]="shadow-reviewer"
-    ["L6"]="shadow-l6-deploy"
-)
-declare -A STAGE_NUM=(
-    ["L0"]=0
-    ["L1_Research"]=1
-    ["L1_Flow"]=2
-    ["L1_Spec"]=3
-    ["L1_Wire"]=4
-    ["L1.5"]=5
-    ["Scaffold"]=6
-    ["L2"]=7
-    ["L5_Plan"]=8
-    ["L5_Impl"]=9
-    ["Reviewer"]=10
-    ["L6"]=11
-)
-declare -A STAGE_SKILL_NUM=(
-    [shadow-l0-research]=0
-    [shadow-l1-research]=1
-    [shadow-l1-flow]=2
-    [shadow-l1-spec]=3
-    [shadow-l1-wire]=4
-    [shadow-l1p5-architecture]=5
-    [shadow-scaffold]=6
-    [shadow-l2-e2e]=7
-    [shadow-l5-plan]=8
-    [shadow-l5-impl]=9
-    [shadow-reviewer]=10
-    [shadow-l6-deploy]=11
-)
-# 每个 stage 的预期产物路径 (相对于项目根, glob 风格)
-# 用于 L4 检测 + L5 漂移检查
-declare -A STAGE_OUTPUTS=(
-    ["L0"]=".shadow/L0-research/*.md"
-    ["L1_Research"]=".shadow/L1-business/{slug}/intent.md .shadow/L1-business/{slug}/business-landscape.md"
-    ["L1_Flow"]=".shadow/L1-business/project.flow.mermaid"
-    ["L1_Spec"]=".shadow/L1-business/{slug}/spec.md"
-    ["L1_Wire"]=".shadow/L1-business/{slug}/wireframes/*.svg"
-    ["L1.5"]=".shadow/L1.5-architecture/{slug}/architecture.md"
-    ["Scaffold"]="Dockerfile"
-    ["L2"]=".shadow/L2-e2e/{slug}/uat-script.md"
-    ["L5_Plan"]=".shadow/L5-plan/{slug}/harness-plan.md"
-    ["L5_Impl"]="src/**/*"
-    ["Reviewer"]=".shadow/reviewer/{slug}/review-report.md"
-    ["L6"]=".shadow/L6-deploy/{slug}/deploy-report.md"
-)
+# 解析 schema 路径 (hooks 在仓库根 hooks/ 下, schema 在 ../shadow-schema.json).
+# 关键: BASH_SOURCE 是调用时给的路径, 可能是软链. 用 readlink -f 解开找到仓库根.
+_resolve_schema_path() {
+    if [[ -n "${SHADOW_SCHEMA:-}" ]]; then
+        echo "$SHADOW_SCHEMA"
+    else
+        local self_real
+        self_real="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+        echo "$(dirname "$self_real")/../shadow-schema.json"
+    fi
+}
 
-# alias 标准化: "L1 Research" / "L1\ Research" / "L1_Research" 全部归一到内部 ID
+# Load the schema. Idempotent. Returns 0 on success, 1 if schema not found.
+load_shadow_schema() {
+    [[ $_SCHEMA_LOADED -eq 1 ]] && return 0
+    _SHADOW_SCHEMA_PATH=$(_resolve_schema_path)
+    [[ -f "$_SHADOW_SCHEMA_PATH" ]] || return 1
+    command -v jq >/dev/null 2>&1 || return 1
+
+    # Populate stage arrays from .stages[]
+    while IFS=$'\t' read -r id num skill outputs; do
+        [[ -z "$id" ]] && continue
+        STAGE_SKILL["$id"]="$skill"
+        STAGE_NUM["$id"]="$num"
+        STAGE_SKILL_NUM["$skill"]="$num"
+        STAGE_OUTPUTS["$id"]="$outputs"
+    done < <(jq -r '.stages[] | [.id, (.num|tostring), .skill, (.output_patterns | join(" "))] | @tsv' "$_SHADOW_SCHEMA_PATH")
+
+    # Populate alias map from .stages[].aliases[]
+    while IFS=$'\t' read -r alias id; do
+        [[ -z "$alias" ]] && continue
+        STAGE_ALIAS["$alias"]="$id"
+    done < <(jq -r '.stages[] | (. as $s | ($s.aliases // [])[] | [., $s.id]) | @tsv' "$_SHADOW_SCHEMA_PATH")
+
+    _SCHEMA_LOADED=1
+    return 0
+}
+
+# alias 标准化: "L1 Research" / "L1_Research" / "l1 research" → "L1_Research"
 # Args: $1 = display name from status.md
 # Returns: internal ID (e.g. "L1_Research") or empty
 stage_alias_to_id() {
+    load_shadow_schema || { echo ""; return 0; }
     local name="$1"
-    case "$name" in
-        "L0") echo "L0" ;;
-        "L1 Research"|"L1_Research") echo "L1_Research" ;;
-        "L1 Flow"|"L1_Flow") echo "L1_Flow" ;;
-        "L1 Spec"|"L1_Spec") echo "L1_Spec" ;;
-        "L1 Wire"|"L1_Wire") echo "L1_Wire" ;;
-        "L1.5") echo "L1.5" ;;
-        "Scaffold") echo "Scaffold" ;;
-        "L2") echo "L2" ;;
-        "L5 Plan"|"L5_Plan") echo "L5_Plan" ;;
-        "L5 Impl"|"L5_Impl") echo "L5_Impl" ;;
-        "全链路审查") echo "Reviewer" ;;
-        "L6"|"L6 漫游修复") echo "L6" ;;
-        *) echo "" ;;
-    esac
+    [[ -n "${STAGE_ALIAS[$name]:-}" ]] && echo "${STAGE_ALIAS[$name]}"
 }
 
 # 找 status.md 中第一个 ⏳ stage 的显示名
@@ -422,6 +389,7 @@ match_stage_by_output() {
     local root
     root=$(find_project_root) || return 1
     [[ -z "$root" ]] && return 1
+    load_shadow_schema || { echo ""; return 0; }
     # 转成相对路径
     local rel="${file_path#$root/}"
     [[ "$rel" == "$file_path" ]] && return 1  # 不在项目内
@@ -431,10 +399,7 @@ match_stage_by_output() {
         local patterns="${STAGE_OUTPUTS[$stage]}"
         for pat in $patterns; do
             # 把 {slug} 替换成 *, * 保留
-            # 例: ".shadow/L1-business/{slug}/intent.md" → ".shadow/L1-business/*/intent.md"
             local glob_pat="${pat//\{slug\}/*}"
-            # 也把 path 中的 . 转义
-            glob_pat=$(printf '%s' "$glob_pat" | sed 's|/|/|g')  # 保留 / 字符, 不转义
             # case glob 匹配
             # shellcheck disable=SC2254
             case "$rel" in
@@ -449,9 +414,33 @@ match_stage_by_output() {
 # Args: $1 = skill name
 # Returns: stage internal ID (e.g. "L1_Research") or empty
 skill_to_stage() {
+    load_shadow_schema || { echo ""; return 0; }
     local skill="$1"
     for stage in "${!STAGE_SKILL[@]}"; do
         if [[ "${STAGE_SKILL[$stage]}" == "$skill" ]]; then
+            echo "$stage"
+            return 0
+        fi
+    done
+    echo ""
+}
+
+# 把 skill 名转 stage num (0..11). Args: $1 = skill name. Returns num or empty.
+skill_to_num() {
+    load_shadow_schema || { echo ""; return 0; }
+    local skill="$1"
+    [[ -n "${STAGE_SKILL_NUM[$skill]:-}" ]] && echo "${STAGE_SKILL_NUM[$skill]}"
+}
+
+# Args: $1 = current stage id. Returns: next stage id (by num) or empty.
+next_stage_id() {
+    load_shadow_schema || { echo ""; return 0; }
+    local cur="$1"
+    local cur_num="${STAGE_NUM[$cur]:-}"
+    [[ -z "$cur_num" ]] && { echo ""; return 0; }
+    local target=$((cur_num + 1))
+    for stage in "${!STAGE_NUM[@]}"; do
+        if [[ "${STAGE_NUM[$stage]}" == "$target" ]]; then
             echo "$stage"
             return 0
         fi

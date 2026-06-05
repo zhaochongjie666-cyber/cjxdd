@@ -25,6 +25,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
+load_shadow_schema || true  # silent; this hook is advisory only
 
 # Parse the user prompt from stdin JSON.
 input=$(cat)
@@ -136,19 +137,25 @@ else
     case "$hint_kind" in
         zh-new-build)
             echo "[shadow] 检测到'从零开发'意图，但 .shadow/ 尚未初始化。"
-            echo "[shadow] 建议: 调用 shadow-walker subagent，它会："
-            echo "  - 自动创建 .shadow/ 目录结构 + 首个 iter"
-            echo "  - 走 L0 发散 → L1 业务 → L1.5 架构 → L2 验收 → L5 计划/实现 → L6 部署验证 全流程"
-            echo "  - 每个阶段用 status.md + gate-check 自我门禁"
+            echo "[shadow] 建议两步走:"
+            echo "  1. 先跑 shadow-init 生成骨架:"
+            echo "       bash skills/shadow-init/scripts/init.sh"
+            echo "     (生成 .shadow/SHADOW_VERSION + status.md + scale.md + iter-1/)"
+            echo "  2. 再加载 shadow-walker subagent, 它会:"
+            echo "     - 走 L0 发散 → L1 业务 → L1.5 架构 → L2 验收 → L5 计划/实现 → L6 部署验证 全流程"
+            echo "     - 每个阶段用 status.md + gate-check 自我门禁"
             echo ""
             echo "[shadow] 触发方式: '使用 shadow-walker subagent 给我做一个 XX'"
             ;;
         en-new-build|en-greenfield)
             echo "[shadow] Detected new-build / greenfield intent, but .shadow/ is not initialized."
-            echo "[shadow] Recommend: invoke the shadow-walker subagent. It will:"
-            echo "  - Auto-create .shadow/ structure + first iteration"
-            echo "  - Walk the L0 → L1 → L1.5 → L2 → L5 → L6 pipeline"
-            echo "  - Self-gate each stage via status.md + gate-check"
+            echo "[shadow] Recommended two-step:"
+            echo "  1. First run shadow-init to scaffold:"
+            echo "       bash skills/shadow-init/scripts/init.sh"
+            echo "     (generates .shadow/SHADOW_VERSION + status.md + scale.md + iter-1/)"
+            echo "  2. Then load the shadow-walker subagent. It will:"
+            echo "     - Walk L0 → L1 → L1.5 → L2 → L5 → L6 pipeline"
+            echo "     - Self-gate each stage via status.md + gate-check"
             echo ""
             echo "[shadow] Trigger: 'Use shadow-walker subagent to build me X'"
             ;;

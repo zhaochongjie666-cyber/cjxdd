@@ -34,28 +34,19 @@ if [[ -z "$skill_name" ]]; then
     exit 0
 fi
 
+# Load schema (needed for stage_order lookups). No-op if already loaded.
+load_shadow_schema || {
+    echo "[shadow] ⚠️  shadow-schema.json not found — stage gating disabled this run." >&2
+    exit 0
+}
+
 echo "[shadow] Skill loading: $skill_name"
 
-# Stage mapping (from agents/shadow-walker.md pipeline order).
-# Used to detect out-of-order Skill loads.
-declare -A stage_order=(
-    [shadow-l0-research]=0
-    [shadow-l1-research]=1
-    [shadow-l1-flow]=2
-    [shadow-l1-spec]=3
-    [shadow-l1-wire]=4
-    [shadow-l1p5-architecture]=5
-    [shadow-scaffold]=6
-    [shadow-l2-e2e]=7
-    [shadow-l5-plan]=8
-    [shadow-l5-impl]=9
-    [shadow-reviewer]=10
-    [shadow-l6-deploy]=11
-)
-current_order="${stage_order[$skill_name]:-}"
+# Skill 名 → stage num (来自 schema 的 STAGE_SKILL_NUM)
+current_order=$(skill_to_num "$skill_name")
 
 # === L3 增强: 自动标 stage DOING ===
-# skill 名 → stage 内部 ID
+# skill 名 → stage 内部 ID (来自 schema)
 stage_id=$(skill_to_stage "$skill_name")
 if [[ -n "$stage_id" ]]; then
     # 把内部 ID 转成 status.md 中的显示名 (空格)
@@ -74,24 +65,6 @@ if [[ -n "$stage_id" ]]; then
         fi
     fi
 fi
-
-# status.md 里的阶段显示名 → skill 名 映射。
-# 用于把 "L1 Spec" 这样的展示名转换回 stage_order 的 key。
-declare -A display_to_skill=(
-    [L0]=shadow-l0-research
-    [L1\ Research]=shadow-l1-research
-    [L1\ Flow]=shadow-l1-flow
-    [L1\ Spec]=shadow-l1-spec
-    [L1\ Wire]=shadow-l1-wire
-    [L1.5]=shadow-l1p5-architecture
-    [Scaffold]=shadow-scaffold
-    [L2]=shadow-l2-e2e
-    [L5\ Plan]=shadow-l5-plan
-    [L5\ Impl]=shadow-l5-impl
-    [全链路审查]=shadow-reviewer
-    [L6]=shadow-l6-deploy
-    [L6\ 漫游修复]=shadow-l6-deploy
-)
 
 # Soft reminder: 5-step rhythm.
 cat <<'EOF'
@@ -115,9 +88,9 @@ if [[ -n "$md" && -f "$md" && -n "$current_order" ]]; then
         [[ -z "$stage" || "$stage" == "阶段" ]] && continue
         case "$status" in
             *⏳*)
-                # Translate display name → skill name → stage order.
-                pending_skill="${display_to_skill[$stage]:-}"
-                pending_order="${stage_order[$pending_skill]:-}"
+                # Translate display name → stage id → stage num (via schema).
+                pending_id=$(stage_alias_to_id "$stage")
+                pending_order="${STAGE_NUM[$pending_id]:-}"
                 if [[ -n "$pending_order" && "$pending_order" -lt "$current_order" ]]; then
                     echo "" >&2
                     echo "[shadow] ❌ HARD BLOCK: $stage is still ⏳ pending." >&2

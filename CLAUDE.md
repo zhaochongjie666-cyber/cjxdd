@@ -112,6 +112,7 @@ agents/
   shadow-walker.md             ← The agent (345 lines). Read this first to understand the framework.
 
 skills/
+  shadow-init/                 ← Initialize .shadow/ skeleton (status.md + scale.md + iter dir) — **always run first for new projects**
   shadow-l0-research/          ← L0: free-form divergent research notebook (no gate)
   shadow-l1-research/          ← L1: DDD+EDD+IDDD business research → intent.md, business-landscape.md, BXX research.md
   shadow-l1-flow/              ← L1: MDD project flow diagram (project.flow.mermaid, BXX-NYY nodes)
@@ -132,6 +133,9 @@ skills/
   test-in-tmux/                ← Run tests
   skill-creator/               ← Meta-skill: create / improve / benchmark skills
   opencode-learning/           ← Learn OpenCode API
+
+  # 单一源真理: shadow-schema.json (仓库根) 描述阶段表、存根模式、scale 字段.
+  # hooks/*.sh + plugins/shadow-hooks.ts 都从这里读, 改一处即生效.
 
   Each skill's internal layout:
     SKILL.md                   ← Quickstart (<500 lines, in-context on trigger)

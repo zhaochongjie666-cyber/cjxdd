@@ -19,6 +19,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
+load_shadow_schema || true  # drift check will skip stage matching, but stub scan still works
 
 shadow=$(get_shadow_dir)
 if [[ -z "$shadow" ]]; then

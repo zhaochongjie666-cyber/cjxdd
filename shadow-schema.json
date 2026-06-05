@@ -1,0 +1,192 @@
+{
+  "shadow_version": "0.2.0",
+  "_comment": "Single source of truth for the Shadow framework. Consumed by: hooks/*.sh (via jq), plugins/shadow-hooks.ts (via readFileSync+JSON.parse), and shadow-init skill (to generate .shadow/ skeleton). Edit here, not in individual hooks.",
+
+  "stages": [
+    {
+      "id": "L0",
+      "num": 0,
+      "display": "L0",
+      "skill": "shadow-l0-research",
+      "aliases": ["L0", "l0"],
+      "output_patterns": [".shadow/L0-research/*.md"]
+    },
+    {
+      "id": "L1_Research",
+      "num": 1,
+      "display": "L1 Research",
+      "skill": "shadow-l1-research",
+      "aliases": ["L1 Research", "L1_Research", "l1 research", "l1_research"],
+      "output_patterns": [
+        ".shadow/L1-business/{slug}/intent.md",
+        ".shadow/L1-business/{slug}/business-landscape.md"
+      ]
+    },
+    {
+      "id": "L1_Flow",
+      "num": 2,
+      "display": "L1 Flow",
+      "skill": "shadow-l1-flow",
+      "aliases": ["L1 Flow", "L1_Flow", "l1 flow", "l1_flow"],
+      "output_patterns": [".shadow/L1-business/project.flow.mermaid"]
+    },
+    {
+      "id": "L1_Spec",
+      "num": 3,
+      "display": "L1 Spec",
+      "skill": "shadow-l1-spec",
+      "aliases": ["L1 Spec", "L1_Spec", "l1 spec", "l1_spec"],
+      "output_patterns": [".shadow/L1-business/{slug}/spec.md"]
+    },
+    {
+      "id": "L1_Wire",
+      "num": 4,
+      "display": "L1 Wire",
+      "skill": "shadow-l1-wire",
+      "aliases": ["L1 Wire", "L1_Wire", "l1 wire", "l1_wire"],
+      "output_patterns": [".shadow/L1-business/{slug}/wireframes/*.svg"]
+    },
+    {
+      "id": "L1.5",
+      "num": 5,
+      "display": "L1.5",
+      "skill": "shadow-l1p5-architecture",
+      "aliases": ["L1.5", "L1P5", "l1.5", "l1p5"],
+      "output_patterns": [".shadow/L1.5-architecture/{slug}/architecture.md"]
+    },
+    {
+      "id": "Scaffold",
+      "num": 6,
+      "display": "Scaffold",
+      "skill": "shadow-scaffold",
+      "aliases": ["Scaffold", "scaffold"],
+      "output_patterns": ["Dockerfile"]
+    },
+    {
+      "id": "L2",
+      "num": 7,
+      "display": "L2",
+      "skill": "shadow-l2-e2e",
+      "aliases": ["L2", "l2"],
+      "output_patterns": [".shadow/L2-e2e/{slug}/uat-script.md"]
+    },
+    {
+      "id": "L5_Plan",
+      "num": 8,
+      "display": "L5 Plan",
+      "skill": "shadow-l5-plan",
+      "aliases": ["L5 Plan", "L5_Plan", "l5 plan", "l5_plan"],
+      "output_patterns": [".shadow/L5-plan/{slug}/harness-plan.md"]
+    },
+    {
+      "id": "L5_Impl",
+      "num": 9,
+      "display": "L5 Impl",
+      "skill": "shadow-l5-impl",
+      "aliases": ["L5 Impl", "L5_Impl", "l5 impl", "l5_impl"],
+      "output_patterns": ["src/**/*"]
+    },
+    {
+      "id": "Reviewer",
+      "num": 10,
+      "display": "全链路审查",
+      "skill": "shadow-reviewer",
+      "aliases": ["全链路审查", "Reviewer", "reviewer"],
+      "output_patterns": [".shadow/reviewer/{slug}/review-report.md"]
+    },
+    {
+      "id": "L6",
+      "num": 11,
+      "display": "L6",
+      "skill": "shadow-l6-deploy",
+      "aliases": ["L6", "L6 漫游修复", "l6"],
+      "output_patterns": [".shadow/L6-deploy/{slug}/deploy-report.md"]
+    }
+  ],
+
+  "stub_patterns": {
+    "_comment": "Walker hard rule #1 (no stubs) + #2 (no fake impls). Each pattern is a regex passed to grep -E.",
+    "patterns": [
+      "^\\s*pass\\s*$",
+      "TODO",
+      "FIXME",
+      "raise NotImplementedError",
+      "InMemoryRepository",
+      "InMemoryEventBus",
+      "current_user\\s*=\\s*[\"'\\'']admin[\"'\\'']"
+    ],
+    "ext_globs": [
+      "*.py", "*.ts", "*.tsx", "*.js", "*.jsx",
+      "*.go", "*.java", "*.kt", "*.rs"
+    ],
+    "excluded_dirs": [
+      ".venv", "node_modules", "__pycache__",
+      "dist", "build", ".git", "target", ".shadow"
+    ],
+    "min_file_size_bytes": 300,
+    "max_findings_per_file": 10
+  },
+
+  "scale_schema": {
+    "_comment": "Schema for .shadow/scale.md. Consumed by 5 skills (see CLAUDE.md). shadow-init writes a default-valorized scale.md; walker fills in real values during the 规模判定 step.",
+    "fields": {
+      "scale":               { "type": "string",  "enum": ["S", "M", "L"], "default": "M" },
+      "persona_dimensions":  { "type": "integer", "min": 3, "max": 12,       "default": 6 },
+      "persona_max":         { "type": "integer", "min": 3, "max": 20,       "default": 8 },
+      "wire_passes":         { "type": "integer", "min": 1, "max": 5,        "default": 3 },
+      "coverage_dimensions": { "type": "integer", "min": 5, "max": 30,       "default": 14 },
+      "l6_core_phases_only": { "type": "boolean",                          "default": false }
+    }
+  },
+
+  "status_md": {
+    "version": 1,
+    "markers": {
+      "pending": "⏳",
+      "doing":   "🔄",
+      "done":    "✅",
+      "failed":  "❌"
+    },
+    "stage_row_regex":   "^\\|\\s*L.*\\|",
+    "bxx_section_regex": "^## B[0-9]",
+    "last_updated_field": "last_updated"
+  },
+
+  "shadow_init": {
+    "_comment": "What shadow-init should scaffold on first run.",
+    "required_files": [
+      "SHADOW_VERSION",
+      "iterations/iter-1/pipeline/status.md",
+      "scale.md",
+      "L0-research/.gitkeep"
+    ],
+    "default_bizlines": [],
+    "status_md_template_header": [
+      "# Pipeline Status — iter-1",
+      "",
+      "last_updated: {{iso_date}}",
+      "shadow_version: {{shadow_version}}",
+      "",
+      "> Per-stage table below. Mark each row with ⏳ pending / 🔄 doing / ✅ done / ❌ failed.",
+      "> For multi-bizline projects, replace the single table with `## BXX 业务线名` sections.",
+      ""
+    ],
+    "status_md_template_table": [
+      "| 阶段 | 状态 | 产出 | 自检 |",
+      "|------|------|------|------|",
+      "| L0 | ⏳ | — | — |",
+      "| L1 Research | ⏳ | — | — |",
+      "| L1 Flow | ⏳ | — | — |",
+      "| L1 Spec | ⏳ | — | — |",
+      "| L1 Wire | ⏳ | — | — |",
+      "| L1.5 | ⏳ | — | — |",
+      "| Scaffold | ⏳ | — | — |",
+      "| L2 | ⏳ | — | — |",
+      "| L5 Plan | ⏳ | — | — |",
+      "| L5 Impl | ⏳ | — | — |",
+      "| 全链路审查 | ⏳ | — | — |",
+      "| L6 | ⏳ | — | — |",
+      ""
+    ]
+  }
+}

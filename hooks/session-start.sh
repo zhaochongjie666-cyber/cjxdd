@@ -15,11 +15,15 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
+load_shadow_schema || echo "[shadow] ⚠️  shadow-schema.json not found — stage context degraded" >&2
 
 shadow=$(get_shadow_dir)
 if [[ -z "$shadow" ]]; then
     echo "[shadow] No .shadow/ found above $PWD. Walker not initialized for this project."
-    echo "[shadow] Hint: open a shadow project (one with intent.md / status.md), or run 'mkdir -p .shadow/iterations/iter-1/pipeline .shadow/iterations/iter-1/gate' to start a new iter."
+    echo "[shadow] To start: run shadow-init to scaffold."
+    echo "[shadow]   bash ~/.claude/skills/shadow-init/scripts/init.sh"
+    echo "[shadow]   # or from repo root: ./skills/shadow-init/scripts/init.sh"
+    echo "[shadow] Then load shadow-walker subagent to walk L0→L6."
     exit 0
 fi
 
