@@ -1,0 +1,162 @@
+#!/bin/bash
+# user-prompt-submit.sh — Detect Walker-suitable intents in user messages.
+# Triggered by: UserPromptSubmit hook.
+#
+# When the user says something like "做一个 XX 系统", "build me X", "从零开发"
+# this hook emits a soft hint that prompts Claude to load the shadow-walker
+# subagent. Two flavors of hint:
+#
+#   1. .shadow/ already exists → remind the model to continue via Walker
+#      (don't freelance).
+#   2. No .shadow/ yet → suggest initializing the pipeline via Walker.
+#
+# This removes the friction of users having to remember to say
+# "use shadow-walker subagent to …" for every new project.
+#
+# Match patterns (intentionally broad to reduce false-negatives):
+#   - Chinese: 做一个 / 开发一个 / 建一个 / 搭一个 / 从零 / 全栈 / 新系统 / 新项目
+#   - English: build / create / develop / implement + system/app/service/platform
+#   - Phrases: from scratch / new project / greenfield / mvp
+#
+# Always exits 0 (advisory only — never blocks user input).
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib.sh
+source "$SCRIPT_DIR/lib.sh"
+
+# Parse the user prompt from stdin JSON.
+input=$(cat)
+prompt=$(echo "$input" | jq -r '
+    .user_prompt // .message // .prompt //
+    .userPrompt  // .content   // empty
+' 2>/dev/null)
+
+if [[ -z "$prompt" ]]; then
+    # Couldn't extract a prompt; not actionable.
+    exit 0
+fi
+
+# Lowercase copy for matching.
+lc=$(echo "$prompt" | tr '[:upper:]' '[:lower:]')
+
+# Detect intent.
+matched=""
+hint_kind=""
+
+# === L2 增强: stage 查询命令 (在 intent 识别之前) ===
+# 先检查是否是 stage 状态查询 — 这种消息应该直接回答 stage 状态,
+# 不需要走 "build me X" 的意图识别
+shadow=$(get_shadow_dir)
+is_shadow="no"
+[[ -n "$shadow" ]] && is_shadow="yes"
+
+if [[ "$is_shadow" == "yes" ]]; then
+    # 当前 stage?
+    if echo "$lc" | grep -qE '当前.{0,4}(stage|阶段|状态|在哪)|where am i|what stage|current stage|我在哪|现在在哪'; then
+        pending=$(detect_pending_stage)
+        doing=$(detect_doing_stage)
+        current="${pending:-$doing}"
+        iter=$(get_current_iter)
+        echo "[shadow] === Stage 状态查询 ==="
+        echo "[shadow] iter: $iter"
+        if [[ -n "$current" ]]; then
+            cur_id=$(stage_alias_to_id "$current")
+            cur_skill="${STAGE_SKILL[$cur_id]:-}"
+            cur_output="${STAGE_OUTPUTS[$cur_id]:-}"
+            echo "[shadow] current: $current (skill=$cur_skill)"
+            echo "[shadow] expected output: $cur_output"
+        else
+            echo "[shadow] current: 全部 ✅ DONE"
+        fi
+        exit 0
+    fi
+    # 下一 stage?
+    if echo "$lc" | grep -qE '下一.{0,4}(stage|阶段|步)|next stage|what.{0,3}next|下一步'; then
+        pending=$(detect_pending_stage)
+        if [[ -n "$pending" ]]; then
+            cur_id=$(stage_alias_to_id "$pending")
+            cur_num="${STAGE_NUM[$cur_id]:-}"
+            for k in "${!STAGE_NUM[@]}"; do
+                n="${STAGE_NUM[$k]}"
+                if [[ $((n - cur_num)) -eq 1 ]]; then
+                    next_skill="${STAGE_SKILL[$k]:-}"
+                    echo "[shadow] === 下一 Stage ==="
+                    echo "[shadow] 当前 ⏳: $pending"
+                    echo "[shadow] 下一 stage: $k (skill=$next_skill)"
+                    exit 0
+                fi
+            done
+        fi
+        echo "[shadow] === 下一 Stage ==="
+        echo "[shadow] 没有 pending stage (可能全部 ✅ DONE)"
+        exit 0
+    fi
+fi
+
+# Chinese patterns — broader net.
+if echo "$lc" | grep -qE '做一个|开发一个|建一个|搭一个|做一个|从零开始|从零搭建|全新开发|新做一个|开发.*系统|开发.*应用|开发.*平台|开发.*服务|搭.*项目|搭.*脚手架|做一个.*系统|做一个.*应用|做一个.*平台|做一个.*网站|做一个.*服务'; then
+    matched=1
+    hint_kind="zh-new-build"
+# Chinese "continue" or "改旧"
+elif echo "$lc" | grep -qE '继续|接着|下一步|加个|补个|改一下|修改|调整|重构'; then
+    matched=1
+    hint_kind="zh-continue"
+# English new-build
+elif echo "$lc" | grep -qE '\b(build|create|make|develop|implement|design)\b[^.]*\b(system|app|service|platform|api|backend|frontend|fullstack|full-stack|saas|webapp)\b'; then
+    matched=1
+    hint_kind="en-new-build"
+# English greenfield / MVP
+elif echo "$lc" | grep -qE '\bfrom scratch\b|\bnew project\b|\bgreenfield\b|\bmvp\b|\bnew build\b'; then
+    matched=1
+    hint_kind="en-greenfield"
+fi
+
+[[ -z "$matched" ]] && exit 0
+
+if [[ "$is_shadow" == "yes" ]]; then
+    # Existing shadow project. The model should be using Walker already.
+    # Just remind of pipeline position.
+    iter=$(get_current_iter)
+    case "$hint_kind" in
+        zh-new-build|en-new-build|en-greenfield)
+            echo "[shadow] Detected new-build intent, but .shadow/ already exists (iter=$iter)."
+            echo "[shadow] Likely scenario: new requirement within existing project, or 'rewrite'."
+            echo "[shadow] → If extending: load next stage skill per pipeline (see status.md CONTEXT-MAP)."
+            echo "[shadow] → If 'rewrite from scratch': start a new iter — 'shadow walker, start iter-2'."
+            ;;
+        zh-continue)
+            echo "[shadow] Detected continue/extend intent. Walker is active (iter=$iter)."
+            echo "[shadow] → Continue from current status.md stage; load next skill if needed."
+            ;;
+    esac
+else
+    # No .shadow/ — suggest initializing via Walker.
+    case "$hint_kind" in
+        zh-new-build)
+            echo "[shadow] 检测到'从零开发'意图，但 .shadow/ 尚未初始化。"
+            echo "[shadow] 建议: 调用 shadow-walker subagent，它会："
+            echo "  - 自动创建 .shadow/ 目录结构 + 首个 iter"
+            echo "  - 走 L0 发散 → L1 业务 → L1.5 架构 → L2 验收 → L5 计划/实现 → L6 部署验证 全流程"
+            echo "  - 每个阶段用 status.md + gate-check 自我门禁"
+            echo ""
+            echo "[shadow] 触发方式: '使用 shadow-walker subagent 给我做一个 XX'"
+            ;;
+        en-new-build|en-greenfield)
+            echo "[shadow] Detected new-build / greenfield intent, but .shadow/ is not initialized."
+            echo "[shadow] Recommend: invoke the shadow-walker subagent. It will:"
+            echo "  - Auto-create .shadow/ structure + first iteration"
+            echo "  - Walk the L0 → L1 → L1.5 → L2 → L5 → L6 pipeline"
+            echo "  - Self-gate each stage via status.md + gate-check"
+            echo ""
+            echo "[shadow] Trigger: 'Use shadow-walker subagent to build me X'"
+            ;;
+        zh-continue)
+            # "继续" 在无 .shadow/ 时是模糊的（也可能是普通代码对话的"继续"）；
+            # 静默，避免噪声。
+            ;;
+    esac
+fi
+
+exit 0
