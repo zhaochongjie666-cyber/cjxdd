@@ -462,3 +462,33 @@ list_unfinished_stages() {
         }
     ' "$md"
 }
+
+# 统计当前 iter 下的 work order report 状态
+# Returns: "done=N partial=N blocked=N failed=N total=N"
+# 用于 session-start 摘要 + worker-dispatch-hint 累计统计.
+count_wo_reports() {
+    local shadow iter wo_dir
+    shadow=$(get_shadow_dir) || { echo "total=0"; return 0; }
+    [[ -z "$shadow" ]] && { echo "total=0"; return 0; }
+    iter=$(get_current_iter)
+    [[ -z "$iter" ]] && { echo "total=0"; return 0; }
+    wo_dir="$shadow/iterations/$iter/work-orders"
+    [[ ! -d "$wo_dir" ]] && { echo "total=0"; return 0; }
+
+    local done=0 partial=0 blocked=0 failed=0
+    local f
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        local head
+        head=$(head -10 "$f" 2>/dev/null || true)
+        case "$head" in
+            *🟢*done*)    done=$((done+1)) ;;
+            *🟡*partial*) partial=$((partial+1)) ;;
+            *🔴*blocked*) blocked=$((blocked+1)) ;;
+            *❌*failed*)  failed=$((failed+1)) ;;
+        esac
+    done < <(find "$wo_dir" -mindepth 2 -name "report.md" -type f 2>/dev/null)
+
+    local total=$((done + partial + blocked + failed))
+    echo "done=$done partial=$partial blocked=$blocked failed=$failed total=$total"
+}

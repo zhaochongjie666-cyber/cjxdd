@@ -49,6 +49,15 @@ if [[ -n "$breakdown" ]]; then
     echo "$breakdown" | sed 's/^/  /'
 fi
 
+# Work order 累计 (只在有回报时打印, 避免噪声)
+wo_counts=$(count_wo_reports)
+wo_total=$(echo "$wo_counts" | grep -oE 'total=[0-9]+' | cut -d= -f2)
+if [[ "${wo_total:-0}" -gt 0 ]]; then
+    echo ""
+    echo "[shadow] work_orders: $wo_counts"
+    echo "[shadow] (reports in .shadow/iterations/iter-N/work-orders/<WO>/report.md)"
+fi
+
 # === L1 增强: 注入当前 stage 上下文 ===
 pending=$(detect_pending_stage)
 doing=$(detect_doing_stage)

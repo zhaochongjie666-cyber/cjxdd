@@ -242,6 +242,37 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
     // === L3 hook (PreToolUse Skill) ===
     // 装 skill 前打印 5 步节奏 + 阶段顺序硬阻断
     "tool.execute.before": async (input, output) => {
+      // === L3a: Task 工具派 shadow-worker 时, 提示写 work order ===
+      if (input.tool === "task") {
+        const args = (output as any).args ?? {}
+        const agentName = String(args.agent ?? args.subagent_type ?? "")
+        if (/worker/i.test(agentName)) {
+          const prompt = String(args.prompt ?? args.description ?? "")
+          const woMatch = prompt.match(/WO-\d+/)
+          const woPathMatch = prompt.match(/\.shadow\/iterations\/iter-\d+\/work-orders\/WO-\d+[^\s]*\.md/)
+          if (!woMatch && !woPathMatch) {
+            console.warn(
+              `[shadow-hook] ⚠️  派了 ${agentName} 但 prompt 里没找到 WO-NNN 引用.\n` +
+              `   建议先写 work order 到 .shadow/iterations/iter-N/work-orders/WO-NNN-slug.md\n` +
+              `   模板: docs/work-order-template.md\n` +
+              `   契约: agents/shadow-worker.md`,
+            )
+          } else if (woPathMatch) {
+            const woPath = woPathMatch[0]
+            const exists = existsSync(woPath)
+            if (!exists) {
+              console.warn(
+                `[shadow-hook] ❌ ${woMatch?.[0]} 引用了 WO 文件但不存在: ${woPath}\n` +
+                `   先写 work order, 再派 worker.`,
+              )
+            } else {
+              console.log(`[shadow-hook] 派 ${woMatch?.[0]} 给 ${agentName} (WO 文件: ${woPath})`)
+            }
+          }
+        }
+        return
+      }
+
       if (input.tool !== "skill") return
       const args = (output as any).args ?? {}
       const skillName = args.name ?? ""

@@ -47,6 +47,7 @@ temperature: 0.8
 | 工具 | 干什么 | 什么时候装 |
 |------|--------|-----------|
 | `shadow-init` | 一键生成 `.shadow/` 骨架（status.md + scale.md + iter dir） | 新项目第一步、迭代切版本 |
+| `shadow-worker` | **通用接单员**（无内置工种，靠 work order 自适应） | 多工种项目派活（walker 拆 → 派 → 收 report） |
 | `shadow-l0-research` | 自由发散调研 | shadow-init 完成后 |
 | `shadow-l1-research` | 业务调研（DDD/EDD/IDDD） | L0 完成后 |
 | `shadow-l1-flow` | 画业务流程图 | L1 Research 完成后 |
@@ -95,9 +96,109 @@ temperature: 0.8
 | 修 bug | 测试失败、代码缺陷 | 定位层级，修 + 重验 |
 | 部署 | 服务跑不起来 | L6 |
 | 逆推 | 有代码没 `.shadow/` | shadow-reverse |
+| **多工种新做** | ≥3 个明确工种（前端/后端/数据/协议/基础设施）| 先 L1-L1.5，**再派 worker** 平行干 L5（见下方"派活给 worker"段）|
 
 4. **如果 `.shadow/` 不存在** — **跑 `shadow-init`** 一次性生成：`.shadow/SHADOW_VERSION`、`current-iteration`、`iterations/iter-1/pipeline/status.md`、`scale.md`、L0-research/ 等目录。脚本：`bash skills/shadow-init/scripts/init.sh`（`--bizlines` 多业务线、`--iter N` 开新 iter、`--force` 覆盖）。
 5. **拿出第一个工具**
+
+### 派活给 worker（多工种项目）
+
+> **何时走这条路**：项目 ≥3 个明确工种（前端 / 后端 / 数据 / 基础设施 / 协议层 / 等），且工种间接口清晰、可以平行干。
+> **何时不走**：项目就一两个工种 / 全栈一个人干，walker 自己装 Skill 干更快。**不要为派而派**。
+
+walker 是工头，**worker 是工人**。worker 是**通用接单员**——没有内置工种，靠 work order 的内容自适应装 Skill。worker 的契约见 `agents/shadow-worker.md`。
+
+#### 派活流程
+
+```
+walker 拆项目为 work orders
+   ↓
+写 work order 到 .shadow/iterations/iter-N/work-orders/WO-NNN-slug.md
+   ↓
+（可选并行）调多个 worker 干活
+   ↓
+收 report.md，验收，决定下一步
+```
+
+#### 什么时候派
+
+| 场景 | 派不派 | 原因 |
+|------|--------|------|
+| 单一工种小项目（< 3 个文件、< 5 个规则） | **不派** | walker 自己干更快，派的 overhead 比省的时间多 |
+| 多工种大项目（前端 + 后端 + 数据 + 协议） | **派** | 平行干省 30-70% 时间 |
+| L1 调研 / L6 部署这种需要全局视野 | **不派** | 拆开反而碎，walker 自己干 |
+| L5 Batch 1-8 实现 | **派** | 每个 Batch 边界清晰，worker 装 l5-impl 自己干 |
+
+#### 派活前 walker 自检
+
+- [ ] 任务边界**清晰**——scope 写了 in / out
+- [ ] 验收**可执行**——`pytest xxx::xxx` / `curl /api/xxx` / `cat file | jq .` 这种一步能验的，不要"代码质量高"
+- [ ] 上游 artifact 路径都给了
+- [ ] 下游消费者提了（如果有）
+- [ ] 约束（命名/技术栈）写了
+- [ ] work order 文件**已写入** `.shadow/iterations/iter-N/work-orders/WO-NNN-slug.md`
+
+完整模板见 `docs/work-order-template.md`。
+
+#### 调 worker
+
+OpenCode 风格（agent 名 + 任务说明）：
+```
+加载 shadow-worker agent，告诉它：
+"读 .shadow/iterations/iter-1/work-orders/WO-007.md，按文件里说的干。完成后写 report 到 .shadow/iterations/iter-1/work-orders/WO-007/report.md。"
+```
+
+Claude Code 风格（`Task` 工具 + subagent_type）：
+```
+Task(
+  subagent_type="shadow-worker",
+  prompt="读 .shadow/iterations/iter-1/work-orders/WO-007.md，按文件里说的干..."
+)
+```
+
+**多 worker 并行**：同时调多个 Task，**所有 worker 写完 report.md 后**，walker 才继续。每个 worker 独立写自己的 report，互不感知。
+
+#### 收活 / 决策
+
+worker 写完 `report.md` 后 walker 读，按规则决策：
+
+| report 状态 | walker 动作 |
+|-------------|------------|
+| 🟢 done | 读验收段，确认全过 → 收工，派下一 WO |
+| 🟡 partial | 读"未达"段 → 派补丁 WO 重做那部分 / 改验收标准 |
+| 🔴 blocked | 读"卡点"段 → 解决卡点（自己上 / 改 WO / 改上游）再派 |
+| ❌ failed | 读卡点 → 通常 3 次后改方向，不死磕 |
+| done 但有**偏差**段 | walker 决定：调上游（接受偏差） / 派补丁 WO（拒绝偏差） |
+
+#### 协调冲突
+
+worker 之间**互相不感知**。冲突（接口不一致、共享模型冲突）由 walker 在整合阶段发现并解决：
+
+1. 收所有 worker 的 report
+2. 比对**下游消费者**声明（每个 WO 的 `downstream_consumers` 字段）
+3. 如果有冲突，walker 调 worker 协调（或自己改）
+4. 跑 `shadow-reviewer` 复查接口一致性
+
+#### 派活模板（walker 内部速查）
+
+work order 文件命名规范：`WO-NNN-slug.md`（NNN 3 位数字，slug 小写连字符）。
+
+最小骨架（完整模板见 `docs/work-order-template.md`）：
+
+```yaml
+# Work Order: WO-007
+阶段: L5 Impl
+目标: 实现 R01/R05/R12 三表的 Postgres schema + RLS
+scope.in: 3 张表 + 3 个 RLS policy + 迁移脚本
+scope.out: 不动 API 层（那是 WO-008 的活）
+deliverables: [db/migrations/001_*.sql, db/policies/*.sql, tests/test_rls.py]
+acceptance:
+  - alembic upgrade/downgrade 双向无错
+  - test_cross_tenant_blocked PASS
+  - test_same_tenant_allowed PASS
+upstream: [spec.md §R01/R05/R12, architecture.md §数据模型, harness-plan.md Batch 2]
+downstream: WO-008 会消费这批表
+```
 
 ### 流水线（标准项目）
 
