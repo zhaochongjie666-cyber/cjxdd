@@ -58,6 +58,18 @@ version: "7.3.0"
 
 详细步骤（含多假设诊断树）见 `references/phase-detail-0-3.md`。
 
+**验证场景格式**（每个验证步骤用 Gherkin Given-When-Then 记录）：
+
+```gherkin
+  Scenario: 服务健康检查通过
+    Given docker compose up -d --wait 已执行
+    When curl http://localhost:3000/api/health
+    Then HTTP 状态码 200
+      And 响应体 { "status": "ok" }
+```
+
+所有 Phase 的验证结果用此格式记录到部署报告。Gherkin 语法参考见 `skills/shadow-l2-e2e/references/gherkin-guide.md`。
+
 **关键原则**：你不能只试一次就说是"网络问题"。至少试3种以上方式确认确实是网络不可达。
 
 ### Phase 4: API 端点验证（通过 docker compose）
@@ -173,6 +185,7 @@ L6 必须回答：真实用户是否愿意在真实工作中依赖这个系统�
 3. **失败时必须贴证据** — 不是"服务不可用"，而是 `curl 返回 code=000, timeout after 5s, ss 显示端口无人监听`
 4. **N/A 不算诊断** — "Docker 不可用"不是终点，换 npm 方案继续
 5. **所有临时修复必须记录** — kill 旧进程、改端口、加依赖，都要写进报告
+6. **验证场景必须有 Then 断言** — "curl 了某个端点"不是验证，"curl 返回 200 且响应体包含 status:ok"才是
 
 ## Phase 9: 层内自检（L6 Gate）
 

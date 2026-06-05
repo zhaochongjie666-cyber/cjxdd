@@ -164,6 +164,13 @@ Verdict: PASS | FAIL | WARN
 | Severity | Layer | Issue | Evidence | Required Fix |
 |----------|-------|-------|----------|--------------|
 
+> Findings 的 Issue 列建议用 Given-When-Then 描述问题（帮助责任 agent 精确定位）：
+> ```
+> Given 标注状态为 SUBMITTED
+> When 标注员尝试添加新标注值
+> Then 系统返回 500 而非预期的 409 AnnotationAlreadySubmitted
+> ```
+
 ## Route Back (如适用)
 | 问题类型 | 责任 agent | 原因 |
 ```

@@ -87,3 +87,49 @@
 - **重试策略区分场景**：进程内同步 vs 跨进程异步
 - **载荷约束写清楚**：Harness 计划事件类定义和 L5 实现的校验依据
 - **后期可升级**：标注"预留 Kafka 接口"，Harness 计划代码接口抽象保证可替换
+
+## 事件流转场景（Gherkin 格式）
+
+单个事件契约描述**载荷结构和订阅方**，事件流转场景描述**跨聚合的端到端数据流**——事件从哪里产生、经过什么传递、被谁消费、产生什么效果。
+
+**建议**：每条跨聚合数据流至少写 1 个端到端 Scenario，标注事务边界。
+
+### 示例：标注提交 → 质检创建（跨聚合事件流）
+
+```gherkin
+@event-flow @cross-aggregate
+Feature: 标注提交后质检流程的跨聚合数据流
+
+  Scenario: 标注提交 → 质检创建 → 通知发送
+    Given Annotation A-001 存在，status=IN_PROGRESS, annotator=annotator1
+      And Review 聚合无 A-001 相关记录
+
+    When Annotation.submit() 被调用
+    Then Annotation A-001 status=SUBMITTED
+      And 发布 AnnotationSubmitted { annotation_id: A-001 }
+      And 发布 ReviewRequested { task_id: T-001, annotation_id: A-001 }
+
+    When ReviewService 消费 ReviewRequested
+    Then 创建 Review R-001，status=PENDING, annotation_id=A-001
+      And NotificationService 发送通知给质检员
+```
+
+### 示例：事务边界标注
+
+```gherkin
+@transaction-boundary
+Feature: 标注提交的事务边界
+
+  Scenario: Annotation 强一致 + Review 最终一致
+    When Annotation.submit() 成功
+    Then Annotation 事务内（强一致）:
+      | 操作                       | 一致性  |
+      | status → SUBMITTED          | 强一致  |
+      | 发布 AnnotationSubmitted    | 强一致  |
+    And Review 创建在独立事务中（最终一致）:
+      | 操作                       | 一致性    |
+      | Review 记录插入              | 最终一致  |
+    But Annotation 事务不等待 Review 创建完成
+```
+
+Gherkin 完整语法和更多后端数据流模式见 `skills/shadow-l2-e2e/references/gherkin-guide.md` "后端数据流场景"段。

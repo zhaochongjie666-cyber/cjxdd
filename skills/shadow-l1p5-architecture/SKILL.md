@@ -62,6 +62,21 @@ ADD+SDD+PDD 的核心理念：**质量属性（性能、可用性、安全性、
 
 每个场景写成：**刺激源 → 刺激 → 环境 → 响应 → 响应度量**。3-5 个关键场景就够。
 
+**Gherkin 格式示例**（用 Given-When-Then 描述质量属性场景，帮助 L2 和 L5 验证）：
+
+```gherkin
+  @quality-attribute @performance
+  Scenario: 100 并发用户同时提交标注
+    Given 100 个标注员同时在线
+      And 每人有一个 IN_PROGRESS 状态的标注
+    When 100 个标注员同时点击"提交"
+    Then 95% 的提交在 500ms 内返回成功
+      And 无数据丢失或冲突
+      And 5% 超时的提交返回可重试错误码
+```
+
+Gherkin 语法参考见 `skills/shadow-l2-e2e/references/gherkin-guide.md`。
+
 ### 2. 安全设计（SDD — Security-Driven Design）
 
 安全有独立的威胁建模和设计输出，不是 ADD 的附属品。

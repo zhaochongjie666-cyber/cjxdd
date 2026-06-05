@@ -42,6 +42,21 @@ if [[ -f "$SCRIPT_DIR/APPEND_SYSTEM.md" ]]; then
     echo "   🔗 APPEND_SYSTEM.md"
 fi
 
+# === Plugins ===
+# 约定: 项目根的 plugins/ 目录 (不是 .opencode/plugins/)
+# 这样更显眼, 跟 agents/ skills/ 平级
+if [[ -d "$SCRIPT_DIR/plugins" ]]; then
+    mkdir -p "$OPENCODE_DIR/plugins"
+    PLUGIN_COUNT=0
+    for plugin_file in "$SCRIPT_DIR/plugins"/*; do
+        [[ -f "$plugin_file" ]] || continue
+        plugin_name=$(basename "$plugin_file")
+        ln -sfn "$plugin_file" "$OPENCODE_DIR/plugins/$plugin_name"
+        PLUGIN_COUNT=$((PLUGIN_COUNT + 1))
+    done
+    echo "   🔗 plugins ($PLUGIN_COUNT plugins)"
+fi
+
 # === npm install for extensions with package.json ===
 echo ""
 echo "📦 Installing npm dependencies for extensions..."

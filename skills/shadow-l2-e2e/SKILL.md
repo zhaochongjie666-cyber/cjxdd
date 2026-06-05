@@ -150,14 +150,45 @@ S 项目（8 维）：1-8。M 项目（10 维）：1-10。L 项目（14 维）�
 
 覆盖矩阵详细示例见 `references/coverage-matrix-guide.md`。
 
-### 3. 写 Given-When-Then 场景
+### 3. 写 Gherkin 场景
 
-矩阵每一行 → 至少 1 个场景。场景要求：
-- 一个场景一个行为，3-7 步
-- 术语用统一语言
-- 每个 Then 必须断言：状态变化 + 事件发布 + 数据变化 + 错误码明确
-- 禁止"功能正常"
-- 每个场景标注 @covers
+矩阵每一行 → 至少 1 个 Gherkin 场景。**使用完整 Gherkin 语法**（不是裸 Given-When-Then）：
+
+```gherkin
+  @P0 @covers-R12 @covers-B01-N08
+  Feature: 创建标注
+
+  Background:
+    Given 标注员已登录
+      And 任务已打开，状态为 IN_PROGRESS
+
+  Scenario: 标注员创建有效 2D 框标注
+    When 标注员在画面上拖拽创建矩形框并关联标签 "car"
+    Then 创建标注记录，状态 EMPTY → IN_PROGRESS
+      And 发布 AnnotationCreated 事件
+
+  Scenario Outline: 无效标签被拒绝
+    When 标注员尝试关联标签 "<label>"
+    Then 拒绝创建，错误码 <error_code>
+
+    Examples:
+      | label         | error_code    |
+      | unknown-uuid  | INVALID_LABEL |
+      | deleted-uuid  | INVALID_LABEL |
+```
+
+**Gherkin 纪律**：
+- Feature = 一条规则或一组紧密关联的规则
+- Background = 多个 Scenario 共享的前置条件
+- Scenario Outline + Examples = 同一逻辑的多组数据
+- 一个 When 一个动作；Then 必须断言具体值（状态+事件+错误码）
+- @covers 标签标注规则 ID + 流程节点
+- Data Tables 用于结构化输入/输出
+- Doc Strings 用于大段文本（如错误消息模板、JSON 响应体）
+
+**禁止**：裸 Given-When-Then（无 Feature/Scenario 头）、"功能正常"、When 里多个动作。
+
+完整语法参考见 `references/gherkin-guide.md`。
 
 ### 4. 流程节点覆盖（BXX-NYY）
 
@@ -193,6 +224,7 @@ UAT 结构：
 - 角色 + 浏览器入口 URL
 - 验收数据（账号、业务数据、外部依赖）
 - 浏览器操作脚本（每步对应 Playwright 操作）
+- Gherkin 行为摘要（每个 UAT 用一个 Scenario 描述核心行为，步骤用浏览器操作语言）
 - 通过标准（页面反馈 + 数据可见 + DB 一致 + 副作用 + 错误处理 + 网络请求）
 - 证据要求（截图 + 网络 + 数据 + 日志）
 

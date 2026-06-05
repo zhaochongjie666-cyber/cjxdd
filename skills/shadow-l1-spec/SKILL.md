@@ -171,6 +171,41 @@ annotation-R04 质检通过 → POST /api/reviews/:id/approve (返回 ReviewRes)
 
 **克制：不多写一条规则。** 多余的规则和遗漏的规则一样有害。判断标准：这条规则如果删掉，L2 会漏测什么？L5 会少实现什么？回答不了 → 删。
 
+## 规则的 Gherkin 场景描述（可选增强）
+
+规则表格适合全景扫描，但**关键规则**（P0、多条件分支、复杂异常）建议补充 Gherkin 场景描述，让 L2 E2E 可以直接消费：
+
+```gherkin
+  @P0 @covers-annotation-R02
+  Feature: 标注员创建标注
+
+  Scenario: 标注员在画面上创建有效 2D 框标注
+    Given 任务已打开，状态为 IN_PROGRESS
+      And 当前用户角色为 Annotator
+    When 标注员在画面上拖拽创建矩形框并关联标签 "car"
+    Then 创建标注记录，状态 EMPTY → IN_PROGRESS
+      And 发布 AnnotationCreated 事件
+
+  Scenario: 标签不在项目模板中
+    Given 任务已打开
+    When 标注员尝试关联标签 ID "unknown-uuid"
+    Then 拒绝创建，错误码 INVALID_LABEL
+
+  Scenario: 标注框坐标超出画面范围
+    Given 任务已打开
+    When 标注员创建框坐标 x=1200 超出画面宽度 1000
+    Then 拒绝创建，错误码 BBOX_OUT_OF_RANGE
+```
+
+**纪律**：
+- 一个 Scenario 一个行为分支（正常路径 / 一个异常）
+- Given 只写前置状态，不写操作
+- When 只写一个动作
+- Then 断言具体值（状态变化 + 事件 + 错误码），禁止"功能正常"
+- @covers 标签标注规则 ID
+
+Gherkin 完整语法参考见 `skills/shadow-l2-e2e/references/gherkin-guide.md`。
+
 ## 产出
 
 `.shadow/L1-business/BXX-{slug}/spec.md`
@@ -179,6 +214,7 @@ annotation-R04 质检通过 → POST /api/reviews/:id/approve (返回 ReviewRes)
 - 业务目标（一句话）
 - 角色列表
 - 规则清单（按聚合分组）
+- 规则 Gherkin 场景（P0 规则建议补充，直接传导给 L2）
 - 领域模型标注（嵌入规则中）
 - **API 预映射（嵌入规则中）**
 - 给下游的说明

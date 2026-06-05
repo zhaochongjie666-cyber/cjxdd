@@ -1,5 +1,5 @@
 {
-  "_comment": "Shadow Walker — Claude Code hook configuration. Auto-loaded by Claude Code when CWD is inside this project. Hook scripts live in .claude/hooks/ and are symlinked to ~/.claude/hooks/ by install-to-claude-code.sh.",
+  "_comment": "Shadow Walker — Claude Code hook configuration. Auto-loaded by Claude Code when CWD is inside this project. Hook scripts live in ./hooks/ (repo root) and are symlinked to ~/.claude/hooks/ by install-to-claude-code.sh.",
   "hooks": {
     "SessionStart": [
       {

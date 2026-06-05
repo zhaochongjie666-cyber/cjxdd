@@ -95,6 +95,16 @@ class Annotation:
 
 **方法**:
 
+**行为摘要**（Gherkin 格式，从 L2 e2e.md 传导）：
+
+```gherkin
+  @covers-annotation-R02 @covers-B02-N07
+  Scenario: 标注员创建有效标注
+    Given 任务已打开，状态 IN_PROGRESS
+    When 调用 Annotation.create(task_id, annotator_id, "SPAN")
+    Then 返回 Annotation 实例，status = EMPTY
+```
+
 ---
 
 #### `create(cls, task_id: UUID, annotator_id: UUID, type: str) -> Annotation`
