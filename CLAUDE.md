@@ -399,6 +399,66 @@ echo "${TS} | login E2E: POST /api/auth/login 200 + browser navigated to /home" 
 > Round 2 之前: 老项目继续 advisory exit 0; 新项目 (有 LIFECYCLE.md) 收到 warn 但不阻断。
 > Round 2 之后: 新项目硬阻断; 老项目仍 advisory (LIFECYCLE.md 缺席 = 老项目标记)。
 
+## § 10 L0 调研重做门禁 (P0-Y Round 1)
+
+**问题**: 每轮 iter 启动时, L0 调研常被跳过 — 上一轮的 L0 笔记本被默认复用。
+**但新需求可能涉及新方案/新竞品/新约束**, 必须每轮重做调研。L0 是"每轮的起点", **不是"项目一次性", 也不是"iter-1 例外"**。
+
+**概念纠正** (用户原话): "并不是 iter-1 就是说是项目级的, iter-1 只是项目的首次开发, iter-2 是第二次开发, 项目一直都是迭代的嘛。"
+→ iter-1 也是"项目首轮开发", 跟 iter-2+ 一样, 每轮 iter 都必须重做 L0。
+
+### 10.1 现状 vs 期望
+
+| 维度 | 现状 (Phase 4 前) | 加 P0-Y 后 |
+|------|---------------------|------------|
+| L0 产物位置 | `.shadow/L0-research/` (schema 项目级) | + per-iter `.shadow/iterations/iter-N/L0-research/` |
+| 每轮必做 | ❌ iter ≥ 2 默认复用 iter-1 L0 | ✓ 每轮 (含 iter-1) 软警告 (Round 1) / 硬阻断 (Round 2) |
+| 检查时机 | — | `pre-skill.sh` 装 L1+ skill 前 |
+
+### 10.2 检测逻辑(在 `pre-skill.sh`)
+
+每轮 iter 装 L1+ skill 时, 扫 `.shadow/iterations/iter-N/L0-research/`:
+
+| 状态 | 条件 | 输出 |
+|------|------|------|
+| skip | 老项目无 `.shadow/iterations/` (cjxdd-demo 等 7+) | — |
+| warn 缺 | 目录不存在 | "L0 调研目录不存在" |
+| warn 空 | 目录存在但无 `.md` | "L0 调研目录为空 (无 .md 笔记本)" |
+| warn stale | 1+ 个 `.md` 但 mtime ≥ 14 天 | "L0 调研 ≥ 14 天未重做" |
+| pass | 1+ 个 `.md` 且 mtime < 14 天 | (无警告) |
+
+### 10.3 Walker 怎么"重做" L0
+
+每轮 iter 启动时, 调 `shadow-l0-research` skill, 创 7 份发散笔记本到 `.shadow/iterations/iter-N/L0-research/`:
+
+```
+01-industry-notes.md       行业调研
+02-competitor-analysis.md  竞品分析 (新需求可能有新竞品)
+03-user-personas.md        用户画像
+04-user-journeys.md        用户旅程
+05-tech-research.md        技术方案 (新需求可能需要新方案)
+06-events-brainstorm.md    事件风暴
+07-external-references.md  外部参考
+```
+
+mtime 自动刷新 → Round 1 软警告自动消失。
+
+### 10.4 设计原则
+
+- **Round 1 软警告**: 怕改了之后老项目突然被卡, 破坏零迁移
+- **每轮都触发** (含 iter-1): 项目一直都是迭代的, L0 是"每轮的起点"
+- **mtime ≤ 14 天视为"近"**: 自动检测, Walker 写完就 pass
+
+### 10.5 Round 2 计划(下次)
+
+1. L0 段: 升级为**硬阻断** (跟 R5/R3 同等力度)
+2. 新项目 (有 `.shadow/LIFECYCLE.md`): L0 缺/旧 → 拒绝 L1+ skill 加载
+3. 老项目 (无 LIFECYCLE.md): 仍 advisory, 零破坏
+4. 加 `.shadow/LIFECYCLE.md` 的项目才视为"启用硬门禁"
+
+> 这是"想错改对"迭代: Round 1 先提示到位, 让用户跑通, Round 2 才硬断。
+> 跟 R11 / R3 同样的"多轮迭代"模式。
+
 ## Where to start
 
 - **To understand the framework**: read `agents/shadow-walker.md`, then `docs/architecture.mmd` (rendered), then `README.md`.

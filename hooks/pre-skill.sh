@@ -111,4 +111,32 @@ if [[ -n "$md" && -f "$md" && -n "$current_order" ]]; then
     done < <(grep -E '^\|\s*L' "$md" 2>/dev/null)
 fi
 
+# === P0-Y Round 1: L0 调研重做门禁 (每轮 iter 软警告) ===
+# 问题: 每轮 iter 启动时, L0 调研常被跳过 — 但新需求可能涉及新方案/新竞品/新约束
+# 检测: 扫 .shadow/iterations/iter-N/L0-research/ 是否存在, 且 mtime ≤ 14 天
+# Round 1: 软警告 (不阻断); Round 2: 硬阻断
+# 适用: iter-1 也算"项目首轮开发", 必须重做 (不是项目级例外)
+shadow=$(get_shadow_dir)
+iter=$(get_current_iter)
+# iter-1, iter-2, iter-3, ... 都需 L0 refresh
+if [[ -n "$iter" ]] && [[ "$iter" =~ ^iter-([1-9]|[1-9][0-9]+)$ ]] && [[ -n "$shadow" ]]; then
+    l0_dir="$shadow/iterations/$iter/L0-research"
+    l0_warn=""
+    if [[ ! -d "$l0_dir" ]]; then
+        l0_warn="L0 调研目录不存在"
+    elif [[ -z "$(find "$l0_dir" -maxdepth 1 -name "*.md" -print -quit 2>/dev/null)" ]]; then
+        l0_warn="L0 调研目录为空 (无 .md 笔记本)"
+    elif [[ -z "$(find "$l0_dir" -maxdepth 1 -name "*.md" -mtime -14 2>/dev/null | head -1)" ]]; then
+        l0_warn="L0 调研 ≥ 14 天未重做"
+    fi
+    if [[ -n "$l0_warn" ]]; then
+        echo ""
+        echo "[shadow] 🐢 P0-Y Round 1: L0 调研重做软警告"
+        echo "[shadow]    原因: $l0_warn"
+        echo "[shadow]    期望: $shadow/iterations/$iter/L0-research/ 存在 + 有 .md 笔记本 + mtime ≤ 14 天"
+        echo "[shadow]    处置: 调 shadow-l0-research skill 重新做调研 (新需求可能涉及新方案/新竞品)"
+        echo "[shadow]    注意: 每轮 iter (含 iter-1) 都需 L0 调研, L0 是'每轮的起点'"
+    fi
+fi
+
 exit 0

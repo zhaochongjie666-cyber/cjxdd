@@ -29,6 +29,44 @@ version: "1.0.0"
 
 **唯一要求**：记录你的思考过程，让未来的收敛步骤（L1 Research）能从这些笔记中提取出有价值的结论。为此，必须按产出清单的分节组织文件。
 
+## 每轮必须重做 (P0-Y Round 1)
+
+L0 是"每轮的起点", **不是"项目一次性"**, **不是"iter-1 例外"**。
+**项目一直都是迭代的**: iter-1 是项目首轮开发, iter-2/3/... 是后续开发, 每轮都必须重做 L0。
+
+- iter-1: 项目首轮开发, 写 L0 到 `.shadow/iterations/iter-1/L0-research/`
+- iter-2+: 后续开发, 写 L0 到 `.shadow/iterations/iter-N/L0-research/`
+- schema 里的 `.shadow/L0-research/*.md` 是历史位置; per-iter 是新约定
+
+### 触发检测 (pre-skill.sh 自动)
+
+每轮 iter (含 iter-1) 装 L1+ skill 时, 若 `.shadow/iterations/iter-N/L0-research/`:
+- 目录不存在 → 软警告
+- 目录存在但无 `.md` 笔记本 → 软警告
+- 1+ 个 `.md` 但 mtime ≥ 14 天 → 软警告
+
+### 怎么重做 (Walker 流程)
+
+1. **创目录**: `mkdir -p .shadow/iterations/iter-N/L0-research/`
+2. **写 7 份笔记**: 按上方产出清单的 7 份文件 (industry-notes / competitor-analysis / user-personas / user-journeys / tech-research / events-brainstorm / external-references)
+3. **mtime 自动刷新**: 文件写入后 mtime 是当前时间 → R11/R12-style 软警告自动消失
+
+### 7 份文件模板 (每轮可能涉及新方案/新竞品)
+
+| 文件 | 内容关注点 (每轮修订) |
+|------|------------------------|
+| `01-industry-notes.md` | 本轮需求所在行业的新趋势 |
+| `02-competitor-analysis.md` | **新需求是否有新竞品** (老竞品可能已退出) |
+| `03-user-personas.md` | 本轮需求涉及的新用户群 |
+| `04-user-journeys.md` | 新需求触发的用户路径 |
+| `05-tech-research.md` | **新需求是否需要新方案** (技术栈是否变化) |
+| `06-events-brainstorm.md` | 本轮涉及的新领域事件 |
+| `07-external-references.md` | 本轮调研的外部资料 |
+
+> Round 1: 软警告, 不阻断 (L0 缺/旧时仍可装 L1+ skill, 会被提醒)
+> Round 2: 硬阻断 (新项目 L0 缺 → 拒绝 L1+ skill 加载, 跟 R3/R5 同等力度)
+> 老项目 (无 `.shadow/LIFECYCLE.md`): 仍 advisory, 零破坏
+
 ## 怎么做
 
 ### 1. 确定调研范围
