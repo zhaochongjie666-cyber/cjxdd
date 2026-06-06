@@ -18,7 +18,7 @@ Skills: 13 个核心工具 + 8 个小工具
 骨架生成        ── shadow-init           ← 新项目第一步
 30 发散调研      ── shadow-l0-research
 31 业务层        ── shadow-l1-research → flow → spec → wire（串行）
-规模判定          ── .shadow/scale.md（S/M/3）
+规模判定          ── .shadow/scale.md（S/M/L）
 31.5 架构        ── shadow-l1p5-architecture
 搭脚手架          ── shadow-scaffold
 32 验收场景      ── shadow-l2-e2e

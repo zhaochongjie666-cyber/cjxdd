@@ -680,6 +680,55 @@ count_lifecycle_role_files() {
 # 退出码: 0 永远 (软提醒)
 #
 # 用法:
+# ───────── 意图识别 (P0-3 抽离) ─────────
+# 把 user-prompt-submit.sh 散落的 4 类意图正则集中到一处维护,
+# 避免"做一个|...|做一个"这种复制粘贴失误再次发生.
+# Args: $1 = lowercase prompt
+# Returns: hint_kind (zh-new-build / zh-continue / en-new-build / en-greenfield) 或空
+detect_intent_pattern() {
+    local lc="$1"
+    [[ -z "$lc" ]] && { echo ""; return 0; }
+
+    # 中文 "做一个系统" / "开发一个应用" / "从零开始" 等新做意图
+    if echo "$lc" | grep -qE '做一个|开发一个|建一个|搭一个|从零开始|从零搭建|全新开发|新做一个|开发.*系统|开发.*应用|开发.*平台|开发.*服务|搭.*项目|搭.*脚手架|做一个.*系统|做一个.*应用|做一个.*平台|做一个.*网站|做一个.*服务'; then
+        echo "zh-new-build"
+        return 0
+    fi
+
+    # 中文 "继续" / "改旧" / "下一步" 意图
+    if echo "$lc" | grep -qE '继续|接着|下一步|加个|补个|改一下|修改|调整|重构'; then
+        echo "zh-continue"
+        return 0
+    fi
+
+    # 英文 "build/create/make a system/app/service" 新做意图
+    if echo "$lc" | grep -qE '\b(build|create|make|develop|implement|design)\b[^.]*\b(system|app|service|platform|api|backend|frontend|fullstack|full-stack|saas|webapp)\b'; then
+        echo "en-new-build"
+        return 0
+    fi
+
+    # 英文 greenfield / MVP / from scratch
+    if echo "$lc" | grep -qE '\bfrom scratch\b|\bnew project\b|\bgreenfield\b|\bmvp\b|\bnew build\b'; then
+        echo "en-greenfield"
+        return 0
+    fi
+
+    echo ""
+}
+
+# ───────── 压力信号检测 (Phase 2-3 反"加速跳过"护栏) ─────────
+# 触发: UserPromptSubmit (用户消息) / PreToolUse (AI 工具调用)
+# 模式分类 (case-insensitive):
+#   RUSH      — 加快节奏 / hurry / rush / asap (强压力)
+#   TIME      — 时间紧 / deadline / running out of time (时间压力)
+#   SKIP      — 跳过 / 省略 / skip / omit (显式跳步)
+#   SIMPLIFY  — 简化 / 草草 / rough (质量降级)
+#   WORKLOAD  — 工作量大 / huge workload (量大信号, 容易导致走捷径)
+# 行为: 软提醒 (不阻断), 把警告以 stdout 输出 → Claude Code 把它作为
+#       additionalContext 注入到 AI 下一轮 prompt.
+# 退出码: 0 永远 (软提醒)
+#
+# 用法:
 #   check_pressure_signals "$text"  # 自动把警告打到 stdout
 #   或 read -d '' output <<< "$(check_pressure_signals "$text")" 取详细结果
 check_pressure_signals() {

@@ -21,6 +21,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 load_shadow_schema || true  # drift check will skip stage matching, but stub scan still works
 
+# P0-4: 动态算 lifecycle_artifacts 工件数 (避免硬编码 58 漂移)
+artifacts_count=$(jq -r '.lifecycle_artifacts.artifacts | length' "${SHADOW_SCHEMA:-$(_resolve_schema_path)}" 2>/dev/null || echo "59")
+
 shadow=$(get_shadow_dir)
 if [[ -z "$shadow" ]]; then
     # Not a shadow project. No-op.
@@ -202,7 +205,7 @@ if [[ -d "$shadow/L1-business/wireframes" ]]; then
 fi
 
 if [[ $lifecycle_drift -eq 0 ]]; then
-    echo "[shadow]   ✓ 无 lifecycle 漂移 (5 类角色, 58 工件全部就位)"
+    echo "[shadow]   ✓ 无 lifecycle 漂移 (5 类角色, ${artifacts_count} 工件全部就位)"
 else
     echo ""
     echo "[shadow]   发现 $lifecycle_drift 处 Phase 1 漂移 (软警告: 仅提示, 不阻断)"
@@ -219,7 +222,7 @@ gate_script="$SCRIPT_DIR/../skills/shadow-artifact-lifecycle/scripts/gate-check-
 if [[ -f "$gate_script" ]]; then
     # 跑 gate-check, 但吞掉 R1/R3/R6/R10 (advisory), 只看 exit code
     if bash "$gate_script" > /tmp/lifecycle-gate-$$.log 2>&1; then
-        echo "[shadow]   ✓ R5: 5 角色一致性 + 58 工件识别率 ≥ 80%, 通过"
+        echo "[shadow]   ✓ R5: 5 角色一致性 + ${artifacts_count} 工件识别率 ≥ 80%, 通过"
     else
         echo "[shadow]   ❌ R5 硬门禁触发 (识别率 < 80% 或 evidence_archive 写违反)"
         echo ""

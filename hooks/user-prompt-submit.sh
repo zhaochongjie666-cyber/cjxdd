@@ -96,23 +96,11 @@ if [[ "$is_shadow" == "yes" ]]; then
     fi
 fi
 
-# Chinese patterns — broader net.
-if echo "$lc" | grep -qE '做一个|开发一个|建一个|搭一个|做一个|从零开始|从零搭建|全新开发|新做一个|开发.*系统|开发.*应用|开发.*平台|开发.*服务|搭.*项目|搭.*脚手架|做一个.*系统|做一个.*应用|做一个.*平台|做一个.*网站|做一个.*服务'; then
-    matched=1
-    hint_kind="zh-new-build"
-# Chinese "continue" or "改旧"
-elif echo "$lc" | grep -qE '继续|接着|下一步|加个|补个|改一下|修改|调整|重构'; then
-    matched=1
-    hint_kind="zh-continue"
-# English new-build
-elif echo "$lc" | grep -qE '\b(build|create|make|develop|implement|design)\b[^.]*\b(system|app|service|platform|api|backend|frontend|fullstack|full-stack|saas|webapp)\b'; then
-    matched=1
-    hint_kind="en-new-build"
-# English greenfield / MVP
-elif echo "$lc" | grep -qE '\bfrom scratch\b|\bnew project\b|\bgreenfield\b|\bmvp\b|\bnew build\b'; then
-    matched=1
-    hint_kind="en-greenfield"
-fi
+# 5 类意图检测 — 抽到 lib.sh:detect_intent_pattern() 集中维护
+# 4 个 hint_kind: zh-new-build / zh-continue / en-new-build / en-greenfield
+# 注: 改一处即生效,避免 grep 正则散落 + 重复 token
+hint_kind=$(detect_intent_pattern "$lc")
+[[ -n "$hint_kind" ]] && matched=1
 
 # === Phase 2-3: 压力信号检测 (反"加速跳过"护栏) ===
 # 触发场景: 用户说"时间紧" / "加快节奏" / "跳过" / "简化" 等

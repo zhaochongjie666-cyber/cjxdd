@@ -201,7 +201,7 @@ install-to-opencode.sh         ← Symlink installer to ~/.config/opencode/
 
 3. **全局约束 (Global constraints)** — Cross-cutting concerns (multi-tenant isolation, auth/authz, unified error format, event publishing, pagination, transaction boundaries) are defined once in the 35 Harness plan's "global constraints" section and enforced uniformly.
 
-4. **规模驱动 (Scale-driven) parameters** — `.shadow/scale.md` encodes project size (S/M/3) and downstream-readable parameters (`persona_dimensions`, `persona_max`, `coverage_dimensions`, `wire_passes`, `l3_required`, `l6_core_phases_only`). Downstream Skills read this file and adjust behavior. Scale is the **maximum** of: bizline count, total rule count, page count, external dependency count. When in doubt, round up. `l3_extended_mode` defaults to `false` (L 规模时启用 9 维 + 12 模式 + 8 字段), `l3_required` defaults to `true` (L3 韧性设计 全部规模强制) since extreme-condition design is non-negotiable.
+4. **规模驱动 (Scale-driven) parameters** — `.shadow/scale.md` encodes project size (S/M/L) and downstream-readable parameters (`persona_dimensions`, `persona_max`, `coverage_dimensions`, `wire_passes`, `l3_required`, `l6_core_phases_only`). Downstream Skills read this file and adjust behavior. Scale is the **maximum** of: bizline count, total rule count, page count, external dependency count. When in doubt, round up. `l3_extended_mode` defaults to `false` (L 规模时启用 9 维 + 12 模式 + 8 字段), `l3_required` defaults to `true` (L3 韧性设计 全部规模强制) since extreme-condition design is non-negotiable.
 
    5a. **L 规模扩展模式** (`.shadow/scale.l3_extended_mode=true`) — L 规模项目 (电商/支付/跨地域 SaaS) 自动启用 9 维 + 12 模式 + 8 字段:
       - 9 维 = 8 维 + 跨地域/多活 (F81-F85)
@@ -240,7 +240,7 @@ Walker maintains a `pipeline/status.md` per iteration with a fixed skeleton: per
 
 ## § 7 工件生命周期(5 类角色)
 
-Shadow 30+ 份 `.shadow/` 工件按生命周期角色分 **5 类**,以 `.shadow/shadow-schema.json:lifecycle_artifacts[]` 为单一源真理(58 项登记,本节解释角色定位,具体工件映射见 schema)。
+Shadow 30+ 份 `.shadow/` 工件按生命周期角色分 **5 类**,以 `.shadow/shadow-schema.json:lifecycle_artifacts[]` 为单一源真理(59 项登记,本节解释角色定位,具体工件映射见 schema)。
 
 | 角色 | 英文 | 含义 | 典型产物 | 存储 |
 |------|------|------|----------|------|

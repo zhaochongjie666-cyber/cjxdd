@@ -305,30 +305,30 @@ downstream: WO-008 会消费这批表
 
 **判定标准**：
 
-| 指标 | S | M | 3 |
+| 指标 | S (小) | M (中) | L (大) |
 |------|---|---|---|
 | 业务线数 | 1 | 2-4 | ≥ 5 |
 | spec 规则数（全部 slug 合计） | ≤ 20 | 21-60 | ≥ 61 |
 | 页面数（wire 中的 data-page） | ≤ 8 | 9-20 | ≥ 21 |
 | 外部依赖数 | ≤ 2 | 3-5 | ≥ 6 |
 
-取四个指标中的**最高级别**作为 scale。有疑问时偏大一级。
+取四个指标中的**最高级别**作为 scale(`scale ∈ {"S","M","L"}`,与 `shadow-schema.json:scale_schema.fields.scale.enum` 一致)。有疑问时偏大一级。
 
 **产出**：`.shadow/scale.md`
 
 ```yaml
-scale: S | M | 3
+scale: S | M | L
 
 persona_dimensions: 6        # 30 画像发散维度数
 persona_max: 8               # 31 收敛后画像上限
 coverage_dimensions: 14      # 32 覆盖矩阵维度数
-wire_passes: 2               # 31 Wire pass 数（S=2, M/3=3）
-l6_core_phases_only: true    # 36 是否跳过 Phase 4-6（S=true, M/3=false）
+wire_passes: 2               # 31 Wire pass 数（S=2, M/L=3）
+l6_core_phases_only: true    # 36 是否跳过 Phase 4-6（S=true, M/L=false）
 ```
 
 字段说明：
 
-| 字段 | 谁读 | 默认值 | S | M | 3 |
+| 字段 | 谁读 | 默认值 | S | M | L |
 |------|------|--------|---|---|---|
 | `persona_dimensions` | shadow-l0-research | 6 | 6 | 6 | 6 |
 | `persona_max` | shadow-l1-research | 8 | 6 | 10 | 15 |
