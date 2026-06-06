@@ -115,7 +115,13 @@ interface ShadowSchema {
 let _schemaCache: ShadowSchema | null = null
 let _schemaPath = ""
 
-// 解析 schema 路径 (解软链 → 仓库根 → shadow-schema.json)
+// 解析 schema 路径 (Phase 2-3: 优先 .shadow/, 兼容老路径)
+// 优先级:
+//   1. $SHADOW_SCHEMA 环境变量
+//   2. $CWD/.shadow/shadow-schema.json (per-project, shadow-init 复制)
+//   3. <repo>/.shadow/shadow-schema.json
+//   4. <repo>/.shadow/shadow-schema.json (Phase 1 兼容)
+//   5. <repo>/skills/shadow-init/templates/shadow-schema.json (framework template 兜底)
 function resolveSchemaPath(): string {
   if (process.env.SHADOW_SCHEMA) return process.env.SHADOW_SCHEMA
   // import.meta.dirname 指向 plugins/ (可能是软链), realpathSync 解开
@@ -125,7 +131,23 @@ function resolveSchemaPath(): string {
   } catch {
     // fall through
   }
-  return join(realDir, "..", "framework", "shadow-schema.json")
+  const repoRoot = join(realDir, "..")
+  const cwd = process.cwd()
+
+  // 1. cwd 优先
+  const cwdSchema = join(cwd, ".shadow", "shadow-schema.json")
+  if (existsSync(cwdSchema)) return cwdSchema
+  // 2. repoRoot 下
+  const repoShadowSchema = join(repoRoot, ".shadow", "shadow-schema.json")
+  if (existsSync(repoShadowSchema)) return repoShadowSchema
+  // 3. 兼容 framework/
+  const frameworkSchema = join(repoRoot, "framework", "shadow-schema.json")
+  if (existsSync(frameworkSchema)) return frameworkSchema
+  // 4. framework template 兜底
+  const templateSchema = join(repoRoot, "skills", "shadow-init", "templates", "shadow-schema.json")
+  if (existsSync(templateSchema)) return templateSchema
+  // 5. 全部找不到, 返回 .shadow/ 路径让上层报错
+  return cwdSchema
 }
 
 function loadSchema(): ShadowSchema | null {

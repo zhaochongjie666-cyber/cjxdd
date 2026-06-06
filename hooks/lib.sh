@@ -264,11 +264,35 @@ _SHADOW_SCHEMA_PATH=""
 _resolve_schema_path() {
     if [[ -n "${SHADOW_SCHEMA:-}" ]]; then
         echo "$SHADOW_SCHEMA"
-    else
-        local self_real
-        self_real="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
-        echo "$(dirname "$self_real")/../framework/shadow-schema.json"
+        return
     fi
+    local self_real repo_root
+    self_real="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+    repo_root="$(dirname "$(dirname "$self_real")")"
+
+    # Phase 2-3 路径解析优先级:
+    #   1. $PWD/.shadow/shadow-schema.json (per-project, shadow-init 复制)
+    #   2. $repo_root/.shadow/shadow-schema.json (跨子目录项目)
+    #   3. $repo_root/.shadow/shadow-schema.json (Phase 1 兼容路径, 老项目)
+    #   4. $repo_root/skills/shadow-init/templates/shadow-schema.json (framework template 兜底)
+    if [[ -f "$PWD/.shadow/shadow-schema.json" ]]; then
+        echo "$PWD/.shadow/shadow-schema.json"
+        return
+    fi
+    if [[ -f "$repo_root/.shadow/shadow-schema.json" ]]; then
+        echo "$repo_root/.shadow/shadow-schema.json"
+        return
+    fi
+    if [[ -f "$repo_root/.shadow/shadow-schema.json" ]]; then
+        echo "$repo_root/.shadow/shadow-schema.json"
+        return
+    fi
+    if [[ -f "$repo_root/skills/shadow-init/templates/shadow-schema.json" ]]; then
+        echo "$repo_root/skills/shadow-init/templates/shadow-schema.json"
+        return
+    fi
+    # 全部找不到, 输出 .shadow/ 路径让 load_shadow_schema 报错
+    echo "$PWD/.shadow/shadow-schema.json"
 }
 
 # Load the schema. Idempotent. Returns 0 on success, 1 if schema not found.

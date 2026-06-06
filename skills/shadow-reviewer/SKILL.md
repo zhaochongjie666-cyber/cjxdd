@@ -190,7 +190,7 @@ UX 路由规则：
 
 ## 输出报告
 
-> **生命周期角色**:混合 — 报告正文 `reviews/{type}-review-{slug}-{ts}.md` = `process_output` 过程产物(每次审查的快照报告,iter 冻结随 iter 走);`gate/{layer}.{slug}.passed` 空文件 = `control_marker` 控制标记(门禁决策记录,跨 iter 不会重复生成);`gate/{layer}.{slug}.result.json` / `.failed.json` = `process_output`(本次审查结果 JSON)。详见 `framework/shadow-schema.json:lifecycle_artifacts` → `reviewer-report` / `gate-result-json` / `gate-passed-marker` / `feature-status-marker`。
+> **生命周期角色**:混合 — 报告正文 `reviews/{type}-review-{slug}-{ts}.md` = `process_output` 过程产物(每次审查的快照报告,iter 冻结随 iter 走);`gate/{layer}.{slug}.passed` 空文件 = `control_marker` 控制标记(门禁决策记录,跨 iter 不会重复生成);`gate/{layer}.{slug}.result.json` / `.failed.json` = `process_output`(本次审查结果 JSON)。详见 `.shadow/shadow-schema.json:lifecycle_artifacts` → `reviewer-report` / `gate-result-json` / `gate-passed-marker` / `feature-status-marker`。
 
 报告保存至：`.shadow/iterations/{当前迭代}/reviews/{type}-review-{slug}-{timestamp}.md`
 

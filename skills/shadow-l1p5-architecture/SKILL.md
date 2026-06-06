@@ -218,7 +218,7 @@ Docker Compose 详细配置见 references/docker-compose-guide.md
 
 ## 产出
 
-> **生命周期角色**:`design_baseline` 设计基线。`architecture.md` / `event-contract.md` / `aggregate-landscape.md` / `docker-compose.yml` / `docker-compose.test.yml` 5 件套均跨迭代复用,是后端 API 边界 + 事件契约 + 部署拓扑的决策源,改后必触发 L3 / L5 / L6 重跑。详见 `framework/shadow-schema.json:lifecycle_artifacts` → `architecture-bxx` / `event-contract` / `aggregate-landscape` / `docker-compose` / `docker-compose-test`。
+> **生命周期角色**:`design_baseline` 设计基线。`architecture.md` / `event-contract.md` / `aggregate-landscape.md` / `docker-compose.yml` / `docker-compose.test.yml` 5 件套均跨迭代复用,是后端 API 边界 + 事件契约 + 部署拓扑的决策源,改后必触发 L3 / L5 / L6 重跑。详见 `.shadow/shadow-schema.json:lifecycle_artifacts` → `architecture-bxx` / `event-contract` / `aggregate-landscape` / `docker-compose` / `docker-compose-test`。
 
 **必须一次派发**：L1.5 agent 必须一次接收所有 slug（B01/B02/...），同时产出 per-slug 和 project-level 文件。禁止按 slug 分多次派发，否则后续派发会覆盖 project-level 文件（`event-contract.md`、`aggregate-landscape.md`）。
 

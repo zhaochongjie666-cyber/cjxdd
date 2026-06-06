@@ -22,10 +22,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_DIR="$(dirname "$SCRIPT_DIR")"
 REPO_ROOT="$(dirname "$(dirname "$SKILL_DIR")")"
-SCHEMA="${SHADOW_SCHEMA:-$REPO_ROOT/framework/shadow-schema.json}"
 PROJECT_ROOT="${PROJECT_ROOT:-$(pwd)}"
 
-# ───────── 加载 hooks/lib.sh (需要 lifecycle_role_of) ─────────
+# ───────── 加载 hooks/lib.sh (需要 _resolve_schema_path + lifecycle_role_of) ─────────
 HOOKS_DIR="$REPO_ROOT/hooks"
 if [[ -f "$HOOKS_DIR/lib.sh" ]]; then
     # shellcheck source=../../../hooks/lib.sh
@@ -34,6 +33,9 @@ else
     echo "[lifecycle-gate] FATAL: hooks/lib.sh not found at $HOOKS_DIR" >&2
     exit 3
 fi
+
+# 现在 _resolve_schema_path 已加载, 用它查 schema (Phase 2-3 优先级: .shadow/ > framework/ > framework template)
+SCHEMA="${SHADOW_SCHEMA:-$(_resolve_schema_path)}"
 
 if [[ ! -f "$SCHEMA" ]]; then
     echo "[lifecycle-gate] FATAL: shadow-schema.json not found at $SCHEMA" >&2

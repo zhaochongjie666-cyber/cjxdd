@@ -15,7 +15,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
-load_shadow_schema || echo "[shadow] ⚠️  framework/shadow-schema.json not found — stage context degraded" >&2
+load_shadow_schema || echo "[shadow] ⚠️  .shadow/shadow-schema.json not found — stage context degraded" >&2
 
 shadow=$(get_shadow_dir)
 if [[ -z "$shadow" ]]; then
@@ -60,7 +60,7 @@ fi
 
 # Phase 1: 工件生命周期 — 角色分布 (按 design_baseline / process_output / evidence_archive / control_marker 5 类, 模板类不计)
 echo ""
-echo "[shadow] lifecycle (artifact role distribution, 5 classes from framework/shadow-schema.json):"
+echo "[shadow] lifecycle (artifact role distribution, 5 classes from .shadow/shadow-schema.json):"
 for role in design_baseline process_output evidence_archive control_marker; do
     count=$(count_lifecycle_role_files "$role" 2>/dev/null || echo 0)
     case "$role" in

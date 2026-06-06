@@ -5,7 +5,7 @@
 # 用法: bash skills/shadow-l3-resilience/scripts/gate-check-l3.sh <slug>
 #
 # 软门禁: 缺文件 / 不达标 → 打印警告, exit 0 (永远不阻塞)
-# 硬门禁: 由 framework/shadow-schema.json 的 scale.l3_required 强制 (status.md 模板必含 L3 行)
+# 硬门禁: 由 .shadow/shadow-schema.json 的 scale.l3_required 强制 (status.md 模板必含 L3 行)
 #
 # 扩展模式 (l3_extended_mode=true, L 规模): 9 维度 + 12 模式 + 8 字段强校验
 

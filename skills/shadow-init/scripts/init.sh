@@ -13,7 +13,7 @@ SCRIPT_DIR_REAL="$(dirname "$SELF_REAL")"
 SKILL_DIR_REAL="$(dirname "$SCRIPT_DIR_REAL")"
 SKILLS_DIR_REAL="$(dirname "$SKILL_DIR_REAL")"
 REPO_ROOT_REAL="$(dirname "$SKILLS_DIR_REAL")"
-DEFAULT_SCHEMA="$REPO_ROOT_REAL/framework/shadow-schema.json"
+DEFAULT_SCHEMA="$REPO_ROOT_REAL/skills/shadow-init/templates/shadow-schema.json"
 
 # ---------- 参数 ----------
 ITER=1
@@ -135,6 +135,14 @@ mkdir -p "$SHADOW_DIR/L6-deploy"
 
 # 1. SHADOW_VERSION — 仅 fresh init (沿用原版本)
 [[ $EXISTING_SHADOW -eq 0 ]] && echo "$SHADOW_VERSION" > "$SHADOW_DIR/SHADOW_VERSION"
+
+# 1.bis shadow-schema.json — 复制 framework template 到 .shadow/ (Phase 2-3 统一管理)
+# 新项目: 复制 template 到 .shadow/shadow-schema.json (单一源真理 per-project)
+# 老项目: .shadow/shadow-schema.json 不动, hooks 走 framework/ fallback
+if [[ $EXISTING_SHADOW -eq 0 && -f "$SCHEMA" ]]; then
+    cp "$SCHEMA" "$SHADOW_DIR/shadow-schema.json"
+    echo "   $SHADOW_DIR/shadow-schema.json (Phase 2-3: 从 framework template 复制)"
+fi
 
 # 2. current-iteration — 移出 fresh-init if 块 (无论 fresh/alongside 都要更新)
 # 注: 这一行必须在 if 块外
@@ -323,6 +331,7 @@ fi
 echo "✅ Generated:"
 if [[ $EXISTING_SHADOW -eq 0 ]]; then
     echo "   $SHADOW_DIR/SHADOW_VERSION"
+    echo "   $SHADOW_DIR/shadow-schema.json (Phase 2-3: 从 framework template 复制, .shadow/ 统一管理)"
     echo "   $SHADOW_DIR/current-iteration"
     [[ $GEN_SCALE -eq 1 ]] && echo "   $SHADOW_DIR/scale.md"
     echo "   $SHADOW_DIR/L0-research/.gitkeep"

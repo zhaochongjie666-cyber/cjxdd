@@ -77,7 +77,7 @@ skills/
   docker-helper/            # Docker 问题排查
   test-in-tmux/             # 测试运行
 
-framework/shadow-schema.json         # 单一源真理：阶段表 / 存根模式 / scale 字段
+.shadow/shadow-schema.json         # 单一源真理：阶段表 / 存根模式 / scale 字段
                            #   hooks/*.sh + plugins/shadow-hooks.ts 都从这读
 
   # 每个 skill 目录结构：

@@ -230,7 +230,7 @@ ENTRY_CALLBACK["🔗 支付回调<br/>trigger: webhook<br/>entry: POST /api/paym
 
 `.shadow/L1-business/project.flow.mermaid`
 
-**生命周期角色**（`design_baseline` 设计基线）：BXX-NYY 节点是全传导链的追溯键,被 L1 Spec / Wire / L1.5 / L2 / L5 / L6 全部下游引用,改节点必然触发整链重审。详见 `framework/shadow-schema.json:lifecycle_artifacts` → `project-flow-mermaid`。
+**生命周期角色**（`design_baseline` 设计基线）：BXX-NYY 节点是全传导链的追溯键,被 L1 Spec / Wire / L1.5 / L2 / L5 / L6 全部下游引用,改节点必然触发整链重审。详见 `.shadow/shadow-schema.json:lifecycle_artifacts` → `project-flow-mermaid`。
 
 这是项目级唯一流程总图。不要输出 `.shadow/L1-business/BXX-{slug}/project.flow.mermaid`，也不要为每条业务线创建独立 flow 文件。
 

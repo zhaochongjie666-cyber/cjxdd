@@ -246,7 +246,7 @@ downstream: WO-008 会消费这批表
 | 代码缺陷 | 35 当前批 + 重验 | 项目代码(既是产品又是 `design_baseline`) → `process_output` (plan-impl-diff-report) |
 | 部署配置 | 31.5 / 33 / 36（视根因）| `design_baseline` (docker-compose) ↔ `evidence_archive` (L6 issues.json) |
 
-> **第 4 列"影响的工件角色"对照 `framework/shadow-schema.json:lifecycle_artifacts[]` 查**(每行末尾括号里的 `id` = 30+ 工件映射表的 `id` 字段)。改 `design_baseline` 一律触发全链传播;改 `process_output` / `evidence_archive` 通常不触发上游回退;改 `control_marker` (`.passed`/`.done`) 不需要重跑任何 skill。
+> **第 4 列"影响的工件角色"对照 `.shadow/shadow-schema.json:lifecycle_artifacts[]` 查**(每行末尾括号里的 `id` = 30+ 工件映射表的 `id` 字段)。改 `design_baseline` 一律触发全链传播;改 `process_output` / `evidence_archive` 通常不触发上游回退;改 `control_marker` (`.passed`/`.done`) 不需要重跑任何 skill。
 
 **单业务线变更传播**（多业务线项目，只改了 BXX 时）：
 
@@ -367,7 +367,7 @@ Shadow 用迭代隔离目录管理不同轮次：
 
 **迭代产物隔离策略**：
 
-> 隔离策略现在按**工件生命周期角色**而不只是按"位置"分类。完整 5 类角色定义见 CLAUDE.md § 7 + `framework/shadow-schema.json:lifecycle_artifacts[]`。
+> 隔离策略现在按**工件生命周期角色**而不只是按"位置"分类。完整 5 类角色定义见 CLAUDE.md § 7 + `.shadow/shadow-schema.json:lifecycle_artifacts[]`。
 
 ```text
 设计基线 (design_baseline) — 共享, 跨迭代复用, 原位修改:

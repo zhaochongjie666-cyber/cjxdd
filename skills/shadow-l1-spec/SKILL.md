@@ -210,7 +210,7 @@ Gherkin 完整语法参考见 `skills/shadow-l2-e2e/references/gherkin-guide.md`
 
 `.shadow/L1-business/BXX-{slug}/spec.md`
 
-**生命周期角色**（`design_baseline` 设计基线）：RXX 规则是 L1.5 API 端点 / L2 验收 / L3 失败模式 / L5 Harness 计划 4 个下游的追溯键;改 RXX 一律触发全链传播。详见 `framework/shadow-schema.json:lifecycle_artifacts` → `spec-bxx`。
+**生命周期角色**（`design_baseline` 设计基线）：RXX 规则是 L1.5 API 端点 / L2 验收 / L3 失败模式 / L5 Harness 计划 4 个下游的追溯键;改 RXX 一律触发全链传播。详见 `.shadow/shadow-schema.json:lifecycle_artifacts` → `spec-bxx`。
 
 建议包含：
 - 业务目标（一句话）

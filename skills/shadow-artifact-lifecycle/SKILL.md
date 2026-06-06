@@ -3,12 +3,12 @@ name: shadow-artifact-lifecycle
 alias: Shadow·Artifact-Lifecycle
 methodology: |
   Shadow 工件生命周期分类 — 5 类角色(设计基线 / 过程产物 / 证据存档 / 控制标记 / 模板与实例)
-  单一源真理: framework/shadow-schema.json:lifecycle_artifacts[]
+  单一源真理: .shadow/shadow-schema.json:lifecycle_artifacts[]
   配套门禁: scripts/gate-check-lifecycle.sh (5 角色 × canonical_path 一致性)
 description: |
   Shadow 工件生命周期元 skill — 替代/补充旧的"跨迭代 vs 迭代作用域"位置二分法,
   回答"工件用多久 + 谁消费 + 改后会怎样"。
-  Phase 1 (零破坏) 在 framework/shadow-schema.json 登记 58 工件在 5 角色下。
+  Phase 1 (零破坏) 在 .shadow/shadow-schema.json 登记 58 工件在 5 角色下。
   Phase 2 (本 skill) 升级为可被 Walker 装卸的元 skill,提供 5 条硬门禁规则。
   触发: 工件分类、lifecycle、artifact role、design_baseline、process_output、
   evidence_archive、control_marker、template_instance、drift、漂移、归档。
@@ -53,11 +53,11 @@ version: "1.0.0"
 
 ### 1. 装本 skill 后第一件事:读 schema
 
-`framework/shadow-schema.json:lifecycle_artifacts[]` 登记 58 工件,5 角色,所有路径 + 别名。完整映射在 schema 里,本 skill 不重复抄。
+`.shadow/shadow-schema.json:lifecycle_artifacts[]` 登记 58 工件,5 角色,所有路径 + 别名。完整映射在 schema 里,本 skill 不重复抄。
 
 ```bash
 # 列出所有设计基线工件
-jq -r '.lifecycle_artifacts.artifacts[] | select(.role == "design_baseline") | .canonical_path' framework/shadow-schema.json
+jq -r '.lifecycle_artifacts.artifacts[] | select(.role == "design_baseline") | .canonical_path' .shadow/shadow-schema.json
 ```
 
 ### 2. 给当前文件查角色
@@ -79,7 +79,7 @@ Walker 干活时常问"我现在该写什么文件"。查 schema:
 
 ```bash
 # 查 L1 Spec 阶段的所有预期产物
-jq -r '.lifecycle_artifacts.artifacts[] | select(.stage == "L1_Spec") | "\(.role): \(.canonical_path)"' framework/shadow-schema.json
+jq -r '.lifecycle_artifacts.artifacts[] | select(.stage == "L1_Spec") | "\(.role): \(.canonical_path)"' .shadow/shadow-schema.json
 # → design_baseline: .shadow/L1-business/{slug}/spec.md
 ```
 
@@ -160,15 +160,15 @@ bash skills/shadow-artifact-lifecycle/scripts/gate-check-lifecycle.sh
 
 ## 自检(本 skill 完成后)
 
-- [ ] 5 角色都能在 schema 中查到定义(`jq -e '.lifecycle_artifacts.roles | keys | length == 5' framework/shadow-schema.json`)
-- [ ] 58 工件都在 schema 中登记(`jq '.lifecycle_artifacts.artifacts | length' framework/shadow-schema.json` = 58)
+- [ ] 5 角色都能在 schema 中查到定义(`jq -e '.lifecycle_artifacts.roles | keys | length == 5' .shadow/shadow-schema.json`)
+- [ ] 58 工件都在 schema 中登记(`jq '.lifecycle_artifacts.artifacts | length' .shadow/shadow-schema.json` = 58)
 - [ ] `gate-check-lifecycle.sh` 跑出来 exit 0(无漂移)
 - [ ] 任意给一个 .shadow/ 实物文件,`lifecycle_role_of` 能识别
 - [ ] 7+ 真实项目跑 schema 查询,识别率 ≥ 90%(老项目有 alias 兜底)
 
 ## 引用
 
-- 单一源真理: `framework/shadow-schema.json:lifecycle_artifacts[]`
+- 单一源真理: `.shadow/shadow-schema.json:lifecycle_artifacts[]`
 - 概念入口: `CLAUDE.md` § 7
 - Walker 决策依据: `agents/shadow-walker.md`(变更传播表 + 迭代管理段 + 回退决策树)
 - hooks 实现: `hooks/lib.sh:lifecycle_role_of` / `lifecycle_paths_by_role` / `count_lifecycle_role_files`
