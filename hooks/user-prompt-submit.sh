@@ -114,6 +114,11 @@ elif echo "$lc" | grep -qE '\bfrom scratch\b|\bnew project\b|\bgreenfield\b|\bmv
     hint_kind="en-greenfield"
 fi
 
+# === Phase 2-3: 压力信号检测 (反"加速跳过"护栏) ===
+# 触发场景: 用户说"时间紧" / "加快节奏" / "跳过" / "简化" 等
+# 软提醒 (不阻断, 跟 matched 无关 — 任何 prompt 都要扫压力信号)
+check_pressure_signals "$prompt"
+
 [[ -z "$matched" ]] && exit 0
 
 if [[ "$is_shadow" == "yes" ]]; then

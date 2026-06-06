@@ -286,6 +286,56 @@ Shadow 30+ 份 `.shadow/` 工件按生命周期角色分 **5 类**,以 `.shadow/
 | `L6 deployment-report.md` | 文件本身 = 过程产物;内部"证据段" = 证据存档 | 标 `process_output`;note 注明"内部 evidence 段是 evidence_archive 角色" |
 | `e2e/{feature}.binding.yaml` | 未填实 = 过程产物;填实后 = 设计基线(测试代码) | 标 `process_output`;note 注明"填实后转设计基线" |
 
+## § 8 压力信号检测(反"加速跳过"护栏,Phase 2-3)
+
+**问题**:AI 在压力下(用户催 / 时间紧 / 自作主张加速)容易跳步、写存根、简化 fixture 蒙混过关。Shadow 体系设计两道护栏:
+
+### 8.1 Hook 层(`hooks/lib.sh:check_pressure_signals`)
+
+软提醒(不阻断),被 3 个 hook 触发:
+
+| 触发点 | 时机 | 扫什么 |
+|--------|------|--------|
+| `user-prompt-submit.sh` | 用户消息一进来 | 扫 `user_prompt` 全文 |
+| `pre-skill.sh` (Skill) | AI 即将调某个 skill | 扫 `.tool_input` (含 skill name) |
+| `stop-gate.sh` | AI 完成一轮 | (Phase 2 后续,扫 transcript) |
+
+### 8.2 检测 5 类压力信号(中英双语,case-insensitive)
+
+| 类别 | 中文示例 | 英文示例 |
+|------|---------|---------|
+| `RUSH` | 加快节奏、加快速度、快点、赶紧、赶进度 | hurry, rush, asap, speed up |
+| `TIME` | 时间紧、时间不多、没时间、deadline | tight deadline, running out of time |
+| `SKIP` | 跳过、省掉、略过、不做了 | skip, omit, abbreviate |
+| `SIMPLIFY` | 简化、简单做、草草、随便 | rough, quick and dirty, minimal |
+| `WORKLOAD` | 工作量大、很多活、活多 | huge workload, lots of work |
+
+### 8.3 软提醒文案(注入到 AI 下一轮上下文)
+
+```
+🐢  慢慢来, 不要跳步
+  Walker 3 步硬底线: 不写存根 / 不用假实现 / 完成 = 真完成
+  5 步节奏: 装 skill → 写 checklist → 干 → 自检 + 标 ✅ → 加载下一 stage
+  压力下特别容易犯的错:
+    ✗ 跳过 stage 直接写代码 → pre-skill.sh 硬阻断
+    ✗ 简化 fixture 用 InMemoryRepository → stub scan 告警
+    ✗ 用 hardcoded user 假装登录 → stub scan 告警
+  若时间真的紧: 缩 scope, 不是砍 quality
+```
+
+### 8.4 设计原则
+
+- **不阻断** — soft reminder, AI 看完决定是否采纳(decision-by-AI, not decision-by-hook)
+- **不依赖 matched 状态** — 任何 prompt 都扫压力信号,即使没匹配到意图
+- **失败静默** — 0 命中不输出,无副作用;awk 数命中数(不用 grep -c 避免 set -e 误杀)
+- **可调阈值** — 模式串集中在 `lib.sh:check_pressure_signals()`,调一处即生效
+
+### 8.5 跟 5 角色生命周期 + 5 硬门禁的关系
+
+压力信号检测是"AI 行为层"护栏(防 AI 自己走捷径),5 硬门禁是"产物层"护栏(防产物不合规)。两层互补:
+- **AI 行为层** — Hook 软提醒, AI 仍可自决
+- **产物层** — R5 漂移扫描 + R3 证据写阻断 + R10 自动归档,产物不合规直接 exit 1
+
 ## Where to start
 
 - **To understand the framework**: read `agents/shadow-walker.md`, then `docs/architecture.mmd` (rendered), then `README.md`.

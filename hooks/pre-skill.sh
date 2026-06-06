@@ -34,6 +34,14 @@ if [[ -z "$skill_name" ]]; then
     exit 0
 fi
 
+# === Phase 2-3: 压力信号检测 (反"加速跳过"护栏) ===
+# 触发场景: AI 在调某个 skill 时, 工具参数或上下文含 "时间紧" / "跳过" / "简化" 等
+# 软提醒 (不阻断, 但提醒 AI 保持 5 步节奏)
+# 注: 只能扫到 .tool_input.skill 这一层, 没法扫 AI 的"思考", 但用户给的 skill
+#     参数里常带"压力", 例如 --skip-l2 / --rough / "hurry up" 等
+tool_input_text=$(echo "$input" | jq -r '.tool_input | tostring' 2>/dev/null)
+check_pressure_signals "$tool_input_text $skill_name"
+
 # Load schema (needed for stage_order lookups). No-op if already loaded.
 load_shadow_schema || {
     echo "[shadow] ⚠️  .shadow/shadow-schema.json not found (also tried framework/ + framework template) — stage gating disabled this run." >&2

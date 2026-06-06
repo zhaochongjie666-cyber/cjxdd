@@ -666,3 +666,87 @@ count_lifecycle_role_files() {
     done
     echo "$count"
 }
+
+# ───────── 压力信号检测 (Phase 2-3: 反"加速跳过"护栏) ─────────
+# 触发: UserPromptSubmit (用户消息) / PreToolUse (AI 工具调用)
+# 模式分类 (case-insensitive):
+#   RUSH      — 加快节奏 / hurry / rush / asap (强压力)
+#   TIME      — 时间紧 / deadline / running out of time (时间压力)
+#   SKIP      — 跳过 / 省略 / skip / omit (显式跳步)
+#   SIMPLIFY  — 简化 / 草草 / rough (质量降级)
+#   WORKLOAD  — 工作量大 / huge workload (量大信号, 容易导致走捷径)
+# 行为: 软提醒 (不阻断), 把警告以 stdout 输出 → Claude Code 把它作为
+#       additionalContext 注入到 AI 下一轮 prompt.
+# 退出码: 0 永远 (软提醒)
+#
+# 用法:
+#   check_pressure_signals "$text"  # 自动把警告打到 stdout
+#   或 read -d '' output <<< "$(check_pressure_signals "$text")" 取详细结果
+check_pressure_signals() {
+    local text="$1"
+    [[ -z "$text" ]] && return 0
+
+    local lc
+    lc=$(echo "$text" | tr '[:upper:]' '[:lower:]')
+
+    # 4 类模式: 模式串用 | 分隔, 用 awk 数命中数 (awk 总是 exit 0, 不会触发 set -e)
+    # 注: 不用 grep -c 因为无匹配时 grep 输出 "0" 但 exit 1, 触发 set -e 杀脚本
+    local rush_count time_count skip_count simplify_count workload_count
+    rush_count=$(echo "$lc" | awk -v IGNORECASE=1 'BEGIN{n=0} /加快节奏|加快速度|快点|赶紧|赶快|赶时间|赶进度|赶着|hurry|hurrying|hurried|rush|rushing|rushed|asap|as soon as possible|speed up|快一点|快点做/ {n++} END {print n+0}')
+    time_count=$(echo "$lc" | awk -v IGNORECASE=1 'BEGIN{n=0} /时间紧|时间不多|时间不够|时间有限|时间紧迫|没时间|没多少时间|deadline|due (in|by|tomorrow|next)|running out of time|out of time|no time left|tight (deadline|schedule)|时间不够用/ {n++} END {print n+0}')
+    skip_count=$(echo "$lc" | awk -v IGNORECASE=1 'BEGIN{n=0} /跳过|跳掉|跳过去|省略|省掉|省了|略过|不做了|不做这个|skip|skipping|skipped|omit|omitting|abbreviate|跳过这个|略过这步|省了这一步/ {n++} END {print n+0}')
+    simplify_count=$(echo "$lc" | awk -v IGNORECASE=1 'BEGIN{n=0} /简化|简单做|草草|随便搞搞|差不多|rough|rough cut|quick and dirty|minimal|just rough|简单来|随便弄/ {n++} END {print n+0}')
+    workload_count=$(echo "$lc" | awk -v IGNORECASE=1 'BEGIN{n=0} /工作量大|工作量很大|很多活|活多|huge workload|lots of work|many tasks|很多 task|太多 task|工作量很大/ {n++} END {print n+0}')
+
+    local total=$((rush_count + time_count + skip_count + simplify_count + workload_count))
+    [[ $total -eq 0 ]] && return 0
+
+    # 按命中类别给警告, 类别名本地化
+    local categories=""
+    [[ $rush_count -gt 0 ]]      && categories+="RUSH×$rush_count "
+    [[ $time_count -gt 0 ]]      && categories+="TIME×$time_count "
+    [[ $skip_count -gt 0 ]]      && categories+="SKIP×$skip_count "
+    [[ $simplify_count -gt 0 ]]  && categories+="SIMPLIFY×$simplify_count "
+    [[ $workload_count -gt 0 ]]  && categories+="WORKLOAD×$workload_count "
+    categories=$(echo "$categories" | sed 's/ $//')
+
+    cat <<'REMINDER_EOF'
+[shadow] ⚠️  压力信号检测 (Phase 2-3 反"加速跳过"护栏)
+REMINDER_EOF
+    cat <<REMINDER_EOF
+[shadow]    检测到 $total 个压力信号: $categories
+[shadow]    来源可能是 user prompt / AI tool call, 不区分上游, 统一提醒
+REMINDER_EOF
+    cat <<'REMINDER_EOF'
+[shadow]
+[shadow]  🐢  提醒: 慢慢来, 不要跳步
+[shadow]
+[shadow]    Walker 3 步硬底线 (写死在 agents/shadow-walker.md):
+[shadow]      1. 不写存根    — pass / TODO / NotImplementedError 都不行
+[shadow]      2. 不用假实现  — InMemoryRepository / mock DB / 硬编码 current_user 都不行
+[shadow]      3. 说了完成就是真完成 — 功能必须跑过 + 有运行证据
+[shadow]
+[shadow]    5 步节奏 (写死在每个 skill 的 SKILL.md 顶部):
+[shadow]      ① 装 skill 工具
+[shadow]      ② 写 checklist 到 status.md (30-50 行)
+[shadow]      ③ 按工具流程干, 落到预期路径
+[shadow]      ④ 自检 + 标 ✅ DONE
+[shadow]      ⑤ 加载下一 stage
+[shadow]
+[shadow]    压力下特别容易犯的错:
+[shadow]      ✗  跳过 stage 直接写代码 → pre-skill.sh 硬阻断 (exit 2)
+[shadow]      ✗  跳过 self-check 直接 ✅ → post-write-stub-scan 实时扫存根
+[shadow]      ✗  简化 fixture 用 InMemoryRepository → stub scan 告警
+[shadow]      ✗  用 hardcoded user 假装登录 → stub scan 告警
+[shadow]      ✗  省略 status.md 标记 → 下一 stage 会被 pre-skill 阻断
+[shadow]
+[shadow]    若时间真的紧, 应该做的是:
+[shadow]      ✓  缩小 scope (砍 feature), 不是砍 quality
+[shadow]      ✓  跳过 L1 Wire (纯后端可省), 不是跳 L1 Spec
+[shadow]      ✓  跳过 33 L3 resilience (S 规模可省), 不是跳 32 e2e
+[shadow]      ✓  标 deferred 写在 status.md 末尾的 "## 变更记录" 段
+[shadow]
+[shadow]    收到, 继续。🐢
+REMINDER_EOF
+    return 0
+}
