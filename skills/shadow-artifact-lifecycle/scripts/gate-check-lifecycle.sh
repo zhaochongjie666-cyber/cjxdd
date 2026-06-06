@@ -85,6 +85,7 @@ if [[ -d "$shadow_dir" ]]; then
     total=0
     identified=0
     unknown=0
+    weighted_id=0  # P0-8: 加权识别率 (设计基线/证据权重 3, 其他 1)
     while IFS= read -r f; do
         [[ -z "$f" ]] && continue
         rel="${f#$PROJECT_ROOT/}"
@@ -95,32 +96,52 @@ if [[ -d "$shadow_dir" ]]; then
             unknown_files+=("$rel")
         else
             identified=$((identified+1))
+            # P0-8: 加权 (design_baseline/evidence_archive 错 1 个比 control_marker 错 1 个严重)
+            case "$role" in
+                design_baseline|evidence_archive) weighted_id=$((weighted_id + 3)) ;;
+                process_output|control_marker) weighted_id=$((weighted_id + 1)) ;;
+                template_instance) weighted_id=$((weighted_id + 0)) ;;  # 模板不计入 (留 reserved)
+                *) weighted_id=$((weighted_id + 1)) ;;
+            esac
         fi
-    done < <(find "$shadow_dir" -type f -not -path "*/node_modules/*" 2>/dev/null)
+    done < <(find "$shadow_dir" -type f -not -path "*/node_modules/*" -not -path "*/templates/*" 2>/dev/null)
 
     if [[ $total -eq 0 ]]; then
         echo "  (空 .shadow/, 跳过 R5)"
     else
         pct=$((identified * 100 / total))
-        echo "  实物: $total, 识别: $identified, unknown: $unknown ($pct%)"
-        if [[ $pct -lt 80 ]]; then
+        # P0-8: 加权识别率 (设计基线/证据存档权重 3, 其他 1)
+        # 简化: weighted_total = total * 3 (假设所有都按 design_baseline 算)
+        # 实际按角色 sum 的 weighted_id / weighted_total
+        weighted_total=$((total * 3))
+        weighted_pct=$((weighted_id * 100 / weighted_total))
+        # P0-8: 分档阈值 (老项目 ≥ 90% pass / 75-90% warn / < 75% fail)
+        # 老项目阈值放宽 10%
+        if [[ -f "$shadow_dir/LIFECYCLE.md" ]]; then
+            pass_thresh=90
+            warn_thresh=75
+        else
+            pass_thresh=80
+            warn_thresh=65
+        fi
+        echo "  实物: $total, 识别: $identified, unknown: $unknown (简单 $pct% / 加权 ${weighted_pct}%)"
+        if [[ $weighted_pct -lt $warn_thresh ]]; then
             # R5 硬门禁: 只在 .shadow/LIFECYCLE.md 存在(新项目标记)时触发
-            # 老项目(7+ 真实项目)无此文件,降级为 advisory,避免破坏
             if [[ -f "$shadow_dir/LIFECYCLE.md" ]]; then
-                echo "  ❌ R5: 识别率 < 80%, 漂移过多 (LIFECYCLE.md 标记的新项目, 硬门禁)"
+                echo "  ❌ R5: 加权识别率 ${weighted_pct}% < ${warn_thresh}% (新项目, 硬门禁)"
                 printf '  unknown files:\n'
                 for f in "${unknown_files[@]}"; do
                     printf '    %s\n' "$f"
                 done | head -20
                 r5_status="fail"
             else
-                echo "  ⚠️  R5: 识别率 < 80% (老项目, 无 LIFECYCLE.md 标记, 降级 advisory)"
+                echo "  ⚠️  R5: 加权识别率 ${weighted_pct}% < ${warn_thresh}% (老项目, 降级 advisory)"
                 echo "      建议: 创建 .shadow/LIFECYCLE.md 启用硬门禁;或跑 shadow-init 重生 .shadow/"
                 echo "      处置指引: skills/shadow-artifact-lifecycle/references/drift-examples.md"
                 r5_status="advisory"
             fi
         else
-            echo "  ✓ R5: 识别率 ≥ 80%"
+            echo "  ✓ R5: 加权识别率 ${weighted_pct}% ≥ ${pass_thresh}% (pass)"
             r5_status="pass"
         fi
     fi
@@ -129,11 +150,14 @@ else
     echo "[lifecycle-gate] (no .shadow/, 跳过实物扫描 + R5)"
 fi
 
-# ───────── R3: 证据写阻断 (evidence_archive chmod 444) ─────────
+# ───────── R3: 证据写阻断 (evidence_archive chmod 444, P0-6 第二轮渐进保护) ─────────
 echo ""
-echo "[lifecycle-gate] --- R3: evidence_archive 写阻断 ---"
+echo "[lifecycle-gate] --- R3: evidence_archive 写阻断 (渐进保护) ---"
 violations=0
 fixed=0
+# 渐进计数器: 0/1/2 = 警告+chmod, ≥3 = exit 1 (P0-6 第二轮, 按用户指导多轮打磨)
+R3_COUNTER_FILE="$shadow_dir/.r3_warn_count"
+r3_count=$(cat "$R3_COUNTER_FILE" 2>/dev/null || echo 0)
 # 直接遍历 .shadow/ 实际存在的 evidence_archive 目录/文件,不依赖 path 占位符
 if [[ -d "$shadow_dir" ]]; then
     # wander-evidence/ 和 chaos-drill-evidence/ 目录
@@ -142,7 +166,7 @@ if [[ -d "$shadow_dir" ]]; then
         bad=$(find "$evidence_dir" -type f -not -name "*.archived" -perm -u+w 2>/dev/null)
         if [[ -n "$bad" ]]; then
             n=$(echo "$bad" | wc -l)
-            echo "  ⚠️  R3 违反: $evidence_dir 下 $n 个文件可写"
+            echo "  ⚠️  R3 违反: $evidence_dir 下 $n 个文件可写 (累计: $((r3_count + n))/$((r3_count + n + 1))/?)"
             echo "$bad" | sed 's/^/      /' | head -3
             while IFS= read -r f; do
                 [[ -z "$f" ]] && continue
@@ -162,15 +186,28 @@ if [[ -d "$shadow_dir" ]]; then
         fi
     done < <(find "$shadow_dir" -type f -name "issues.json" -not -name "*.archived" 2>/dev/null)
 fi
-if [[ $violations -eq 0 ]]; then
-    echo "  ✓ R3: 全部 evidence_archive 文件只读 (chmod 444 或不存在)"
+# 写累计计数 (P0-6 第二轮: 持久 .r3_warn_count 文件, 让多轮 gate-check 累加)
+if [[ $violations -gt 0 ]]; then
+    r3_count=$((r3_count + violations))
+    echo "$r3_count" > "$R3_COUNTER_FILE"
+    echo "  ⚠️  R3: 累计可写 evidence_archive = $r3_count 次 (计数器已持久到 .r3_warn_count)"
+    if [[ $r3_count -ge 3 ]]; then
+        echo "  ❌ R3 硬门禁: 累计 $r3_count 次 ≥ 3, 触发 exit 1"
+        echo "  处置: 1) 确认是 iter 冻结用 R10 (`init.sh --archive-old`) / 2) 否则 chmod 644 后人工 review 证据"
+    fi
 else
-    echo "  ⚠️  R3: 修复了 $fixed 个可写 evidence_archive 文件 (违反 $violations 处)"
+    # 无违反, 重置计数器
+    [[ -f "$R3_COUNTER_FILE" ]] && rm -f "$R3_COUNTER_FILE"
+    echo "  ✓ R3: 全部 evidence_archive 文件只读 (chmod 444 或不存在)"
 fi
+# 硬门禁: 累计 ≥ 3 → exit 1 (计入最后 violations 决定)
+R3_HARD_BLOCK=0
+[[ -f "$R3_COUNTER_FILE" ]] && [[ $(cat "$R3_COUNTER_FILE") -ge 3 ]] && R3_HARD_BLOCK=1
 
-# ───────── R1: 设计基线改动传播 (mtime 异常) ─────────
+# ───────── R10: 自动 .archived 锁 ─────────
+# ───────── R1: 设计基线改动传播 (P0-7 第二轮: 24h >= 3 次 + 配对下游 stage) ─────────
 echo ""
-echo "[lifecycle-gate] --- R1: design_baseline mtime 异常 (24h 内多次修改) ---"
+echo "[lifecycle-gate] --- R1: design_baseline 24h 内 ≥ 3 次修改 (P0-7 阈值) ---"
 r1_warn=0
 for id in "${!LIFECYCLE_ROLE[@]}"; do
     role="${LIFECYCLE_ROLE[$id]}"
@@ -182,21 +219,28 @@ for id in "${!LIFECYCLE_ROLE[@]}"; do
     esac
     gpath=$(echo "$path" | sed -E 's/\{iter\}//g; s/\{slug\}//g; s/\{component\}//g; s/\*.*$//')
     real_gpath="$PROJECT_ROOT/${gpath#.shadow/}"
-    if [[ -d "$real_gpath" ]]; then
-        # 24h 内修改过的文件
-        recent=$(find "$real_gpath" -type f -mtime -1 2>/dev/null | head -5)
-        if [[ -n "$recent" ]]; then
-            echo "  ⚠️  R1: 24h 内修改了 design_baseline (触发下游变更传播自检)"
-            echo "$recent" | sed 's/^/      /' | head -3
+    if [[ -e "$real_gpath" ]]; then
+        # P0-7: 24h 内修改次数 (单次改是常态, >= 3 次才真信号)
+        recent_count=$(find "$real_gpath" -type f -mtime -1 2>/dev/null | wc -l)
+        if [[ $recent_count -ge 3 ]]; then
+            # 配对下游 stage (P0-7 简化映射, 后续可放 schema downstream_stages 字段)
+            case "$id" in
+                spec-bxx) downstream="L1.5 架构 / L2 e2e" ;;
+                research-bxx) downstream="L1.5 架构" ;;
+                architecture-bxx) downstream="L2 e2e / L5 plan" ;;
+                harness-plan) downstream="L5 impl" ;;
+                *) downstream="相关下游" ;;
+            esac
+            echo "  ⚠️  R1: $id 24h 内 $recent_count 次修改 (≥ 3 真信号)"
+            echo "      配对下游 stage: $downstream"
+            echo "      建议显式确认: '$id 的修改是否需要重跑 $downstream?'"
             r1_warn=$((r1_warn+1))
         fi
     fi
 done
 if [[ $r1_warn -eq 0 ]]; then
-    echo "  ✓ R1: 24h 内无 design_baseline 修改 (无需自检)"
+    echo "  ✓ R1: 24h 内 design_baseline 修改次数 < 3, 视为常态 (无需自检)"
 fi
-
-# ───────── R10: 自动 .archived 锁 ─────────
 echo ""
 echo "[lifecycle-gate] --- R10: evidence_archive 已有 .archived 锁 ---"
 r10_count=0
@@ -209,7 +253,7 @@ for id in "${!LIFECYCLE_ROLE[@]}"; do
     esac
     gpath=$(echo "$path" | sed -E 's/\{iter\}//g; s/\{slug\}//g; s/\{component\}//g; s/\*.*$//')
     real_gpath="$PROJECT_ROOT/${gpath#.shadow/}"
-    if [[ -d "$real_gpath" ]]; then
+    if [[ -e "$real_gpath" ]]; then
         archived=$(find "$real_gpath" -name "*.archived" 2>/dev/null | wc -l)
         total_in=$(find "$real_gpath" -type f 2>/dev/null | wc -l)
         if [[ $total_in -gt 0 ]]; then
@@ -271,10 +315,15 @@ echo "  R10 自动归档: $r10_count 路径已检查"
 echo ""
 
 # R5 硬阻断: 识别率 < 80% 且 .shadow/LIFECYCLE.md 存在 (新项目)
-# R3 硬阻断: evidence_archive 被改写 (违反只读)
+# R3 硬阻断: evidence_archive 被改写 (违反只读, 累计 ≥ 3 次)
 # R5 advisory (老项目): 降级为提示, exit 0
 if [[ "$r5_status" == "fail" ]]; then
     echo "[lifecycle-gate] ❌ R5 硬门禁触发 (新项目识别率 < 80%), exit 1"
+    exit 1
+fi
+if [[ $R3_HARD_BLOCK -eq 1 ]]; then
+    echo "[lifecycle-gate] ❌ R3 硬门禁触发 (evidence_archive 累计可写 ≥ 3 次), exit 1"
+    echo "[lifecycle-gate]    处置: 1) 确认是 iter 冻结用 R10 ('bash init.sh --archive-old') / 2) 否则 chmod 644 后人工 review 证据"
     exit 1
 fi
 if [[ $violations -gt 0 ]]; then

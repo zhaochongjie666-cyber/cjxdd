@@ -263,7 +263,7 @@ cat > "$SHADOW_DIR/LIFECYCLE.md" <<'LIFECYCLE_EOF'
 | ID | 规则 | 触发器 | 行为 |
 |----|------|--------|------|
 | R1 | 设计基线改动传播 | stop-gate 阶段扫描 | 24h 内 design_baseline mtime 异常 → 警告 |
-| R3 | 证据写阻断 | post-write 写入时 | evidence_archive chmod 444,改前反思 |
+| R3 | 证据写阻断 | `post-write-stub-scan` 写入时 | 任何 Write/Edit 落到 `evidence_archive` 角色文件 → chmod 444 阻断 + 警告"先确认是否真要改证据" (累计 ≥ 3 次 → exit 1) |
 | R5 | 漂移扫描 | stop-gate 末尾 | 实物识别率 < 80% → `exit 1`(本项目启用) |
 | R6 | 路径 locality | post-write 写入时 | .shadow/ 下未登记目录 → 警告 |
 | R10 | 自动 .archived 锁 | iter 冻结时(`--archive-old`) | evidence_archive 文件加 .archived 后缀 |
@@ -283,25 +283,39 @@ cat > "$SHADOW_DIR/LIFECYCLE.md" <<'LIFECYCLE_EOF'
 > 由 `hooks/session-start.sh` 在每次 session 启动时打印(基于 lifecycle_paths_by_role 实测)。
 LIFECYCLE_EOF
 
-# 7. R3 预保护: 给 evidence_archive 路径预 chmod 444
-# 从 schema 读 evidence_archive 工件, 预创建目录 + chmod 444
+# 7. R3 预保护: 给 evidence_archive 路径预 chmod 444 (P0-6 第二轮: 新文件例外)
+# 旧版: 用 sed 替换 {iter}/{slug} 占位符, 路径错位 (iterations//L6-deploy/ 没真实目录), 实际从没生效
+# 新版: 直接扫 .shadow/iterations/iter-N/L6-deploy/*/ 下的真实 wander-evidence/chaos-drill-evidence
+# 新 iter 例外: 只 chmod 已 R10 锁过的 (.archived 文件存在), 跳过未走 R10 的, 留给 L6 漫游自然 chmod
 evidence_archived=0
-while IFS=$'\t' read -r id path; do
-    [[ -z "$path" ]] && continue
-    # 跳过模板路径
-    case "$path" in
-        skills/*) continue ;;
-    esac
-    # 把 {iter} {slug} {component} 去掉, 取目录部分
-    gpath=$(echo "$path" | sed -E 's/\{iter\}//g; s/\{slug\}//g; s/\{component\}//g; s/\*.*$//')
-    rel="${gpath#.shadow/}"
-    full="$SHADOW_DIR/$rel"
-    if [[ -d "$full" ]]; then
-        # 已存在, 强制 chmod 444 (R3 预保护)
-        find "$full" -type f ! -name "*.archived" ! -perm 444 -exec chmod 444 {} \; 2>/dev/null
-        evidence_archived=$((evidence_archived+1))
-    fi
-done < <(jq -r '.lifecycle_artifacts.artifacts[] | select(.role == "evidence_archive") | [.id, .canonical_path] | @tsv' "$SCHEMA")
+evidence_skipped=0
+if [[ -d "$SHADOW_DIR/iterations" ]]; then
+    # 扫所有现有 iter-N 的 L6-deploy/slug-N 下的 evidence dirs
+    while IFS= read -r evidence_dir; do
+        [[ -z "$evidence_dir" ]] && continue
+        # 检查是否含 .archived (说明走过 R10)
+        if find "$evidence_dir" -name "*.archived" -print -quit 2>/dev/null | grep -q .; then
+            # 老 iter, 维持 chmod 444
+            find "$evidence_dir" -type f ! -name "*.archived" ! -perm 444 -exec chmod 444 {} \; 2>/dev/null
+            evidence_archived=$((evidence_archived+1))
+        else
+            # 新 iter, 跳过
+            evidence_skipped=$((evidence_skipped+1))
+        fi
+    done < <(find "$SHADOW_DIR/iterations" -type d \( -name "wander-evidence" -o -name "chaos-drill-evidence" \) 2>/dev/null)
+    # issues.json
+    while IFS= read -r issues_file; do
+        [[ -z "$issues_file" ]] && continue
+        # issues.json 在 iter-N/L6-deploy/slug-N/ 下, 若父目录有 .archived 则 R10 过
+        parent_dir=$(dirname "$issues_file")
+        if find "$parent_dir" -maxdepth 2 -name "*.archived" -print -quit 2>/dev/null | grep -q .; then
+            chmod 444 "$issues_file" 2>/dev/null
+            evidence_archived=$((evidence_archived+1))
+        else
+            evidence_skipped=$((evidence_skipped+1))
+        fi
+    done < <(find "$SHADOW_DIR/iterations" -type f -name "issues.json" -not -name "*.archived" 2>/dev/null)
+fi
 # 注: 新项目此时 .shadow/L6-deploy/{slug}/wander-evidence/ 还不存在 (要等 L6 跑), R3 主要对老项目即时生效
 
 # 8. R10 自动 .archived 锁 (iter 冻结时) — 仅在 --archive-old 时执行
@@ -354,4 +368,7 @@ echo "   cat $SHADOW_DIR/LIFECYCLE.md"
 echo ""
 if [[ $evidence_archived -gt 0 ]]; then
     echo "🔒 R3: 预 chmod 444 了 $evidence_archived 处 evidence_archive 路径"
+fi
+if [[ $evidence_skipped -gt 0 ]]; then
+    echo "   (新 iter 的 $evidence_skipped 处 evidence_archive 路径跳过 chmod, 留给 L6 漫游时自然锁定; P0-6 第二轮打磨)"
 fi
