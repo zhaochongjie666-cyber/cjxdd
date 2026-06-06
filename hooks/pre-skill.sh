@@ -139,4 +139,30 @@ if [[ -n "$iter" ]] && [[ "$iter" =~ ^iter-([1-9]|[1-9][0-9]+)$ ]] && [[ -n "$sh
     fi
 fi
 
+# === P0-Z Round 1: wire.svg 产物形态门禁 (state 变体偷工减料检测) ===
+# SKILL 要求: 每个 page 至少 4 个状态变体 (normal/loading/empty/error)
+# AI 偷工减料时常说 "状态变体可简化" / "主路径 12-15 页", 把 state 简化掉
+# 检测: 扫 wire.svg 的 data-page (页数) 和 data-state (变体数), ratio < 3 → 软警告
+if [[ "$skill_name" == "shadow-l1-wire" ]] && [[ -n "$shadow" ]]; then
+    wire_svg="$shadow/L1-business/wire.svg"
+    if [[ -f "$wire_svg" ]]; then
+        # unique data-page 数量
+        page_count=$(grep -oE 'data-page="[^"]+"' "$wire_svg" 2>/dev/null | sort -u | wc -l)
+        # 所有 data-state 元素 (含 normal/loading/empty/error 4 变体)
+        state_count=$(grep -oE 'data-state="[^"]+"' "$wire_svg" 2>/dev/null | wc -l)
+        if [[ $page_count -gt 0 ]]; then
+            # SKILL.md line 130: 每页 ≥4 状态变体. 实际 ratio 通常 4, 最少 3 算"勉强"
+            if [[ $state_count -lt $((page_count * 3)) ]]; then
+                echo ""
+                echo "[shadow] 🐢 P0-Z Round 1: wire.svg 状态变体被简化 (产物形态门禁)"
+                echo "[shadow]    期望: $page_count 页 × ≥4 状态变体 = ≥$((page_count * 4)) 个 data-state"
+                echo "[shadow]    实际: 仅 $state_count 个 data-state (平均 $((state_count / page_count))/页, < 3 警戒值)"
+                echo "[shadow]    AI 报错时常说"状态变体可简化" / "主路径 N 页" — 这是偷工减料"
+                echo "[shadow]    处置: 把 normal/loading/empty/error 4 变体补全, 或在 status.md 标 deferred 注明砍了哪些"
+                echo "[shadow]    SKILL.md 约束: 每个页面有 ≥4 个状态变体 (normal/loading/empty/error)"
+            fi
+        fi
+    fi
+fi
+
 exit 0
