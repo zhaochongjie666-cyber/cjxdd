@@ -7,13 +7,14 @@ description: |
   产出 architecture.md（质量属性 + 限界上下文 + 上下文映射 + 技术栈 + 分层架构 + 规则传导矩阵 + API 端点清单 + 安全设计 + 性能设计 + 文件清单 + 质量规划）
   + aggregate-landscape.md（聚合全景：聚合清单 + 聚合间关系 + 一致性边界 + 跨业务线聚合关系）
   + event-contract.md（EDD 独立契约：事件定义 + 载荷结构 + 传递方式 + 订阅关系）。
+  三面手：设计（架构决策）+ 实现（Tech PoC 验证高风险组件）+ 跟踪（架构审计验证代码符合架构）。
   内含 L1.5 门禁：检查 architecture.md 存在，规则映射完整，产出 l1p5.{slug}.passed 标记。
   原 shadow-l1p5-filelist、shadow-l1p5-quality 和 shadow-l1p5-gate 已合入本 skill。
   API 端点清单定义前后端数据契约，是 L5 Harness 计划引用的架构边界。
   事件契约定义 EDD 事件驱动设计的独立产出，是 L5 事件实现的引用源。
   聚合全景是架构师掌握全局的入口，L5 Harness 计划引用此清单进行聚合设计。
-  触发：架构、ADD、质量属性、技术栈、分层、聚合、aggregate、安全、SDD、性能、PDD、事件契约、event-contract、L1.5 门禁。
-version: "5.0.0"
+  触发：架构、ADD、质量属性、技术栈、分层、聚合、aggregate、安全、SDD、性能、PDD、事件契约、event-contract、L1.5 门禁、PoC、技术验证、架构审计。
+version: "6.0.0"
 ---
 
 # Shadow·ADD+SDD+PDD — 架构驱动 + 安全设计 + 性能设计
@@ -46,6 +47,21 @@ ADD+SDD+PDD 的核心理念：**质量属性（性能、可用性、安全性、
                      ↑
                约束和技术栈
 ```
+
+## 三面手（设计 + 实现 + 跟踪）
+
+L1.5 不只写架构文档，还要验证架构真能跑、代码真符合架构。
+
+| 面 | 任务 | 产出 | 详细 |
+|---|------|------|------|
+| **设计**（核心） | 质量属性 / 安全 / 性能 / 限界上下文 / 技术栈 / 分层 / 规则传导 / API / 事件 / 文件清单 / Docker Compose | architecture.md + aggregate-landscape.md + event-contract.md | 本 SKILL.md §1-11 |
+| **实现** | **技术验证（Tech PoC）**：高风险组件（新技术栈/复杂中间件/第三方 SaaS）写最小可运行代码验证能跑 | `poc/{component}.md` 报告 | references/tech-poc-guide.md |
+| **跟踪** | **架构审计（Architecture Audit）**：L5-impl 完成后反向验证代码是否符合 L1.5 设计（聚合边界/API 契约/技术栈/事件契约/文件结构） | `arch-audit-report.md` | references/architecture-audit-guide.md |
+
+**闭环**：
+- PoC 发现的限制/坑 → 触发 L3 失败模式发散
+- 架构审计发现违规 → 回 L5-impl 修复
+- 严重违规 → 阻断 L6 漫游
 
 ## 怎么做
 

@@ -29,7 +29,7 @@ spec 每条涉及 UI 的规则，wire 中必须有 `data-node="BXX-NYY"` 元素�
 
 ### 2.1 Spec → L3（骨架消费）
 
-| L1 产出 | L3 消费方式 | 强制度 |
+| L1 产出 | L5 消费方式 | 强制度 |
 |---------|------------|--------|
 | spec 规则 (`slug-R01`) | `@implements: slug-R01 (BXX-NYY)` | **强制** |
 | spec 状态变化 (`S01→S02`) | `@transitions: slug-S01 → slug-S02` | 强制 |
@@ -42,7 +42,7 @@ spec 每条涉及 UI 的规则，wire 中必须有 `data-node="BXX-NYY"` 元素�
 
 | L1 产出 | L4 消费方式 | 强制度 |
 |---------|------------|--------|
-| spec 规则（通过 L3 @implements） | `@covers: slug-R01 (BXX-NYY)` | **强制** |
+| spec 规则（通过 L5 @implements） | `@covers: slug-R01 (BXX-NYY)` | **强制** |
 | spec 异常路径 | 异常测试函数（含 assert） | 强制 |
 | spec 状态变化（通过 L3） | 状态转换测试 | 强制 |
 | spec 角色/权限 | 权限/越权测试 | 强制 |
@@ -63,8 +63,8 @@ spec 每条涉及 UI 的规则，wire 中必须有 `data-node="BXX-NYY"` 元素�
 | 断裂类型 | 检测方法 | 严重度 |
 |---------|---------|--------|
 | flow 节点无 spec 规则引用 | flow 节点集合 - spec 节点坐标集合 ≠ ∅ | 致命 |
-| spec 规则无 L3 @implements | spec 规则 ID 全集 - L3 @implements 全集 ≠ ∅ | 高 |
-| L3 @implements 无 L4 @covers | L3 @implements 全集 - L4 @covers 全集 ≠ ∅ | 高 |
+| spec 规则无 L5 @implements | spec 规则 ID 全集 - L5 @implements 全集 ≠ ∅ | 高 |
+| L5 @implements 无 L4 @covers | L5 @implements 全集 - L4 @covers 全集 ≠ ∅ | 高 |
 | @implements 节点坐标无效 | BXX-NYY 不在 flow 节点集合中 | 高 |
 | 跨线引用单向声明 | A→B 声明存在但 B 的 spec 无反向声明 | 中 |
 | 子节点编号不连续 | N03 有 .01, .02, .04 但缺 .03 | 低 |

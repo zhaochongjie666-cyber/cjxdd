@@ -404,7 +404,7 @@ Phase C: Git 审计（补）
 |----|----------|----------|
 | L1 | 流程/规格完整性 | 复用 `layers/l1/L1.md` 与 `layers/l1/references/gate-l1.md` 的 Gate 标准 |
 | L1.5 | 架构覆盖 | 复用 `layers/l1p5/L1.5.md` 与 `layers/l1p5/references/gate-l1p5.md` 的 Gate 标准 |
-| L3 | 骨架完整性 | 复用 `layers/l3/L3.md` 与 `layers/l3/references/gate-l3.md` 的 Gate 标准（已废弃，L3 由 Harness 计划替代） |
+| L3 | 骨架完整性 | 复用 `layers/l2.5-fdd/L3.md` 与 `layers/l2.5-fdd/references/gate-l3.md` 的 Gate 标准（已废弃，L3 由 Harness 计划替代） |
 | L4 | 测试场景覆盖 | 复用 `layers/l4/L4.md` 与 `layers/l4/references/gate-l4.md` 的 Gate 标准（已废弃，L4 由 Harness 计划测试断言替代） |
 
 **额外反推专属检查：**
@@ -461,5 +461,5 @@ Phase C: Git 审计（补）
 | `../../layers/l1/templates/L1.md` | L1 产出格式 | Phase B Step B4 |
 | `../../layers/l1/templates/mermaid.md` | L1 flow 产出格式 | Phase B Step B2/B4 |
 | `../../layers/l1p5/templates/L1.5.md` | L1.5 产出格式 | Phase A Step A2 / Phase B Step B5 |
-| `../../layers/l3/templates/L3.md` | （已废弃，L3 由 Harness 计划替代） | Phase A Step A2 / Phase B Step B5 |
+| `../../layers/l2.5-fdd/templates/L3.md` | （已废弃，L3 由 Harness 计划替代） | Phase A Step A2 / Phase B Step B5 |
 | `../../layers/l4/templates/L4.md` | （已废弃，L4 由 Harness 计划测试断言替代） | Phase A Step A2 / Phase B Step B5 |

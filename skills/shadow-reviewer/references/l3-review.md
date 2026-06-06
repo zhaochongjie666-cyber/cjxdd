@@ -1,6 +1,6 @@
 # L3 Review — 代码骨架审查清单
 
-> **DEPRECATED**: L3 Skel 已被 Harness 计划替代。请使用 `harness-review.md`。
+> **DEPRECATED**: L3 已被 Harness 计划替代。请使用 `harness-review.md`。
 > 本文件仅保留用于历史参考，不再用于新项目审查。
 
 ## 1. 结构完整性

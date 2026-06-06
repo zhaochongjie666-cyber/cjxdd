@@ -1,2 +1,5 @@
 .opencode/wireflow
 **__pycache__/
+
+# Demo project (excluded from framework repo)
+demo/

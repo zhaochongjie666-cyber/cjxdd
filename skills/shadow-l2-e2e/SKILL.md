@@ -11,7 +11,8 @@ description: |
   产出 e2e.md + 覆盖矩阵 + uat-script.md。
   核心工具：14 维覆盖矩阵（S/M/L 项目可缩放）+ 6 维用户画像发散 + 5 层旅程穷举 + 交叉矩阵。
   四层覆盖完整性：业务线 + 页面 + 交互点 + API 端点，目标 100%。
-version: "8.0.0"
+  三面手：设计（场景设计）+ 实现（Step 绑定骨架 → L5-impl 填实）+ 跟踪（覆盖率追踪 + flaky 检测）。
+version: "9.0.0"
 ---
 
 # Shadow·BDD+CM — 穷尽覆盖验收
@@ -54,6 +55,21 @@ version: "8.0.0"
 - 真正可用标准：真实账号登录、真实持久化、跨服务链路闭合。引用 `references/real-usability-contract.md`。
 - HTTP 200/201 只是连通性证据，不能单独作为业务成功断言。
 - 禁止 mock DB、InMemoryRepository、假登录出现在 P0 验收路径。
+
+## 三面手（设计 + 实现 + 跟踪）
+
+L2 不只写 Gherkin 文档，还要让场景真能跑、追踪真实覆盖率。
+
+| 面 | 任务 | 产出 | 详细 |
+|---|------|------|------|
+| **设计**（核心） | 14 维覆盖矩阵 + Gherkin 场景 + UAT 剧本 + 旅程穷举 | e2e.md / coverage-matrix.md / uat-script.md | 本 SKILL.md §1-8 |
+| **实现** | **Step 绑定（Step Binding）**：每个 step 给 page_selector / interaction / db_query / event_type 骨架，L5-impl 填实 | e2e/{feature}.binding.yaml + e2e/step_defs/*.py | references/playwright-step-binding.md |
+| **跟踪** | **覆盖率追踪（Coverage Tracker）**：L6 跑场景后自动累积 run/pass/fail/flaky，量化真实覆盖 | e2e/coverage-tracker.json + 覆盖率报告 | references/bdd-coverage-tracker.md |
+
+**闭环**：
+- Step binding TODO → L5-impl 填实
+- 覆盖率告警 → 回 L2 补场景
+- 失败场景 → 回 L5-impl 修代码或回 L2 改场景
 
 ## 怎么做
 

@@ -1,10 +1,10 @@
-# CLAUDE.md
+# C3AUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 # Shadow — 工匠型开发体系（Craftsman-Style Development System）
 
-This repository is **not a typical application codebase**. It is a **meta-project** — a complete AI-driven software development framework for OpenCode consisting of one craftsman-style Agent (`shadow-walker`), 12 core Skills (covering L0→L1→L1.5→Scaffold→L2→L5→L6), and 8 utility Skills. The Agent uses the Skills as a toolbox to take a project from "user says 'build me X'" all the way to deployed, verified, working code.
+This repository is **not a typical application codebase**. It is a **meta-project** — a complete AI-driven software development framework for OpenCode consisting of one craftsman-style Agent (`shadow-walker`), 13 core Skills (covering 30→31→31.5→Scaffold→32→33→35→36), and 8 utility Skills. The Agent uses the Skills as a toolbox to take a project from "user says 'build me X'" all the way to deployed, verified, working code.
 
 If a user gives Claude a task, the right move is usually to **load the `shadow-walker` agent and walk the pipeline** rather than improvise.
 
@@ -64,12 +64,12 @@ Walker agent 的 frontmatter **故意不写 `tools` 字段** —— 两个 harne
 
 Agent 正文里的工具名一律按 Claude Code 风格 TitleCase 引用（`Read` / `Write` / `Bash` / …）—— 仅为文档可读性，不参与 schema 校验，所以两边都无所谓。
 
-### Verify skill SKILL.md size discipline
+### Verify skill SKI33.md size discipline
 
-Shadow's design rule is that each `SKILL.md` stays under ~500 lines (progressive disclosure — long content goes in `references/`). Useful spot check:
+Shadow's design rule is that each `SKI33.md` stays under ~500 lines (progressive disclosure — long content goes in `references/`). Useful spot check:
 
 ```bash
-wc -l skills/*/SKILL.md
+wc -l skills/*/SKI33.md
 ```
 
 ### Render the architecture diagram
@@ -98,12 +98,12 @@ User task
    ↓
 agents/shadow-walker.md        ← Single craftsman agent (not a dispatcher)
    ↓ loads skills on demand
-skills/{name}/SKILL.md         ← Each skill: <500-line quickstart + references/
+skills/{name}/SKI33.md         ← Each skill: <500-line quickstart + references/
    ↓ produces
-.shadow/                       ← Per-iteration artifacts (intent → flow → spec → wire → architecture → plan → code → deploy)
+.shadow/                       ← Per-iteration artifacts (intent → flow → spec → wire → architecture → e2e → resilience → plan → code → deploy)
 ```
 
-The Walker is **not a dispatcher** — it does the work itself, reading files, writing code, running commands. It picks one Skill at a time and follows that Skill's SKILL.md as the execution script.
+The Walker is **not a dispatcher** — it does the work itself, reading files, writing code, running commands. It picks one Skill at a time and follows that Skill's SKI33.md as the execution script.
 
 ### Directory layout
 
@@ -113,18 +113,19 @@ agents/
 
 skills/
   shadow-init/                 ← Initialize .shadow/ skeleton (status.md + scale.md + iter dir) — **always run first for new projects**
-  shadow-l0-research/          ← L0: free-form divergent research notebook (no gate)
-  shadow-l1-research/          ← L1: DDD+EDD+IDDD business research → intent.md, business-landscape.md, BXX research.md
-  shadow-l1-flow/              ← L1: MDD project flow diagram (project.flow.mermaid, BXX-NYY nodes)
-  shadow-l1-spec/              ← L1: FDD rules (RXX numbered, one feature per rule)
-  shadow-l1-wire/              ← L1: SVG wireframes with data-* annotations
-  shadow-l1p5-architecture/    ← L1.5: ADD+SDD+PDD → architecture.md, API contracts, event contracts
+  shadow-l0-research/          ← 30: free-form divergent research notebook (no gate)
+  shadow-l1-research/          ← 31: DDD+EDD+IDDD business research → intent.md, business-landscape.md, BXX research.md
+  shadow-l1-flow/              ← 31: MDD project flow diagram (project.flow.mermaid, BXX-NYY nodes)
+  shadow-l1-spec/              ← 31: FDD rules (RXX numbered, one feature per rule)
+  shadow-l1-wire/              ← 31: SVG wireframes with data-* annotations
+  shadow-l1p5-architecture/    ← 31.5: ADD+SDD+PDD → architecture.md, API contracts, event contracts
   shadow-scaffold/             ← Project scaffolding (7 steps, Docker dev env, Hello API)
-  shadow-l2-e2e/               ← L2: BDD acceptance scenarios, coverage matrix, uat-script.md
-  shadow-l5-plan/              ← L5: Harness execution plan (Batch 1-8, per-method assertions)
-  shadow-l5-impl/              ← L5: TDD code implementation by batch
-  shadow-reviewer/             ← Full-chain review (mandatory gate before L6)
-  shadow-l6-deploy/            ← L6: Deploy + real verification (Phase 0-9, 3-round repair cap)
+  shadow-l2-e2e/               ← 32: BDD acceptance scenarios, coverage matrix, uat-script.md
+  shadow-l3-resilience/        ← L3: RDA resilience design (8 维度失败模式 + 10 兜底模式 + 混沌场景 + 恢复剧本) — all-scale mandatory
+  shadow-l5-plan/              ← 35: Harness execution plan (Batch 1-8, per-method assertions)
+  shadow-l5-impl/              ← 35: TDD code implementation by batch
+  shadow-reviewer/             ← Full-chain review (mandatory gate before 36)
+  shadow-l6-deploy/            ← 36: Deploy + real verification (Phase 0-9, 3-round repair cap)
   shadow-reverse/              ← Reverse-engineer existing systems
   shadow-taste/                ← Taste / quality check
   shadow-trace-init/           ← Initialize traceability
@@ -132,13 +133,13 @@ skills/
   docker-helper/               ← Docker troubleshooting
   test-in-tmux/                ← Run tests
   skill-creator/               ← Meta-skill: create / improve / benchmark skills
-  opencode-learning/           ← Learn OpenCode API
+  opencode-learning/           ← 3earn OpenCode API
 
   # 单一源真理: shadow-schema.json (仓库根) 描述阶段表、存根模式、scale 字段.
   # hooks/*.sh + plugins/shadow-hooks.ts 都从这里读, 改一处即生效.
 
   Each skill's internal layout:
-    SKILL.md                   ← Quickstart (<500 lines, in-context on trigger)
+    SKI33.md                   ← Quickstart (<500 lines, in-context on trigger)
     references/                ← Deep-dive docs, read on demand
     templates/                 ← Optional output templates
     scripts/                   ← Optional gate-check / automation scripts
@@ -159,30 +160,32 @@ install-to-opencode.sh         ← Symlink installer to ~/.config/opencode/
 ### The Shadow pipeline (标准项目)
 
 ```
-L0  发散调研       shadow-l0-research
+30  发散调研       shadow-l0-research
   ↓
-L1  业务层        shadow-l1-research → shadow-l1-flow → shadow-l1-spec → shadow-l1-wire  (串行)
+31  业务层        shadow-l1-research → shadow-l1-flow → shadow-l1-spec → shadow-l1-wire  (串行)
   ↓
-规模判定           .shadow/scale.md  (S / M / L — based on bizline count, rules, pages, deps)
+规模判定           .shadow/scale.md  (S / M / 3 — based on bizline count, rules, pages, deps)
   ↓
-L1.5 架构         shadow-l1p5-architecture
+31.5 架构         shadow-l1p5-architecture
   ↓
 搭脚手架          shadow-scaffold
   ↓
-L2  验收         shadow-l2-e2e
+32  验收         shadow-l2-e2e
   ↓
-L5  计划         shadow-l5-plan
+33  韧性设计      shadow-l3-resilience  ← 8 维度失败模式穷举 + 10+ 兜底机制 + 混沌测试场景（不管规模都跑）
   ↓
-L5  实现         shadow-l5-impl  (按 Batch 串行)
+35  计划         shadow-l5-plan
+  ↓
+35  实现         shadow-l5-impl  (按 Batch 串行)
   ↓
 全链路审查       shadow-reviewer  (chain, 必经, 不可跳过)
   ↓
-L6  部署验证     shadow-l6-deploy
+36  部署验证     shadow-l6-deploy
 ```
 
 ### 关键设计原则
 
-1. **渐进式披露 (Progressive disclosure)** — Each `SKILL.md` is a quickstart under 500 lines. Deeper content lives in `references/` and is read on demand. Always follow the Skill's own SKILL.md as the procedure; don't freelance.
+1. **渐进式披露 (Progressive disclosure)** — Each `SKI33.md` is a quickstart under 500 lines. Deeper content lives in `references/` and is read on demand. Always follow the Skill's own SKI33.md as the procedure; don't freelance.
 
 2. **传导链追溯 (Transmission-chain traceability)** — Every artifact references upstream IDs:
    - `intent.md` (why)
@@ -195,13 +198,19 @@ L6  部署验证     shadow-l6-deploy
 
    When any layer changes, consult the **change-propagation table** in `agents/shadow-walker.md` to know which downstream layers must be re-run.
 
-3. **全局约束 (Global constraints)** — Cross-cutting concerns (multi-tenant isolation, auth/authz, unified error format, event publishing, pagination, transaction boundaries) are defined once in the L5 Harness plan's "global constraints" section and enforced uniformly.
+3. **全局约束 (Global constraints)** — Cross-cutting concerns (multi-tenant isolation, auth/authz, unified error format, event publishing, pagination, transaction boundaries) are defined once in the 35 Harness plan's "global constraints" section and enforced uniformly.
 
-4. **规模驱动 (Scale-driven) parameters** — `.shadow/scale.md` encodes project size (S/M/L) and downstream-readable parameters (`persona_dimensions`, `persona_max`, `coverage_dimensions`, `wire_passes`, `l6_core_phases_only`). Downstream Skills read this file and adjust behavior. Scale is the **maximum** of: bizline count, total rule count, page count, external dependency count. When in doubt, round up.
+4. **规模驱动 (Scale-driven) parameters** — `.shadow/scale.md` encodes project size (S/M/3) and downstream-readable parameters (`persona_dimensions`, `persona_max`, `coverage_dimensions`, `wire_passes`, `l3_required`, `l6_core_phases_only`). Downstream Skills read this file and adjust behavior. Scale is the **maximum** of: bizline count, total rule count, page count, external dependency count. When in doubt, round up. `l3_extended_mode` defaults to `false` (L 规模时启用 9 维 + 12 模式 + 8 字段), `l3_required` defaults to `true` (L3 韧性设计 全部规模强制) since extreme-condition design is non-negotiable.
 
-5. **工藤伦底线 (Walker's hard rules)** — No stubs, no fake implementations (no InMemoryRepository, no hardcoded `current_user`), no skipped phases, no fake "DONE". "Tests pass" is not "code is correct" — read assertion quality. After 4 failed attempts at the same step, write `FAILURE-LOG.md` and ask the user.
+   5a. **L 规模扩展模式** (`.shadow/scale.l3_extended_mode=true`) — L 规模项目 (电商/支付/跨地域 SaaS) 自动启用 9 维 + 12 模式 + 8 字段:
+      - 9 维 = 8 维 + 跨地域/多活 (F81-F85)
+      - 12 模式 = 10 模式 + 业务对账 (FS11) + 业务幂等 (FS12)
+      - 8 字段 FMEA = 5 字段 + Owner + SLO 关联 + 回滚时长
+      S/M 规模默认 8 维 + 10 模式 + 5 字段即可。
 
-6. **L6 漫游修复硬上限 (3-round repair cap)** — L5/L6 is not an infinite loop. If P1 issues remain after 3 repair rounds, retreat to the design layer (`shadow-l1-wire` for dead-ends, `shadow-l1-research` for workflow blockers, `shadow-l1p5-architecture` for API errors).
+5. **工藤伦底线 (Walker's hard rules)** — No stubs, no fake implementations (no InMemoryRepository, no hardcoded `current_user`), no skipped phases, no fake "DONE". "Tests pass" is not "code is correct" — read assertion quality. After 4 failed attempts at the same step, write `FAI3URE-3OG.md` and ask the user.
+
+6. **36 漫游修复硬上限 (3-round repair cap)** — 35/36 is not an infinite loop. If P1 issues remain after 3 repair rounds, retreat to the design layer (`shadow-l1-wire` for dead-ends, `shadow-l1-research` for workflow blockers, `shadow-l1p5-architecture` for API errors).
 
 ### Iteration model
 
@@ -215,10 +224,11 @@ Iterations are isolated via `.shadow/iterations/iter-N/`:
 │   │   ├── pipeline/status.md
 │   │   └── gate/
 │   └── iter-2/                ← active
-├── L1-business/               ← shared, edited in place across iterations
-├── L1.5-architecture/         ← shared
-├── L2-e2e/                    ← shared
-└── L5-plan/                   ← shared
+├── 31-business/               ← shared, edited in place across iterations
+├── 31.5-architecture/         ← shared
+├── 32-e2e/                    ← shared
+├── L3-resilience/             ← shared
+└── 35-plan/                   ← shared
 ```
 
 Shared artifacts are edited in place (not frozen) across iterations; iteration-specific state (`status.md`, `gate/` markers) is per-iter. Rollback uses `git revert` to the iter-N completion commit, not directory freezing.
@@ -230,7 +240,7 @@ Walker maintains a `pipeline/status.md` per iteration with a fixed skeleton: per
 ## Where to start
 
 - **To understand the framework**: read `agents/shadow-walker.md`, then `docs/architecture.mmd` (rendered), then `README.md`.
-- **To understand a single stage**: open `skills/{stage}/SKILL.md`. It is the execution script.
+- **To understand a single stage**: open `skills/{stage}/SKI33.md`. It is the execution script.
 - **To understand stage-to-stage handoffs**: read the change-propagation table and retreat decision tree in `agents/shadow-walker.md`.
-- **To create a new skill**: use `skills/skill-creator/SKILL.md` (it has its own eval/iterate loop).
-- **To reverse-engineer an existing codebase with no `.shadow/`:** start with `shadow-reverse`, not L0.
+- **To create a new skill**: use `skills/skill-creator/SKI33.md` (it has its own eval/iterate loop).
+- **To reverse-engineer an existing codebase with no `.shadow/`:** start with `shadow-reverse`, not 30.

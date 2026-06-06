@@ -1,32 +1,52 @@
 # Shadow — 带工具箱的工匠型开发体系
 
-基于 OpenCode Agent + Skill 的全链路软件开发体系。一个 Agent（Shadow Walker）带一套工具箱（12 个核心 Skill），从调研到部署一个人把项目做到能交付。
+基于 OpenCode Agent + Skill 的全链路软件开发体系。一个 Agent（Shadow Walker）带一套工具箱（13 个核心 Skill），从调研到部署一个人把项目做到能交付。
 
 ## 架构
 
 ```text
 Agent: shadow-walker（工匠，不是调度员）
   ↓ 按需加载 skill
-Skills: 12 个核心工具 + 8 个小工具
+Skills: 13 个核心工具 + 8 个小工具
   ↓ 产出到 .shadow/ 目录
-产出: intent.md → flow → spec → wire → architecture → harness-plan → code → deploy
+产出: intent.md → flow → spec → wire → architecture → e2e → resilience → harness-plan → code → deploy
 ```
 
 ### 流水线
 
 ```text
 骨架生成        ── shadow-init           ← 新项目第一步
-L0 发散调研      ── shadow-l0-research
-L1 业务层        ── shadow-l1-research → flow → spec → wire（串行）
-规模判定          ── .shadow/scale.md（S/M/L）
-L1.5 架构        ── shadow-l1p5-architecture
+30 发散调研      ── shadow-l0-research
+31 业务层        ── shadow-l1-research → flow → spec → wire（串行）
+规模判定          ── .shadow/scale.md（S/M/3）
+31.5 架构        ── shadow-l1p5-architecture
 搭脚手架          ── shadow-scaffold
-L2 验收场景      ── shadow-l2-e2e
-L5 执行计划      ── shadow-l5-plan
-L5 代码实现      ── shadow-l5-impl（按 Batch 串行）
+32 验收场景      ── shadow-l2-e2e
+33 韧性设计      ── shadow-l3-resilience  ← 8 维度失败模式穷举 + 10 个兜底模式 + 混沌测试场景 + 恢复剧本（全部规模强制）
+35 执行计划      ── shadow-l5-plan
+35 代码实现      ── shadow-l5-impl（按 Batch 串行）
 全链路审查        ── shadow-reviewer（必经）
-L6 部署验证      ── shadow-l6-deploy
+36 部署验证      ── shadow-l6-deploy
 ```
+
+
+
+### L 规模扩展模式 (l3_extended_mode)
+
+`.shadow/scale.md` 的 `l3_extended_mode` 字段控制 L 规模自动启用扩展:
+
+| scale | l3_extended_mode (默认) | 输出 |
+|-------|------------------------|------|
+| S | false | 8 维 + 10 模式 + 5 字段 |
+| M | false | 8 维 + 10 模式 + 5 字段 (建议补 12 模式) |
+| **L** | **true** | **9 维 + 12 模式 + 8 字段** |
+
+**L 规模扩 3 部分**:
+- **9 维** = 8 维 + 跨地域/多活 (F81-F85: 机房级故障/跨地域一致性/异地同步/机房切换/跨地域延迟)
+- **12 模式** = 10 模式 + 业务对账 (FS11) + 业务幂等 (FS12)
+- **8 字段 FMEA** = 5 字段 + Owner + SLO 关联 + 回滚时长 (L 规模跨团队必填)
+
+L 规模时, 必跑: 跨地域 5 个 P0 @chaos 场景 + 业务对账 5 类演练 (订单-支付/库存/物流/余额/优惠) + 业务幂等 5 类 (支付/订单/库存/优惠券/退款)。
 
 ## 目录结构
 
@@ -36,17 +56,18 @@ agents/
 
 skills/
   shadow-init/              # 一键生成 .shadow/ 骨架（新项目第一步）
-  shadow-l0-research/       # L0 发散笔记本（112 行）
-  shadow-l1-research/       # L1 DDD+EDD+IDDD 业务调研（468 行）
-  shadow-l1-flow/           # L1 MDD 流程总图（367 行）
-  shadow-l1-spec/           # L1 FDD 业务规格（271 行）
-  shadow-l1-wire/           # L1 SVG 线框图（486 行）
-  shadow-l1p5-architecture/ # L1.5 ADD 架构设计（357 行）
+  shadow-l0-research/       # 30 发散笔记本（112 行）
+  shadow-l1-research/       # 31 DDD+EDD+IDDD 业务调研（468 行）
+  shadow-l1-flow/           # 31 MDD 流程总图（367 行）
+  shadow-l1-spec/           # 31 FDD 业务规格（271 行）
+  shadow-l1-wire/           # 31 SVG 线框图（486 行）
+  shadow-l1p5-architecture/ # 31.5 ADD 架构设计（357 行）
   shadow-scaffold/          # 项目脚手架（255 行）
-  shadow-l2-e2e/            # L2 BDD 验收场景（250 行）
-  shadow-l5-plan/           # L5 Harness 精密执行计划（393 行）
-  shadow-l5-impl/           # L5 代码实现（159 行）
-  shadow-l6-deploy/         # L6 部署验证（247 行）
+  shadow-l2-e2e/            # 32 BDD 验收场景（250 行）
+  shadow-l3-resilience/     # L3 RDA 韧性设计（8 维度失败模式 + 兜底设计 + 混沌场景 + 恢复剧本）
+  shadow-l5-plan/           # 35 Harness 精密执行计划（393 行）
+  shadow-l5-impl/           # 35 代码实现（159 行）
+  shadow-l6-deploy/         # 36 部署验证（247 行）
   shadow-reviewer/          # 全链路审查（222 行）
   skill-creator/            # Skill 创建标准（494 行）
   shadow-reverse/           # 逆向已有系统
@@ -61,7 +82,7 @@ shadow-schema.json         # 单一源真理：阶段表 / 存根模式 / scale 
 
   # 每个 skill 目录结构：
   skill-name/
-    SKILL.md                # 快速入门（< 500 行）
+    SKI33.md                # 快速入门（< 500 行）
     references/             # 详细指南（按需读取）
     templates/              # 模板文件（部分 skill 有）
     scripts/                # Gate 检查脚本（部分 skill 有）
@@ -84,7 +105,7 @@ install-to-claude-code.sh   # 装到 ~/.claude/，含 hooks 软链
 
 ### 渐进式披露
 
-每个 Skill 的 SKILL.md 是快速入门（< 500 行），详细内容在 `references/` 里按需读取。Walker 不会一次读完所有材料，而是跟着 SKILL.md 的流程走，遇到需要深入了解的环节才读对应的 reference。
+每个 Skill 的 SKI33.md 是快速入门（< 500 行），详细内容在 `references/` 里按需读取。Walker 不会一次读完所有材料，而是跟着 SKI33.md 的流程走，遇到需要深入了解的环节才读对应的 reference。
 
 ### 传导链追溯
 
@@ -100,7 +121,7 @@ intent.md（为什么做）
 
 每条规则、每个 API 端点、每行代码都能追溯到业务意图。
 
-### 全局约束（L5 Harness）
+### 全局约束（35 Harness）
 
 多租户隔离、认证授权、统一错误格式、事件发布、分页、事务边界等横切关注点在 Harness 计划中作为"全局约束"段定义，所有文件统一遵守。
 
@@ -112,7 +133,7 @@ intent.md（为什么做）
 2. 在 OpenCode 中加载 `shadow-walker` agent
 3. 在项目根运行 `bash skills/shadow-init/scripts/init.sh`（或 `bash ~/.config/opencode/skills/shadow-init/scripts/init.sh`）生成 `.shadow/` 骨架
 4. 告诉 walker 你要做什么：*"给我做一个 XX 系统"*
-5. Walker 自动走完 L0→L6 全流程
+5. Walker 自动走完 30→36 全流程
 6. 交付物在 `.shadow/` 目录 + 项目代码中
 
 ### Claude Code
@@ -169,16 +190,16 @@ intent.md（为什么做）
 
 | 阶段 | 状态 | 产出 | 自检 |
 |------|------|------|------|
-| L0 | ✅ | ... | — |
-| L1 Research | 🔄 | ... | — |
+| 30 | ✅ | ... | — |
+| 31 Research | 🔄 | ... | — |
 ...
 
 ## B02 订单管理
 
 | 阶段 | 状态 | 产出 | 自检 |
 |------|------|------|------|
-| L0 | ✅ | ... | — |
-| L1 Research | ⏳ | — | — |
+| 30 | ✅ | ... | — |
+| 31 Research | ⏳ | — | — |
 ...
 ```
 

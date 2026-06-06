@@ -8,10 +8,72 @@
 // 找到真正位置, 这样 plugin 无论是直接调还是通过软链调都能找到 schema.
 
 import type { Plugin, Hooks } from "@opencode-ai/plugin"
-import { existsSync, readFileSync, readdirSync, statSync, realpathSync } from "fs"
+import { existsSync, readFileSync, readdirSync, statSync, realpathSync, appendFileSync } from "fs"
 import { join, dirname } from "path"
 
-const log = (msg: string) => console.log(`[shadow-hook] ${msg}`)
+// 内部 trace log. 默认不输出, 避免污染 TUI 文本流.
+// 设 SHADOW_DEBUG=1 打开 console 输出 (仅开发者本地调试用).
+const DEBUG = process.env.SHADOW_DEBUG === "1"
+const log = (msg: string) => {
+  if (DEBUG) console.log(`[shadow-hook] ${msg}`)
+}
+
+// 诊断日志: 写到 /tmp/shadow-hook.log, 不污染 TUI.
+// 看 .showToast 是否被调到、是否 resolve/reject, 排查 toast 为何不弹.
+// 永远开, 不需要 env. 一行一条 JSON, 方便 grep.
+const DIAG_LOG = "/tmp/shadow-hook.log"
+function diag(entry: Record<string, unknown>) {
+  try {
+    appendFileSync(DIAG_LOG, JSON.stringify({ ts: Date.now(), ...entry }) + "\n")
+  } catch {
+    // ignore
+  }
+}
+
+// module 顶层 side-effect: OpenCode 只要 import 这个文件, 就会写一行.
+// 用来区分 "plugin 完全没被 OpenCode 发现" vs "plugin 加载了但 hook 没触发".
+diag({ ev: "module-import", pid: process.pid, argv: process.argv.slice(0, 3) })
+
+// 把"用户应该看到"的消息发到 TUI 弹窗，而不是 console.
+// OpenCode 的 TUI 会把 console.log/warn/error 当作 TUI 文本流写出来, 干扰输入框.
+// 改走 client.tui.showToast → 服务端 Bus.publish(TuiEvent.ToastShow) → TUI 右上角弹窗,
+// 不影响 TUI 主体, 用户看完自动消失.
+// 失败静默: 弹窗只是辅助手段, hook 主流程不能因为 toast 失败而崩.
+function notify(
+  client: unknown,
+  variant: "info" | "success" | "warning" | "error",
+  title: string,
+  message: string,
+  duration?: number,
+): void {
+  if (!client) {
+    diag({ ev: "notify", variant, title, skipped: "client undefined" })
+    return
+  }
+  const c = client as { tui?: { showToast?: (opts: any) => Promise<unknown> } }
+  if (!c.tui?.showToast) {
+    diag({
+      ev: "notify",
+      variant,
+      title,
+      skipped: "client.tui.showToast missing",
+      hasTui: Boolean(c.tui),
+      tuiKeys: c.tui ? Object.keys(c.tui) : null,
+    })
+    return
+  }
+  // fire-and-forget; toast 不阻塞 hook 主流程
+  diag({ ev: "notify-call", variant, title })
+  c.tui
+    .showToast({
+      title,
+      message,
+      variant,
+      duration: duration ?? (variant === "error" || variant === "warning" ? 6000 : 3000),
+    })
+    .then((res) => diag({ ev: "notify-ok", variant, title, res: typeof res }))
+    .catch((err) => diag({ ev: "notify-err", variant, title, err: String(err) }))
+}
 
 // ---------- Schema 加载 (懒加载, 与 bash lib.sh 行为对齐) ----------
 
@@ -191,12 +253,23 @@ function escapeRegex(s: string): string {
 
 export const ShadowHooksPlugin: Plugin = async (input) => {
   const projectRoot = input.directory
+  const client = input.client
   const shadowDir = findShadowDir(projectRoot)
 
   // 加载 schema. 一次, 之后所有 hook 用 _schemaCache.
   const schema = loadSchema()
 
   log(`loaded for project=${projectRoot} shadowDir=${shadowDir ?? "(none)"} schema=${schema ? "v" + schema.shadow_version : "(missing)"}`)
+  diag({
+    ev: "plugin-load",
+    project: projectRoot,
+    shadowDir: shadowDir ?? null,
+    schema: schema ? schema.shadow_version : null,
+    clientType: typeof client,
+    clientKeys: client ? Object.keys(client as object) : null,
+    hasTui: client ? Boolean((client as any).tui) : null,
+    tuiKeys: client && (client as any).tui ? Object.keys((client as any).tui) : null,
+  })
 
   const hook: Hooks = {
     // === L1 hook (CLAUDE.md 里的 SessionStart) ===
@@ -251,22 +324,32 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
           const woMatch = prompt.match(/WO-\d+/)
           const woPathMatch = prompt.match(/\.shadow\/iterations\/iter-\d+\/work-orders\/WO-\d+[^\s]*\.md/)
           if (!woMatch && !woPathMatch) {
-            console.warn(
-              `[shadow-hook] ⚠️  派了 ${agentName} 但 prompt 里没找到 WO-NNN 引用.\n` +
-              `   建议先写 work order 到 .shadow/iterations/iter-N/work-orders/WO-NNN-slug.md\n` +
-              `   模板: docs/work-order-template.md\n` +
-              `   契约: agents/shadow-worker.md`,
+            notify(
+              client,
+              "warning",
+              "Shadow: WO 缺失",
+              `派了 ${agentName} 但 prompt 里没找到 WO-NNN 引用.\n` +
+                `建议先写 work order 到 .shadow/iterations/iter-N/work-orders/WO-NNN-slug.md\n` +
+                `模板: docs/work-order-template.md  契约: agents/shadow-worker.md`,
             )
           } else if (woPathMatch) {
             const woPath = woPathMatch[0]
             const exists = existsSync(woPath)
             if (!exists) {
-              console.warn(
-                `[shadow-hook] ❌ ${woMatch?.[0]} 引用了 WO 文件但不存在: ${woPath}\n` +
-                `   先写 work order, 再派 worker.`,
+              notify(
+                client,
+                "error",
+                "Shadow: WO 不存在",
+                `${woMatch?.[0]} 引用了 WO 文件但不存在: ${woPath}\n先写 work order, 再派 worker.`,
               )
             } else {
-              console.log(`[shadow-hook] 派 ${woMatch?.[0]} 给 ${agentName} (WO 文件: ${woPath})`)
+              notify(
+                client,
+                "info",
+                "Shadow: 派单",
+                `派 ${woMatch?.[0]} 给 ${agentName} (WO 文件: ${woPath})`,
+                2500,
+              )
             }
           }
         }
@@ -287,7 +370,13 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
         `5. 用 "node-walker-final" commit 类型或类似方式标记阶段完成`,
       ].join("\n")
 
-      console.log(`[shadow-hook] 5-step rhythm for skill="${skillName}":\n${rhythm}`)
+      notify(
+        client,
+        "info",
+        `Shadow: 5 步节奏 · ${skillName}`,
+        rhythm,
+        5000,
+      )
 
       // 阶段顺序硬阻断 (用 schema 而不是硬编码 STAGE_ORDER)
       if (shadowDir && schema) {
@@ -299,7 +388,14 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
         if (pendingStage && skillStage) {
           if (skillStage.num > pendingStage.num + 1) {
             const err = `[shadow-hook] 阶段跳序！当前 ⏳=${pendingStage.display}, 但你试图加载 ${skillName} (${skillStage.display})。按顺序先完成 ${pendingStage.display}。`
-            console.error(err)
+            log(err)
+            notify(
+              client,
+              "error",
+              "Shadow: 阶段跳序",
+              `当前 ⏳=${pendingStage.display}\n你试图加载 ${skillName} (${skillStage.display})\n按顺序先完成 ${pendingStage.display}`,
+              8000,
+            )
             throw new Error(err)
           }
         }
@@ -317,10 +413,14 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
       const stubs = scanStubsInFile(filePath, schema)
       if (stubs.length > 0) {
         log(`STUB DETECTED in ${filePath}: ${stubs.length} patterns`)
-        console.warn(
-          `[shadow-hook] ⚠️  ${filePath} 包含 ${stubs.length} 处存根模式:\n` +
+        notify(
+          client,
+          "warning",
+          "Shadow: 存根警告",
+          `${filePath}\n含 ${stubs.length} 处存根模式:\n` +
             stubs.map((s) => `  - ${s}`).join("\n") +
             `\n工藤伦底线: 必须真实实现, 不允许 pass/TODO/NotImplementedError 顶包。`,
+          6000,
         )
         output.metadata = {
           ...(output.metadata ?? {}),
@@ -354,13 +454,22 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
           }
           if (totalStubs > 0) {
             log(`SESSION END — 全项目扫到 ${totalStubs} 处存根:`)
-            for (const sf of stubFiles.slice(0, 20)) console.warn(`  ⚠️  ${sf}`)
-            if (stubFiles.length > 20) console.warn(`  ... 还有 ${stubFiles.length - 20} 个文件`)
+            const listed = stubFiles.slice(0, 20).map((sf) => `  ⚠️  ${sf}`).join("\n")
+            const more = stubFiles.length > 20 ? `\n  ... 还有 ${stubFiles.length - 20} 个文件` : ""
+            notify(
+              client,
+              "warning",
+              `Shadow: 存根扫描 · ${totalStubs} 处`,
+              listed + more,
+              8000,
+            )
           } else {
             log(`SESSION END — 干净, 无存根 ✓`)
+            notify(client, "success", "Shadow: 存根扫描", "SESSION END — 干净, 无存根 ✓", 2500)
           }
         } catch (err) {
-          console.error(`[shadow-hook] session.idle scan failed:`, err)
+          log(`session.idle scan failed: ${err}`)
+          notify(client, "error", "Shadow: 扫描失败", `session.idle scan failed: ${err}`, 6000)
         }
       }, 100)
     },

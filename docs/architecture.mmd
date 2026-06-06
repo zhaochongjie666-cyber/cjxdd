@@ -25,7 +25,8 @@ flowchart TB
     SCALE ==> L1P5
     L1P5 ==> SCAFF
     SCAFF ==> L2
-    L2 ==> L5P
+    L2 ==> L3
+    L3 ==> L5P
     L5P ==> L5I
     L5I ==> REV
     REV ==> L6
@@ -105,6 +106,18 @@ flowchart TB
         B2A --> B2B --> B2C
     end
 
+    subgraph L3["🛡️ L3 · 韧性设计 (RDA)"]
+        direction TB
+        B3A["9 维度失败模式穷举<br/>FMEA 8 字段 (L 规模: +Owner/SLO 关联/回滚时长)<br/>标准 8 维 / L 规模 9 维 (+跨地域/多活 F81-F85)"]:::biz
+        B3B["12 兜底模式库<br/>10 模式: 熔断/降级/补偿/重试/限流/背压/隔离/幂等/超时/健康检查<br/>+2 模式 (L 规模): 业务对账 / 业务幂等"]:::biz
+        B3C["混沌测试场景 @chaos<br/>S/M 11 P0 / L 16 P0 (+5 跨地域 + 业务对账 mock)<br/>失败注入 → 期望行为"]:::biz
+        B3D["5 份产出<br/>failure-modes / failsafe-design / chaos-scenarios / resilience-test-plan / recovery-runbook"]:::biz
+        B3E["L 规模扩展 (l3_extended_mode=true)<br/>9 维 + 12 模式 + 8 字段 + 跨地域演练 + 业务对账演练"]:::bizL3ext
+        B3A --> B3B --> B3C --> B3D
+        B3E -.-> B3A
+        B3E -.-> B3B
+    end
+
     subgraph L5P["📐 L5 Plan · Harness"]
         direction TB
         B5PA["读全部上游<br/>9 个文件"]:::biz
@@ -149,15 +162,20 @@ flowchart TB
     L1S -. "RXX" .-> L5P
     L1W -. "data-*" .-> L5P
     L1P5 -. "API + 事件" .-> L5P
+    L2 -. "e2e.md" .-> L3
+    L3 -. "failsafe + chaos" .-> L5P
+    L1P5 -. "API + 事件" .-> L3
     L2 -. "e2e.md" .-> L5P
     L1F -. "BXX-NYY" .-> REV
     L1S -. "RXX" .-> REV
     L5P -. "harness" .-> REV
+    L3 -. "failsafe + chaos + runbook" .-> REV
 
     %% ==================== style ====================
     classDef trigger fill:#3D2C00,stroke:#FBBF24,color:#FEF3C7,stroke-width:2px
     classDef walker fill:#1E1B4B,stroke:#818CF8,color:#E0E7FF,stroke-width:2px
     classDef biz fill:#1E293B,stroke:#64748B,color:#E2E8F0,stroke-width:1.5px
+    classDef L3ext fill:#4A1D24,stroke:#FB7185,color:#FFE4E6,stroke-width:2px,stroke-dasharray: 5 3
     classDef scale fill:#4A1D24,stroke:#FB7185,color:#FFE4E6,stroke-width:2px
     classDef deliver fill:#173E2D,stroke:#34D399,color:#D1FAE5,stroke-width:3px
 

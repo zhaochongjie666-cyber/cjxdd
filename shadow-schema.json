@@ -71,8 +71,22 @@
       "output_patterns": [".shadow/L2-e2e/{slug}/uat-script.md"]
     },
     {
-      "id": "L5_Plan",
+      "id": "L3",
       "num": 8,
+      "display": "L3",
+      "skill": "shadow-l3-resilience",
+      "aliases": ["L3", "l3", "L3 Resilience", "L3_Resilience", "l3 resilience", "l3_resilience"],
+      "output_patterns": [
+        ".shadow/L3-resilience/{slug}/failure-modes.md",
+        ".shadow/L3-resilience/{slug}/failsafe-design.md",
+        ".shadow/L3-resilience/{slug}/chaos-scenarios.md",
+        ".shadow/L3-resilience/{slug}/resilience-test-plan.md",
+        ".shadow/L3-resilience/{slug}/recovery-runbook.md"
+      ]
+    },
+    {
+      "id": "L5_Plan",
+      "num": 9,
       "display": "L5 Plan",
       "skill": "shadow-l5-plan",
       "aliases": ["L5 Plan", "L5_Plan", "l5 plan", "l5_plan"],
@@ -80,7 +94,7 @@
     },
     {
       "id": "L5_Impl",
-      "num": 9,
+      "num": 10,
       "display": "L5 Impl",
       "skill": "shadow-l5-impl",
       "aliases": ["L5 Impl", "L5_Impl", "l5 impl", "l5_impl"],
@@ -88,7 +102,7 @@
     },
     {
       "id": "Reviewer",
-      "num": 10,
+      "num": 11,
       "display": "全链路审查",
       "skill": "shadow-reviewer",
       "aliases": ["全链路审查", "Reviewer", "reviewer"],
@@ -96,7 +110,7 @@
     },
     {
       "id": "L6",
-      "num": 11,
+      "num": 12,
       "display": "L6",
       "skill": "shadow-l6-deploy",
       "aliases": ["L6", "L6 漫游修复", "l6"],
@@ -135,6 +149,8 @@
       "persona_max":         { "type": "integer", "min": 3, "max": 20,       "default": 8 },
       "wire_passes":         { "type": "integer", "min": 1, "max": 5,        "default": 3 },
       "coverage_dimensions": { "type": "integer", "min": 5, "max": 30,       "default": 14 },
+      "l3_required":         { "type": "boolean",                          "default": true },
+      "l3_extended_mode":    { "type": "boolean",                          "default": false },
       "l6_core_phases_only": { "type": "boolean",                          "default": false }
     }
   },
@@ -182,6 +198,7 @@
       "| L1.5 | ⏳ | — | — |",
       "| Scaffold | ⏳ | — | — |",
       "| L2 | ⏳ | — | — |",
+      "| L3 | ⏳ | failure-modes / failsafe-design / chaos-scenarios / resilience-test-plan / recovery-runbook | gate-check-l3.sh |",
       "| L5 Plan | ⏳ | — | — |",
       "| L5 Impl | ⏳ | — | — |",
       "| 全链路审查 | ⏳ | — | — |",

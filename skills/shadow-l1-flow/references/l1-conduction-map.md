@@ -49,7 +49,7 @@
    - 任一不等 → 三角链接断裂 → L1 Gate FAIL
 ```
 
-## 2. L1 → L3 传导（骨架消费）
+## 2. L1 → L5 传导（骨架消费）
 
 ### 2.1 传导矩阵
 
@@ -69,7 +69,7 @@
 | wire 错误区域 + 文案 | 错误类型声明 | Raises 声明 | 强制 |
 | flow 节点流程 | 方法调用顺序（注释级） | 方法注释 | 推荐 |
 
-### 2.2 L3 传导校验
+### 2.2 L5 传导校验
 
 ```
 对每个文件：
@@ -86,7 +86,7 @@
 
 | L1 产出 | L4 消费方式 | 测试代码落点 | 强制度 |
 |---------|------------|-----------|--------|
-| spec 规则（通过 L3 @implements） | `@covers: slug-R01 (BXX-NYY)` | 测试函数 | **强制**：每个 @covers 必须带节点坐标 |
+| spec 规则（通过 L5 @implements） | `@covers: slug-R01 (BXX-NYY)` | 测试函数 | **强制**：每个 @covers 必须带节点坐标 |
 | spec 异常路径 | 异常测试函数（含 assert） | 异常测试 | 强制 |
 | spec 状态变化（通过 L3） | 状态转换测试 | 状态测试 | 强制 |
 | spec 角色/权限 | 权限/越权测试 | 权限测试 | 强制 |
@@ -102,7 +102,7 @@
 
 ```
 对每个测试文件：
-  1. 提取所有 @covers 规则 ID → 与 L3 @implements 全集对比 → 差集为空
+  1. 提取所有 @covers 规则 ID → 与 L5 @implements 全集对比 → 差集为空
   2. 提取所有 @covers 中的 (BXX-NYY) 节点坐标 → 与 flow 节点全集对比 → 覆盖完整
   3. 提取 wire 相关测试场景 → 与 wire 产物交互元素对比 → 每个交互元素有测试
 ```
@@ -133,7 +133,7 @@
 
 ```
 对每个实现文件：
-  1. 提取文件头 @implements 规则 ID → 与 L3 @implements 对比 → 一致
+  1. 提取文件头 @implements 规则 ID → 与 L5 @implements 对比 → 一致
   2. 提取文件头 @implements 中的 (BXX-NYY) 节点坐标 → 与 flow 节点对比 → 有效
   3. 检查 L1 关键错误码 → 在代码中有对应返回值/异常
   4. 检查 L1 状态变化 → 在代码中有对应状态管理
@@ -193,9 +193,9 @@ L1 (flow + spec + wire)
 | flow 节点无 spec 规则引用 | flow 节点集合 - spec 节点坐标集合 ≠ ∅ | 致命 |
 | spec UI 规则无 wire 元素 | spec UI 规则节点集合 - wire data-node 集合 ≠ ∅ | 致命 |
 | wire 元素无 flow 节点 | wire data-node 集合 - flow 节点集合 ≠ ∅ | 致命 |
-| spec 规则无 L3 @implements | spec 规则 ID 全集 - L3 @implements 全集 ≠ ∅ | 高 |
-| L3 @implements 无 L4 @covers | L3 @implements 全集 - L4 @covers 全集 ≠ ∅ | 高 |
-| L3 @implements 节点坐标无效 | @implements 中 BXX-NYY 不在 flow 节点集合中 | 高 |
+| spec 规则无 L5 @implements | spec 规则 ID 全集 - L5 @implements 全集 ≠ ∅ | 高 |
+| L5 @implements 无 L4 @covers | L5 @implements 全集 - L4 @covers 全集 ≠ ∅ | 高 |
+| L5 @implements 节点坐标无效 | @implements 中 BXX-NYY 不在 flow 节点集合中 | 高 |
 | L4 @covers 节点坐标无效 | @covers 中 BXX-NYY 不在 flow 节点集合中 | 高 |
 | wire 交互元素无 Harness 指令 | wire 元素未在 harness-plan.md 中出现 | 中 |
 | wire 交互元素无 L4 测试 | wire 元素未在测试代码中出现 | 中 |

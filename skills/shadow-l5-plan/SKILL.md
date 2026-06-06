@@ -1,29 +1,44 @@
 ---
 name: shadow-l5-plan
 alias: Shadow·L5-Plan
-methodology: Harness — 精密执行计划：AI coder 只看这一份文档就能机械执行
+methodology: |
+  Harness 计划生成器 — 把 L1+L1.5+L2+L3 决策压缩成 AI coder 可直接执行的精密执行计划。
 description: |
-  Shadow L5 Harness 计划生成器。消费 L1+L1.5+L2 的全部上游产物，产出一份 AI coder 可直接消费的精密执行计划。
+  Shadow L5 Harness 计划生成器。消费 L1+L1.5+L2+L3 的全部上游产物，产出一份 AI coder 可直接消费的精密执行计划。
   Harness 计划完全替代了独立的契约层和测试层：每个文件包含完整的类签名、逐方法实现指令、测试断言。
   AI coder 看到 Harness 计划后不需要任何上游文档就能写出正确代码。
-  触发：Harness 计划、执行计划、L5 Plan、harness、coder 计划。
-version: "1.0.0"
+  三面手：设计（Harness 计划）+ 实现（自动生成代码骨架）+ 跟踪（Plan-Impl Diff 审计）。
+  触发：Harness 计划、执行计划、L5 Plan、harness、coder 计划、代码骨架、Plan-Impl Diff。
+version: "2.0.0"
 ---
 
 # Shadow·Harness — 精密执行计划
 
 ## 角色
 
-把 L1+L1.5+L2 的全部设计决策**浓缩**成一份 AI coder 可机械执行的指令。
+把 L1+L1.5+L2+L3 的全部设计决策**浓缩**成一份 AI coder 可机械执行的指令。
 
 **核心原则**：coder 只看这一份文档，不需要任何上游文档，就能写出正确代码。
 
 这意味着 Harness 计划必须是**自包含**的：
 - 每个文件的类签名、方法签名、字段类型——全部内联
 - 每个方法的校验条件、状态变更、事件发布——全部内联
-- 每个方法的测试断言——全部内联
-- 错误码、错误消息——全部内联
-- 依赖服务的接口签名——全部内联
+- 每条 RXX 规则的兜底（L3 ?failsafe）——全部内联
+
+## 三面手（设计 + 实现 + 跟踪）
+
+L5-plan 不只写 Harness 计划，还要让 L5-impl 真能照着写、写完真能验证合规。
+
+| 面 | 任务 | 产出 | 详细 |
+|---|------|------|------|
+| **设计**（核心） | 文件依赖图 + 全局约束 + 兜底约束 + 逐文件实现指令 + 单元/接口/E2E 指令 | harness-plan.md | 本 SKILL.md §1-7 |
+| **实现** | **代码骨架生成（Skeleton Gen）**：从 harness-plan.md 自动生成可写代码的起点（import + 签名 + docstring + 测试骨架 + TODO 占位） | `backend/` / `frontend/` / `tests/` 骨架 | references/code-skeleton-gen.md |
+| **跟踪** | **Plan-Impl Diff**：L5-impl 完成后自动对比 Plan vs Code（方法覆盖/签名/测试/事件/@implements/failsafe） | `plan-impl-diff-report.md` | references/plan-impl-diff-guide.md |
+
+**闭环**：
+- 骨架生成失败 → 回 Plan 修
+- Plan-Impl Diff 严重问题 → 回 L5-impl 修代码
+- 严重问题 → 阻断 L6 漫游
 
 ## Harness 计划消费的上游
 
@@ -38,6 +53,9 @@ version: "1.0.0"
 | L1.5 aggregate-landscape.md | 聚合清单、聚合间关系、一致性边界 |
 | L1.5 event-contract.md | 事件定义、载荷结构、传递方式、订阅关系 |
 | L2 e2e.md | 验收场景、覆盖矩阵 |
+| L3 failure-modes.md | 失败模式目录（FMEA 3 维度 RPN：影响/频率/难发现度）|
+| L3 failsafe-design.md | 兜底策略与实现位置（熔断/降级/补偿/重试/限流/背压/隔离/幂等/超时/健康检查）|
+| L3 chaos-scenarios.md | 混沌测试场景（@chaos 标签 + 故障注入点 + 预期行为 + 通过标准）|
 
 ## 怎么做
 
@@ -108,6 +126,31 @@ version: "1.0.0"
 ```
 
 **原则**：全局约束只写"跨文件的行为约定"，具体实现由 Batch 4/5 的文件指令覆盖。
+
+### 2.6 兜底约束（L3 韧性层传导）
+
+L3 ?`failsafe-design.md` 定义的所有兜底策略必须在 Harness 计划中被显式实现。**这是 L3 ?→ L5 的硬约束**。
+
+如果 L3 ?存在，Harness 计划必须在"全局约束"段后追加"兜底约束"子段。如果 L3 ?缺失（极小项目豁免），跳过本节。
+
+**兜底约束段的格式**：
+
+```markdown
+### 兜底约束（L3 韧性层）
+
+| 失败模式 ID | 兜底策略 | 实现位置 | 触发条件 | 恢复路径 | L3 ?引用 |
+|------------|---------|---------|---------|---------|---------|
+| F01 (调度层-调度风暴) | 限流 + 优先级队列 | `infra/scheduler/quota.py` + `domain/queues/priority.py` | 并发任务 > 1000 | 自动消化 + 告警 | failure-catalog.md §F01 |
+| F12 (网络层-分区) | 熔断 + 降级 | `infra/http/circuit_breaker.py` | 下游 P99 > 5s | 探测恢复后自动重连 | failsafe-design.md §F12 |
+| F23 (事件层-积压) | 背压 + 限流 | `infra/queue/backpressure.py` | DLQ > 1000 | 手工补单 + 告警 | chaos-scenarios.md §T23 |
+```
+
+**原则**：
+- 兜底约束的每行必须能在 L3 ?`failsafe-design.md` 找到对应实现位置
+- 失败模式 ID (FXX) 与 L3 ?`failure-catalog.md` 严格对应
+- 兜底策略的"实现位置"必须落到 Batch 4/5 的具体文件路径
+- 触发条件用具体阈值（不是"高负载"这种模糊词）
+- 恢复路径区分"自动"和"手工"
 
 ### 3. 逐文件展开实现指令
 
@@ -325,7 +368,170 @@ test('annotator completes annotation workflow', async ({ page }) => {
 
 **通用交互模式**: 参见 `references/e2e-patterns.md`（拖拽排序、批量操作等模式）
 
-逐文件检查：
+#### 3.4 韧性测试文件（L3 韧性层传导）
+
+L3 ?`chaos-scenarios.md` 定义的混沌场景必须被翻译为 Harness 计划中的韧性测试文件。**L3 ?→ L5 的失败注入点必须在 L5 实现层有对应的测试**。
+
+韧性测试从 L3 ?`chaos-scenarios.md` 的 `@chaos` 场景翻译而来，覆盖可控失败注入路径。L6 依赖这些文件执行 Phase 5.7 灾难演练。
+
+```markdown
+### 文件: tests/chaos/annotation_failure_modes.spec.py
+
+**上下文**: P0 韧性验收 — 标注聚合在各种系统级失败下的兜底行为
+**来源**: L3 chaos-scenarios.md @chaos 场景 "F12 标注提交时网络分区"
+**失败模式**: F12 (网络层-分区)
+**兜底策略**: 熔断 (5s 触发) + 降级 (本地缓存草稿) + 重试 (指数退避 3 次)
+
+**测试**:
+```python
+import pytest
+from unittest.mock import patch
+from chaos.faults import NetworkPartition, ResourceExhaustion
+
+@pytest.mark.chaos
+@pytest.mark.failure_mode("F12")
+async def test_annotation_submit_under_network_partition():
+    \"\"\"F12: 网络分区下, 标注提交应触发熔断 + 本地降级 + 自动重试\"\"\"
+    # 注入: 模拟下游 API 连续 3 次超时
+    with NetworkPartition(partition_service="annotation-api", duration_seconds=30):
+        annotation = await create_annotation(...)
+        result = await submit_annotation(annotation.id)
+        
+        # 断言: 兜底行为
+        assert result.status == "DRAFT_LOCAL"  # 降级到本地草稿
+        assert result.retry_count == 3         # 自动重试 3 次
+        assert result.circuit_state == "OPEN"  # 熔断器已打开
+        
+        # 断言: 数据完整性
+        local_draft = await load_local_draft(annotation.id)
+        assert local_draft.values == annotation.values  # 数据未丢
+
+    # 断言: 故障消除后, 自动重连
+    await wait_for_circuit_close(timeout=35)
+    sync_result = await sync_local_drafts()
+    assert sync_result.success_count >= 1
+```
+
+**通用混沌注入工具**: 参见 `references/chaos-injection-patterns.md`（网络分区/OOM/时钟漂移/限流/降级 注入器）
+```
+
+**约束**：
+- 仅生成 L3 ?`chaos-scenarios.md` 中 @chaos 标签的 P0 场景（P1 由 L6 手工补）
+- 每个测试必须用 `@pytest.mark.chaos` 和 `@pytest.mark.failure_mode("FXX")` 双标签
+- 测试文件放在 `tests/chaos/` 目录
+- 必须用真实故障注入（不 mock 整个失败路径）
+
+#### 3.5 失败注入点 + 降级路径（每个业务文件的子段）
+
+**L3 传导要求**：如果 L3 ?`failsafe-design.md` 列出了本文件相关的兜底策略，则该文件指令必须包含"失败注入点"和"降级路径"两个子段。
+
+**后端文件追加子段**：
+
+```markdown
+#### 失败注入点（L3 传导）
+- F12 (网络分区): 注入点 = `http_client.post()`, mock 5s 超时
+- F23 (事件积压): 注入点 = `event_bus.publish()`, mock 队列已满
+- 注入工具: `tests/chaos/faults.py::NetworkPartition` + `EventQueueFull`
+
+#### 降级路径（L3 传导）
+- 失败 F12 → 降级到本地草稿存储 (`infra/local_draft.py`), status = DRAFT_LOCAL
+- 失败 F23 → 降级到同步重试 (`infra/event_sync.py`), 指数退避 1s/2s/4s
+- 自动恢复: 故障消除后, 触发 `sync_local_drafts()` 把降级数据回写到主存储
+- 数据完整性: 降级期间不允许用户操作丢失, 必须有完整审计日志
+```
+
+**前端文件追加子段**：
+
+```markdown
+#### 失败注入点（L3 传导）
+- F12 (API 超时): 注入点 = `api.submitAnnotation()`, mock fetch reject
+- F25 (DB 慢查询): 注入点 = `api.loadTask()`, mock 3s 延迟
+
+#### 降级路径（L3 传导）
+- 失败 F12 → UI 显示"已存为草稿, 网络恢复后自动提交" 横幅 + 草稿列表
+- 失败 F25 → UI 显示骨架屏 + 10s 后重试按钮
+- 用户操作: 草稿可手动重新提交, 不丢失
+```
+
+
+#### 3.6 业务对账测试 (L 规模 L3 传导)
+
+**L 规模时 (scale.l3_extended_mode=true) 必填**, S/M 规模可省。
+
+```markdown
+### 文件: domain/reconciliation/order_payment.py
+
+**上下文**: 订单-支付业务对账, 跨机房最终一致性兜底
+**规则**: order-R08, payment-R12
+**L3 引用**: L3 FS11-b (订单-支付对账) + FS82 (跨地域一致性)
+
+#### 业务对账测试点 (L3 传导, L 规模)
+- FS11-b 订单-支付对账: tests/chaos/reconciliation/test_order_payment.py
+- 测试方法: 直接 SQL 制造不一致 → 触发跑批 → 断言自动修复
+- 5 类对账类型必测: 订单-支付 / 订单-库存 / 订单-物流 / 用户余额 / 营销优惠
+
+#### 业务对账恢复路径
+- 跑批 cron: `0 2 * * *` (每日凌晨 2 点)
+- 对账容差: 资金类 0 元, 物流类 1h, 优惠类 0.01 元
+- 自动修复: 资金类启用 (saga 补偿), 其他可选
+- 升级路径: PagerDuty #payment-oncall (P1)
+- 实现位置: domain/reconciliation/{type}.py
+```
+
+#### 3.7 业务幂等测试 (L 规模 L3 传导)
+
+**L 规模时必填**, S/M 规模可省。
+
+```markdown
+### 文件: domain/payment/payment_service.py
+
+**上下文**: 支付业务幂等, 3 层防护 (技术幂等 + 业务唯一键 + 状态机)
+**规则**: payment-R12
+**L3 引用**: L3 FS12-a (支付幂等) + FS82 (跨地域一致性)
+
+#### 业务幂等测试点 (L3 传导, L 规模)
+- FS12-a 支付幂等: tests/chaos/idempotency/test_payment_idempotent.py
+- 测试方法: 并发 10 次同 payment_id → 断言只成功 1 次
+- 3 层防护都测: Redis key (L1) + DB UNIQUE (L2) + 状态机 (L3)
+
+#### 业务幂等恢复路径
+- 业务唯一键: payment_id (客户端生成) DB UNIQUE
+- 状态机: PENDING → PAID → REFUNDED (终态不可转换)
+- 装饰器: @business_idempotent(key_fn, state_machine)
+- 实现位置: domain/idempotency/business_idempotent.py
+```
+
+#### 3.8 跨地域失败注入点 (L 规模 L3 传导)
+
+**L 规模时必填**, 跨地域部署项目才需要。
+
+```markdown
+### 文件: backend/infra/multi_region/dns_failover.py
+
+**上下文**: 跨地域 DNS 切换 + 流量调度
+**规则**: cross-region-R01, cross-region-R02
+**L3 引用**: L3 FS81 (机房级故障) + FS82 (跨地域一致性)
+
+#### 跨地域失败注入点 (L3 传导, L 规模)
+- FS81 机房级故障: 注入 docker network disconnect 模拟整机房断电
+- FS82 跨地域一致性: 注入跨地域同步延迟 > 60s
+- FS83 异地数据同步延迟: 注入 tc qdisc netem delay 200ms
+- FS84 机房切换回滚: 灰度切流 10%/50%/100% P99 监测
+- FS85 跨地域延迟: DNS 就近解析
+
+#### 跨地域恢复路径
+- DNS 切换: TTL=60s, 灰度切流 10% → 50% → 100%
+- 业务对账: 每 24h 跑批, 跨地域 inconsistencies 告警
+- 强制读主: replica_lag > 5s 时
+- 升级: PagerDuty #infra-oncall
+```
+
+**逐文件检查更新**（在原有 6 项检查后追加 2 项）：
+- **失败注入点**是否覆盖 L3 ?`failsafe-design.md` 中本文件相关的兜底策略
+- **降级路径**是否定义了"故障中"和"恢复后"两阶段行为
+
+**原 6 项检查（保留）**：
+
 - 每个方法是否覆盖了 spec.md 中对应的 RXX 规则
 - 每个校验条件是否与 flow.mermaid 中的决策节点一致
 - 每个事件是否与 event-contract.md 一致
