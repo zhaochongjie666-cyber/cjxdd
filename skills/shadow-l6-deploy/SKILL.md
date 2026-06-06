@@ -29,7 +29,7 @@ version: "7.3.0"
 
 ## 产出
 
-> **生命周期角色**:混合 — `deployment-report.md` 文件 = `process_output` 过程产物(每次部署的报告,iter 冻结随 iter 走);`wander-evidence/` 截图 + trace / `chaos-drill-evidence/` 注入证据 = `evidence_archive` 证据存档(只读不可变,审计/复盘用,不删);`issues.json` P0/P1/P2 + root_cause + fix_suggestion = `evidence_archive` 证据存档(也是 36 漫游修复 3 轮硬上限的回退输入);`gate/l6.{slug}.passed` = `control_marker` 控制标记(部署门禁决策)。详见 `shadow-schema.json:lifecycle_artifacts` → `l6-deployment-report` / `wander-evidence` / `chaos-drill-evidence` / `issues-json` / `l6-gate-passed`。
+> **生命周期角色**:混合 — `deployment-report.md` 文件 = `process_output` 过程产物(每次部署的报告,iter 冻结随 iter 走);`wander-evidence/` 截图 + trace / `chaos-drill-evidence/` 注入证据 = `evidence_archive` 证据存档(只读不可变,审计/复盘用,不删);`issues.json` P0/P1/P2 + root_cause + fix_suggestion = `evidence_archive` 证据存档(也是 36 漫游修复 3 轮硬上限的回退输入);`gate/l6.{slug}.passed` = `control_marker` 控制标记(部署门禁决策)。详见 `framework/shadow-schema.json:lifecycle_artifacts` → `l6-deployment-report` / `wander-evidence` / `chaos-drill-evidence` / `issues-json` / `l6-gate-passed`。
 
 ## 怎么做
 

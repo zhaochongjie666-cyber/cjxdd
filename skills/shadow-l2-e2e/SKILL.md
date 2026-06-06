@@ -272,7 +272,7 @@ UAT 详细模板和示例见 `references/uat-guide.md`。
 
 ## 产出
 
-> **生命周期角色**:`design_baseline` 设计基线。`e2e.md`(BDD 场景源) / `coverage-matrix.md`(14 维覆盖) / `uat-script.md`(L6 Phase 7 必读的 P0 剧本)三件套均跨迭代复用,改后触发 L5 / L6 重跑。详见 `shadow-schema.json:lifecycle_artifacts` → `e2e-bxx` / `coverage-matrix` / `uat-script`。
+> **生命周期角色**:`design_baseline` 设计基线。`e2e.md`(BDD 场景源) / `coverage-matrix.md`(14 维覆盖) / `uat-script.md`(L6 Phase 7 必读的 P0 剧本)三件套均跨迭代复用,改后触发 L5 / L6 重跑。详见 `framework/shadow-schema.json:lifecycle_artifacts` → `e2e-bxx` / `coverage-matrix` / `uat-script`。
 
 | 文件 | 路径 |
 |------|------|

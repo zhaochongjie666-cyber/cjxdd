@@ -36,7 +36,7 @@ fi
 
 # Load schema (needed for stage_order lookups). No-op if already loaded.
 load_shadow_schema || {
-    echo "[shadow] ⚠️  shadow-schema.json not found — stage gating disabled this run." >&2
+    echo "[shadow] ⚠️  framework/shadow-schema.json not found — stage gating disabled this run." >&2
     exit 0
 }
 

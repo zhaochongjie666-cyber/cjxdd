@@ -142,7 +142,7 @@ echo "[shadow] === End Stop Gate ==="
 
 # --- Check 3: artifact lifecycle drift (Phase 2 升级) ---
 # 5 条软警告 + 1 条 R5 硬阻断 — 漂移 ≥ 1 时 exit 1.
-# 详见 shadow-schema.json:lifecycle_artifacts[] + CLAUDE.md § 7 + skills/shadow-artifact-lifecycle/.
+# 详见 framework/shadow-schema.json:lifecycle_artifacts[] + CLAUDE.md § 7 + skills/shadow-artifact-lifecycle/.
 echo ""
 echo "[shadow] === Lifecycle Drift (Phase 2: 软警告 + R5 硬门禁) ==="
 lifecycle_drift=0
@@ -206,7 +206,7 @@ if [[ $lifecycle_drift -eq 0 ]]; then
 else
     echo ""
     echo "[shadow]   发现 $lifecycle_drift 处 Phase 1 漂移 (软警告: 仅提示, 不阻断)"
-    echo "[shadow]   详细角色定义见: shadow-schema.json:lifecycle_artifacts.roles + CLAUDE.md § 7"
+    echo "[shadow]   详细角色定义见: framework/shadow-schema.json:lifecycle_artifacts.roles + CLAUDE.md § 7"
     echo "[shadow]   处置指引见: skills/shadow-artifact-lifecycle/references/drift-examples.md"
 fi
 

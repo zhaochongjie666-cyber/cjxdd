@@ -109,7 +109,7 @@ lifecycle_paths_by_role design_baseline
 
 ## 7. 相关文档
 
-- `shadow-schema.json:lifecycle_artifacts[]` 单一源真理
+- `framework/shadow-schema.json:lifecycle_artifacts[]` 单一源真理
 - `CLAUDE.md` § 7 工件生命周期 (5 类角色)
 - `agents/shadow-walker.md` 变更传播表 + 迭代管理段
 - `references/lifecycle-taxonomy.md` 5 角色深度

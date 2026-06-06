@@ -1,6 +1,6 @@
 # 工件生命周期分类(5 类)深度说明
 
-> 本文是 `shadow-schema.json:lifecycle_artifacts[]` 的深度解读。
+> 本文是 `framework/shadow-schema.json:lifecycle_artifacts[]` 的深度解读。
 > 完整 58 工件映射见 schema;本文只讲 5 类角色的**判定细节 + 边界情形**。
 
 ## 1. 设计基线(`design_baseline`)

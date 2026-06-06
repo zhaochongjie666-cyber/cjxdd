@@ -22,7 +22,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_DIR="$(dirname "$SCRIPT_DIR")"
 REPO_ROOT="$(dirname "$(dirname "$SKILL_DIR")")"
-SCHEMA="${SHADOW_SCHEMA:-$REPO_ROOT/shadow-schema.json}"
+SCHEMA="${SHADOW_SCHEMA:-$REPO_ROOT/framework/shadow-schema.json}"
 PROJECT_ROOT="${PROJECT_ROOT:-$(pwd)}"
 
 # ───────── 加载 hooks/lib.sh (需要 lifecycle_role_of) ─────────

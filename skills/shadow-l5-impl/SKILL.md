@@ -98,7 +98,7 @@ L5-Plan: .shadow/L5-plan/user-service/harness-plan.md
 
 项目目录下的实现代码文件(后端 + 前端)+ 测试代码文件。
 
-**生命周期角色**:混合 — 项目代码 + 测试 = `design_baseline` 设计基线(产品最终交付物,持续维护);`code-skeleton/`(L5-impl 起点) = `process_output` 过程产物(被覆盖填实);`e2e/{feature}.binding.yaml`(未填实) = `process_output`,填实后转 `design_baseline`;`e2e/coverage-tracker.json` = `process_output` 累积状态。详见 `shadow-schema.json:lifecycle_artifacts` → `code-skeleton` / `e2e-step-binding` / `coverage-tracker`。
+**生命周期角色**:混合 — 项目代码 + 测试 = `design_baseline` 设计基线(产品最终交付物,持续维护);`code-skeleton/`(L5-impl 起点) = `process_output` 过程产物(被覆盖填实);`e2e/{feature}.binding.yaml`(未填实) = `process_output`,填实后转 `design_baseline`;`e2e/coverage-tracker.json` = `process_output` 累积状态。详见 `framework/shadow-schema.json:lifecycle_artifacts` → `code-skeleton` / `e2e-step-binding` / `coverage-tracker`。
 
 ## 约束
 

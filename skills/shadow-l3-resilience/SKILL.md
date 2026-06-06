@@ -229,7 +229,7 @@ Scenario: 网络分区下标注提交降级
 
 ## 产出
 
-> **生命周期角色**:`design_baseline` 设计基线。`failure-modes.md` / `failsafe-design.md` / `chaos-scenarios.md` / `resilience-test-plan.md` / `recovery-runbook.md` 5 份文档均跨迭代复用,改后触发 L5 Plan 兜底约束 + L5-impl 实装 + L6 Phase 5.7 灾难演练 + Reviewer R08 韧性审计。详见 `shadow-schema.json:lifecycle_artifacts` → `failure-modes` / `failsafe-design` / `chaos-scenarios` / `resilience-test-plan` / `recovery-runbook`。
+> **生命周期角色**:`design_baseline` 设计基线。`failure-modes.md` / `failsafe-design.md` / `chaos-scenarios.md` / `resilience-test-plan.md` / `recovery-runbook.md` 5 份文档均跨迭代复用,改后触发 L5 Plan 兜底约束 + L5-impl 实装 + L6 Phase 5.7 灾难演练 + Reviewer R08 韧性审计。详见 `framework/shadow-schema.json:lifecycle_artifacts` → `failure-modes` / `failsafe-design` / `chaos-scenarios` / `resilience-test-plan` / `recovery-runbook`。
 
 5 份文档，路径规范：
 

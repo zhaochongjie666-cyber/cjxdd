@@ -562,7 +562,7 @@ Harness 计划（本层写的）:
 
 `.shadow/L5-plan/{slug}/harness-plan.md`
 
-**生命周期角色**(`design_baseline` 设计基线,**模糊地带**):文件本身的"全局约束段 / 兜底约束段 / Batch 顺序"段是设计基线,跨迭代有效(下个需求来时回查"全局约束"和"批次划分");"逐文件实现指令段"实现完后过期,但依附文件保留作审计基线。详见 `shadow-schema.json:lifecycle_artifacts` → `harness-plan`。
+**生命周期角色**(`design_baseline` 设计基线,**模糊地带**):文件本身的"全局约束段 / 兜底约束段 / Batch 顺序"段是设计基线,跨迭代有效(下个需求来时回查"全局约束"和"批次划分");"逐文件实现指令段"实现完后过期,但依附文件保留作审计基线。详见 `framework/shadow-schema.json:lifecycle_artifacts` → `harness-plan`。
 
 一份自包含的执行计划，结构如下：
 

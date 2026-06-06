@@ -87,7 +87,7 @@ version: "1.0.0"
 
 `.shadow/L0-research/` 目录下的笔记文件。
 
-**生命周期角色**（`process_output` 过程产物）：7 份发散笔记本,服务本轮 L1 收敛用;L1 Research 完成后即弃,新需求来时重新发散。详见 `shadow-schema.json:lifecycle_artifacts` → `l0-notebooks`。
+**生命周期角色**（`process_output` 过程产物）：7 份发散笔记本,服务本轮 L1 收敛用;L1 Research 完成后即弃,新需求来时重新发散。详见 `framework/shadow-schema.json:lifecycle_artifacts` → `l0-notebooks`。
 
 **最小结构要求**（内容自由，但以下分节必须存在，L1 Research 按分节名称提取）：
 

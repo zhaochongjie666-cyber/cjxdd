@@ -5,7 +5,7 @@
 | 依赖 | 必需 | 用途 |
 |------|------|------|
 | `bash` ≥ 4 | ✓ | 跑 `scripts/gate-check-lifecycle.sh` |
-| `jq` ≥ 1.6 | ✓ | 读 `shadow-schema.json:lifecycle_artifacts[]` |
+| `jq` ≥ 1.6 | ✓ | 读 `framework/shadow-schema.json:lifecycle_artifacts[]` |
 | `coreutils` (`chmod` / `find` / `stat`) | ✓ | R3/R10 写阻断 + 自动归档 |
 
 ## 软依赖(可选)

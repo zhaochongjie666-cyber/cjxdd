@@ -23,7 +23,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
-load_shadow_schema || echo "[shadow] ⚠️  shadow-schema.json not found — stage auto-update disabled" >&2
+load_shadow_schema || echo "[shadow] ⚠️  framework/shadow-schema.json not found — stage auto-update disabled" >&2
 
 MIN_SIZE="${SHADOW_MIN_FILE_SIZE:-300}"
 CAP="${SHADOW_STUB_CAP:-10}"

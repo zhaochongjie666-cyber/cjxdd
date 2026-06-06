@@ -135,7 +135,7 @@ skills/
   skill-creator/               ← Meta-skill: create / improve / benchmark skills
   opencode-learning/           ← 3earn OpenCode API
 
-  # 单一源真理: shadow-schema.json (仓库根) 描述阶段表、存根模式、scale 字段.
+  # 单一源真理: framework/shadow-schema.json (仓库根) 描述阶段表、存根模式、scale 字段.
   # hooks/*.sh + plugins/shadow-hooks.ts 都从这里读, 改一处即生效.
 
   Each skill's internal layout:
@@ -239,7 +239,7 @@ Walker maintains a `pipeline/status.md` per iteration with a fixed skeleton: per
 
 ## § 7 工件生命周期(5 类角色)
 
-Shadow 30+ 份 `.shadow/` 工件按生命周期角色分 **5 类**,以 `shadow-schema.json:lifecycle_artifacts[]` 为单一源真理(58 项登记,本节解释角色定位,具体工件映射见 schema)。
+Shadow 30+ 份 `.shadow/` 工件按生命周期角色分 **5 类**,以 `framework/shadow-schema.json:lifecycle_artifacts[]` 为单一源真理(58 项登记,本节解释角色定位,具体工件映射见 schema)。
 
 | 角色 | 英文 | 含义 | 典型产物 | 存储 |
 |------|------|------|----------|------|
@@ -265,7 +265,7 @@ Shadow 30+ 份 `.shadow/` 工件按生命周期角色分 **5 类**,以 `shadow-s
 - 审查报告路径在 schema / SKILL / 实物三处都不同
 - `L3-resilience` 5 份文件名在 cjxdd/demo 实物里 3 份被改名
 
-5 类生命周期角色 = 回答"用多久 + 谁消费 + 改后会发生什么",从根上消除这类混乱。详见 `shadow-schema.json:lifecycle_artifacts.roles`。
+5 类生命周期角色 = 回答"用多久 + 谁消费 + 改后会发生什么",从根上消除这类混乱。详见 `framework/shadow-schema.json:lifecycle_artifacts.roles`。
 
 ### 消费方(谁会查这张表)
 

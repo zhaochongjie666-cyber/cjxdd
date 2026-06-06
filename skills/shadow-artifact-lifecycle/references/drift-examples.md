@@ -1,13 +1,13 @@
 # 漂移案例库(7+ 真实项目验证)
 
 > 本文记录 `lifecycle_role_of` 在 7+ 真实项目里识别出的**命名/位置漂移**,
-> 以及它们如何被 `shadow-schema.json:lifecycle_artifacts[].aliases[]` 收纳。
+> 以及它们如何被 `framework/shadow-schema.json:lifecycle_artifacts[].aliases[]` 收纳。
 
 ## 漂移 1:L1 Wire 输出路径
 
 | 漂移 | 来源 | canonical(本方案) | alias 收纳 |
 |------|------|------------------|----------|
-| `L1-business/wireframes/*.svg` | shadow-schema.json 阶段 4 (L1_Wire.output_patterns) | `L1-business/wire.svg` | `L1-business/wireframes/*.svg` |
+| `L1-business/wireframes/*.svg` | framework/shadow-schema.json 阶段 4 (L1_Wire.output_patterns) | `L1-business/wire.svg` | `L1-business/wireframes/*.svg` |
 | `L1-business/wire.svg` | shadow-l1-wire/SKILL.md, cjxdd/demo 实物 | 同 | — |
 | `L1-business/{slug}/wire.svg` | 其他 6+ 项目 | 同 | — |
 
@@ -17,7 +17,7 @@
 
 | 漂移 | 来源 | canonical(本方案) | alias 收纳 |
 |------|------|------------------|----------|
-| `deploy-report.md` | shadow-schema.json (L6.output_patterns) | `deployment-report.md` | `L6-deploy/{slug}/deploy-report.md` |
+| `deploy-report.md` | framework/shadow-schema.json (L6.output_patterns) | `deployment-report.md` | `L6-deploy/{slug}/deploy-report.md` |
 | `deployment-report.md` | shadow-l6-deploy/SKILL.md, cjlabel 实物 | 同 | — |
 | `L6-deploy/{slug}/deploy-report.md` | tianchi 实物 | 同 | 已 alias |
 
@@ -27,7 +27,7 @@
 
 | 漂移 | 来源 | canonical(本方案) | alias 收纳 |
 |------|------|------------------|----------|
-| `reviewer/{slug}/review-report.md` | shadow-schema.json (Reviewer.output_patterns) | `iterations/{iter}/reviews/{type}-review-{slug}-{ts}.md` | `reviewer/{slug}/review-report.md` |
+| `reviewer/{slug}/review-report.md` | framework/shadow-schema.json (Reviewer.output_patterns) | `iterations/{iter}/reviews/{type}-review-{slug}-{ts}.md` | `reviewer/{slug}/review-report.md` |
 | `iterations/{iter}/reviews/{type}-review-{slug}-{ts}.md` | shadow-reviewer/SKILL.md, cjlabel/cjgpu 实物 | 同 | — |
 | `iter-1/gate/reviewer-report.md` | cjxdd/demo 实物 | 同 | `iter-1/gate/reviewer-report.md` |
 | `iterations/{iter}/reviews/chain-audit.md` | 3dgstest 实物 | 同 | —(扁平但路径对) |
@@ -75,7 +75,7 @@
 
 | 漂移 | 来源 | canonical(本方案) |
 |------|------|------------------|
-| `L1.5-architecture/{slug}/architecture.md` | shadow-schema.json (L1.5.output_patterns) | ✓ 业务线 slug 化 |
+| `L1.5-architecture/{slug}/architecture.md` | framework/shadow-schema.json (L1.5.output_patterns) | ✓ 业务线 slug 化 |
 | `L1.5-architecture/architecture.md`(扁平) | cjxdd/demo 实物(8 BXX 共用一份) | ✗(但允许 > 4 业务线时走扁平) |
 
 **为什么业务线 slug 化**:`architecture.md` 内的"质量属性 / 限界上下文 / API 端点清单"按业务线划分更清晰;但**> 4 业务线时允许走单文件**(cjxdd-demo 8 BXX 共用一份架构图是合理的),SKILL.md 加备注"超过 4 业务线可走单文件 `L1.5-architecture/architecture.md`"。
@@ -92,7 +92,7 @@
 
 ## 漂移 10:L1 wire 阶段 schema 标 `num: 4`
 
-shadow-schema.json 标 L1 Wire 是 stage num=4,但实际 L1 阶段有 4 个子 stage(L1_Research=1, L1_Flow=2, L1_Spec=3, L1_Wire=4),所以 num=4 没错。L1 Spec = num=3, L1 Wire = num=4。但用户可能误以为"L1 Wire 是第 4 阶段"——不是,L1 是一组 4 个子 stage。
+framework/shadow-schema.json 标 L1 Wire 是 stage num=4,但实际 L1 阶段有 4 个子 stage(L1_Research=1, L1_Flow=2, L1_Spec=3, L1_Wire=4),所以 num=4 没错。L1 Spec = num=3, L1 Wire = num=4。但用户可能误以为"L1 Wire 是第 4 阶段"——不是,L1 是一组 4 个子 stage。
 
 **处理**:无需 schema 改动,SKILL.md 加备注"L1 是 4 个子 stage 的合集(Research + Flow + Spec + Wire)"。
 

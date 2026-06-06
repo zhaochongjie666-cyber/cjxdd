@@ -267,7 +267,7 @@ _resolve_schema_path() {
     else
         local self_real
         self_real="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
-        echo "$(dirname "$self_real")/../shadow-schema.json"
+        echo "$(dirname "$self_real")/../framework/shadow-schema.json"
     fi
 }
 

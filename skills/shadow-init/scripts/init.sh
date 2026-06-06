@@ -13,7 +13,7 @@ SCRIPT_DIR_REAL="$(dirname "$SELF_REAL")"
 SKILL_DIR_REAL="$(dirname "$SCRIPT_DIR_REAL")"
 SKILLS_DIR_REAL="$(dirname "$SKILL_DIR_REAL")"
 REPO_ROOT_REAL="$(dirname "$SKILLS_DIR_REAL")"
-DEFAULT_SCHEMA="$REPO_ROOT_REAL/shadow-schema.json"
+DEFAULT_SCHEMA="$REPO_ROOT_REAL/framework/shadow-schema.json"
 
 # ---------- 参数 ----------
 ITER=1

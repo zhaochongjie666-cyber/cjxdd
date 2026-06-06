@@ -23,7 +23,7 @@ bash ~/.claude/skills/shadow-init/scripts/init.sh
 ```
 
 脚本会：
-1. 读 `shadow-schema.json` 里的 `shadow_version` 字段
+1. 读 `framework/shadow-schema.json` 里的 `shadow_version` 字段
 2. 检查 `.shadow/` 是否已存在（已存在则 abort，要求 `--force` 或新 iter）
 3. 生成 4 个文件：`SHADOW_VERSION`、`current-iteration`、`iterations/iter-1/pipeline/status.md`、`scale.md`
 4. 在 L0-research/ 建占位 `.gitkeep`
@@ -35,7 +35,7 @@ bash ~/.claude/skills/shadow-init/scripts/init.sh
 |------|------|------|
 | `--iter N` | `1` | 初始化哪个 iter。会写 `current-iteration` 和 `iterations/iter-N/` |
 | `--force` | false | `.shadow/` 存在时强制覆盖（**危险**，会丢 status） |
-| `--schema PATH` | 自动找 | 指定 schema.json 路径（默认解软链找仓库根的 `shadow-schema.json`） |
+| `--schema PATH` | 自动找 | 指定 schema.json 路径（默认解软链找仓库根的 `framework/shadow-schema.json`） |
 | `--no-scale` | false | 不生成 scale.md 占位（极简模式） |
 | `--bizlines B01,B02` | `[]` | 多业务线项目：预生成 `## BXX` 段落 |
 
@@ -99,7 +99,7 @@ l6_core_phases_only: false
 
 ## 设计原则
 
-1. **模板从 schema.json 派生** — status.md 表的行数、字段都对应 `shadow-schema.json` 的 `stages[]`，所以改 schema 不会导致 init 出来的 status.md 跟阶段表对不上。
+1. **模板从 schema.json 派生** — status.md 表的行数、字段都对应 `framework/shadow-schema.json` 的 `stages[]`，所以改 schema 不会导致 init 出来的 status.md 跟阶段表对不上。
 2. **idempotent-with-warning** — 重复 init 不会静默覆盖。`--force` 才会。
 3. **不调 walker** — init 只生骨架。L0 发散本身是 walker + l0-research 的活。
 4. **多业务线项目**：用 `--bizlines B01 用户,B02 订单` 一次性把 BXX section 写进 status.md，**避免** walker 跑到 L1 才"发现"需要拆分。
@@ -120,7 +120,7 @@ l6_core_phases_only: false
 
 | 现象 | 原因 | 修法 |
 |------|------|------|
-| `schema not found` | 没在 shadow 仓库里 / 软链解不开 | `pwd` 确认在仓库根；`ls shadow-schema.json` 存在？ |
+| `schema not found` | 没在 shadow 仓库里 / 软链解不开 | `pwd` 确认在仓库根；`ls framework/shadow-schema.json` 存在？ |
 | `.shadow/ already exists` | 项目已初始化 | 删 `.shadow/` 重跑，或 `--iter 2` 开新 iter，或 `--force` 强覆盖 |
 | status.md 看着不对 | 老版本生成的（没 `last_updated`） | `cat .shadow/SHADOW_VERSION`，如 < 0.2.0，手补 `last_updated:` 行 |
 | walker 加载后看到空 status | init 漏跑了 | 跑 `bash scripts/init.sh --force` |

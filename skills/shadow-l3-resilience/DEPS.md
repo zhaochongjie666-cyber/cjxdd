@@ -15,7 +15,7 @@ L3 软门禁脚本 `scripts/gate-check-l3.sh` 在跑时需要：
 | `bash` | 跑 gate 脚本 | ✅ 必需 (任何 Unix 系统) |
 | `wc` | 统计行数 | ✅ 必需 (coreutils) |
 | `grep` | 匹配 @chaos / 失败 ID | ✅ 必需 |
-| `jq` | 读 shadow-schema.json | ✅ 必需 (hooks 链依赖) |
+| `jq` | 读 framework/shadow-schema.json | ✅ 必需 (hooks 链依赖) |
 | `tc` (iproute2) | 网络延迟/丢包注入 | ❌ 可选 (L6 灾难演练用) |
 | `iptables` | 网络分区注入 | ❌ 可选 (L6 灾难演练用) |
 | `docker` | 容器注入 | ❌ 可选 (L6 灾难演练用) |

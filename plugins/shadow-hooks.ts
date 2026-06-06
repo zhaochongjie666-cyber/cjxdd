@@ -125,7 +125,7 @@ function resolveSchemaPath(): string {
   } catch {
     // fall through
   }
-  return join(realDir, "..", "shadow-schema.json")
+  return join(realDir, "..", "framework", "shadow-schema.json")
 }
 
 function loadSchema(): ShadowSchema | null {

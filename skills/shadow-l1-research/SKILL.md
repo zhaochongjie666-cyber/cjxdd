@@ -297,7 +297,7 @@ version: "7.0.0"
 
 ## 产出
 
-> **生命周期角色**：`design_baseline` 设计基线。`intent.md` / `business-landscape.md` / `{slug}/research.md` 三件套均跨迭代复用,Walker 反复回查"意图/术语/聚合",改后触发下游变更传播。详见 `shadow-schema.json:lifecycle_artifacts` → `intent` / `business-landscape` / `research-bxx`。
+> **生命周期角色**：`design_baseline` 设计基线。`intent.md` / `business-landscape.md` / `{slug}/research.md` 三件套均跨迭代复用,Walker 反复回查"意图/术语/聚合",改后触发下游变更传播。详见 `framework/shadow-schema.json:lifecycle_artifacts` → `intent` / `business-landscape` / `research-bxx`。
 
 ### 意图定义（所有业务线共享）
 
