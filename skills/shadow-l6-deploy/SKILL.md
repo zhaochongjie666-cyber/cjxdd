@@ -338,6 +338,52 @@ psql -c "SELECT * FROM reconciliation_log WHERE created_at > NOW() - INTERVAL '1
 5. **所有临时修复必须记录** — kill 旧进程、改端口、加依赖，都要写进报告
 6. **验证场景必须有 Then 断言** — "curl 了某个端点"不是验证，"curl 返回 200 且响应体包含 status:ok"才是
 
+## Phase 9.5: 真实烟雾测试 (R11 门禁, P0-X Round 1)
+
+> **本段回应"测试通过 ≠ 真实可用" gap**: 单元/集成测试可以全过, 但**用户拿浏览器点击, 登录都登录不了**。
+> 框架的 6 硬门禁(R1/R3/R5/R6/R10)都是**产物形态**验证(产物在不在/对不对),
+> 没人验证**产物跑起来行为对不对**。R11 补这个盲区。
+
+### 必须写 marker
+
+部署完成后, Walker 必须为每个 L6-deploy/{slug}/ 写 marker:
+
+```bash
+# 跑通真实 E2E (例如 Playwright 真点登录) 后写 marker
+TS=$(date -Iseconds)
+echo "${TS} | login E2E: POST /api/auth/login 200 + browser navigated to /home + 后续 GET /api/me 200" \
+    > .shadow/iterations/iter-N/L6-deploy/{slug}/smoke-test-passed
+```
+
+### Marker 内容格式
+
+- **第一行**: iso8601 时间戳 + ` | ` 分隔 + e2e 简短描述(哪些端点、什么结果)
+- **可选后续行**: trace 路径、截图、curl 响应等
+
+### R11 检测逻辑(`gate-check-lifecycle.sh` 自动跑)
+
+- 扫 `.shadow/iterations/iter-N/L6-deploy/*/smoke-test-passed`
+- marker mtime < 7 天 → **pass**(新近的真实验证)
+- marker mtime ≥ 7 天 → **warn (stale)**
+- 完全没有 marker → **warn (缺 marker)**
+- 混合(部分新部分旧) → **warn (混合)**
+
+### Round 1 行为
+
+- 软警告(显示在 stop-gate 末尾)
+- 不阻断, 不破坏老项目
+- 留 Round 2 上**硬阻断 + 自动跑 Playwright**
+
+### Round 2 计划(下次)
+
+1. L6 末尾自动跑 `playwright test` (用 `skills/shadow-l2-e2e/references/playwright-cli.md`)
+2. 失败 → **exit 1 硬阻断**(R5/R3 同等力度)
+3. trace 收集到 `.shadow/iterations/iter-N/L6-deploy/{slug}/wander-evidence/`
+4. 在 `wander-evidence` 同样 chmod 444 保护 (R3 联动)
+
+> 真实 E2E 跑通 → marker mtime 自动更新 → R11 自动 pass, 不会再触发 stale 警告。
+> 这是"行为验证"自动化的关键 — Round 2 让 Walker **不能跳过浏览器真点登录**。
+
 ## Phase 9: 层内自检（36 Gate）
 
 部署验证完成后，执行 36 层内自检。核心是**审查部署报告的质量**，不只看结论。

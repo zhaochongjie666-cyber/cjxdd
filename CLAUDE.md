@@ -52,6 +52,23 @@ OpenCode 使用插件系统而非 shell hooks。等价功能通过 `.opencode/pl
 
 **BXX 业务线维度**：status.md 按 Walker 规范用 `## BXX 业务线名` 分节时，session-start 和 stop-gate 自动按 BXX 分组输出；多业务线项目的待办不会再混成一锅。
 
+### OpenCode Goal 模式（`/goal` 自驱循环）
+
+OpenCode 端的第二种 plugin：`plugins/goal-mode.ts`。注册 slash 命令 `/goal`（别名 `/g`），
+弹 DialogPrompt 收多行目标，plugin 监听 `session.idle` 事件，**用独立 session 评估**是否完成，
+未完成则回填目标继续推进，最多 10 轮。
+
+| 步骤 | 行为 |
+|------|------|
+| 1. 启动 | `/goal` → DialogPrompt 收目标 → 写 `.shadow/goal-runs/{run-id}/goal.md` + `current-goal.json` → 灌目标到主 session |
+| 2. 评估 | 每次 `session.idle` → 创建独立 evaluator session（`session.create({ title })`）→ 发 EVAL prompt（带主 session 最近 assistant 输出）→ 收 COMPLETE / CONTINUE 决策 |
+| 3. 推进 | COMPLETE → 写 `final.md` ✅, toast success; CONTINUE → 灌目标回主 session, toast info |
+| 4. 上限 | 10 轮未达成 → 写 `final.md` ❌ FAI3URE-CAP, toast error |
+
+**评估机制**：evaluator session 是 short-lived, 走 `session.create()` + `session.prompt()` + `session.messages()` 三件套, 不污染主 session 流。
+
+**生命周期注册**：`shadow-schema.json:lifecycle_artifacts` 末尾 3 行 `goal-run-goal` / `goal-run-final` / `goal-runs-ctrl`, hook 自动识别。
+
 ### 工具名约定
 
 Walker agent 的 frontmatter **故意不写 `tools` 字段** —— 两个 harness 对它的合法格式互斥：
@@ -335,6 +352,52 @@ Shadow 30+ 份 `.shadow/` 工件按生命周期角色分 **5 类**,以 `.shadow/
 压力信号检测是"AI 行为层"护栏(防 AI 自己走捷径),5 硬门禁是"产物层"护栏(防产物不合规)。两层互补:
 - **AI 行为层** — Hook 软提醒, AI 仍可自决
 - **产物层** — R5 漂移扫描 + R3 证据写阻断 + R10 自动归档,产物不合规直接 exit 1
+
+## § 9 真实烟雾测试门禁 (R11, P0-X Round 1)
+
+**问题**: "测试通过 ≠ 真实可用" gap。单元/集成测试可以全过, 但用户拿浏览器点击时**登录都登录不了**。6 硬门禁 (R1/R3/R5/R6/R10) 都是**产物形态**验证, 没人验证**产物跑起来行为对不对**。R11 补这个盲区。
+
+### 9.1 行为验证 vs 产物验证
+
+| 维度 | R1/R3/R5/R6/R10 | R11 |
+|------|------------------|-----|
+| 验证对象 | 产物文件在不在 / 角色对不对 | 产物跑起来行为对不对 |
+| 检查时机 | L5-impl 写代码时 + L6 部署末尾 | L6 部署末尾 (真实验证后) |
+| 阻断力度 | 软警告 + 硬阻断 (按门禁) | Round 1 软警告, Round 2 硬阻断 |
+| 自动化程度 | schema 驱动自动跑 | Round 2: 自动 Playwright |
+
+### 9.2 R11 检测逻辑
+
+扫 `.shadow/iterations/iter-N/L6-deploy/*/smoke-test-passed`:
+
+| 状态 | 条件 | 输出 |
+|------|------|------|
+| skip | 完全没有 `.shadow/L6-deploy/` | "skip (无 L6-deploy)" |
+| pass | 1+ 个 marker 且 mtime < 7 天 | "pass (N 个 marker 新近)" |
+| warn stale | 1+ 个 marker 但 mtime ≥ 7 天 | "warn (N 个 marker 过期 ≥ 7 天)" |
+| warn 缺 | 部分 slug 缺 marker | "warn (N 个 slug 缺 marker)" |
+| warn 混合 | 部分新部分旧 | "warn (混合: X 新 / Y 旧)" |
+
+### 9.3 Walker 怎么写 marker
+
+L6 末尾, 真实验证(例如 Playwright 真点登录)通过后:
+
+```bash
+TS=$(date -Iseconds)
+echo "${TS} | login E2E: POST /api/auth/login 200 + browser navigated to /home" \
+    > .shadow/iterations/iter-N/L6-deploy/{slug}/smoke-test-passed
+```
+
+### 9.4 Round 2 计划(下次)
+
+1. L6 末尾自动跑 `playwright test`
+2. 失败 → **exit 1 硬阻断**
+3. trace 收集到 `wander-evidence/` (R3 联动 chmod 444)
+4. marker 自动写 (e2e 跑通 → mtime 自动刷新 → R11 自动 pass)
+
+> Round 1 故意是软警告: 怕改了之后老项目 (cjxdd-demo 等 7+) 突然被卡, 破坏零迁移承诺。
+> Round 2 之前: 老项目继续 advisory exit 0; 新项目 (有 LIFECYCLE.md) 收到 warn 但不阻断。
+> Round 2 之后: 新项目硬阻断; 老项目仍 advisory (LIFECYCLE.md 缺席 = 老项目标记)。
 
 ## Where to start
 

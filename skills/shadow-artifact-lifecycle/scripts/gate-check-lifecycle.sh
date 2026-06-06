@@ -304,6 +304,37 @@ if [[ -d "$shadow_dir" ]]; then
     fi
 fi
 
+# ───────── R11 真实烟雾测试门禁 (P0-X Round 1: 软警告) ─────────
+# 检测 marker: .shadow/L6-deploy/{slug}/smoke-test-passed
+# marker 内容: "iso8601-timestamp + e2e 简短描述" (Walker 在 L6 末尾跑通真实 E2E 后写)
+# 阈值: marker 存在 + mtime < 7 天 → pass; 否则 → 软警告 (本轮不硬阻断)
+# 设计原则: 6 硬门禁 (R1/R3/R5/R6/R10) 都是"产物形态"验证, 本 R11 补"行为验证"盲区
+r11_pass=0
+r11_stale=0
+r11_total=0
+if [[ -d "$shadow_dir" ]]; then
+    while IFS= read -r marker; do
+        [[ -z "$marker" ]] && continue
+        r11_total=$((r11_total + 1))
+        # 检查 marker mtime (mtime 7 天内的视为"新近"真实验证)
+        if [[ $(find "$marker" -mtime -7 2>/dev/null) ]]; then
+            r11_pass=$((r11_pass + 1))
+        else
+            r11_stale=$((r11_stale + 1))
+        fi
+    done < <(find "$shadow_dir" -path "*/L6-deploy/*/smoke-test-passed" -type f 2>/dev/null)
+fi
+if [[ $r11_total -eq 0 ]]; then
+    r11_status="skip (无 L6-deploy)"
+elif [[ $r11_stale -eq 0 && $r11_pass -gt 0 ]]; then
+    r11_status="pass ($r11_pass 个 marker 新近)"
+elif [[ $r11_pass -eq 0 && $r11_stale -gt 0 ]]; then
+    r11_status="warn ($r11_stale 个 marker 过期 ≥ 7 天)"
+else
+    r11_status="warn (混合: $r11_pass 新 / $r11_stale 旧)"
+fi
+echo "  R11 真实烟雾测试: $r11_status"
+
 # ───────── 总结 ─────────
 echo ""
 echo "[lifecycle-gate] === 检查完成 ==="
@@ -312,6 +343,7 @@ echo "  R3 证据写阻断: $violations 修复 (硬门禁)"
 echo "  R5 漂移扫描: $r5_status (识别率 $pct%, 阈值 80%)"
 echo "  R6 路径 locality: $r6_drift 漂移"
 echo "  R10 自动归档: $r10_count 路径已检查"
+echo "  R11 真实烟雾测试: $r11_status (P0-X Round 1: 软警告, Round 2 上硬阻断)"
 echo ""
 
 # R5 硬阻断: 识别率 < 80% 且 .shadow/LIFECYCLE.md 存在 (新项目)
