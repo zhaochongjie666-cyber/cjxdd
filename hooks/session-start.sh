@@ -58,6 +58,21 @@ if [[ "${wo_total:-0}" -gt 0 ]]; then
     echo "[shadow] (reports in .shadow/iterations/iter-N/work-orders/<WO>/report.md)"
 fi
 
+# Phase 1: 工件生命周期 — 角色分布 (按 design_baseline / process_output / evidence_archive / control_marker 5 类, 模板类不计)
+echo ""
+echo "[shadow] lifecycle (artifact role distribution, 5 classes from shadow-schema.json):"
+for role in design_baseline process_output evidence_archive control_marker; do
+    count=$(count_lifecycle_role_files "$role" 2>/dev/null || echo 0)
+    case "$role" in
+        design_baseline)   label_zh="设计基线  " ;;
+        process_output)    label_zh="过程产物  " ;;
+        evidence_archive)  label_zh="证据存档  " ;;
+        control_marker)    label_zh="控制标记  " ;;
+        template_instance) label_zh="模板与实例" ;;
+    esac
+    printf "  %s (%s): %s file(s)\n" "$label_zh" "$role" "$count"
+done
+
 # === L1 增强: 注入当前 stage 上下文 ===
 pending=$(detect_pending_stage)
 doing=$(detect_doing_stage)

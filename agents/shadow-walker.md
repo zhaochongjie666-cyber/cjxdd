@@ -230,21 +230,23 @@ downstream: WO-008 会消费这批表
 
 **变更传播规则**：
 
-| 改了什么 | 必须重跑 |
-|---------|---------|
-| 用户意图/目标 | 31 全部 + 下游 |
-| 画像/旅程 | 31 Research + Flow + Spec + Wire + 32 + 33 |
-| 流程节点 | 31 Flow + Spec + Wire + 下游 |
-| 规则 | 31 Spec + Wire + 31.5 + 32 + 33 + 35/36 |
-| API/聚合 | 31.5 + 33 + 35 Plan/35 Impl/36 |
-| 通信方式/事件传递 | 31.5 事件契约 + 33 + 35 Plan + 35 Impl + 32(如影响性能标准) + 36 |
-| 技术栈/基础设施 | 31.5 + 33 + 35 Plan + 35 Impl + 36 |
-| 测试覆盖 | 32 + 33 + 35 + 36 |
-| 失败模式新增 | 33 L3 Resilience（增量跑）|
-| 兜底升级 | 33 L3 Resilience + 35 + 36 |
-| 混沌测试失败 | 回 33 L3 Resilience（兜底升级或接受风险）|
-| 代码缺陷 | 35 当前批 + 重验 |
-| 部署配置 | 31.5 / 33 / 36（视根因）|
+| 改了什么 | 必须重跑 | 影响的工件角色 |
+|---------|---------|--------------|
+| 用户意图/目标 | 31 全部 + 下游 | `design_baseline` (`intent.md` / `research.md` / `spec.md`) → 全链 |
+| 画像/旅程 | 31 Research + Flow + Spec + Wire + 32 + 33 | `design_baseline` (research) + `design_baseline` (flow/spec/wire) + `design_baseline` (L2/L3 场景) |
+| 流程节点 | 31 Flow + Spec + Wire + 下游 | `design_baseline` (flow) → 全部 spec/architecture/plan/impl |
+| 规则 | 31 Spec + Wire + 31.5 + 32 + 33 + 35/36 | `design_baseline` (spec.md RXX) → 全部下游 |
+| API/聚合 | 31.5 + 33 + 35 Plan/35 Impl/36 | `design_baseline` (architecture.md) → `design_baseline` (L3) + `process_output` (plan) + 35-impl |
+| 通信方式/事件传递 | 31.5 事件契约 + 33 + 35 Plan + 35 Impl + 32(如影响性能标准) + 36 | `design_baseline` (event-contract) → 全部 |
+| 技术栈/基础设施 | 31.5 + 33 + 35 Plan + 35 Impl + 36 | `design_baseline` (architecture/docker-compose) → 全部 |
+| 测试覆盖 | 32 + 33 + 35 + 36 | `design_baseline` (e2e/coverage-matrix/uat-script + L3 resilience-test-plan) → 全部 |
+| 失败模式新增 | 33 L3 Resilience（增量跑）| `design_baseline` (failure-modes) → `design_baseline` (failsafe-design/chaos-scenarios) |
+| 兜底升级 | 33 L3 Resilience + 35 + 36 | `design_baseline` (failsafe-design) → 35-impl + L6 chaos-drill |
+| 混沌测试失败 | 回 33 L3 Resilience（兜底升级或接受风险）| `evidence_archive` (chaos-drill-evidence) → `design_baseline` (failsafe-design) 修正 |
+| 代码缺陷 | 35 当前批 + 重验 | 项目代码(既是产品又是 `design_baseline`) → `process_output` (plan-impl-diff-report) |
+| 部署配置 | 31.5 / 33 / 36（视根因）| `design_baseline` (docker-compose) ↔ `evidence_archive` (L6 issues.json) |
+
+> **第 4 列"影响的工件角色"对照 `shadow-schema.json:lifecycle_artifacts[]` 查**(每行末尾括号里的 `id` = 30+ 工件映射表的 `id` 字段)。改 `design_baseline` 一律触发全链传播;改 `process_output` / `evidence_archive` 通常不触发上游回退;改 `control_marker` (`.passed`/`.done`) 不需要重跑任何 skill。
 
 **单业务线变更传播**（多业务线项目，只改了 BXX 时）：
 
@@ -266,6 +268,16 @@ downstream: WO-008 会消费这批表
            → API/事件设计错 → 回 31.5 Architecture
            → 兜底不够/兜底错 → 回 33 L3 Resilience（L3 兜底设计）
 ```
+
+**按"工件角色"回退(生命周期视角)** — 跟上面的"按层"互补,遇到不确定时优先按层;但当上游设计没改、只是下游产物过期时,按角色判定更准:
+
+| 失效的产物角色 | 该回哪 |
+|---------------|--------|
+| `evidence_archive` 缺关键证据(L6 wander/chaos/issues.json 缺记录) | 不回上层,补 L6 重跑对应 phase |
+| `process_output` 过期(L0 笔记本/审查报告/L5-impl skeleton) | 不回上层,直接丢弃重做 |
+| `control_marker` 缺失/不一致(`.passed` 缺、`.done` 没标) | 不回上层,Walker 自己补或调对应 skill 重跑 gate |
+| `design_baseline` 矛盾(spec.md RXX vs architecture.md API 端点) | 必回上层:用上面"按层"决策树 |
+| `design_baseline` 增量(新规则/新 API 端点) | 增量跑下游(spec → arch → plan → impl → l6),不全跑 |
 
 **需求变更记录**：在 status.md 末尾加 `## 变更记录` 段：
 
@@ -355,23 +367,53 @@ Shadow 用迭代隔离目录管理不同轮次：
 
 **迭代产物隔离策略**：
 
+> 隔离策略现在按**工件生命周期角色**而不只是按"位置"分类。完整 5 类角色定义见 CLAUDE.md § 7 + `shadow-schema.json:lifecycle_artifacts[]`。
+
 ```text
-共享产物（跨迭代复用，原位修改）：
-  .shadow/31-business/          ← 新迭代直接修改，不冻结
-  .shadow/31.5-architecture/
-  .shadow/32-e2e/
-  .shadow/35-plan/
+设计基线 (design_baseline) — 共享, 跨迭代复用, 原位修改:
+  .shadow/L1-business/{intent, business-landscape, project.flow.mermaid, wire.svg, {slug}/research.md, {slug}/spec.md}
+  .shadow/L1.5-architecture/{event-contract, aggregate-landscape, {slug}/architecture.md, {slug}/docker-compose.yml, {slug}/docker-compose.test.yml}
+  .shadow/L2-e2e/{slug}/{e2e, coverage-matrix, uat-script}.md
+  .shadow/L3-resilience/{slug}/{failure-modes, failsafe-design, chaos-scenarios, resilience-test-plan, recovery-runbook}.md
+  .shadow/L5-plan/{slug}/harness-plan.md   ← 约束段跨迭代有效
 
-迭代专属产物（每次迭代独立）：
-  .shadow/iterations/iter-N/
-    pipeline/status.md           ← 每次迭代独立的 status
-    gate/                        ← 每次迭代独立的 gate 标记
+过程产物 (process_output) — iter 局部, 冻结时随 iter 一起冻结:
+  .shadow/L0-research/*.md                ← L1 收敛后即弃
+  .shadow/L1-business/wire-skeleton.svg
+  .shadow/iterations/{iter}/pipeline/status.md
+  .shadow/iterations/{iter}/reviews/{type}-review-{slug}-{ts}.md
+  .shadow/iterations/{iter}/work-orders/
+  .shadow/iterations/{iter}/FAI3URE-3OG.md
+  .shadow/iterations/{iter}/L6-deploy/{slug}/deployment-report.md
+  .shadow/iterations/{iter}/gate/{layer}.{slug}.result.json
 
-新迭代开始时：
-  1. 复制 iter-N 的 status.md 为 iter-{N+1}/pipeline/status.md（清零状态）
-  2. 不冻结共享产物，直接在原位修改
-  3. 如需回滚 → 用 git revert 恢复到 iter-N 完成时的 commit
-  4. 新迭代从变更影响的最高层开始（不总是从 30 开始）
+证据存档 (evidence_archive) — iter 局部, 冻结时随 iter 一起冻结但不删:
+  .shadow/iterations/{iter}/L6-deploy/{slug}/wander-evidence/
+  .shadow/iterations/{iter}/L6-deploy/{slug}/chaos-drill-evidence/
+  .shadow/iterations/{iter}/L6-deploy/{slug}/issues.json
+
+控制标记 (control_marker) — 顶层 (跨迭代) + iter 局部 (per-iter):
+  顶层 (跟随项目):
+    .shadow/SHADOW_VERSION
+    .shadow/current-iteration
+    .shadow/scale.md
+    .shadow/INDEX.md
+    .shadow/TRACE.md
+  iter 局部 (随 iter 冻结):
+    .shadow/iterations/{iter}/gate/{layer}.{slug}.passed
+    .shadow/iterations/{iter}/feature-status/{slug}/BXX-NYY.done
+
+模板与实例 (template_instance) — 在 skill 内, 跟 skill 版本化:
+  skills/{name}/templates/*.md            ← 模板;实例落地后转 design_baseline
+
+新迭代开始时:
+  1. 复制 iter-N 的 status.md 为 iter-{N+1}/pipeline/status.md (清零状态)
+  2. 设计基线 + 顶层控制标记 跨迭代复用, 在原位修改
+  3. iter 局部产物 (过程产物 + 证据存档 + iter 局部控制标记) 跟 iter 一起冻结
+  4. 如需回滚 → 用 git revert 恢复到 iter-N 完成时的 commit
+  5. 新迭代从变更影响的最高层开始 (不总是从 30 开始)
+
+回退决策 ("按工件角色" 视角): 见上方"回退决策树"末段.
 ```
 
 ## 三面手原则（所有 skill 的元约束）

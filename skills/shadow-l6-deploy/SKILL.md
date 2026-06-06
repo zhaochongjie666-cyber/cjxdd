@@ -27,6 +27,10 @@ version: "7.3.0"
 
 **漫游质量底线**：Phase 5.6 系统漫游不只是发现问题，更要为修复闭环提供可操作的材料。漫游发现的所有问题（P0/P1/P2，一个不漏）必须详细记录（根因精确到代码层面、修复建议精确到文件和改动点、设计层缺失标注回退层），供 Shadow team 派发正确的修复 agent。不允许带着任何级别的漫游问题交付。不允许只记录不修复。
 
+## 产出
+
+> **生命周期角色**:混合 — `deployment-report.md` 文件 = `process_output` 过程产物(每次部署的报告,iter 冻结随 iter 走);`wander-evidence/` 截图 + trace / `chaos-drill-evidence/` 注入证据 = `evidence_archive` 证据存档(只读不可变,审计/复盘用,不删);`issues.json` P0/P1/P2 + root_cause + fix_suggestion = `evidence_archive` 证据存档(也是 36 漫游修复 3 轮硬上限的回退输入);`gate/l6.{slug}.passed` = `control_marker` 控制标记(部署门禁决策)。详见 `shadow-schema.json:lifecycle_artifacts` → `l6-deployment-report` / `wander-evidence` / `chaos-drill-evidence` / `issues-json` / `l6-gate-passed`。
+
 ## 怎么做
 
 **复杂度缩放**：如果 `.shadow/scale.md` 存在且 `l6_core_phases_only = true`，仅执行 Phase 0-3（环境+启动+健康检查）+ Phase 7-9（UAT+报告+自检）。Phase 4-6（API 端点详细验证 + Playwright E2E + 系统漫游 + 后端 E2E）由 Phase 7 UAT 合并覆盖，不再单独执行。否则执行全部 Phase。

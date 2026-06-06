@@ -237,6 +237,54 @@ Shared artifacts are edited in place (not frozen) across iterations; iteration-s
 
 Walker maintains a `pipeline/status.md` per iteration with a fixed skeleton: per-stage status table, "current stage" pointer, "this-stage must-read" pointers, and (for multi-bizline projects) a "cross-BXX consistency" checklist. Update it at every tool swap and stage completion — don't rely on the model keeping state in its head.
 
+## § 7 工件生命周期(5 类角色)
+
+Shadow 30+ 份 `.shadow/` 工件按生命周期角色分 **5 类**,以 `shadow-schema.json:lifecycle_artifacts[]` 为单一源真理(58 项登记,本节解释角色定位,具体工件映射见 schema)。
+
+| 角色 | 英文 | 含义 | 典型产物 | 存储 |
+|------|------|------|----------|------|
+| **设计基线** | `design_baseline` | 下次开发必主动引用;改了触发下游变更传播 | `spec.md` / `architecture.md` / `failure-modes.md` / `failsafe-design.md` / `harness-plan.md`(约束段) / 项目代码 | `.shadow/L*-*` 顶层 |
+| **过程产物** | `process_output` | 一次性消费,过期作废 | L0 笔记本 / `status.md` / 审查报告 / `wire-skeleton.svg` / 审查 `result.json` | `.shadow/iterations/{iter}/` |
+| **证据存档** | `evidence_archive` | 只读不可变;审计/复盘用 | `wander-evidence/` / `chaos-drill-evidence/` / `issues.json` | `.shadow/iterations/{iter}/L6-deploy/{slug}/` |
+| **控制标记** | `control_marker` | 空文件/单行,跟生命周期绑定 | `SHADOW_VERSION` / `current-iteration` / `scale.md` / `.passed` / `.done` / `INDEX.md` / `TRACE.md` | 顶层 + `iter/gate/` + `iter/feature-status/` |
+| **模板与实例** | `template_instance` | 模板(skill 内) + 实例(落地后转主角色) | `skills/{name}/templates/*.md` | skill 内 |
+
+### 判别启发式(下次有新工件不知归哪时,按顺序问)
+
+1. **下次开发会不会主动读它?** 是 → 设计基线;否 → 过程产物
+2. **是否只服务"证明某事发生过"?** 是 → 证据存档
+3. **是否只是"已通过/已完成"标记?** 是 → 控制标记
+4. **是否只是空骨架等被填?** 是 → 模板(实例落地后转问 1)
+
+### 为什么不只按"跨迭代 vs 迭代作用域"分
+
+旧二分法只描述"放在哪",不描述"用多久"。后果(7+ 真实项目混乱样本验证):
+- `L5-plan/` 在 `iter-helpers.sh` 注释里说"共享",在 `directory-structure.md` 又列进"迭代作用域",真实项目两派都有
+- `feature-status/` 在 3 个不同位置共存
+- 部署报告叫 `deploy-report.md` 还是 `deployment-report.md` 各自为政
+- 审查报告路径在 schema / SKILL / 实物三处都不同
+- `L3-resilience` 5 份文件名在 cjxdd/demo 实物里 3 份被改名
+
+5 类生命周期角色 = 回答"用多久 + 谁消费 + 改后会发生什么",从根上消除这类混乱。详见 `shadow-schema.json:lifecycle_artifacts.roles`。
+
+### 消费方(谁会查这张表)
+
+- **Walker**:跨层决策时查"我改的是设计基线还是过程产物"
+- **`hooks/lib.sh`**: `lifecycle_role_of <path>` / `lifecycle_paths_by_role <role>` / `count_lifecycle_role_files <role>`
+- **`hooks/stop-gate.sh`**: 5 条软警告(skel 文件 / 老 L3 文件名 / 老 deploy-report 别名 / 老 reviewer 路径 / feature-status 漂移)对照 schema
+- **`hooks/session-start.sh`**: 启动时打印"角色分布"统计
+- **Reviewer chain audit**: 审查时把"角色 + 漂移"作为评估维度
+- **`shadow-trace-init`**(下期): 反向追溯时把"角色"作为传播权重
+
+### 模糊地带(已知)
+
+| 工件 | 既是 X 又是 Y | 本方案怎么定 |
+|------|--------------|-------------|
+| `harness-plan.md` | 约束段 = 设计基线;逐文件指令段 = 过程产物 | 标 `design_baseline`;note 注明"指令段实现完即过期但依附文件保留" |
+| `scale.md` | 控制标记 + 被 5 个 skill 读 | 标 `control_marker`;note 注明"具有 design_baseline 的一些属性" |
+| `L6 deployment-report.md` | 文件本身 = 过程产物;内部"证据段" = 证据存档 | 标 `process_output`;note 注明"内部 evidence 段是 evidence_archive 角色" |
+| `e2e/{feature}.binding.yaml` | 未填实 = 过程产物;填实后 = 设计基线(测试代码) | 标 `process_output`;note 注明"填实后转设计基线" |
+
 ## Where to start
 
 - **To understand the framework**: read `agents/shadow-walker.md`, then `docs/architecture.mmd` (rendered), then `README.md`.

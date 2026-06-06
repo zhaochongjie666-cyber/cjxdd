@@ -184,6 +184,8 @@ POST /api/hello  {} → 400 {error: "name is required"}
 
 ## 产出
 
+> **生命周期角色**:混合 — `docker-compose.yml` / `docker-compose.test.yml` 从 L1.5 复制,是 `design_baseline` 设计基线(Scaffold 不产出新设计,只搬运);项目根 `docker-compose.dev.yml` / `migrations/` / Hello API / Smoke Test 是项目代码,既是产品交付又是 `design_baseline`;`.env.example` 是 `control_marker` 控制标记(模板)。详见 `shadow-schema.json:lifecycle_artifacts` → `docker-compose` / `docker-compose-test`。
+
 | 产出物 | 位置 | 说明 |
 |--------|------|------|
 | 项目目录 | 项目根目录 | 完整的可开发目录结构 |

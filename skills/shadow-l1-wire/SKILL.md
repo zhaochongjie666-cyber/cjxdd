@@ -406,7 +406,9 @@ Pass 3（契约）：
 
 ## 产出
 
-`.shadow/L1-business/wire.svg`
+`.shadow/L1-business/wire.svg`(项目级单张大图,Pass 1/2 中间产物 `wire-skeleton.svg` / `wire-content.svg` 完成后丢弃)
+
+**生命周期角色**:`design_baseline` 设计基线(`wire.svg` + `data-*` 标注是 L1.5 / L5 UI 契约源) + `process_output` 过程产物(`wire-skeleton.svg` / `wire-content.svg`,Pass 3 完成后删除)。详见 `shadow-schema.json:lifecycle_artifacts` → `wire-svg` / `wire-skeleton`。
 
 这是项目级唯一线框图。与 project.flow.mermaid 一致，不按业务线拆分。所有业务线的页面、交互、状态都在同一张 wire.svg 中。
 

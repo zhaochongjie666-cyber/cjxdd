@@ -253,6 +253,9 @@ declare -A STAGE_NUM=()           # stage_id → num
 declare -A STAGE_SKILL_NUM=()     # skill_name → num
 declare -A STAGE_OUTPUTS=()       # stage_id → "pat1 pat2 ..." (空格分隔)
 declare -A STAGE_ALIAS=()         # alias_string → stage_id
+declare -A LIFECYCLE_ROLE=()      # artifact_id → role
+declare -A LIFECYCLE_PATH=()      # artifact_id → canonical_path
+declare -A LIFECYCLE_STAGE=()     # artifact_id → stage
 _SCHEMA_LOADED=0
 _SHADOW_SCHEMA_PATH=""
 
@@ -289,6 +292,16 @@ load_shadow_schema() {
         [[ -z "$alias" ]] && continue
         STAGE_ALIAS["$alias"]="$id"
     done < <(jq -r '.stages[] | (. as $s | ($s.aliases // [])[] | [., $s.id]) | @tsv' "$_SHADOW_SCHEMA_PATH")
+
+    # Populate lifecycle_artifacts[] map (Phase 1)
+    if jq -e '.lifecycle_artifacts.artifacts' "$_SHADOW_SCHEMA_PATH" >/dev/null 2>&1; then
+        while IFS=$'\t' read -r id stage role path; do
+            [[ -z "$id" ]] && continue
+            LIFECYCLE_ROLE["$id"]="$role"
+            LIFECYCLE_PATH["$id"]="$path"
+            LIFECYCLE_STAGE["$id"]="$stage"
+        done < <(jq -r '.lifecycle_artifacts.artifacts[]? | [.id, .stage, .role, .canonical_path] | @tsv' "$_SHADOW_SCHEMA_PATH")
+    fi
 
     _SCHEMA_LOADED=1
     return 0
@@ -491,4 +504,141 @@ count_wo_reports() {
 
     local total=$((done + partial + blocked + failed))
     echo "done=$done partial=$partial blocked=$blocked failed=$failed total=$total"
+}
+
+# ─────────── 工件生命周期 (lifecycle_artifacts) ───────────
+# Phase 1 零破坏 — 仅查询不强制. 替代/补充旧的"跨迭代 vs 迭代作用域"位置二分法.
+# 5 类: design_baseline / process_output / evidence_archive / control_marker / template_instance
+# 详见 shadow-schema.json:lifecycle_artifacts.roles.
+
+# 列出所有 (id|role|stage|canonical_path), 供 stop-gate 全量扫描.
+# Returns: 多行, 格式 "id|role|stage|canonical_path"
+list_lifecycle_artifacts() {
+    load_shadow_schema || { echo ""; return 0; }
+    local id
+    for id in "${!LIFECYCLE_ROLE[@]}"; do
+        printf "%s|%s|%s|%s\n" "$id" "${LIFECYCLE_ROLE[$id]}" "${LIFECYCLE_STAGE[$id]}" "${LIFECYCLE_PATH[$id]}"
+    done
+}
+
+# 根据文件路径反查它的生命周期角色.
+# Args: $1 = 绝对路径 (传相对路径也行)
+# Returns: role 字符串 (design_baseline / process_output / evidence_archive / control_marker / template_instance / unknown)
+# 算法: 把 canonical_path 和 aliases 里的 {iter}/{slug} 转成 *, 用 case glob 匹配
+lifecycle_role_of() {
+    load_shadow_schema || { echo "unknown"; return 0; }
+    local file="$1"
+    [[ -z "$file" ]] && { echo "unknown"; return 0; }
+
+    # 转成项目内相对路径
+    local root rel
+    root=$(find_project_root) || { echo "unknown"; return 0; }
+    rel="${file#$root/}"
+    [[ "$rel" == "$file" ]] && rel="$file"   # 不在项目内,直接用原值
+
+    local id path role
+    for id in "${!LIFECYCLE_PATH[@]}"; do
+        path="${LIFECYCLE_PATH[$id]}"
+        # 主 canonical_path
+        local glob_pat="${path//\{iter\}/*}"
+        glob_pat="${glob_pat//\{slug\}/*}"
+        glob_pat="${glob_pat//\{component\}/*}"
+        glob_pat="${glob_pat//\{layer\}/*}"
+        glob_pat="${glob_pat//\{type\}/*}"
+        glob_pat="${glob_pat//\{ts\}/*}"
+        # 末尾 / 表示目录匹配
+        case "$glob_pat" in
+            */) glob_pat="${glob_pat}*" ;;
+        esac
+        # shellcheck disable=SC2254
+        case "$rel" in
+            $glob_pat) echo "${LIFECYCLE_ROLE[$id]}"; return 0 ;;
+        esac
+        # aliases 也试一遍
+        local aliases
+        aliases=$(jq -r --arg id "$id" '.lifecycle_artifacts.artifacts[]? | select(.id == $id) | (.aliases // [])[]' "${SHADOW_SCHEMA:-$(_resolve_schema_path)}" 2>/dev/null)
+        local alias
+        for alias in $aliases; do
+            local apat="${alias//\{iter\}/*}"
+            apat="${apat//\{slug\}/*}"
+            apat="${apat//\{component\}/*}"
+            apat="${apat//\{layer\}/*}"
+            apat="${apat//\{type\}/*}"
+            apat="${apat//\{ts\}/*}"
+            case "$apat" in
+                */) apat="${apat}*" ;;
+            esac
+            # shellcheck disable=SC2254
+            case "$rel" in
+                $apat) echo "${LIFECYCLE_ROLE[$id]}"; return 0 ;;
+            esac
+        done
+    done
+    echo "unknown"
+}
+
+# 列指定角色下所有 canonical_path 模板, 供 stop-gate 扫某角色全量产物.
+# Args: $1 = role
+# Returns: 多行, 每行一个 canonical_path 模板
+lifecycle_paths_by_role() {
+    load_shadow_schema || { echo ""; return 0; }
+    local role="$1"
+    local id
+    for id in "${!LIFECYCLE_ROLE[@]}"; do
+        [[ "${LIFECYCLE_ROLE[$id]}" == "$role" ]] && echo "${LIFECYCLE_PATH[$id]}"
+    done
+}
+
+# 统计 .shadow/ 下某角色实际存在的文件数 (session-start 角色分布用).
+# Args: $1 = role
+# Returns: 整数 (count)
+count_lifecycle_role_files() {
+    load_shadow_schema || { echo "0"; return 0; }
+    local role="$1"
+    local shadow root
+    shadow=$(get_shadow_dir) || { echo "0"; return 0; }
+    [[ -z "$shadow" ]] && { echo "0"; return 0; }
+    root=$(find_project_root) || { echo "0"; return 0; }
+
+    local count=0
+    local id path
+    for id in "${!LIFECYCLE_ROLE[@]}"; do
+        [[ "${LIFECYCLE_ROLE[$id]}" != "$role" ]] && continue
+        path="${LIFECYCLE_PATH[$id]}"
+        # 模板路径(在 skills/ 下)不统计
+        case "$path" in
+            skills/*) continue ;;
+        esac
+        # 把 .shadow/ 前缀去掉, 因为 shadow 已是绝对
+        local rel="${path#./}"
+        rel="${rel#.shadow/}"
+        # 简单 glob 化 + 通配符处理
+        local abs_pat
+        if [[ "$rel" == .shadow/* ]]; then
+            abs_pat="$root/$rel"
+        else
+            abs_pat="$root/$rel"
+        fi
+        # 把 {iter}/{slug}/{component} 转成 *, 末尾 / 表示目录
+        local gpat="${abs_pat//\{iter\}/*}"
+        gpat="${gpat//\{slug\}/*}"
+        gpat="${gpat//\{component\}/*}"
+        # 用 find -path 匹配 (支持 /** 模式)
+        if [[ "$gpat" == */\* ]]; then
+            # 目录模式: 找该目录下任意文件
+            local dir="${gpat%/\*}"
+            [[ -d "$dir" ]] && {
+                local n
+                n=$(find "$dir" -mindepth 1 2>/dev/null | wc -l)
+                count=$((count + n))
+            }
+        else
+            # 文件模式: 直接 ls (glob 展开)
+            # shellcheck disable=SC2086
+            local files
+            files=$(ls -1 $gpat 2>/dev/null | wc -l)
+            count=$((count + files))
+        fi
+    done
+    echo "$count"
 }
