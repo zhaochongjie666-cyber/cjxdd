@@ -12,14 +12,15 @@ If a user gives Claude a task, the right move is usually to **load the `shadow-w
 
 ### Install / sync — 选你的环境
 
-仓库的交付物（agents、skills）需要软链到对应 harness 的配置目录。**两个安装脚本并存，按需选用，互不干扰：**
+仓库的交付物（agents、skills）需要软链到对应 harness 的配置目录。**三个安装脚本并存，按需选用，互不干扰：**
 
 | Harness | 安装命令 | 软链到 |
 |---------|---------|--------|
 | **OpenCode** | `./install-to-opencode.sh` | `~/.config/opencode/{agents,skills}` |
 | **Claude Code** | `./install-to-claude-code.sh` | `~/.claude/{agents,skills,hooks,settings.json}` |
+| **pi** | `./install-to-pi.sh` | `~/.pi/{agents,skills,hooks,settings.json}` (可 `PI_DIR=...` 覆盖) |
 
-两个脚本都使用 symlink，编辑后无需重装即可生效。OpenCode 脚本还会为带 `package.json` 的 extensions 跑 `npm install`；Claude Code 脚本不涉及 npm。
+三个脚本都使用 symlink，编辑后无需重装即可生效。OpenCode 脚本还会为带 `package.json` 的 extensions 跑 `npm install`；Claude Code / pi 脚本不涉及 npm。pi 脚本额外支持 `--dry-run` / `--uninstall` / `--force` 选项。
 
 ### Claude Code hooks（自动门禁）
 

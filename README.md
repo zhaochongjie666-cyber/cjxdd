@@ -99,6 +99,7 @@ skills/
 
 install-to-opencode.sh      # 装到 ~/.config/opencode/
 install-to-claude-code.sh   # 装到 ~/.claude/，含 hooks 软链
+install-to-pi.sh            # 装到 ~/.pi/ (PI_DIR 环境变量可覆盖),支持 --dry-run / --uninstall / --force
 ```
 
 ## 设计原则
@@ -144,6 +145,16 @@ intent.md（为什么做）
 4. Walker 按需 `Skill` 加载工具，逐阶段推进到交付
 5. 工具名按 Claude Code 规范（`Read` / `Write` / `Bash` / `Glob` / `Grep` / `Skill` / `Task` / `WebFetch` / `WebSearch`），详见 walker frontmatter 的 `tools` 字段
 6. 两个安装脚本互不影响，可同时使用：OpenCode 用户用 `install-to-opencode.sh`，Claude Code 用户用 `install-to-claude-code.sh`
+
+### pi
+
+1. 运行 `./install-to-pi.sh`，把 agents/skills/hooks/settings.json 软链到 `~/.pi/`（默认；可设 `PI_DIR=~/.config/pi` 覆盖）
+2. 在项目根运行 `bash skills/shadow-init/scripts/init.sh`（或 `bash ~/.pi/skills/shadow-init/scripts/init.sh`）生成 `.shadow/` 骨架
+3. 在 pi 中说：*"使用 shadow-walker-pi subagent 给我做一个 XX 系统"*
+4. pi 版 walker (`agents/shadow-walker-pi.md`) 跟 Claude Code/OpenCode 版共享核心方法论(5 类工件生命周期 / 4 问启发式 / 5 步节奏 / 变更传播表 / 回退决策树),仅 frontmatter 适配 pi 协议
+5. 钩子集成跟 CC 类似,通过 `~/.pi/settings.json` 注册 4 个 hook (SessionStart/PreToolUse/PostToolUse/Stop)
+6. 其他选项: `--dry-run` (只看不装) / `--uninstall` (反向卸载) / `--force` (覆盖非软链目标, 备份为 .bak)
+7. 三个安装脚本互不影响,可同时使用:OpenCode + Claude Code + pi 可共存同一项目
 
 #### 自动门禁（Hooks）
 
