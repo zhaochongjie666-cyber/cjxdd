@@ -39,6 +39,17 @@ if [[ -z "$prompt" ]]; then
     exit 0
 fi
 
+# === P0-7 Meta 旁路 ===
+# 当 CWD 是 cjxdd 仓库本身 (framework 自身) 时, 不做"build me X" → walker 加载
+# 引导, 不做 stage 状态查询 (status.md 是 cjxdd 内部状态, 不应混入 context).
+# 让用户直接改 skills/agents/hooks/plugins 源码.
+if is_meta_project; then
+    # 极小旁路: 仅压力信号检测 (跟 framework 也相关: 用户催/简化会污染 quality)
+    # 跳过意图识别 / 跳过 stage 查询 / 跳过 shadow-init 引导.
+    check_pressure_signals "$prompt"
+    exit 0
+fi
+
 # Lowercase copy for matching.
 lc=$(echo "$prompt" | tr '[:upper:]' '[:lower:]')
 

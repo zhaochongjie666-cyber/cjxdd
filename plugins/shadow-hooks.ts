@@ -143,6 +143,20 @@ function findShadowDir(start: string = process.cwd()): string | null {
   return null
 }
 
+// ───────── Meta 任务检测 (P0-7 Round 1) ─────────
+// 当项目根就是 Shadow framework 自身 (cjxdd) 时, hook 不应注入
+// "build me X" → walker 引导, 不应注 stage 状态查询答案.
+// 判定: 项目根同时存在 agents/shadow-walker.md + skills/shadow-init/SKILL.md
+//       + hooks/lib.sh.
+function isMetaProject(projectRoot: string | null): boolean {
+  if (!projectRoot) return false
+  return (
+    existsSync(join(projectRoot, "agents/shadow-walker.md")) &&
+    existsSync(join(projectRoot, "skills/shadow-init/SKILL.md")) &&
+    existsSync(join(projectRoot, "hooks/lib.sh"))
+  )
+}
+
 function resolveGateScriptPath(): string {
   let realDir = __dirname
   try {
@@ -945,15 +959,30 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
   const projectRoot = input.directory
   const client = input.client
   const shadowDir = findShadowDir(projectRoot)
+  const meta = isMetaProject(projectRoot)
   const schema = loadShadowSchema()
   const schemaPath = resolveSchemaPath()
 
-  log(`loaded for project=${projectRoot} shadowDir=${shadowDir ?? "(none)"} schema=${schema ? "v" + schema.shadow_version : "(missing)"}`)
+  log(`loaded for project=${projectRoot} shadowDir=${shadowDir ?? "(none)"} meta=${meta} schema=${schema ? "v" + schema.shadow_version : "(missing)"}`)
   diag({
     ev: "plugin-load", project: projectRoot, shadowDir: shadowDir ?? null,
-    schema: schema ? schema.shadow_version : null, schemaPath,
+    meta, schema: schema ? schema.shadow_version : null, schemaPath,
     clientType: typeof client, hasTui: client ? Boolean((client as any).tui) : null,
   })
+
+  // ────────────────────────────────────────────────────────────
+  // P0-7 Meta 旁路
+  // 当 CWD 是 cjxdd 仓库本身 (framework 自身) 时, 5 个 hook 都走 bypass 模式:
+  //   L1 SessionStart: 跳过 status.md / pipeline 摘要注入 (framework 自身的 status
+  //                    是内部状态, 不应混入 AI context)
+  //   L2 chat.message: 跳过 "build me X" → walker 引导, 跳过 stage 查询
+  //                    (但仍跑压力信号检测 — 跟 framework 质量也相关)
+  //   L3 tool.execute.before: 跳过 L0/L1+ 阶段硬阻断, 跳过 auto-mark DOING
+  //                          (framework 修改不写 status.md)
+  //   L4 tool.execute.after: 跳过 stub scan + auto-mark DONE (同上)
+  //   L5 Stop: 跳过 R5/lifecycle 漂移检查 (不适用 framework)
+  // 用户在 cjxdd 仓库里通常是想直接改 skills/agents/hooks/plugins 源码.
+  // ────────────────────────────────────────────────────────────
 
   // ────────────────────────────────────────────────────────────
   // L1: experimental.chat.system.transform (SessionStart)
@@ -961,6 +990,8 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
   // ────────────────────────────────────────────────────────────
   const hook: Hooks = {
     "experimental.chat.system.transform": async (_input, output) => {
+      // P0-7 Meta 旁路: 在 cjxdd 仓库自身不注入 status.md 摘要
+      if (meta) return
       if (!shadowDir || !schema) return
       const iter = readCurrentIter(shadowDir)
       if (!iter) return
@@ -1053,6 +1084,18 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
       const iter = readCurrentIter(shadowDir)
       const status = iter ? readStatusMd(shadowDir, iter) : null
 
+      // P0-7 Meta 旁路: 在 cjxdd 仓库自身不触发"build me X" → walker 引导,
+      // 也不响应"当前 stage"查询 (framework 自身的 status.md 不是产品项目).
+      // 但压力信号仍跑 — 跟 framework 质量也相关.
+      if (meta) {
+        const pressure = checkPressureSignals(text, "user-prompt")
+        if (pressure) {
+          pushSyntheticPart(output, pressure)
+          diag({ ev: "pressure-detect", source: "user-prompt", meta: true })
+        }
+        return
+      }
+
       // 1) stage 状态查询 (优先, 短路)
       const query = matchStageQuery(text)
       if (query) {
@@ -1104,6 +1147,10 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
     // L3: tool.execute.before (PreToolUse Skill + Task)
     // ────────────────────────────────────────────────────────────
     "tool.execute.before": async (input, output) => {
+      // P0-7 Meta 旁路: 在 cjxdd 仓库自身, 5 步节奏 / 阶段硬阻断 / auto-mark DOING
+      // 都不适用. 仅保留 task worker WO 校验 (轻量, 仍然有用).
+      // 但若想完全静默, 改成 `if (meta) return`.
+      if (meta && input.tool !== "task") return
       // Task 分支: 派 worker 校验 WO
       if (input.tool === "task") {
         const args = (output as any).args ?? {}
@@ -1195,6 +1242,10 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
     // 5 段: auto-mark DONE → R3 evidence → stub scan
     // ────────────────────────────────────────────────────────────
     "tool.execute.after": async (input, output) => {
+      // P0-7 Meta 旁路: 在 cjxdd 仓库自身不扫存根, 不 auto-mark DONE
+      // (framework 自身的源码当然有 TODO/NotImplementedError — 那是有意为之的
+      //  模板代码, 不是 stub)
+      if (meta) return
       if (!["write", "edit", "apply_patch"].includes(input.tool) || !schema) return
       const args = (input as any).args ?? {}
       const filePath = args.filePath ?? args.path ?? args.file ?? ""
@@ -1245,6 +1296,14 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
       const info = event?.properties?.info
       if (!info || info.role !== "assistant" || info.finish !== "stop") return
       if (!shadowDir || !schema) return
+
+      // P0-7 Meta 旁路: 在 cjxdd 仓库自身不跑 stop-gate (R5/lifecycle 漂移
+      // 检查不适用 framework 自身)
+      if (meta) {
+        _toastLast.clear()
+        clearPressureFingerprints()
+        return
+      }
 
       setTimeout(() => {
         try {

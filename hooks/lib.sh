@@ -20,6 +20,33 @@ find_project_root() {
     return 1
 }
 
+# ───────── Meta 任务检测 (P0-7 Round 1: 改 framework 自身时屏蔽意图引导) ─────────
+# 当 CWD 是 Shadow framework 仓库自身 (cjxdd) 时, hook 不应触发
+# "build me X" / "做一个 XX 系统" → walker 加载的引导. 原因:
+#   - 用 Shadow 改 Shadow 会自指递归 (工件污染 + 状态错乱)
+#   - 用户在 framework 仓库里通常是想直接改 skills/agents/hooks/plugins 源码,
+#     不是启动产品项目 pipeline.
+#
+# 判定: 项目根同时存在 agents/shadow-walker.md + skills/shadow-init/SKILL.md +
+#       hooks/lib.sh → framework 自身.
+# Returns: 0 = 是 Meta 任务 (在改 framework 自身), 1 = 不是 Meta 任务.
+# 用法:
+#   if is_meta_project; then
+#       echo "[shadow] ⚠️ Meta 任务, 跳过意图引导"
+#       exit 0
+#   fi
+is_meta_project() {
+    local root
+    root=$(find_project_root) || { return 1; }
+    [[ -z "$root" ]] && return 1
+    if [[ -f "$root/agents/shadow-walker.md" \
+       && -f "$root/skills/shadow-init/SKILL.md" \
+       && -f "$root/hooks/lib.sh" ]]; then
+        return 0  # 是 Meta
+    fi
+    return 1  # 不是 Meta
+}
+
 # Returns the absolute path to .shadow/ in the project, or empty.
 get_shadow_dir() {
     local root

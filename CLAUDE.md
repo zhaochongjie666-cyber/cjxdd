@@ -8,6 +8,45 @@ This repository is **not a typical application codebase**. It is a **meta-projec
 
 If a user gives Claude a task, the right move is usually to **load the `shadow-walker` agent and walk the pipeline** rather than improvise.
 
+## ⚠️ Meta: 你正在修改 Shadow 自身, 禁用 Shadow 流程
+
+**这个项目就是 Shadow 框架本身** (`agents/` + `skills/` + `hooks/` + `plugins/` + `commands/` + `install-*.sh`). 你在 cjxdd 工作就是**在改 framework**, 不是**在用 framework 改一个外部项目**.
+
+### ❌ 严禁 (用 Shadow 改 Shadow 会自指递归, 工件污染)
+
+- ❌ **不要加载 `shadow-walker` / `shadow-worker` / `shadow-walker-pi` agent 来开发本仓库** — walker 会在 `.shadow/` 写 status.md / 触发 L0 调研 / 跑 pipeline, 把 framework 自身当成"产品项目" 反复迭代
+- ❌ **不要跑 Shadow 流水线** (L0→L1→L1.5→Scaffold→L2→L3→L5 Plan→L5 Impl→L6 Deploy) — 流水线是给"外部产品项目"用的, 给 framework 自身跑会污染 `.shadow/` 目录且毫无意义
+- ❌ **不要在本仓库创建 `.shadow/`** — `.shadow/` 是产品项目的工作区, framework 自己的状态在 git 里
+- ❌ **不要用 `shadow-init` / `shadow-l0-research` 等 skill 来"调研" framework 自身** — skill 输出工件的 schema 假定产物是产品代码, 不是 framework 源码
+- ❌ **不要调 `/cjgoal` 推到生产可用** — goal mode 走的是 30→36 pipeline, 不适用 framework 自身迭代
+- ❌ **不要被 `hooks/user-prompt-submit.sh` 引导"加载 walker 给我做一个 XX 系统"** — 关键词命中后 hook 会误推 walker, 但本仓库不是产品项目
+
+### ✅ 正确做法 (直接当代码仓库改)
+
+- ✅ **直接读** `agents/` / `skills/` / `hooks/` / `plugins/` / `commands/` 下的源码 — 跟改普通代码一样用 Read/Edit/Write
+- ✅ **直接跑 smoke test** — `bash skills/smoke-scaffold-docker.sh` 这类脚本是 framework 自身的回归测试, 跑通即 PASS
+- ✅ **直接 commit** — Conventional Commits, 末尾加 `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`, 走 git 即可
+- ✅ **若想"用 framework 验证 framework"** — 在仓库外另起一个产品项目 (例如 `/tmp/test-product/`), 在那里 `cd` 后 `claude` + 调 walker, 用 Shadow 跑端到端验证, 跟 framework 解耦
+- ✅ **修改 hooks 时** — 改 `hooks/lib.sh` 后通过 `bash hooks/stop-gate.sh` 跑真实场景, 跟修改前对比输出
+- ✅ **修改 plugin 时** — `plugins/shadow-hooks.ts` / `plugins/goal-mode.tsx` 改完后用 `bun plugins/<file>.ts` (Bun 加载) 跑 smoke, 跟 OpenCode 端行为对齐
+
+### 🔍 怎么判断"我是不是在做 Meta 任务"
+
+跑一句:
+
+```bash
+# 满足任意一条 → 你是 Meta (在改 framework 自身, 不能用流程)
+[ -f agents/shadow-walker.md ] && [ -f skills/shadow-init/SKILL.md ] && echo "META: 在改 framework 自身"
+```
+
+或者看 CWD 是不是这个仓库: `pwd` 输出含 `/cjxdd` 且仓库根有 `agents/shadow-walker.md` → Meta 任务.
+
+### 🛡️ 防御式 hook 旁路
+
+`hooks/user-prompt-submit.sh` 已加旁路: 当 CWD 命中 framework 自身 (cjxdd) 时, **不触发** "build me X" / "做一个 XX 系统" → walker 加载的引导. 详见 `hooks/lib.sh:detect_meta_project()` (若已加).
+
+agents/shadow-walker.md / shadow-worker.md / shadow-walker-pi.md 顶部也加了 "Meta 守卫" 段, 加载时先检测 project root, 若是 cjxdd 自身, 立即拒绝执行并提示用户直接改源码.
+
 ## 常用命令
 
 ### Install / sync — 选你的环境
