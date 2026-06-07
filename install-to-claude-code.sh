@@ -18,6 +18,7 @@ echo
 
 mkdir -p "$CLAUDE_DIR/agents"
 mkdir -p "$CLAUDE_DIR/skills"
+mkdir -p "$CLAUDE_DIR/commands"
 # 注意：$CLAUDE_DIR/hooks 后面要软链整个 hooks/ 目录（项目根，跟 agents/ skills/
 # 平级；之前是 .claude/hooks/，已经搬出来），所以这里不 mkdir，而是先 rmdir
 # 掉（如果存在且为空），让 ln -sfn 能把软链放到正确位置。如果目标已经是一个
@@ -55,6 +56,20 @@ if [[ -d "$SCRIPT_DIR/skills" ]]; then
         SKILL_COUNT=$((SKILL_COUNT + 1))
     done
     echo "   🔗 skills: $SKILL_COUNT → $CLAUDE_DIR/skills/"
+fi
+
+# === Commands (Claude Code slash commands, 如 /cjgoal) ===
+# commands/*.md 会被 Claude Code 识别为 /<name> slash command.
+# OpenCode 端等价功能在 plugins/goal-mode.tsx (TUI plugin).
+CMD_COUNT=0
+if [[ -d "$SCRIPT_DIR/commands" ]]; then
+    for cmd_file in "$SCRIPT_DIR/commands"/*.md; do
+        [[ -f "$cmd_file" ]] || continue
+        cmd_name=$(basename "$cmd_file")
+        ln -sfn "$cmd_file" "$CLAUDE_DIR/commands/$cmd_name"
+        CMD_COUNT=$((CMD_COUNT + 1))
+    done
+    echo "   🔗 commands: $CMD_COUNT → $CLAUDE_DIR/commands/"
 fi
 
 # === Hooks ===
@@ -99,5 +114,6 @@ echo ""
 echo "🔁 卸载："
 echo "   rm $CLAUDE_DIR/agents/shadow-walker.md"
 echo "   rm $CLAUDE_DIR/skills/shadow-*"
+echo "   rm $CLAUDE_DIR/commands/*.md  # slash commands (如 cjgoal)"
 echo "   rm $CLAUDE_DIR/hooks   # 整个目录都是软链，删一个就行"
 echo "   rm $CLAUDE_DIR/settings.json"
