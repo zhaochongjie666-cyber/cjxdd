@@ -1977,17 +1977,16 @@ function findWireFiles(shadowDir: string): string[] {
 // 在文本里抽 RXX 短码 (dedup)
 function extractRxxIds(text: string): Set<string> {
   const out = new Set<string>()
-  // 优先匹配 "RXX-NN" 完整 (per-BXX rule id), 也接受 "RNN" 短码
-  const re1 = /\b([A-Z]{1,3}\d{1,3})\b/g
+  // 实施 A1: 收紧规则 ID 匹配, 避免误把 L0/N06/P0/B01-N01 等非规则 ID 当 RXX
+  // spec.md 里 RXX 出现形式: `**pool-R01**` / `**R01**` / `b01-R01` / `R01` (在表格里)
+  // 不接受 N\d / P\d / L\d / B\d 单独成 ID (它们是 node/priority/stage/bizline 标记)
+  // 匹配: 字符串含 R 后跟 ≥1 数字, 前面是 start-of-line / 空白 / `-` / `*` (表格加粗)
+  // 提取: 短码 R\d+ (用于交叉对比, 跟 @implements 短码对齐)
+  const re1 = /(?:^|[\s\-*])([A-Za-z0-9]{1,8}-)?R(\d{1,3})\b/g
   let m: RegExpExecArray | null
   while ((m = re1.exec(text)) !== null) {
-    const id = m[1]
-    // 排除明显非 rule id 的 (e.g., FS01 兜底模式, F0N 失败模式, BXX 业务线)
-    if (/^FS\d/.test(id)) continue
-    if (/^F\d/.test(id)) continue
-    if (/^B\d/.test(id)) continue
-    // 至少 1 数字
-    if (/\d/.test(id)) out.add(id)
+    // 取短码 R\d+ (去掉可选前缀)
+    out.add(`R${m[2]}`)
   }
   return out
 }
@@ -2003,11 +2002,17 @@ function extractFmeaIds(text: string): Set<string> {
 }
 
 // 走 source dirs 找 @implements 标记
-function scanImplements(sourceDirs: string[]): Set<string> {
-  const out = new Set<string>()
-  if (sourceDirs.length === 0) return out
+// 实施 A1: 区分 direct (行内, line > 30, 非 docstring) vs fileLevel (文件头 30 行内 / docstring 内)
+// 返回 {direct, fileLevel} 让 auditL5Consistency 二次验证 fileLevel
+function scanImplements(sourceDirs: string[]): { direct: Set<string>; fileLevel: Set<string> } {
+  const direct = new Set<string>()
+  const fileLevel = new Set<string>()
+  if (sourceDirs.length === 0) return { direct, fileLevel }
   const skip = /node_modules|\.venv|__pycache__|dist|build|target|\.git|\.shadow/
   const visited = new Set<string>()
+  // 实施 A1 启发式: 判定 file-level 标记的两种方式
+  //   1) 行号 ≤ 30 (文件头 30 行)
+  //   2) 行在 module-level docstring 块内 (""" / ''' 在前 1500 字符内未闭合)
   for (const dir of sourceDirs) {
     if (!existsSync(dir)) continue
     const walk = (d: string): void => {
@@ -2020,7 +2025,6 @@ function scanImplements(sourceDirs: string[]): Set<string> {
         const p = join(d, e.name)
         if (e.isDirectory()) walk(p)
         else if (e.isFile()) {
-          // 只扫合理大小的源文件
           if (p.length > 4096) continue
           let text: string
           try {
@@ -2028,14 +2032,39 @@ function scanImplements(sourceDirs: string[]): Set<string> {
             if (stat.size > 524288 || stat.size < 10) continue
             text = readFileSync(p, "utf-8")
           } catch { continue }
+          // 检测 docstring 范围 (Python 三引号 / JS 块注释 / Go /* */)
+          const docstringRanges: Array<[number, number]> = []
+          // Python: 头 1500 字符内 """ / ''' 配对
+          const head = text.substring(0, 1500)
+          const pyDoc = head.match(/("""|\'\'\')([\s\S]*?)\1/)
+          if (pyDoc) {
+            const startLine = text.substring(0, pyDoc.index ?? 0).split("\n").length
+            const endLine = startLine + pyDoc[0].split("\n").length - 1
+            docstringRanges.push([startLine, endLine])
+          }
+          // Go: 头 200 字符内 /* ... */ (L99-style doc comment)
+          const goDoc = head.match(/\/\*[\s\S]*?\*\//)
+          if (goDoc) {
+            const startLine = text.substring(0, goDoc.index ?? 0).split("\n").length
+            const endLine = startLine + goDoc[0].split("\n").length - 1
+            docstringRanges.push([startLine, endLine])
+          }
           let m: RegExpExecArray | null
-          const re = /@implements\s+([A-Z]{1,3}\d{1,3}(?:\s*[,、]\s*[A-Z]{1,3}\d{1,3})*)/g
+          // 接受 b01-R05 (有前缀) 或 R05 (裸短码) — 跟 extractRxxIds 对齐
+          const re = /@implements[:\s]+((?:[A-Za-z0-9]{1,8}-)?R\d{1,3}(?:\s*[,、]\s*(?:[A-Za-z0-9]{1,8}-)?R\d{1,3})*)/g
           while ((m = re.exec(text)) !== null) {
-            // m[1] 可能是 "R05, R06" 或 "R05-R11" 区间
-            const part = m[1]
-            for (const id of part.split(/[,、\s]+/)) {
+            const lineNo = text.substring(0, m.index).split("\n").length
+            const inDoc = docstringRanges.some(([s, e]) => lineNo >= s && lineNo <= e)
+            const isFileLevel = lineNo <= 30 || inDoc
+            for (const id of m[1].split(/[,、\s]+/)) {
               const trimmed = id.trim()
-              if (trimmed) out.add(trimmed)
+              if (!trimmed) continue
+              // 短码: R05 (用于跟 spec.md 抽出的 R05 对比)
+              const shortMatch = trimmed.match(/R(\d{1,3})$/)
+              if (!shortMatch) continue
+              const shortCode = `R${shortMatch[1]}`
+              if (isFileLevel) fileLevel.add(shortCode)
+              else direct.add(shortCode)
             }
           }
         }
@@ -2043,7 +2072,47 @@ function scanImplements(sourceDirs: string[]): Set<string> {
     }
     walk(dir)
   }
-  return out
+  return { direct, fileLevel }
+}
+
+// 实施 A1: fileLevel 二次验证
+// 对每个 fileLevel 标记的 R-id, 必须真在 sourceDirs 任一文件里 grep 到短码 R\d+,
+// 才算"已实现". file-level 标记本身 (e.g., `"""@implements: b01-R01, b01-R02"""`)
+// 不能作为验证证据 — 那只是声明, 不是实现.
+// 允许该 R 短码出现在 file-level 标记文件**之外**的其他文件里 (implementation 分散)
+// 或同一文件但不是 file-level 标记行本身.
+function verifyFileLevelImplements(fileLevel: Set<string>, sourceDirs: string[]): Set<string> {
+  const verified = new Set<string>()
+  if (fileLevel.size === 0) return verified
+  if (sourceDirs.length === 0) return verified
+  const skip = /node_modules|\.venv|__pycache__|dist|build|target|\.git|\.shadow/
+  for (const code of fileLevel) {
+    // 短码 R\d+ 在源里出现 = 实际被引用
+    const re = new RegExp(`\\b${code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`)
+    for (const dir of sourceDirs) {
+      if (!existsSync(dir)) continue
+      const walk = (d: string): boolean => {
+        let entries: ReturnType<typeof readdirSync>
+        try { entries = readdirSync(d, { withFileTypes: true }) } catch { return false }
+        for (const e of entries) {
+          if (skip.test(e.name)) continue
+          const p = join(d, e.name)
+          if (e.isDirectory()) { if (walk(p)) return true; continue }
+          if (!e.isFile()) continue
+          let text: string
+          try {
+            const st = statSync(p)
+            if (st.size > 524288 || st.size < 10) continue
+            text = readFileSync(p, "utf-8")
+          } catch { continue }
+          if (re.test(text)) return true
+        }
+        return false
+      }
+      if (walk(dir)) { verified.add(code); break }
+    }
+  }
+  return verified
 }
 
 // 走 source dirs 数兜底机制行数 (粗略统计)
@@ -2094,7 +2163,10 @@ function auditL5Consistency(
   threshold: number = 0.9,
 ): ConsistencyReport {
   const rows: ConsistencyRow[] = []
-  const implementedSet = scanImplements(sourceDirs)
+  // 实施 A1: scanImplements 返回 {direct, fileLevel}, fileLevel 需 verifyFileLevelImplements
+  const { direct: directImpl, fileLevel: fileLevelImpl } = scanImplements(sourceDirs)
+  const fileLevelVerified = verifyFileLevelImplements(fileLevelImpl, sourceDirs)
+  const implementedSet = new Set<string>([...directImpl, ...fileLevelVerified])
   const failsafes = scanFailsafes(sourceDirs)
 
   // 1) spec ↔ code (RXX → @implements)
@@ -2119,7 +2191,8 @@ function auditL5Consistency(
       implemented,
       coverage: designed > 0 ? implemented / designed : 1,
       missing: missing.slice(0, 20),
-      note: `${specFiles.length} spec.md, 抽出 ${designed} RXX, @implements 命中 ${implemented}`,
+      // 实施 A1: note 显示 direct/fileLevel/verified 拆解, 让用户看到真覆盖 vs 假覆盖
+      note: `${specFiles.length} spec.md, 抽出 ${designed} RXX, @implements: direct=${directImpl.size} + fileLevel=${fileLevelImpl.size} (verified=${fileLevelVerified.size}) = ${implemented}`,
     })
   } else {
     rows.push({
@@ -2439,12 +2512,13 @@ export function runStopGate(opts: {
       if (failing.length > 0) {
         const detail = failing.map((r) => {
           const missingStr = r.missing.length > 0 ? `\n    缺: ${r.missing.join(", ")}` : ""
+          // 实施 A1: note 字段含 direct/fileLevel/verified 拆解, 让用户知道假覆盖被识别
           return `  ✗ ${r.dimension} coverage ${(r.coverage * 100).toFixed(0)}% < ${audit.threshold * 100}%${{
             "spec": " (RXX 没 @implements 标记, L5-impl 偷工)",
             "wire": " (data-page 没对应 page 组件)",
             "arch": " (architecture endpoint 没 route 注册)",
             "l3": " (failure-mode 缺兜底机制, 韧性设计走过场)",
-          }[r.dimension]}${missingStr}`
+          }[r.dimension]}\n    拆解: ${r.note}${missingStr}`
         }).join("\n")
         const msg = `L5 Consistency Audit 失败 (overall ${overallPct}%, threshold ${audit.threshold * 100}%):\n${detail}\n\nL5-impl 跟上游设计不一致, 必须补齐后才能标 iter 完成.\n修复指引:\n${failing.map((r) => `  - ${r.dimension}: 加 @implements 标记 / data-page 组件 / route 注册 / retry-cb-fallback 机制`).join("\n")}`
         errors.push(msg)
