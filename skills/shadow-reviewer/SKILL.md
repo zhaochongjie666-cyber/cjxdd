@@ -198,7 +198,7 @@ UX 路由规则：
 ```markdown
 # {ReviewType} Review — {slug}
 
-Verdict: PASS | FAI3 | WARN
+Verdict: PASS | FAI3 | WARN | CONDITIONAL_PASS
 
 ## Scope
 - 审查类型: {review_type}
@@ -218,6 +218,46 @@ Verdict: PASS | FAI3 | WARN
 ## Route Back (如适用)
 | 问题类型 | 责任 agent | 原因 |
 ```
+
+## 实施 A3 硬约束 (framework 校验, 报告写完即验 + L5 段 5.7)
+
+> **写报告前必读**: 报告会被 `plugins/shadow-hooks.ts:verifyReviewerReport` + 段 5.7 结构化校验, 不通过会硬阻断 (5 段 L5 stop-gate 红色 toast) + PostToolUse 实时 warning.
+
+### verdict 白名单 (任一必取)
+
+- `PASS` — 全过, 无 P0/FAI3/FAIL 项
+- `FAI3` — 有 P0/FAI3/FAIL, 必含 P0 表 ≥ 1 行
+- `WARN` — 软警告, 不可含 P0
+- `CONDITIONAL_PASS` — 有 P0/P1 但接受, 必含 P1 表 ≥ 1 行
+- `CONDITIONAL FAIL` — 内部别名, 同 `CONDITIONAL_PASS`
+- `NEEDS_EVIDENCE` — 缺证据, 待补
+
+自由字面如 "PASS with WARN" / "PASSED" / "FAIL" 会被自动归一但**强烈建议**直接用白名单值.
+
+### 必含段 (实施 A3 新约束)
+
+- `## P0` (有 P0 时) — 表格行 ≥ 1, ≥ 50% 行含 `file:line` 引用
+- `## P1` (有 P1 时) — 表格行 ≥ 1, ≥ 50% 行含 `file:line` 引用
+- `## P2` (有 P2 时) — 同上
+- `## INFO` 或 `## 建议` (verdict=PASS 时) — **必含 1+ 行**, 解决 "PASS-with-no-evidence" 假报告
+
+### 矛盾判定
+
+- verdict=PASS + 含 P0/FAI3/FAIL 表 → fail (矛盾)
+- verdict=WARN + 含 P0 → fail (应升 CONDITIONAL_PASS 或 FAI3)
+- verdict=FAI3 + P0/FAI3/FAIL 表空 → fail (缺列举)
+- verdict=PASS + P0/P1/P2/INFO 表全空 → fail (假报告)
+
+### 表格 file:line 格式
+
+每行 P0/P1/P2 表格必须含 `file:line` 引用, e.g.:
+```
+| P0 | spec ↔ code | R07 没实现 | demo/vlademo/apps/api/app/api/routes/b01_scenes.py:84 | 加 `@implements R07` |
+```
+
+### 退出码关联
+
+报告未通过 → L5 stop-gate 段 5.7 push hard error → 5 段总 red toast → L5 events 必被弹. 不修复报告, iter 标不完成.
 
 ## 判定规则
 

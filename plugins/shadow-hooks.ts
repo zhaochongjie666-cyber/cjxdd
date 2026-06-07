@@ -1215,6 +1215,158 @@ function checkL6SmokePassed(shadowDir: string | null): {
   return out
 }
 
+// 实施 A3: Reviewer 报告结构化校验
+// 跟 skills/shadow-reviewer/SKILL.md:198-220 内嵌模板对齐, 但模板是 AI 自由输出,
+// 框架加硬约束: verdict 白名单 + 矛盾判定 + verdict=PASS 必含 P1/INFO 表 + 表格
+// file:line 引用覆盖率 ≥ 50%.
+// 解决 demo 当前 "PASS with WARN" 但 warn 表 0 行 / "CONDITIONAL PASS — 1 P1" 但
+// P1 表字面 0 行 这种 sham 报告.
+interface ReviewerReportCheck {
+  ok: boolean
+  reasons: string[]
+  reportPath: string | null
+  verdict: string | null
+  pCounts: Record<"P0" | "P1" | "P2" | "INFO" | "FAI3" | "FAIL", number>
+}
+
+const REVIEWER_VERDICT_WHITELIST = new Set([
+  "PASS", "FAI3", "WARN", "CONDITIONALPASS", "CONDITIONAL FAIL", "NEEDSEVIDENCE",
+])
+// 抽 R-id 短码 (跟 extractRxxIds 对齐), 也接受 "R\d+"
+const REVIEWER_FILE_LINE_RE = /(?:^|[\s`])([a-zA-Z0-9_\-./+]+\.(?:ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|kt|swift|c|cc|cpp|h|hpp|sh|bash|zsh|sql|md|yaml|yml|toml|json|vue|svelte))(?::(\d+))?/g
+// 抽 "verdict:" / "**Verdict:**" / "**XXX** —" / "Verdict: CONDITIONAL PASS" 等多种格式
+// 关键: verdict 可能被 — (em-dash) 隔开后续说明 (e.g., "**Verdict: CONDITIONAL PASS — 0 P0 + 1 P1 ...**")
+// 所以 capture 不能贪婪, 到 — / , / 数字 / 标点 截止
+const REVIEWER_VERDICT_RES: RegExp[] = [
+  /\*\*\s*[Vv]erdict\s*[:\s]*([A-Z][A-Z _\/-]{1,40}?)\s*(?:[—\-:,]|\*\*|$)/m,   // **Verdict: CONDITIONAL PASS —** ...
+  /\*\*\s*([A-Z][A-Z _\/-]{1,40}?)\s*\*\*\s*[—\-:]/m,                              // **CONDITIONAL PASS** — 0 P0
+  /^\s*[Vv]erdict\s*[:=]\s*([A-Z][A-Z _\/-]{0,40})/im,                             // Verdict: PASS
+]
+
+function verifyReviewerReport(shadowDir: string | null, iter: string | null): ReviewerReportCheck {
+  const out: ReviewerReportCheck = {
+    ok: true, reasons: [], reportPath: null, verdict: null,
+    pCounts: { P0: 0, P1: 0, P2: 0, INFO: 0, FAI3: 0, FAIL: 0 },
+  }
+  if (!shadowDir || !iter) return out
+  // 实施 A3: 兼容 2 个路径 — canonical reviews/ + 旧 gate/
+  const reviewsDir = join(shadowDir, "iterations", iter, "reviews")
+  const gateDir = join(shadowDir, "iterations", iter, "gate")
+
+  // 找最近一份 review-report 类文件
+  let latest: { path: string; mtime: number } | null = null
+  const tryDir = (d: string) => {
+    if (!existsSync(d)) return
+    try {
+      for (const name of readdirSync(d)) {
+        // canonical: *-review-*.md; gate/: reviewer-report.md (cloud-gpu 旧路径)
+        const isCanonical = /-review-/.test(name) && name.endsWith(".md")
+        const isGateReport = name === "reviewer-report.md"
+        if (!isCanonical && !isGateReport) continue
+        const p = join(d, name)
+        const st = statSync(p)
+        if (!latest || st.mtimeMs > latest.mtime) latest = { path: p, mtime: st.mtimeMs }
+      }
+    } catch {}
+  }
+  tryDir(reviewsDir)
+  tryDir(gateDir)
+  if (!latest) return out
+  out.reportPath = latest.path
+
+  let text = ""
+  try { text = readFileSync(latest.path, "utf-8") } catch { return out }
+
+  // 1) verdict 抽取 (3 种格式任一)
+  for (const re of REVIEWER_VERDICT_RES) {
+    const m = text.match(re)
+    if (m) {
+      const raw = (m[1] || "").toUpperCase().replace(/[—\-:]/g, "").trim().replace(/\s+/g, "")
+      out.verdict = raw
+      break
+    }
+  }
+  // 兼容中文/原值 (e.g., "PASS with WARN" / "CONDITIONAL PASS")
+  // 优先把空白/with-WARN 之类修饰剥离, 取主 verdict
+  if (out.verdict) {
+    const lower = out.verdict.toLowerCase()
+    if (lower.startsWith("pass")) out.verdict = "PASS"
+    else if (lower.startsWith("conditionalpass")) out.verdict = "CONDITIONALPASS"
+    else if (lower.startsWith("conditional")) out.verdict = "CONDITIONAL FAIL"
+    else if (lower.startsWith("warn")) out.verdict = "WARN"
+    else if (lower.startsWith("fail") || lower.startsWith("fai3")) out.verdict = "FAI3"
+    else if (lower.startsWith("need")) out.verdict = "NEEDSEVIDENCE"
+  }
+  if (out.verdict && !REVIEWER_VERDICT_WHITELIST.has(out.verdict)) {
+    out.reasons.push(`verdict "${out.verdict}" 不在白名单 {PASS, FAI3, WARN, CONDITIONALPASS, CONDITIONAL FAIL, NEEDSEVIDENCE}`)
+  }
+
+  // 2) P0/P1/P2/INFO/FAI3/FAIL 表数 (找 "## P0" / "## P1" 段并数表格行)
+  const sectionCounts = (key: string): number => {
+    const secRe = new RegExp(`^#{1,3}\\s+${key}\\b.*$`, "im")
+    const secStart = text.search(secRe)
+    if (secStart < 0) return 0
+    // 段尾 = 下一个同级或更高级 ## 开头
+    const restText = text.substring(secStart + 1)
+    const nextSec = restText.search(/^#{1,3}\s+[A-Z]/m)
+    const secText = nextSec < 0 ? restText : restText.substring(0, nextSec)
+    // 数 "| ..." 行 (markdown 表格)
+    const rows = secText.match(/^\s*\|[^|\n]+(\|[^|\n]*)+\|/gm) || []
+    return Math.max(0, rows.length - 1)  // 减表头行
+  }
+  out.pCounts.P0 = sectionCounts("P0")
+  out.pCounts.P1 = sectionCounts("P1")
+  out.pCounts.P2 = sectionCounts("P2")
+  out.pCounts.INFO = sectionCounts("INFO") + sectionCounts("建议") + sectionCounts("Recommendations")
+  out.pCounts.FAI3 = sectionCounts("FAI3")
+  out.pCounts.FAIL = sectionCounts("FAIL")
+
+  // 3) 矛盾判定
+  if (out.verdict === "PASS") {
+    if (out.pCounts.P0 > 0 || out.pCounts.FAI3 > 0 || out.pCounts.FAIL > 0) {
+      out.reasons.push(`verdict PASS 但 P0/FAI3/FAIL 表共 ${out.pCounts.P0 + out.pCounts.FAI3 + out.pCounts.FAIL} 项 (矛盾)`)
+    }
+    // 实施 A3 新约束: verdict=PASS 必含 1+ 行 P1 或 INFO 表 (PASS-with-no-evidence 假报告)
+    if (out.pCounts.P0 + out.pCounts.P1 + out.pCounts.P2 + out.pCounts.INFO === 0) {
+      out.reasons.push(`verdict PASS 但 P0/P1/P2/INFO 表全空 (PASS-with-no-evidence 假报告, 必含 1+ 行 P1/INFO 表)`)
+    }
+  } else if (out.verdict === "WARN") {
+    if (out.pCounts.P0 > 0) {
+      out.reasons.push(`verdict WARN 含 ${out.pCounts.P0} 项 P0 (应升 CONDITIONALPASS 或 FAI3)`)
+    }
+  } else if (out.verdict === "FAI3") {
+    if (out.pCounts.P0 + out.pCounts.FAI3 + out.pCounts.FAIL === 0) {
+      out.reasons.push(`verdict FAI3 但 P0/FAI3/FAIL 表空, 缺列举`)
+    }
+  } else if (out.verdict === "CONDITIONALPASS" || out.verdict === "CONDITIONAL FAIL") {
+    // CONDITIONAL_PASS 必含 ≥1 行 P1 (说明接受条件) 或 P0 (说明阻断项)
+    if (out.pCounts.P0 + out.pCounts.P1 === 0) {
+      out.reasons.push(`verdict ${out.verdict} 但 P0/P1 表空 (缺列举, 接受条件/阻断项未知)`)
+    }
+  }
+
+  // 4) 表格 file:line 引用覆盖率 (任一 P0/P1/P2 段有表格但 ≥ 50% 行缺 file:line)
+  for (const sev of ["P0", "P1", "P2"] as const) {
+    if (out.pCounts[sev] === 0) continue
+    const secRe = new RegExp(`^#{1,3}\\s+${sev}\\b.*$`, "im")
+    const secStart = text.search(secRe)
+    if (secStart < 0) continue
+    const restText = text.substring(secStart + 1)
+    const nextSec = restText.search(/^#{1,3}\s+[A-Z]/m)
+    const secText = nextSec < 0 ? restText : restText.substring(0, nextSec)
+    const rows = secText.match(/^\s*\|[^|\n]+(\|[^|\n]*)+\|/gm) || []
+    const dataRows = rows.slice(1)  // 跳表头
+    if (dataRows.length === 0) continue
+    const withRef = dataRows.filter(r => REVIEWER_FILE_LINE_RE.test(r)).length
+    if (withRef / dataRows.length < 0.5) {
+      out.reasons.push(`${sev} 段 ${dataRows.length} 行表格仅 ${withRef} 行含 file:line 引用 (≥ 50% 必需, 现状 ${Math.round(withRef / dataRows.length * 100)}%)`)
+    }
+  }
+
+  out.ok = out.reasons.length === 0
+  return out
+}
+
 // ════════════════════════════════════════════════════════════════════
 // § 12 Toast 通知 (OpenCode 独有: 右上角弹窗, 不污染 TUI 流)
 // ════════════════════════════════════════════════════════════════════
@@ -1826,6 +1978,26 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
           ...(output.metadata ?? {}),
           shadowStubWarning: true,
           shadowStubCount: stubs.length,
+        }
+      }
+
+      // 4) Reviewer 报告结构化校验 (实施 A3 inline) — 写完即验
+      // 路径: .shadow/iterations/{iter}/reviews/*-review-*.md
+      if (shadowDir && /\/(reviews)\/[^\/]*-review-[^\/]+\.md$/.test(filePath)) {
+        const iter = readCurrentIter(shadowDir)
+        if (iter) {
+          const v = verifyReviewerReport(shadowDir, iter)
+          if (v.reportPath && !v.ok) {
+            const list = v.reasons.map(x => `  - ${x}`).join("\n")
+            diag({ ev: "reviewer-verify-fail", file: v.reportPath, reasons: v.reasons })
+            notify(client, "warning", "Shadow: Reviewer 报告结构异常",
+              `${v.reportPath}\n${list}\n请补 P0/P1/P2 表格 + file:line 证据 + 合法 verdict (白名单: PASS / FAI3 / WARN / CONDITIONALPASS / CONDITIONAL FAIL / NEEDSEVIDENCE)`, 8000)
+            output.metadata = {
+              ...(output.metadata ?? {}),
+              shadowReviewerVerifyWarning: true,
+              shadowReviewerVerifyReasons: v.reasons,
+            }
+          }
         }
       }
     },
@@ -2528,6 +2700,26 @@ export function runStopGate(opts: {
       }
     } else {
       sections.push(`(L5 Consistency Audit: 无上游设计产物, 跳过 — 项目可能还在 L0/L1 阶段)`)
+    }
+  }
+
+  // 5.7) Reviewer 报告结构化校验 (实施 A3)
+  // 解决"verdict=PASS 但 warn 表 0 行" / "CONDITIONAL PASS — 1 P1 但 P1 表字面 0 行"
+  // 这类 sham 报告. 硬约束: verdict 白名单 + 矛盾判定 + verdict=PASS 必含 P1/INFO 表
+  // + 表格 file:line 引用覆盖率 ≥ 50%.
+  if (iter) {
+    const r = verifyReviewerReport(shadowDir, iter)
+    if (r.reportPath && r.reasons.length > 0) {
+      const list = r.reasons.map(x => `  - ${x}`).join("\n")
+      const msg = `Reviewer 报告结构化校验失败 (${r.reportPath}):\n${list}\n修复: 补 P0/P1/P2 表格 + file:line 证据 + 合法 verdict (白名单: PASS / FAI3 / WARN / CONDITIONALPASS / CONDITIONAL FAIL / NEEDSEVIDENCE)`
+      errors.push(msg)
+      tracked.push({ section: "reviewer-report-verify", content: msg, level: "error" })
+    } else if (r.reportPath) {
+      const verdict = r.verdict || "(无)"
+      const counts = `P0=${r.pCounts.P0} P1=${r.pCounts.P1} P2=${r.pCounts.P2} INFO=${r.pCounts.INFO}`
+      sections.push(`✓ Reviewer 报告: ${basename(r.reportPath)} verdict=${verdict} (${counts}) — 结构化校验通过`)
+    } else {
+      sections.push(`(Reviewer 报告: 本 iter 无 reviews/ 目录, 跳过)`)
     }
   }
 
