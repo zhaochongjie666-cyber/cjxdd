@@ -644,7 +644,8 @@ function appendBypassLog(shadowDir: string, iter: string, newEntries: BypassLogE
 
 function findSourceDirs(projectRoot: string): string[] {
   const names = ["src", "lib", "app", "backend", "frontend", "server", "internal"]
-  const skip = /node_modules|\.venv|__pycache__|dist|build|target/
+  // 排除: 第三方依赖 (vendor, node_modules, .venv) + 编译产物 (dist, build, target) + 缓存
+  const skip = /node_modules|\.venv|__pycache__|dist|build|target|vendor/
   const results: string[] = []
   function walk(dir: string, depth: number) {
     if (depth > 4) return
