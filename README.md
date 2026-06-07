@@ -292,3 +292,7 @@ bash skills/shadow-l6-deploy/scripts/run-production-scenarios.sh {slug}
 - R11 门禁: `skills/shadow-artifact-lifecycle/scripts/gate-check-lifecycle.sh:307-412` (替换原 R11 段) + CLAUDE.md §9
 - Schema 登记: `skills/shadow-init/templates/shadow-schema.json` (production-scenarios-config + production-scenarios-evidence)
 - 烟雾测试: `skills/smoke-r11-round2.sh` (16 项断言, 验证老/新项目分叉)
+
+
+
+demo目录是采用工作流开发的demo项目

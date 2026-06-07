@@ -22,6 +22,8 @@ import {
   statSync,
   realpathSync,
   appendFileSync,
+  mkdirSync,
+  unlinkSync,
 } from "fs"
 import { join, dirname, basename } from "path"
 import { execSync } from "child_process"
@@ -87,6 +89,11 @@ interface GateResult {
 
 let _schemaCache: ShadowSchema | null = null
 let _schemaPath = ""
+
+// 实施 A5: CLI 入口强绕 Meta 旁路. CLI 进程跑 bun shadow-hooks.ts --run-stop-gate
+// 时 set true, 真实 OpenCode event ctx 永不动 (默认 false).
+// 这让用户能在 cjxdd 自身 (framework meta) 跑通 stop-gate 看真硬门禁.
+let _forceRunStopGate = false
 
 function resolveSchemaPath(): string {
   if (process.env.SHADOW_SCHEMA && existsSync(process.env.SHADOW_SCHEMA)) {
@@ -399,6 +406,240 @@ function scanStubsInFile(
     }
   }
   return findings
+}
+
+// ════════════════════════════════════════════════════════════════════
+// § 6.5 L5 跨轮保活 (.l5-unresolved.json) — 实施 #6
+// ════════════════════════════════════════════════════════════════════
+
+interface L5Item {
+  hash: string
+  section: string
+  content: string
+  first_seen: string
+  last_seen: string
+  count: number
+}
+
+// djb2 哈希, 跨平台稳定 (不依赖 crypto)
+function djb2(s: string): string {
+  let h = 5381
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) & 0xffffffff
+  return (h >>> 0).toString(36)
+}
+
+function l5ItemHash(section: string, content: string): string {
+  return djb2(`${section}::${content}`)
+}
+
+function l5UnresolvedPath(shadowDir: string, iter: string): string {
+  return join(shadowDir, "iterations", iter, ".l5-unresolved.json")
+}
+
+function readL5Unresolved(shadowDir: string, iter: string): L5Item[] {
+  const p = l5UnresolvedPath(shadowDir, iter)
+  if (!existsSync(p)) return []
+  try {
+    const data = JSON.parse(readFileSync(p, "utf-8"))
+    return Array.isArray(data?.items) ? data.items : []
+  } catch {
+    return []
+  }
+}
+
+function writeL5Unresolved(shadowDir: string, iter: string, items: L5Item[]): void {
+  const p = l5UnresolvedPath(shadowDir, iter)
+  try {
+    writeFileSync(p, JSON.stringify({
+      iter,
+      updated_at: new Date().toISOString(),
+      count: items.length,
+      items,
+    }, null, 2))
+  } catch (err) {
+    diag({ ev: "l5-unresolved-write-err", err: String(err).slice(0, 200) })
+  }
+}
+
+// 把当前 L5 跑的 warnings/errors 跟盘上 unresolved merge:
+//   - 当前 run 出现的: 续期 (last_seen, count++), 或新增
+//   - 当前 run 没出现: 自动消项 (resolved)
+function syncL5Unresolved(
+  shadowDir: string,
+  iter: string,
+  current: { section: string; content: string }[],
+): L5Item[] {
+  const existing = readL5Unresolved(shadowDir, iter)
+  const now = new Date().toISOString()
+  const currentByHash = new Map<string, { section: string; content: string }>()
+  for (const c of current) {
+    const h = l5ItemHash(c.section, c.content)
+    currentByHash.set(h, c)
+  }
+  const merged: L5Item[] = []
+  // 1) 现有项: 在当前 run 出现 → 续期, 否则丢弃 (resolved)
+  for (const item of existing) {
+    const cur = currentByHash.get(item.hash)
+    if (cur) {
+      merged.push({
+        ...item,
+        last_seen: now,
+        count: item.count + 1,
+      })
+      currentByHash.delete(item.hash)
+    }
+    // 不在当前 run → 已修复, 丢弃
+  }
+  // 2) 当前 run 新出现的 → 新增
+  for (const [hash, c] of currentByHash) {
+    merged.push({
+      hash,
+      section: c.section,
+      content: c.content,
+      first_seen: now,
+      last_seen: now,
+      count: 1,
+    })
+  }
+  merged.sort((a, b) => b.last_seen.localeCompare(a.last_seen))
+  writeL5Unresolved(shadowDir, iter, merged)
+  return merged
+}
+
+// ════════════════════════════════════════════════════════════════════
+// § 6.6 Bypass 显式化 (bypass-shdw: 注释 + audit log) — 实施 #3
+// ════════════════════════════════════════════════════════════════════
+
+// 匹配: // bypass-shdw: <reason>  / # bypass-shdw: <reason>  / /* bypass-shdw: ... */
+// 注释语言: js/ts/py/go/rust/sh 都要 cover
+const BYPASS_PATTERN = /(?:^|\s)(?:\/\/|#|\/\*|--)\s*bypass-shdw\s*:\s*([^\n*]+?)\s*(?:\*\/)?\s*$/i
+const BYPASS_FILE_EXTS = /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|kt|swift|c|cc|cpp|h|hpp|sh|bash|zsh|sql|md|yaml|yml|toml|json|vue|svelte)$/i
+
+function scanBypassInFile(filePath: string): { line: number; reason: string }[] {
+  if (!existsSync(filePath)) return []
+  if (!BYPASS_FILE_EXTS.test(filePath)) return []
+  const text = readFileSync(filePath, "utf-8")
+  if (text.length > 524288) return []
+  if (text.length < 10) return []
+  const lines = text.split("\n")
+  const findings: { line: number; reason: string }[] = []
+  for (let i = 0; i < lines.length; i++) {
+    const m = BYPASS_PATTERN.exec(lines[i])
+    if (m && m[1]) {
+      findings.push({ line: i + 1, reason: m[1].trim() })
+    }
+  }
+  return findings
+}
+
+function scanBypassMarkers(projectRoot: string, sourceDirs: string[]): { file: string; line: number; reason: string }[] {
+  const results: { file: string; line: number; reason: string }[] = []
+  const skip = /node_modules|\.venv|__pycache__|dist|build|target|\.git|\.shadow/
+  const visited = new Set<string>()
+  for (const dir of sourceDirs) {
+    if (!existsSync(dir)) continue
+    const walk = (d: string): void => {
+      if (visited.has(d)) return
+      visited.add(d)
+      let entries: import("fs").Dirent[]
+      try {
+        entries = readdirSync(d, { withFileTypes: true })
+      } catch {
+        return
+      }
+      for (const e of entries) {
+        if (e.name.startsWith(".") && e.name !== ".shadow") continue
+        if (skip.test(e.name)) continue
+        const p = join(d, e.name)
+        if (e.isDirectory()) walk(p)
+        else if (e.isFile()) {
+          const findings = scanBypassInFile(p)
+          for (const f of findings) {
+            results.push({ file: p.replace(projectRoot + "/", ""), line: f.line, reason: f.reason })
+          }
+        }
+      }
+    }
+    walk(dir)
+  }
+  return results
+}
+
+interface BypassLogEntry {
+  hash: string
+  file: string
+  line: number
+  reason: string
+  first_seen: string
+}
+
+function bypassLogPath(shadowDir: string, iter: string): string {
+  return join(shadowDir, "iterations", iter, "bypass-log.md")
+}
+
+function readBypassLog(shadowDir: string, iter: string): Map<string, BypassLogEntry> {
+  const p = bypassLogPath(shadowDir, iter)
+  const out = new Map<string, BypassLogEntry>()
+  if (!existsSync(p)) return out
+  try {
+    const text = readFileSync(p, "utf-8")
+    let cur: Partial<BypassLogEntry> | null = null
+    for (const line of text.split("\n")) {
+      const h = /^##\s+([0-9a-z]{6,})\s+\|\s+(.+?):(\d+)\s*$/.exec(line)
+      if (h) {
+        if (cur?.hash) out.set(cur.hash, cur as BypassLogEntry)
+        cur = { hash: h[1], file: h[2], line: parseInt(h[3], 10), reason: "", first_seen: "" }
+        continue
+      }
+      const r = /^- reason:\s*(.+)$/.exec(line)
+      if (r && cur) cur.reason = r[1]
+      const fs = /^- first_seen:\s*(.+)$/.exec(line)
+      if (fs && cur) cur.first_seen = fs[1]
+    }
+    if (cur?.hash) out.set(cur.hash, cur as BypassLogEntry)
+  } catch {}
+  return out
+}
+
+function appendBypassLog(shadowDir: string, iter: string, newEntries: BypassLogEntry[]): { added: number; total: number } {
+  const p = bypassLogPath(shadowDir, iter)
+  const existing = readBypassLog(shadowDir, iter)
+  const now = new Date().toISOString()
+  let added = 0
+  let newSection = ""
+  for (const e of newEntries) {
+    if (existing.has(e.hash)) continue
+    existing.set(e.hash, { ...e, first_seen: now })
+    newSection += `\n## ${e.hash} | ${e.file}:${e.line}\n- reason: ${e.reason}\n- first_seen: ${now}\n`
+    added++
+  }
+  if (added > 0) {
+    const header = `# Bypass Audit Log (iter=${iter})\n# 任何带 \`bypass-shdw: <reason>\` 注释的代码都会被 L5 stop-gate 收录.\n# L6 部署前 user 必须审 (在 status.md 标 \`bypass_reviewed: true\`).\n# 同一处多次出现只记首次 (按 file+line+reason hash 去重).\n`
+    let body = ""
+    if (existsSync(p)) {
+      const cur = readFileSync(p, "utf-8")
+      if (!cur.startsWith("# Bypass Audit Log")) {
+        body = header + cur + newSection
+      } else {
+        // 在 header 之后插入新 entries
+        const idx = cur.indexOf("\n## ")
+        if (idx === -1) {
+          body = header + newSection
+        } else {
+          body = cur.slice(0, idx) + newSection + cur.slice(idx)
+        }
+      }
+    } else {
+      body = header + newSection
+    }
+    try {
+      mkdirSync(dirname(p), { recursive: true })
+      writeFileSync(p, body)
+    } catch (err) {
+      diag({ ev: "bypass-log-write-err", err: String(err).slice(0, 200) })
+    }
+  }
+  return { added, total: existing.size }
 }
 
 function findSourceDirs(projectRoot: string): string[] {
@@ -946,6 +1187,151 @@ function notify(
     .catch((err) => diag({ ev: "notify-err", variant, title, err: String(err) }))
 }
 
+// ════════════════════════════════════════════════════════════════════
+// § 14 session.error 兜底 — 实施 #15
+// 模型 API 错误 (e.g., MiniMax `output new_sensitive 1027`) 弹清晰 toast 解释 + 3 步恢复指引
+// ════════════════════════════════════════════════════════════════════
+
+interface ApiErrorInfo {
+  code: string              // e.g., "1027", "context_overflow"
+  category: ApiErrorCategory
+  title: string             // 用户友好标题
+  reason: string            // 根因 (1 句话)
+  recovery: string[]        // 3 步恢复指引
+}
+
+type ApiErrorCategory =
+  | "content_filter"   // 输出被内容安全过滤 (new_sensitive 1027)
+  | "context_overflow" // 上下文超限
+  | "rate_limit"       // 限流
+  | "auth"             // 鉴权失败
+  | "model_unavailable"// 模型服务不可用
+  | "unknown"          // 未知
+
+function classifyApiError(rawError: unknown): ApiErrorInfo {
+  // 把 payload 摊平找可能的错误信号
+  const payload = typeof rawError === "string"
+    ? rawError
+    : rawError && typeof rawError === "object"
+      ? JSON.stringify(rawError)
+      : String(rawError)
+  const lower = payload.toLowerCase()
+  const codeMatch = /\((\d{3,5})\)|["'](\d{3,5})["']|code[:= ]+["']?(\d{3,5})/i.exec(payload)
+  const code = codeMatch?.[1] || codeMatch?.[2] || codeMatch?.[3] || "?"
+
+  // 1) 内容过滤 (sensitive / 1027 / filtered)
+  if (/(new_?sensitive|content_?filter|content_?policy|safety|filtered.*output)/i.test(payload)
+      || code === "1027") {
+    return {
+      code,
+      category: "content_filter",
+      title: "Shadow: 模型 API 内容过滤触发",
+      reason: "模型输出被 provider 的安全过滤拒绝, 不是 Shadow 框架 bug.",
+      recovery: [
+        "1) 重发 \"继续\" 让 AI 重新生成, 大概率能过 (transient)",
+        "2) 把上一步拆小步 (分多次写文件, 每次写一小段)",
+        "3) 改写措辞 — 朴素工程语, 不演示对抗性/安全语境的 payload",
+      ],
+    }
+  }
+
+  // 2) 上下文超限
+  if (/(context.{0,20}(overflow|exceeded|length|too long|max)|max.{0,5}token|token.{0,20}limit)/i.test(payload)) {
+    return {
+      code,
+      category: "context_overflow",
+      title: "Shadow: 上下文超限",
+      reason: "对话历史超过模型 context 窗口, provider 拒绝.",
+      recovery: [
+        "1) 跑 /compact 压缩对话历史 (OpenCode 内置)",
+        "2) 新开 session, 把状态写到 status.md 接力",
+        "3) 调小 source code 范围 (e.g., 只 Read 单个文件, 别一次扫全 repo)",
+      ],
+    }
+  }
+
+  // 3) 限流
+  if (/(rate.{0,5}limit|too many requests|429|throttl)/i.test(payload)) {
+    return {
+      code,
+      category: "rate_limit",
+      title: "Shadow: 模型 API 限流",
+      reason: "短时间请求过多, provider 返回 429.",
+      recovery: [
+        "1) 等 30-60s 重发",
+        "2) 切换到备用 provider (e.g., Anthropic ↔ MiniMax)",
+        "3) 减少单次请求的 tools 数 (拆消息)",
+      ],
+    }
+  }
+
+  // 4) 鉴权
+  if (/(unauthorized|invalid.{0,10}(api|token|key)|401|403|auth.*fail)/i.test(payload)) {
+    return {
+      code,
+      category: "auth",
+      title: "Shadow: API 鉴权失败",
+      reason: "API key 无效 / 过期 / 配额用完.",
+      recovery: [
+        "1) 检查 OPENAI_API_KEY / ANTHROPIC_API_KEY / MiniMax token 等环境变量",
+        "2) 跑 `claude auth login` 或 `opencode auth` 重新登",
+        "3) 检查 provider 账户余额",
+      ],
+    }
+  }
+
+  // 5) 模型不可用
+  if (/(model.{0,10}(unavailable|overload|down)|service.{0,10}(unavailable|down)|503|500|502)/i.test(payload)) {
+    return {
+      code,
+      category: "model_unavailable",
+      title: "Shadow: 模型服务不可用",
+      reason: "Provider 端故障 (5xx), 不是 Shadow 也不是本地问题.",
+      recovery: [
+        "1) 等 1-2min 重试",
+        "2) 切换 provider / 切换模型 (e.g., opus → sonnet)",
+        "3) 查看 provider 状态页 (e.g., status.anthropic.com)",
+      ],
+    }
+  }
+
+  // 6) 未知
+  return {
+    code,
+    category: "unknown",
+    title: "Shadow: 模型 API error",
+    reason: `未知错误, payload=${payload.slice(0, 200)}`,
+    recovery: [
+      "1) 把 error 完整信息 (含 code) 贴给 walker 帮忙看",
+      "2) 重发 \"继续\" 大概率能过 (transient 错)",
+      "3) 检查 ~/.local/share/opencode/stderr.log 看 provider 端详情",
+    ],
+  }
+}
+
+function handleSessionError(
+  client: unknown,
+  props: any,
+  diag: (e: Record<string, unknown>) => void,
+): void {
+  if (!props) return
+  // props 形态多变: { error: { message, code, type } } 或 { error: "string" } 或直接 string
+  const rawError = props.error ?? props
+  const info = classifyApiError(rawError)
+  diag({
+    ev: "session-error",
+    code: info.code,
+    category: info.category,
+    title: info.title,
+    reasonLen: info.reason.length,
+  })
+  const message = `${info.reason}\n\n恢复:\n${info.recovery.join("\n")}\n\n(error code: ${info.code})`
+  const variant = info.category === "content_filter" || info.category === "auth"
+    ? "warning"  // 用户可操作 (重发/换词) → warning 而非 error
+    : "error"
+  notify(client, variant, info.title, message, 12000)
+}
+
 function pushSyntheticPart(output: any, text: string): void {
   if (!output.parts) output.parts = []
   output.parts.push({ type: "text", text, synthetic: true } as any)
@@ -1058,6 +1444,21 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
           lines.push(`  ④ 自检 + 标 ✅ DONE`)
           if (nextSkill) lines.push(`  ⑤ 加载下一 stage (${nextSkill})`)
           lines.push("")
+
+          // 实施 #15 (事前): 提示 AI 避免触发模型 API 内容过滤
+          // ⚠️ 严禁列出具体 trigger 词 — 列出反而 priming, 让 model 更可能用这些词.
+          //    教学悖论: 教避开 = 让它记住. 用抽象描述代替.
+          lines.push(`=== 内容过滤规避 (实施 #15, 事前防线) ===`)
+          lines.push(`provider 的安全过滤 (新触发机制) 可能拒收你的输出, 触发 session.error.`)
+          lines.push(`策略:`)
+          lines.push(`  - 写朴素的工程措辞, 避免涉及安全/对抗性/恶意语境的词汇 (哪些是"安全语境"具体由 provider 定义)`)
+          lines.push(`  - 写示例代码时, 不要演示攻击/注入/绕过的具体 payload — 用抽象描述代替 ("一段输入" 即可)`)
+          lines.push(`  - 注释里要避开的, 用阴影/Shadow 自有约定 (bypass-shdw:) 替代, 而不是直接写"绕过"`)
+          lines.push(`  - 触发后: 用户看到的 toast 会有 3 步恢复指引, 直接照做`)
+          lines.push(`  - 不确定时: 拆小步写, 错了用户说"继续"让 AI 重写`)
+          lines.push(``)
+          lines.push(`(本段故意不列具体 trigger 词 — 列了反而让 model 记住这些词, 触发率上升. 这是经典的 priming 反效果.)`)
+          lines.push("")
         }
       }
 
@@ -1065,6 +1466,73 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
       if (ctxMap) {
         lines.push(`context_map (from status.md):`)
         for (const l of ctxMap.split("\n").slice(0, 40)) lines.push(`  ${l}`)
+      }
+
+      // 实施 #6: L5 跨轮保活 — 注入 .l5-unresolved.json 内容, 强制 AI 看到未解决警告
+      const unresolved = readL5Unresolved(shadowDir, iter)
+      // 实施 #16 (no-advisory): halt 优先 — 任何项 count > 3 注入 HALT 信号
+      const haltItems = unresolved.filter((it) => it.count > 3)
+      if (haltItems.length > 0) {
+        lines.push("")
+        lines.push(`🛑🛑🛑 HALT (实施 #16 no-advisory) — ${haltItems.length} 项持续 > 3 轮未修复 ╳${"".repeat(3)}`)
+        lines.push(`严苛模式: 走 Shadow = 严丝不漏, 没 advisory 灰色地带. 下面这些不是 "warning 你可以忽略",`)
+        lines.push(`是连续 3 轮没修掉的 hard fail. 你必须停下, 不要继续埋头改代码.`)
+        lines.push("")
+        lines.push(`强制处置 (按优先级):`)
+        lines.push(`  1) **回退上游 design**: 这条 fail 可能是 spec 写得不合理, 改 spec/arch, 别让代码硬撑`)
+        lines.push(`  2) **调 scale 字段**: 写 .shadow/scale.md 把对应字段调到 L 级 (默认已经 L 级, 误报才改)`)
+        lines.push(`  3) **走变更令**: 这是 design 跟实现脱节, 不是代码 bug, 走 shadow-walker 重新协调`)
+        lines.push(`  4) **写 \`bypass-shdw: <具体原因>\` 注释**: 真要绕过, 必须带 reason 进 audit log`)
+        lines.push(``)
+        lines.push(`不要做的事: 删 unresolved.json / 改 stub_patterns 配 schema 躲检查 / 装作没看见`)
+        lines.push(``)
+        for (const item of haltItems.slice(0, 5)) {
+          const firstLine = item.content.split("\n")[0].slice(0, 100)
+          lines.push(`  • [${item.section}] ${firstLine}  _(×${item.count}, since=${item.first_seen.slice(0, 10)})_`)
+        }
+        if (haltItems.length > 5) {
+          lines.push(`  ... 还有 ${haltItems.length - 5} 项, 查 ${shadowDir}/iterations/${iter}/.l5-halt.json`)
+        }
+        lines.push("")
+        lines.push(`这是 halt, 不是 warning. 停下, 问 user.`)
+      }
+      if (unresolved.length > 0) {
+        lines.push("")
+        lines.push(`=== L5 跨轮未解决警告 (实施 #6) — ${unresolved.length} 项, .l5-unresolved.json ===`)
+        lines.push(`AI 必须看到这些 (system prompt 强制注入). 处置:`)
+        lines.push(`  - 修代码/写产物: 让下次 L5 跑不到这条 → 自动消项 (3 轮还没消 → 进上方 HALT 段)`)
+        lines.push(`  - 改 schema: 如果是误报, 修 stub_patterns / lifecycle_role_of`)
+        for (const item of unresolved.slice(0, 8)) {
+          const firstLine = item.content.split("\n")[0].slice(0, 100)
+          const mark = item.count > 3 ? "🛑" : "  •"
+          lines.push(`  ${mark} [${item.section}] ${firstLine} _(×${item.count}, first=${item.first_seen.slice(0, 10)})_`)
+        }
+        if (unresolved.length > 8) {
+          lines.push(`  ... 还有 ${unresolved.length - 8} 项, 查 ${shadowDir}/iterations/${iter}/.l5-unresolved.json`)
+        }
+      }
+
+      // 实施 #3: Bypass audit log 也注入, 跟 unresolved 一起被 AI 看见
+      const bypassLog = bypassLogPath(shadowDir, iter)
+      if (existsSync(bypassLog)) {
+        try {
+          const text = readFileSync(bypassLog, "utf-8")
+          const entries = (text.match(/^##\s+\S+\s+\|/gm) || []).length
+          if (entries > 0) {
+            lines.push("")
+            lines.push(`=== Bypass Audit Log (实施 #3) — ${entries} 条 \`bypass-shdw:\` 标注 (${shadowDir}/iterations/${iter}/bypass-log.md) ===`)
+            lines.push(`AI 显式标记的 "绕过" 段都在这里. L6 部署前 user 必审.`)
+            lines.push(`前 ${Math.min(5, entries)} 条:`)
+            const entryRe = /^##\s+(\S+)\s+\|\s+(.+?):(\d+)\n- reason:\s*(.+)$/gm
+            let m: RegExpExecArray | null
+            let shown = 0
+            while ((m = entryRe.exec(text)) !== null && shown < 5) {
+              lines.push(`  • ${m[2]}:${m[3]} — ${m[4].slice(0, 60)}`)
+              shown++
+            }
+            if (entries > 5) lines.push(`  ... 还有 ${entries - 5} 条`)
+          }
+        } catch {}
       }
 
       output.system.push(lines.join("\n"))
@@ -1288,10 +1756,16 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
     },
 
     // ────────────────────────────────────────────────────────────
-    // L5: event (Stop / session.idle)
+    // L5: event (Stop / session.idle / session.error)
     // 5 段编排: stub scan → pending → L5 漂移 → lifecycle 漂移 → R5 硬门禁
     // ────────────────────────────────────────────────────────────
     event: async ({ event }: any) => {
+      // 实施 #15: session.error 兜底 — 弹清晰 toast 解释 + 3 步恢复指引
+      if (event?.type === "session.error") {
+        handleSessionError(client, event?.properties, diag)
+        return
+      }
+
       if (event?.type !== "message.updated") return
       const info = event?.properties?.info
       if (!info || info.role !== "assistant" || info.finish !== "stop") return
@@ -1299,7 +1773,9 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
 
       // P0-7 Meta 旁路: 在 cjxdd 仓库自身不跑 stop-gate (R5/lifecycle 漂移
       // 检查不适用 framework 自身)
-      if (meta) {
+      // 实施 A5 例外: CLI 入口 set _forceRunStopGate=true 时强绕, 真实 OpenCode
+      // session 永不动此 flag (event ctx 不会触发 CLI 路径).
+      if (meta && !_forceRunStopGate) {
         _toastLast.clear()
         clearPressureFingerprints()
         return
@@ -1307,7 +1783,7 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
 
       setTimeout(() => {
         try {
-          runStopGate({ projectRoot, shadowDir, schema, client, diag })
+          runStopGate({ projectRoot, shadowDir, schema, client, diag, skipMetaBypass: _forceRunStopGate })
           _toastLast.clear()
           clearPressureFingerprints()
         } catch (err) {
@@ -1322,19 +1798,414 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
 }
 
 // L5 stop-gate 编排器
-function runStopGate(opts: {
+// ════════════════════════════════════════════════════════════════════
+// § 13 L5 Consistency Audit (跟上游设计一致) — 实施 #14
+// ════════════════════════════════════════════════════════════════════
+
+interface ConsistencyRow {
+  dimension: "spec" | "wire" | "arch" | "l3"
+  designed: number
+  implemented: number
+  coverage: number  // 0-1
+  missing: string[]  // 列出未实现的设计项
+  note: string
+}
+
+interface ConsistencyReport {
+  rows: ConsistencyRow[]
+  overallCoverage: number
+  // 阈值: 4 维都 ≥ 0.9 才算 PASS; 任一 < 0.9 → hard error
+  threshold: number
+}
+
+// RXX 提取: 匹配 `R\d+` 短码 (e.g., R05, R12)
+const RXX_RE = /\bR(\d{1,3})\b/g
+const FMEA_RE = /^#{1,3}\s+(?:F(?:ailure\s*Mode)?\s*)?F?0*(\d{1,3})\b/gm
+const IMPL_RE = /@implements\s+([A-Z]{1,3}\d{1,3}(?:\s*[,、]\s*[A-Z]{1,3}\d{1,3})*)/g
+// 兜底机制代码痕迹: retry / circuitBreaker / circuit_breaker / fallback / degrade / timeout
+const FAILSAFE_RE = /\b(retry|circuitBreaker|circuit_breaker|fallback|degrade|timeout|backoff|bulkhead|rateLimit|throttle|hystrix|resilience4j)\b/i
+
+// 找所有 spec.md (L1)
+function findSpecFiles(shadowDir: string): string[] {
+  const out: string[] = []
+  // 1) per-BXX
+  const l1Dir = join(shadowDir, "L1-business")
+  if (existsSync(l1Dir)) {
+    try {
+      for (const e of readdirSync(l1Dir, { withFileTypes: true })) {
+        if (e.isDirectory()) {
+          const spec = join(l1Dir, e.name, "spec.md")
+          if (existsSync(spec)) out.push(spec)
+        }
+      }
+    } catch {}
+  }
+  // 2) 老路径: L1-business 顶层 spec.md
+  const topSpec = join(l1Dir, "spec.md")
+  if (existsSync(topSpec) && !out.includes(topSpec)) out.push(topSpec)
+  return out
+}
+
+function findArchFiles(shadowDir: string): string[] {
+  const out: string[] = []
+  const archDir = join(shadowDir, "L1.5-architecture")
+  if (!existsSync(archDir)) return out
+  try {
+    // per-BXX architecture.md
+    for (const e of readdirSync(archDir, { withFileTypes: true })) {
+      if (e.isDirectory()) {
+        const arch = join(archDir, e.name, "architecture.md")
+        if (existsSync(arch)) out.push(arch)
+      }
+    }
+  } catch {}
+  // 单文件 architecture.md
+  const top = join(archDir, "architecture.md")
+  if (existsSync(top) && !out.includes(top)) out.push(top)
+  return out
+}
+
+function findFailureModesFiles(shadowDir: string): string[] {
+  const out: string[] = []
+  const l3Dir = join(shadowDir, "L3-resilience")
+  if (!existsSync(l3Dir)) return out
+  try {
+    for (const e of readdirSync(l3Dir, { withFileTypes: true })) {
+      if (e.isDirectory()) {
+        const f = join(l3Dir, e.name, "failure-modes.md")
+        if (existsSync(f)) out.push(f)
+      }
+    }
+  } catch {}
+  return out
+}
+
+function findWireFiles(shadowDir: string): string[] {
+  const out: string[] = []
+  const l1Dir = join(shadowDir, "L1-business")
+  if (!existsSync(l1Dir)) return out
+  // 项目级 wire.svg
+  const top = join(l1Dir, "wire.svg")
+  if (existsSync(top)) out.push(top)
+  // 老路径: wireframes/*.svg
+  const wireframesDir = join(l1Dir, "wireframes")
+  if (existsSync(wireframesDir)) {
+    try {
+      for (const e of readdirSync(wireframesDir)) {
+        if (e.endsWith(".svg")) out.push(join(wireframesDir, e))
+      }
+    } catch {}
+  }
+  return out
+}
+
+// 在文本里抽 RXX 短码 (dedup)
+function extractRxxIds(text: string): Set<string> {
+  const out = new Set<string>()
+  // 优先匹配 "RXX-NN" 完整 (per-BXX rule id), 也接受 "RNN" 短码
+  const re1 = /\b([A-Z]{1,3}\d{1,3})\b/g
+  let m: RegExpExecArray | null
+  while ((m = re1.exec(text)) !== null) {
+    const id = m[1]
+    // 排除明显非 rule id 的 (e.g., FS01 兜底模式, F0N 失败模式, BXX 业务线)
+    if (/^FS\d/.test(id)) continue
+    if (/^F\d/.test(id)) continue
+    if (/^B\d/.test(id)) continue
+    // 至少 1 数字
+    if (/\d/.test(id)) out.add(id)
+  }
+  return out
+}
+
+function extractFmeaIds(text: string): Set<string> {
+  const out = new Set<string>()
+  let m: RegExpExecArray | null
+  const re = /^#{1,3}\s+(?:F(?:ailure\s*Mode)?\s*)?(F0*\d{1,3})\b/gim
+  while ((m = re.exec(text)) !== null) {
+    out.add(m[1])
+  }
+  return out
+}
+
+// 走 source dirs 找 @implements 标记
+function scanImplements(sourceDirs: string[]): Set<string> {
+  const out = new Set<string>()
+  if (sourceDirs.length === 0) return out
+  const skip = /node_modules|\.venv|__pycache__|dist|build|target|\.git|\.shadow/
+  const visited = new Set<string>()
+  for (const dir of sourceDirs) {
+    if (!existsSync(dir)) continue
+    const walk = (d: string): void => {
+      if (visited.has(d)) return
+      visited.add(d)
+      let entries: import("fs").Dirent[]
+      try { entries = readdirSync(d, { withFileTypes: true }) } catch { return }
+      for (const e of entries) {
+        if (skip.test(e.name)) continue
+        const p = join(d, e.name)
+        if (e.isDirectory()) walk(p)
+        else if (e.isFile()) {
+          // 只扫合理大小的源文件
+          if (p.length > 4096) continue
+          let text: string
+          try {
+            const stat = statSync(p)
+            if (stat.size > 524288 || stat.size < 10) continue
+            text = readFileSync(p, "utf-8")
+          } catch { continue }
+          let m: RegExpExecArray | null
+          const re = /@implements\s+([A-Z]{1,3}\d{1,3}(?:\s*[,、]\s*[A-Z]{1,3}\d{1,3})*)/g
+          while ((m = re.exec(text)) !== null) {
+            // m[1] 可能是 "R05, R06" 或 "R05-R11" 区间
+            const part = m[1]
+            for (const id of part.split(/[,、\s]+/)) {
+              const trimmed = id.trim()
+              if (trimmed) out.add(trimmed)
+            }
+          }
+        }
+      }
+    }
+    walk(dir)
+  }
+  return out
+}
+
+// 走 source dirs 数兜底机制行数 (粗略统计)
+function scanFailsafes(sourceDirs: string[]): { retry: number; circuitBreaker: number; fallback: number; timeout: number; total: number } {
+  const out = { retry: 0, circuitBreaker: 0, fallback: 0, timeout: 0, total: 0 }
+  if (sourceDirs.length === 0) return out
+  const skip = /node_modules|\.venv|__pycache__|dist|build|target|\.git|\.shadow/
+  const visited = new Set<string>()
+  for (const dir of sourceDirs) {
+    if (!existsSync(dir)) continue
+    const walk = (d: string): void => {
+      if (visited.has(d)) return
+      visited.add(d)
+      let entries: import("fs").Dirent[]
+      try { entries = readdirSync(d, { withFileTypes: true }) } catch { return }
+      for (const e of entries) {
+        if (skip.test(e.name)) continue
+        const p = join(d, e.name)
+        if (e.isDirectory()) walk(p)
+        else if (e.isFile()) {
+          let text: string
+          try {
+            const stat = statSync(p)
+            if (stat.size > 524288 || stat.size < 10) continue
+            text = readFileSync(p, "utf-8")
+          } catch { continue }
+          // 数每种兜底机制出现次数 (粗略)
+          for (const line of text.split("\n")) {
+            if (/\bretry\b|@retry/i.test(line)) out.retry++
+            else if (/circuit[_-]?breaker/i.test(line)) out.circuitBreaker++
+            else if (/\bfallback\b/i.test(line)) out.fallback++
+            else if (/\btimeout\b/i.test(line)) out.timeout++
+          }
+        }
+      }
+    }
+    walk(dir)
+  }
+  out.total = out.retry + out.circuitBreaker + out.fallback + out.timeout
+  return out
+}
+
+// 主入口: 跑 4 维一致性审计
+function auditL5Consistency(
+  projectRoot: string,
+  shadowDir: string,
+  sourceDirs: string[],
+  threshold: number = 0.9,
+): ConsistencyReport {
+  const rows: ConsistencyRow[] = []
+  const implementedSet = scanImplements(sourceDirs)
+  const failsafes = scanFailsafes(sourceDirs)
+
+  // 1) spec ↔ code (RXX → @implements)
+  const specFiles = findSpecFiles(shadowDir)
+  if (specFiles.length > 0) {
+    const designedSet = new Set<string>()
+    for (const f of specFiles) {
+      try {
+        for (const id of extractRxxIds(readFileSync(f, "utf-8"))) designedSet.add(id)
+      } catch {}
+    }
+    const designed = designedSet.size
+    let implemented = 0
+    const missing: string[] = []
+    for (const id of designedSet) {
+      if (implementedSet.has(id)) implemented++
+      else missing.push(id)
+    }
+    rows.push({
+      dimension: "spec",
+      designed,
+      implemented,
+      coverage: designed > 0 ? implemented / designed : 1,
+      missing: missing.slice(0, 20),
+      note: `${specFiles.length} spec.md, 抽出 ${designed} RXX, @implements 命中 ${implemented}`,
+    })
+  } else {
+    rows.push({
+      dimension: "spec",
+      designed: 0,
+      implemented: 0,
+      coverage: 1,
+      missing: [],
+      note: "(无 .shadow/L1-business/**/spec.md, 跳过)",
+    })
+  }
+
+  // 2) wire ↔ code (data-page → page component)
+  // 简化: 只数 wire.svg 数, 跟 source dirs 里 page component 数对比
+  const wireFiles = findWireFiles(shadowDir)
+  if (wireFiles.length > 0) {
+    let dataPages = 0
+    for (const f of wireFiles) {
+      try {
+        const text = readFileSync(f, "utf-8")
+        const matches = text.match(/data-page\s*=\s*["']([^"']+)["']/g)
+        if (matches) dataPages += matches.length
+      } catch {}
+    }
+    // 估算实现: 数 src 下含 "page" / "Page" 的文件 (粗略)
+    let pageComponents = 0
+    const pageRe = /Page|page\./i
+    for (const dir of sourceDirs) {
+      if (!existsSync(dir)) continue
+      try {
+        const files = readdirSync(dir, { recursive: true }) as unknown as string[]
+        for (const f of files) {
+          if (typeof f === "string" && pageRe.test(f)) pageComponents++
+        }
+      } catch {}
+    }
+    rows.push({
+      dimension: "wire",
+      designed: dataPages,
+      implemented: pageComponents,
+      coverage: dataPages > 0 ? Math.min(1, pageComponents / dataPages) : 1,
+      missing: dataPages > pageComponents ? [`${dataPages - pageComponents} 个 data-page 未实现`] : [],
+      note: `${wireFiles.length} wire.svg, ${dataPages} data-page, 源码 ~${pageComponents} 个 page 组件 (粗略估计)`,
+    })
+  } else {
+    rows.push({
+      dimension: "wire",
+      designed: 0,
+      implemented: 0,
+      coverage: 1,
+      missing: [],
+      note: "(无 wire.svg, 跳过)",
+    })
+  }
+
+  // 3) arch ↔ code (API endpoint → route)
+  const archFiles = findArchFiles(shadowDir)
+  if (archFiles.length > 0) {
+    let endpoints = 0
+    for (const f of archFiles) {
+      try {
+        const text = readFileSync(f, "utf-8")
+        // 粗略: 数 "GET /xxx" / "POST /xxx" / "PUT /xxx" / "DELETE /xxx" 形式
+        const m = text.match(/^\s*(GET|POST|PUT|DELETE|PATCH)\s+\/[\w\-/:{}*]+/gim)
+        if (m) endpoints += m.length
+      } catch {}
+    }
+    // 估算实现: 数 src 下含 "router" / "route" / "endpoint" / "@app.route" / "@router." 的行
+    let routeRegs = 0
+    for (const dir of sourceDirs) {
+      if (!existsSync(dir)) continue
+      try {
+        const files = readdirSync(dir, { recursive: true }) as unknown as string[]
+        for (const f of files) {
+          if (typeof f !== "string") continue
+          if (!/\.(ts|tsx|js|jsx|py|go|rs|java|kt)$/.test(f)) continue
+          try {
+            const text = readFileSync(f, "utf-8")
+            const m = text.match(/@(app|router|route|get|post|put|delete|patch)\s*\(/gi)
+            if (m) routeRegs += m.length
+          } catch {}
+        }
+      } catch {}
+    }
+    rows.push({
+      dimension: "arch",
+      designed: endpoints,
+      implemented: routeRegs,
+      coverage: endpoints > 0 ? Math.min(1, routeRegs / endpoints) : 1,
+      missing: endpoints > routeRegs ? [`${endpoints - routeRegs} 个 endpoint 未实现`] : [],
+      note: `${archFiles.length} architecture.md, ${endpoints} endpoint, 源码 ~${routeRegs} 个 route 注册 (粗略估计)`,
+    })
+  } else {
+    rows.push({
+      dimension: "arch",
+      designed: 0,
+      implemented: 0,
+      coverage: 1,
+      missing: [],
+      note: "(无 architecture.md, 跳过)",
+    })
+  }
+
+  // 4) l3 ↔ code (failure-modes 跟兜底机制对应)
+  const fmeaFiles = findFailureModesFiles(shadowDir)
+  if (fmeaFiles.length > 0) {
+    const designedSet = new Set<string>()
+    for (const f of fmeaFiles) {
+      try {
+        for (const id of extractFmeaIds(readFileSync(f, "utf-8"))) designedSet.add(id)
+      } catch {}
+    }
+    const designed = designedSet.size
+    // 兜底机制实现估算: 4 种机制总行数 (粗略)
+    // 经验值: 1 个失败模式至少 1 个兜底机制, 所以阈值 = designed
+    const implemented = failsafes.total
+    const coverage = designed > 0 ? Math.min(1, implemented / designed) : 1
+    rows.push({
+      dimension: "l3",
+      designed,
+      implemented,
+      coverage,
+      missing: designed > implemented ? [`${designed - implemented} 个失败模式缺兜底机制 (retry=${failsafes.retry}, cb=${failsafes.circuitBreaker}, fallback=${failsafes.fallback}, timeout=${failsafes.timeout})`] : [],
+      note: `${fmeaFiles.length} failure-modes.md, ${designed} 失败模式, 兜底机制行数=${failsafes.total} (retry=${failsafes.retry}, cb=${failsafes.circuitBreaker}, fallback=${failsafes.fallback}, timeout=${failsafes.timeout})`,
+    })
+  } else {
+    rows.push({
+      dimension: "l3",
+      designed: 0,
+      implemented: 0,
+      coverage: 1,
+      missing: [],
+      note: "(无 failure-modes.md, 跳过)",
+    })
+  }
+
+  // overall: 4 维几何平均
+  const validRows = rows.filter((r) => r.designed > 0)
+  const overallCoverage = validRows.length > 0
+    ? validRows.reduce((s, r) => s + r.coverage, 0) / validRows.length
+    : 1
+
+  return { rows, overallCoverage, threshold }
+}
+
+export function runStopGate(opts: {
   projectRoot: string
   shadowDir: string
   schema: ShadowSchema
   client: unknown
   diag: (e: Record<string, unknown>) => void
-}): void {
+  skipMetaBypass?: boolean
+}): { errors: number; warnings: number; sections: number; unresolved: number; halt: number } {
   const { projectRoot, shadowDir, schema, client, diag } = opts
   const iter = readCurrentIter(shadowDir)
   const status = iter ? readStatusMd(shadowDir, iter) : null
   const sections: string[] = []
   const errors: string[] = []
   const warnings: string[] = []
+  // 实施 #6: 把每条 warning/error 跟 section 名一起记, 用于 .l5-unresolved.json 跨轮保活
+  const tracked: { section: string; content: string; level: "warn" | "error" }[] = []
 
   // 1) stub scan
   const sourceDirs = findSourceDirs(projectRoot)
@@ -1343,7 +2214,10 @@ function runStopGate(opts: {
     if (stubs.length > 0) {
       const listed = stubs.slice(0, 15).map((s) => `  ⚠️  ${s.file}:${s.line}: ${s.text}`).join("\n")
       const more = stubs.length > 15 ? `\n  ... 还有 ${stubs.length - 15} 处` : ""
-      warnings.push(`存根扫描 (源目录) — ${stubs.length} 处:\n${listed}${more}`)
+      // 实施 #16 (no-advisory): stub scan 升级 hard — 工藤伦底线, 没灰色地带
+      const msg = `存根扫描 (源目录) — ${stubs.length} 处:\n${listed}${more}`
+      errors.push(msg)
+      tracked.push({ section: "stub-scan", content: msg, level: "error" })
     } else {
       sections.push(`✓ 存根扫描 (源目录): clean`)
     }
@@ -1351,11 +2225,39 @@ function runStopGate(opts: {
     sections.push(`(无 src/lib/app/backend/frontend/server/internal 源码目录, 跳过存根扫描)`)
   }
 
-  // 2) pending stages
+  // 1.5) Bypass 显式化 — 实施 #3: 扫 bypass-shdw: 注释, 写 audit log
+  // 保持 informational (它是 audit log, 不是 violation). 严苛 ≠ 阻 audit, 严苛 = 违规必 hard.
+  if (sourceDirs.length > 0) {
+    const markers = scanBypassMarkers(projectRoot, sourceDirs)
+    if (markers.length > 0) {
+      const listed = markers.slice(0, 10).map((m) => `  🔓 ${m.file}:${m.line} → ${m.reason}`).join("\n")
+      const more = markers.length > 10 ? `\n  ... 还有 ${markers.length - 10} 处` : ""
+      sections.push(`🔓 Bypass 显式标注: ${markers.length} 处 (audit log: bypass-log.md)\n${listed}${more}`)
+      const newEntries: BypassLogEntry[] = markers.map((m) => ({
+        hash: djb2(`${m.file}::${m.line}::${m.reason}`),
+        file: m.file,
+        line: m.line,
+        reason: m.reason,
+        first_seen: "",
+      }))
+      if (iter) {
+        const { added, total } = appendBypassLog(shadowDir, iter, newEntries)
+        if (added > 0) {
+          sections.push(`  → 新增 ${added} 条到 bypass-log.md (累计 ${total} 条, L6 部署前 user 必审)`)
+        }
+      }
+    } else {
+      sections.push(`✓ Bypass 显式标注: 无 (零主动绕过)`)
+    }
+  }
+
+  // 2) pending stages — 实施 #16 (no-advisory): hard
   if (status) {
     const bxxPending = readPendingByBxx(status)
     if (bxxPending) {
-      warnings.push(`Pipeline 未完成 (按 BXX 分组):\n${bxxPending}`)
+      const msg = `Pipeline 未完成 (按 BXX 分组):\n${bxxPending}`
+      errors.push(msg)
+      tracked.push({ section: "pending-stages", content: msg, level: "error" })
     } else {
       const flat: string[] = []
       for (const line of status.split("\n")) {
@@ -1364,39 +2266,153 @@ function runStopGate(opts: {
         const s = (line.split("|")[2] || "").trim()
         if (s.includes("⏳") || s.includes("🔄")) flat.push(stage)
       }
-      if (flat.length > 0) warnings.push(`Pipeline 未完成 (flat):\n${flat.map((s) => `  - ${s}`).join("\n")}`)
-      else sections.push(`✓ Pipeline 全部 ✅`)
+      if (flat.length > 0) {
+        const msg = `Pipeline 未完成 (flat):\n${flat.map((s) => `  - ${s}`).join("\n")}`
+        errors.push(msg)
+        tracked.push({ section: "pending-stages-flat", content: msg, level: "error" })
+      } else sections.push(`✓ Pipeline 全部 ✅`)
     }
   }
 
-  // 3) L5 漂移检查
+  // 3) L5 漂移检查 — 实施 #16 (no-advisory): hard
   if (status) {
     const drift = checkStageDrift(schema, status, projectRoot)
-    if (drift) warnings.push(`L5 Stage Drift:\n${drift.split("\n").map((l) => `  ${l}`).join("\n")}`)
-    else sections.push(`✓ L5 漂移检查: status.md 与产物状态一致`)
+    if (drift) {
+      const msg = `L5 Stage Drift:\n${drift.split("\n").map((l) => `  ${l}`).join("\n")}`
+      errors.push(msg)
+      tracked.push({ section: "stage-drift", content: msg, level: "error" })
+    } else sections.push(`✓ L5 漂移检查: status.md 与产物状态一致`)
   }
 
-  // 4) Lifecycle 漂移
+  // 4) Lifecycle 漂移 — 实施 #16 (no-advisory): hard
   const lifecycle = checkLifecycleDrift(shadowDir)
-  if (lifecycle) warnings.push(`Lifecycle 漂移:\n${lifecycle.split("\n").map((l) => `  ${l}`).join("\n")}`)
-  else sections.push(`✓ Lifecycle 漂移: 无`)
+  if (lifecycle) {
+    const msg = `Lifecycle 漂移:\n${lifecycle.split("\n").map((l) => `  ${l}`).join("\n")}`
+    errors.push(msg)
+    tracked.push({ section: "lifecycle-drift", content: msg, level: "error" })
+  } else sections.push(`✓ Lifecycle 漂移: 无`)
 
-  // 5) R5 硬门禁
+  // 5) R5 硬门禁 — 实施 #16 (no-advisory): R5 跳过也升 hard
+  // 走 Shadow = 严丝不漏, R5 是核心关卡. 脚本不在 = framework setup 缺, 也是 hard fail.
   const gateScript = resolveGateScriptPath()
   if (existsSync(gateScript)) {
     const r5 = runR5HardGate(gateScript)
     if (r5.reason === "pass") sections.push(`✓ R5 硬门禁: 通过`)
     else if (r5.reason === "r5-fail") {
       const tail = r5.output.split("\n").slice(-30).join("\n")
-      errors.push(`R5 硬门禁失败:\n${tail}`)
+      const msg = `R5 硬门禁失败:\n${tail}`
+      errors.push(msg)
+      tracked.push({ section: "r5-hard-gate", content: msg, level: "error" })
     } else if (r5.reason === "fatal") {
-      errors.push(`R5 内部错误 (exit=${r5.exitCode}):\n${r5.output.slice(-200)}`)
-    } else warnings.push(`R5 跳过: gate-check-lifecycle.sh 不存在`)
-  } else warnings.push(`R5 跳过: gate-check-lifecycle.sh 未找到`)
+      const msg = `R5 内部错误 (exit=${r5.exitCode}):\n${r5.output.slice(-200)}`
+      errors.push(msg)
+      tracked.push({ section: "r5-internal", content: msg, level: "error" })
+    } else {
+      // "script-missing" 之类的非 pass/fail/fatal — 实施 #16 升 hard
+      const msg = `R5 跳过: gate-check-lifecycle.sh 跑了但状态未知 (reason=${r5.reason})`
+      errors.push(msg)
+      tracked.push({ section: "r5-skip", content: msg, level: "error" })
+    }
+  } else {
+    // 实施 #16 升 hard: 脚本不在 = framework 没装好, 不该静默跳过
+    const msg = `R5 跳过: gate-check-lifecycle.sh 不存在 (${gateScript}). 检查 framework 安装.`
+    errors.push(msg)
+    tracked.push({ section: "r5-missing-script", content: msg, level: "error" })
+  }
 
-  diag({ ev: "stop-gate-result", iter, sections: sections.length, warnings: warnings.length, errors: errors.length })
+  // 5.5) L5 Consistency Audit (跟上游设计一致) — 实施 #14
+  // 4 维: spec↔code (RXX→@implements) / wire↔code (data-page→component) /
+  //       arch↔code (endpoint→route) / l3↔code (FMEA→兜底机制)
+  // 阈值: 任一维 coverage < 0.9 → hard error (L5-impl 偷工)
+  if (sourceDirs.length > 0) {
+    const audit = auditL5Consistency(projectRoot, shadowDir, sourceDirs, 0.9)
+    const auditedRows = audit.rows.filter((r) => r.designed > 0)
+    if (auditedRows.length > 0) {
+      const summary = auditedRows.map((r) => {
+        const pct = (r.coverage * 100).toFixed(0)
+        const mark = r.coverage >= audit.threshold ? "✓" : "✗"
+        return `  ${mark} ${r.dimension}: ${r.implemented}/${r.designed} = ${pct}% — ${r.note}`
+      }).join("\n")
+      const overallPct = (audit.overallCoverage * 100).toFixed(0)
+      const failing = auditedRows.filter((r) => r.coverage < audit.threshold)
+      if (failing.length > 0) {
+        const detail = failing.map((r) => {
+          const missingStr = r.missing.length > 0 ? `\n    缺: ${r.missing.join(", ")}` : ""
+          return `  ✗ ${r.dimension} coverage ${(r.coverage * 100).toFixed(0)}% < ${audit.threshold * 100}%${{
+            "spec": " (RXX 没 @implements 标记, L5-impl 偷工)",
+            "wire": " (data-page 没对应 page 组件)",
+            "arch": " (architecture endpoint 没 route 注册)",
+            "l3": " (failure-mode 缺兜底机制, 韧性设计走过场)",
+          }[r.dimension]}${missingStr}`
+        }).join("\n")
+        const msg = `L5 Consistency Audit 失败 (overall ${overallPct}%, threshold ${audit.threshold * 100}%):\n${detail}\n\nL5-impl 跟上游设计不一致, 必须补齐后才能标 iter 完成.\n修复指引:\n${failing.map((r) => `  - ${r.dimension}: 加 @implements 标记 / data-page 组件 / route 注册 / retry-cb-fallback 机制`).join("\n")}`
+        errors.push(msg)
+        tracked.push({ section: "l5-consistency-audit", content: msg, level: "error" })
+      } else {
+        sections.push(`✓ L5 Consistency Audit: ${auditedRows.length} 维全过 (overall ${overallPct}%)`)
+      }
+    } else {
+      sections.push(`(L5 Consistency Audit: 无上游设计产物, 跳过 — 项目可能还在 L0/L1 阶段)`)
+    }
+  }
+
+  // 实施 #6: 跨轮保活 — 把当前 run 的 tracked warnings/errors 跟盘上 unresolved merge
+  // 实施 #16 (no-advisory): 3 试 halt — 任何 unresolved 项 count > 3 升级为 halt, 注入 L1 system 提示 AI 停下
+  const HALT_THRESHOLD = 3
+  let unresolvedCount = 0
+  let haltItems: L5Item[] = []
+  if (iter) {
+    const merged = syncL5Unresolved(shadowDir, iter, tracked)
+    unresolvedCount = merged.length
+    haltItems = merged.filter((it) => it.count > HALT_THRESHOLD)
+    if (haltItems.length > 0) {
+      // 写 halt 标记文件 (control_marker), 供 L1 system transform 读
+      const haltPath = join(shadowDir, "iterations", iter, ".l5-halt.json")
+      try {
+        writeFileSync(haltPath, JSON.stringify({
+          iter,
+          updated_at: new Date().toISOString(),
+          count: haltItems.length,
+          threshold: HALT_THRESHOLD,
+          items: haltItems.map((it) => ({
+            hash: it.hash,
+            section: it.section,
+            content: it.content.split("\n")[0].slice(0, 200),
+            count: it.count,
+            first_seen: it.first_seen,
+            last_seen: it.last_seen,
+          })),
+        }, null, 2))
+      } catch (err) {
+        diag({ ev: "halt-write-err", err: String(err).slice(0, 200) })
+      }
+    }
+  }
+
+  diag({
+    ev: "stop-gate-result",
+    iter,
+    sections: sections.length,
+    warnings: warnings.length,
+    errors: errors.length,
+    unresolved: unresolvedCount,
+    halt: haltItems.length,
+  })
 
   const summaryLines: string[] = [`iter=${iter || "(无)"}`, ...sections]
+  if (unresolvedCount > 0) {
+    summaryLines.push(`\n─── 跨轮未解决 (L5 跨轮保活, .l5-unresolved.json) — ${unresolvedCount} 项 ───`)
+  }
+  if (haltItems.length > 0) {
+    summaryLines.push(
+      "",
+      `🛑 3 试 HALT 触发 (实施 #16 no-advisory) — ${haltItems.length} 项持续 > ${HALT_THRESHOLD} 轮未修复:`,
+      ...haltItems.map((it) => `  • [${it.section}] (×${it.count}) ${it.content.split("\n")[0].slice(0, 120)}`),
+      "",
+      'AI 必须停下, 跟 user 同步: 这条不是 "修修补补能过的 advisory warning",',
+      "是连续 3 轮没修掉的 hard fail. 处置: 改 design / 改 scale / 走变更令, 别再死磕.",
+    )
+  }
   if (warnings.length > 0) {
     summaryLines.push("", "─── 警告 ───", ...warnings)
   }
@@ -1404,9 +2420,135 @@ function runStopGate(opts: {
     summaryLines.push("", "─── 错误 ───", ...errors)
   }
   const summary = summaryLines.join("\n")
-  if (errors.length > 0) notify(client, "error", `Shadow: 漫游 stop-gate · ${errors.length} 错误`, summary, 12000)
-  else if (warnings.length > 0) notify(client, "warning", `Shadow: 漫游 stop-gate · ${warnings.length} 警告`, summary, 8000)
-  else notify(client, "success", "Shadow: 漫游 stop-gate", summary, 3000)
+  // toast 调度: 实施 #16 — 没了 warning 灰色地带, 全是 error (12s 红) 或 success (3s 绿)
+  const baseTitle = errors.length > 0
+    ? `Shadow: 漫游 stop-gate · ${errors.length} 错误`
+    : "Shadow: 漫游 stop-gate"
+  const titleSuffix = unresolvedCount > 0 ? ` · ${unresolvedCount} 项跨轮未解决` : ""
+  // 3 试 halt 优先级最高 — error 弹窗 + 强制 AI 看
+  if (haltItems.length > 0) {
+    notify(client, "error",
+      `🛑 Shadow: 3 试 HALT · ${haltItems.length} 项持续未修复`,
+      summary, 15000)
+  } else if (errors.length > 0) {
+    notify(client, "error", baseTitle + titleSuffix, summary, 12000)
+  } else if (warnings.length > 0) {
+    // 实施 #16: warnings 不会从 L5 5 段里产生 (已全 hard). 但保留这分支以备未来扩展.
+    notify(client, "warning", baseTitle + titleSuffix, summary, 8000)
+  } else {
+    notify(client, "success", baseTitle, summary + (unresolvedCount > 0 ? `\n(${unresolvedCount} 项跨轮保活中)` : ""), 3000)
+  }
+
+  // 返回摘要 (CLI 用)
+  return { errors: errors.length, warnings: warnings.length, sections: sections.length, unresolved: unresolvedCount, halt: haltItems.length }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 实施 A5: stop-gate CLI 入口
+// 用法: bun plugins/shadow-hooks.ts --run-stop-gate --project-root <dir> [--iter N]
+// 强绕 Meta 旁路 (在 cjxdd 自身 / 任何 cwd 都能跑), 把 5 段 + 5.5 段 + 5.6+ 段
+// 全部输出到 stdout. 让用户/AI 能直接验证硬门禁真 fire, 不必切到 demo session.
+// ════════════════════════════════════════════════════════════════════
+
+function runStopGateCli(): number {
+  const args = process.argv.slice(2)
+  if (!args.includes("--run-stop-gate")) return -1
+  const argVal = (flag: string, dflt?: string): string | undefined => {
+    const i = args.indexOf(flag)
+    if (i < 0) return dflt
+    return args[i + 1]
+  }
+
+  const projectRoot = argVal("--project-root", process.cwd())!
+  const iterOverride = argVal("--iter")
+  const schemaPath = argVal("--schema")
+
+  // 1. 强制强绕 Meta 旁路 (关键)
+  _forceRunStopGate = true
+
+  // 2. 找 .shadow 目录
+  const shadowDir = findShadowDir(projectRoot) ?? join(projectRoot, ".shadow")
+
+  // 3. 装 schema (允许 CLI 临时指定, e.g. --schema ./skills/shadow-init/templates/shadow-schema.json)
+  if (schemaPath) {
+    _schemaCache = null
+    _schemaPath = schemaPath
+    process.env.SHADOW_SCHEMA = schemaPath
+  }
+  const schema = loadShadowSchema()
+  if (!schema) {
+    console.error(`[cli] 无法装 schema (path=${_schemaPath || "(默认)"})`)
+    return 2
+  }
+
+  // 4. 写 stderr 的简易 diag
+  const cliDiag = (e: Record<string, unknown>) => {
+    process.stderr.write(`[diag] ${JSON.stringify(e)}\n`)
+  }
+
+  // 5. 假 client (把 toast 落 stdout)
+  const cliClient = {
+    tui: {
+      showToast: (t: { title: string; message: string; variant: string; duration?: number }) => {
+        const icon = t.variant === "error" ? "❌" : t.variant === "warning" ? "⚠️" : t.variant === "success" ? "✅" : "ℹ️"
+        process.stdout.write(`${icon} [${(t.variant || "info").toUpperCase()}] ${t.title}\n`)
+        if (t.message) process.stdout.write(`${t.message}\n`)
+        process.stdout.write("\n")
+        return Promise.resolve()
+      },
+    },
+  }
+
+  // 6. iter 覆盖 (status.md 走 readStatusMd 内部读 iter 目录, 但 iter 决定读哪段 status)
+  //    如果 --iter 指定, 把 current-iteration 临时指向它 (写完恢复)
+  const curIterFile = join(shadowDir, "current-iteration")
+  let origIter: string | null = null
+  if (iterOverride) {
+    try {
+      origIter = existsSync(curIterFile) ? readFileSync(curIterFile, "utf-8").trim() : null
+      writeFileSync(curIterFile, iterOverride)
+    } catch (err) {
+      console.error(`[cli] 写 current-iteration 失败: ${err}`)
+      return 3
+    }
+  }
+
+  let result: { errors: number; warnings: number; sections: number; unresolved: number; halt: number } | null = null
+  try {
+    result = runStopGate({
+      projectRoot, shadowDir, schema,
+      client: cliClient, diag: cliDiag,
+      skipMetaBypass: true,
+    })
+  } catch (err) {
+    console.error(`[cli] runStopGate 异常: ${err}`)
+    return 1
+  } finally {
+    // 恢复 current-iteration
+    if (iterOverride) {
+      try {
+        if (origIter !== null) writeFileSync(curIterFile, origIter)
+        else if (existsSync(curIterFile)) unlinkSync(curIterFile)
+      } catch {}
+    }
+  }
+
+  // 退出码映射:
+  //   0 = clean / 仅有 success toast
+  //   1 = errors > 0 (red toast, 必出)
+  //   4 = HALT (更严重, 跟 errors 分开标记)
+  if (result && result.halt > 0) return 4
+  if (result && result.errors > 0) return 1
+  return 0
+
+  return 0
+}
+
+// CLI 入口 (Bun 跑 shadow-hooks.ts 时 main module 自身执行; OpenCode 加载时
+// input.client 等存在, 走 plugin factory 路径, 不走 main 分支).
+if (process.argv[1]?.endsWith("shadow-hooks.ts") || process.argv[1]?.endsWith("shadow-hooks")) {
+  const ec = runStopGateCli()
+  if (ec >= 0) process.exit(ec)
 }
 
 export default ShadowHooksPlugin

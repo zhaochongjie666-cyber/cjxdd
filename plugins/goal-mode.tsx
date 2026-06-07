@@ -13,7 +13,7 @@
 // 会导致 shadowDir = "/.shadow" 不存在 → plugin 早退, /cjgoal 静默失效.
 /** @jsxImportSource @opentui/solid */
 import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
-import { existsSync, mkdirSync, writeFileSync, unlinkSync, appendFileSync } from "fs"
+import { existsSync, mkdirSync, writeFileSync, unlinkSync, appendFileSync, readdirSync, readFileSync } from "fs"
 import { join, dirname } from "path"
 
 // Boot diag: 写到 stderr (OpenCode 会捕获到 stderr.log)
@@ -24,6 +24,10 @@ bootLog(`module-import pid=${process.pid}`)
 
 const MAX_ITER = 10
 const GOAL_PREFIX = /^\/cjgoal(?:@[\w-]+)?\s+(.+)/i
+// 子命令: /cjgoal done|stop|status — 在 GOAL_PREFIX 之前匹配, 避免被当成 goal 文本 "done"/"stop"/"status"
+const SUBCMD_RE = /^\/cjgoal(?:@[\w-]+)?\s+(done|stop|status)[\s!.]*$/i
+// 隐式完成信号: 用户在最近一条消息里短答 (不带问号) 标记完成
+const USER_DONE_RE = /^(完成|完成了|done|ok|好了|可以|通过了|fin|finished|complete)[。！!.\s]*$/i
 
 // diag log 路径: 延迟到 plugin load 时确定 (per-session).
 // plugin load 之前 (module-import) 调 diag 是 silent.
@@ -176,11 +180,87 @@ const plugin: TuiPlugin = async (api) => {
     if (part.synthetic || part.ignored) return
     const partId = `${part.messageID}:${part.id}`
     if (seenParts.has(partId)) return
+    seenParts.add(partId)
+
+    // ---- 子命令: /cjgoal done|stop|status (在 GOAL_PREFIX 之前, 防被当成 goal 文本) ----
+    const subMatch = SUBCMD_RE.exec(part.text)
+    if (subMatch) {
+      const sub = subMatch[1].toLowerCase()
+      if (!hasShadow) {
+        toast(api, "warning", "Goal ⚠", "项目无 .shadow/ 目录. 请先跑 shadow-init 初始化.", 6000)
+        return
+      }
+      const sDir = initSession(sessionID)
+      // 内存没有 run 但盘上有, 先恢复 (重启 / 跨 session 续接场景)
+      if (!run) {
+        const saved = loadRunState(sDir)
+        if (saved && saved.iter < MAX_ITER) {
+          run = { ...saved, runDir: join(sDir, saved.runId), sessionDir: sDir }
+        }
+      }
+      if (sub === "done") {
+        if (!run) {
+          toast(api, "warning", "Goal ⚠", "无活跃 run, 无需 done.")
+          return
+        }
+        const finalPath = join(run.runDir, "final.md")
+        writeFileSync(finalPath,
+          `# Final\n\n- run_id: ${run.runId}\n- status: ✅ COMPLETE\n- iters: ${run.iter}\n- ended_at: ${new Date().toISOString()}\n- ended_by: user_done\n- eval: 用户主动 /cjgoal done\n`)
+        try { writeFileSync(finalPath, readFileSync(finalPath, "utf-8"), { mode: 0o444 }) } catch {}
+        saveRunState(run.sessionDir, null)
+        diag({ ev: "user-done", runId: run.runId, iter: run.iter, sessionID })
+        toast(api, "success", "Goal ✅",
+          `${run.iter === 0 ? "0 轮即收尾" : `${run.iter} 轮达成`} · ${run.goal.slice(0, 50)}${run.goal.length > 50 ? "..." : ""}`, 5000)
+        run = null
+        return
+      }
+      if (sub === "stop") {
+        if (!run) {
+          toast(api, "warning", "Goal ⚠", "无活跃 run, 无需 stop.")
+          return
+        }
+        const finalPath = join(run.runDir, "final.md")
+        writeFileSync(finalPath,
+          `# Final\n\n- run_id: ${run.runId}\n- status: ❌ ABANDONED\n- iters: ${run.iter}\n- ended_at: ${new Date().toISOString()}\n- ended_by: user_stop\n- eval: 用户主动 /cjgoal stop\n`)
+        try { writeFileSync(finalPath, readFileSync(finalPath, "utf-8"), { mode: 0o444 }) } catch {}
+        saveRunState(run.sessionDir, null)
+        diag({ ev: "user-stop", runId: run.runId, iter: run.iter, sessionID })
+        toast(api, "warning", "Goal ⏹",
+          `ABANDONED · ${run.goal.slice(0, 50)}${run.goal.length > 50 ? "..." : ""}`, 5000)
+        run = null
+        return
+      }
+      if (sub === "status") {
+        if (!run) {
+          toast(api, "info", "Goal ⏱", "无活跃 run.")
+          return
+        }
+        // 扫 iter-N.md 数回合 + 抽最后一条 eval 原因
+        let iterCount = 0
+        let lastReason = "(无 iter-N.md)"
+        try {
+          const files = readdirSync(run.runDir).filter((f) => /^iter-\d+\.md$/.test(f))
+          iterCount = files.length
+          if (iterCount > 0) {
+            const lastFile = files.sort().pop()!
+            const content = readFileSync(join(run.runDir, lastFile), "utf-8")
+            const m = /^- eval: (.+)$/m.exec(content)
+            if (m && m[1]) lastReason = m[1].trim()
+          }
+        } catch (err) {
+          diag({ ev: "status-err", err: String(err).slice(0, 200) })
+        }
+        toast(api, "info", "Goal ⏱",
+          `${iterCount} 回合 · iter=${run.iter} · ${run.goal.slice(0, 40)}${run.goal.length > 40 ? "..." : ""}\n最后: ${lastReason.slice(0, 80)}`, 6000)
+        return
+      }
+    }
+
+    // ---- 新 goal 启动 ----
     const m = GOAL_PREFIX.exec(part.text)
     if (!m) return
     const goal = m[1].trim()
     if (!goal) return
-    seenParts.add(partId)
 
     if (run) {
       diag({ ev: "skip", reason: "active-run-exists", runId: run.runId, sessionID })
@@ -241,84 +321,107 @@ const plugin: TuiPlugin = async (api) => {
     }
   })
 
-  // ---- 评估 (读主 session 的 last assistant, 不创建独立 eval session) ----
+  // ---- 评估 (读主 session 的 last assistant + last user, 不创建独立 eval session) ----
   // 历史: 之前用 session.create + session.prompt 创建独立 evaluator session, 有 2 个问题:
   //   1. session.prompt 在独立 session 上有 OpenCode server bug (UnknownError ref=err_xxxxx)
   //   2. 改用 promptAsync 后, eval session 的 model 永远不响应 (prompt 进 messages 但无 assistant 回应)
-  // 当前策略: 跳过独立 evaluator, 直接看主 session 最后产物, 写 iter-N.md 让用户人工审查.
+  // 当前策略: 读主 session 最后产物, 启发式判断 + 接受用户显式 done 信号, 写 iter-N.md.
+  // 返回协议: 首行是 verdict (COMPLETE|CONTINUE), 后续是 reason. handleDecision 拆首行作 verdict, 后续作 reason.
   async function evaluate(api: TuiPluginApi, run: Run): Promise<string> {
     let lastAssistant = ""
+    let lastUserText = ""
     try {
       const mainMsgsResp = await api.client.session.messages({ sessionID: run.sessionID })
       const mainMsgs = (mainMsgsResp as any).data ?? mainMsgsResp
       if (Array.isArray(mainMsgs)) {
         for (let i = mainMsgs.length - 1; i >= 0; i--) {
           const m = mainMsgs[i]
-          if (m?.info?.role === "assistant") {
+          if (!m) continue
+          if (!lastAssistant && m?.info?.role === "assistant") {
             for (const p of m.parts ?? []) {
               if (p?.type === "text" && typeof p.text === "string") lastAssistant += p.text
             }
-            break
           }
+          if (!lastUserText && m?.info?.role === "user") {
+            for (const p of m.parts ?? []) {
+              if (p?.type === "text" && typeof p.text === "string") lastUserText += p.text
+            }
+          }
+          if (lastAssistant && lastUserText) break
         }
       }
     } catch (err) {
       diag({ ev: "eval-err", err: String(err).slice(0, 200) })
     }
 
-    // 启发式判断: 主 session 的产物是否有具体内容
+    // 启发式 0: 用户最近一条消息是短完成信号 (不带问号) → COMPLETE
+    // 例子: "完成" / "done" / "ok" / "好了" / "可以" 单独成句
+    const userTxt = lastUserText.trim()
+    if (userTxt.length > 0 && userTxt.length <= 15 && !/[?]/.test(userTxt) && USER_DONE_RE.test(userTxt)) {
+      return `COMPLETE: 用户短消息标记完成: ${userTxt.slice(0, 30)}`
+    }
+
+    // 启发式 1-3: 看 AI 最后产物形态
     const last = lastAssistant.trim()
     const hasConcreteOutput = /\b(done|pending|完成|结果|输出|✅|错误|error|✓|success)\b/i.test(last)
     const hasDialogue = /^(好的|我会|让我|开始做|继续|我来做|让我先)/.test(last)
     const looksEmpty = last.length < 30
 
     if (looksEmpty) {
-      return `CONTINUE: 主 session 产物为空或太短 (${last.length} chars): ${last.slice(0, 100)}`
+      return `CONTINUE: AI 产物为空或太短 (${last.length} chars): ${last.slice(0, 100)}`
     }
     if (hasDialogue && !hasConcreteOutput) {
-      return `CONTINUE: 主 session 仅对话性回复, 无具体产物: ${last.slice(0, 200)}`
+      return `CONTINUE: AI 仅对话性回复, 无具体产物: ${last.slice(0, 200)}`
     }
     if (hasConcreteOutput) {
-      // 含具体产物 (done/pending/✅/完成 等), 仍 CONTINUE 但让用户确认
-      return `CONTINUE: 主 session 产物含具体输出, 请人工确认是否完成: ${last.slice(0, 300)}`
+      // AI 产物含具体信号, 但 Goal 不替用户判定 — 提示用户确认
+      return `CONTINUE: AI 产物含具体输出, 用户可输 完成/done 或 /cjgoal done 确认: ${last.slice(0, 200)}`
     }
-    // 既不像对话也不像具体产物
-    return `CONTINUE: 主 session 产物 (${last.length} chars): ${last.slice(0, 200)}`
+    return `CONTINUE: AI 产物 (${last.length} chars), 未达完成信号: ${last.slice(0, 200)}`
   }
 
   // ---- 决策处理 ----
+  // evalResult 协议: 首行是 verdict (COMPLETE|CONTINUE), 后续是 reason.
   async function handleDecision(api: TuiPluginApi, run: Run, evalResult: string): Promise<boolean> {
     const firstLine = evalResult.split("\n")[0]
-    const reason = firstLine.slice(0, 200)
-    const complete = /^COMPLETE\s*$/i.test(firstLine)
+    const verdictMatch = /^(COMPLETE|CONTINUE)\b/i.exec(firstLine)
+    const verdict = verdictMatch?.[1]?.toUpperCase() ?? "CONTINUE"
+    const reason = (verdictMatch ? firstLine.slice(verdictMatch[0].length).replace(/^[:\s]+/, "") : firstLine).trim() || firstLine
+    const complete = verdict === "COMPLETE"
 
     if (complete) {
-      writeFileSync(join(run.runDir, "final.md"),
-        `# Final\n\n- run_id: ${run.runId}\n- status: ✅ COMPLETE\n- iters: ${run.iter}\n- ended_at: ${new Date().toISOString()}\n- eval: ${reason}\n`)
+      const finalPath = join(run.runDir, "final.md")
+      writeFileSync(finalPath,
+        `# Final\n\n- run_id: ${run.runId}\n- status: ✅ COMPLETE\n- iters: ${run.iter}\n- ended_at: ${new Date().toISOString()}\n- ended_by: auto_eval (heuristic)\n- eval: ${reason}\n`)
+      try { writeFileSync(finalPath, readFileSync(finalPath, "utf-8"), { mode: 0o444 }) } catch {}
       saveRunState(run.sessionDir, null)
-      diag({ ev: "complete", runId: run.runId, iter: run.iter })
-      toast(api, "success", "Goal ✅", `${run.iter === 1 ? "1 轮达成" : `${run.iter} 轮达成`} · ${run.goal.slice(0, 50)}${run.goal.length > 50 ? "..." : ""}`, 5000)
+      diag({ ev: "complete", runId: run.runId, iter: run.iter, reason: reason.slice(0, 100) })
+      toast(api, "success", "Goal ✅",
+        `${run.iter === 0 ? "0 轮即收尾" : `${run.iter} 轮达成`} · ${run.goal.slice(0, 50)}${run.goal.length > 50 ? "..." : ""}`, 5000)
       return true
     }
 
     if (run.iter >= MAX_ITER) {
-      writeFileSync(join(run.runDir, "final.md"),
-        `# Final\n\n- run_id: ${run.runId}\n- status: ❌ FAI3URE-CAP (${MAX_ITER} 轮)\n- iters: ${run.iter}\n- ended_at: ${new Date().toISOString()}\n- last_eval: ${reason}\n`)
+      const finalPath = join(run.runDir, "final.md")
+      writeFileSync(finalPath,
+        `# Final\n\n- run_id: ${run.runId}\n- status: ❌ FAI3URE-CAP (${MAX_ITER} 轮)\n- iters: ${run.iter}\n- ended_at: ${new Date().toISOString()}\n- ended_by: cap\n- last_eval: ${reason}\n`)
+      try { writeFileSync(finalPath, readFileSync(finalPath, "utf-8"), { mode: 0o444 }) } catch {}
       saveRunState(run.sessionDir, null)
       diag({ ev: "cap", runId: run.runId, iter: run.iter })
       toast(api, "error", "Goal ❌ FAI3URE-CAP", `${MAX_ITER} 轮未达成 · ${reason.slice(0, 80)}`)
       return true
     }
 
-    // CONTINUE 分支: 不再尝试自动 re-inject (api.client.session.prompt 在 idle session 不可靠, 30s 超时).
-    // 改为: 写 iter-N.md 评估结果, toast 通知用户, 让用户手动继续 (在 TUI 中继续对话即可).
+    // CONTINUE 分支: 不再尝试自动 re-inject (api.client.session.prompt 在 idle session 不可靠).
+    // 改为: 写 iter-N.md 评估结果, toast 通知用户可输 /cjgoal done 或短完成信号主动收尾.
     // 下次 session.idle fire (用户接着对话后 AI 再次走完一轮) 触发下一轮评估.
     writeFileSync(
       join(run.runDir, `iter-${run.iter}.md`),
-      `# Iter ${run.iter} (CONTINUE)\n\n- at: ${new Date().toISOString()}\n- eval: ${reason}\n- full: ${evalResult.slice(0, 1000)}\n`,
+      `# Iter ${run.iter} (CONTINUE)\n\n- at: ${new Date().toISOString()}\n- eval: ${reason}\n- full: ${evalResult.slice(0, 1000)}\n\n_可输 \`完成\` / \`done\` 短答或 \`/cjgoal done\` 主动收尾_\n`,
     )
     diag({ ev: "continue", runId: run.runId, iter: run.iter, reason: reason.slice(0, 100) })
-    toast(api, "warning", `Goal ↻ iter ${run.iter}/${MAX_ITER}`, `${reason.slice(0, 80)} (手动继续对话触发下一轮)`)
+    toast(api, "warning", `Goal ↻ iter ${run.iter}/${MAX_ITER}`,
+      `${reason.slice(0, 60)} | 输 完成 / done / /cjgoal done 主动收尾`)
     return false
   }
 

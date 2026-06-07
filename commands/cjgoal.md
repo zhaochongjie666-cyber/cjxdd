@@ -13,9 +13,25 @@ argument-hint: <目标描述>
 |------|-------------------|----------------------|
 | 命令注册 | TUI plugin `command.register` | `commands/cjgoal.md` slash command |
 | 目标输入 | inline `/cjgoal {text}` (OpenCode 弹窗补全) | `/cjgoal {text}` 命令参数 (`$ARGUMENTS`) |
-| 评估循环 | 自动: `session.idle` → 独立 evaluator session → COMPLETE/CONTINUE (10 轮 cap) | **手动**: 用户完成时再调一次 `/cjgoal done` 或写 `final.md` |
+| 子命令 | `/cjgoal done` / `/cjgoal stop` / `/cjgoal status` 主动收尾 (v2) | `/cjgoal done` / `/cjgoal stop` / `/cjgoal status` |
+| 评估循环 | 自动: `session.idle` → 主 session 启发式 eval → COMPLETE/CONTINUE (10 轮 cap) | **手动**: 用户完成时再调一次 `/cjgoal done` 或写 `final.md` |
+| 隐式完成 | 用户短答 `完成` / `done` / `ok` (≤15 chars, 不带问号) 触发 COMPLETE (v2) | — (Claude Code 端靠显式 slash command) |
 | Toast 通知 | TUI toast (`client.tui.showToast`) | 无 (Claude Code 无 TUI 弹窗 API) |
-| Diag 日志 | `/tmp/goal-mode.log` JSON 行 | 无 (Claude Code hooks 可补, 见 § 进阶) |
+| Diag 日志 | `.shadow/goal-runs/{sessionID}/diag.log` JSON 行 | 无 (Claude Code hooks 可补, 见 § 进阶) |
+
+## OpenCode 端 3 条主动收尾路径 (v2 修复)
+
+OpenCode 端 Goal 在 v2 后, 收尾不再只能等 10 轮 cap. 用户有 3 条路主动收:
+
+| 路径 | 触发 | final.md 状态 | 何时用 |
+|------|------|---------------|--------|
+| **`/cjgoal done`** | 用户在 input 输 `/cjgoal done` 回车 | `✅ COMPLETE` · `ended_by: user_done` | AI 真做完了, 用户确认收 |
+| **`/cjgoal stop`** | 用户输 `/cjgoal stop` 回车 | `❌ ABANDONED` · `ended_by: user_stop` | 决定不做了, 显式放弃 |
+| **短答 "完成"** | 用户在 AI 响应后只输 `完成` / `done` / `ok` / `好了` 之类 (≤15 chars, 不带 `?`) | `✅ COMPLETE` · `ended_by: auto_eval (heuristic)` | 懒得起 slash command, 短答即可 |
+
+**达成条件**: `evalResult` 首行 = `COMPLETE` → 写 `final.md` (chmod 444) → 清 `current.json` → run=null → toast `Goal ✅`. 见 `plugins/goal-mode.tsx:handleDecision`.
+
+**核心修复**: 之前 `evaluate()` 4 个分支全 `CONTINUE`, 即便 AI 真做完也只回 "请人工确认", 唯一出口是 10 轮 cap. v2 加 user-done 启发式 + 显式子命令, Goal 现在能 **自己收 final.md**.
 
 ## 行为 (当前 prompt 调 Claude 走)
 

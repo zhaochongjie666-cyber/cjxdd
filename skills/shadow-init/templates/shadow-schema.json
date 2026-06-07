@@ -189,9 +189,13 @@
       { "id": "tpl-l3-recovery-runbook",       "stage": "L3",          "canonical_path": "skills/shadow-l3-resilience/templates/recovery-runbook.md",                              "role": "template_instance", "aliases": [] },
       { "id": "tpl-l5-harness-plan",           "stage": "L5_Plan",     "canonical_path": "skills/shadow-l5-plan/templates/harness-plan-template.md",                               "role": "template_instance", "aliases": [] },
       { "id": "tpl-l6-deployment-report",      "stage": "L6",          "canonical_path": "skills/shadow-l6-deploy/templates/L6.md",                                                  "role": "template_instance", "aliases": [] },
-      { "id": "goal-run-goal",                 "stage": "infra",       "canonical_path": ".shadow/goal-runs/{run-id}/goal.md",                                                       "role": "design_baseline",   "aliases": [], "note": "用户目标, plugin 写" },
-      { "id": "goal-run-final",                "stage": "infra",       "canonical_path": ".shadow/goal-runs/{run-id}/final.md",                                                      "role": "evidence_archive", "aliases": [], "note": "终态归档 (COMPLETE / FAI3URE-CAP)" },
-      { "id": "goal-runs-ctrl",                "stage": "infra",       "canonical_path": ".shadow/goal-runs/current-goal.json",                                                    "role": "control_marker",   "aliases": [], "note": "active run 句柄" }
+      { "id": "goal-run-goal",                 "stage": "infra",       "canonical_path": ".shadow/goal-runs/{sessionID}/{run-id}/goal.md",                                        "role": "design_baseline",   "aliases": [], "note": "用户目标, plugin 写 (per-session 目录)" },
+      { "id": "goal-run-final",                "stage": "infra",       "canonical_path": ".shadow/goal-runs/{sessionID}/{run-id}/final.md",                                       "role": "evidence_archive", "aliases": [], "note": "终态归档 (COMPLETE / ABANDONED / FAI3URE-CAP); chmod 444 (v2)" },
+      { "id": "goal-run-iter",                 "stage": "infra",       "canonical_path": ".shadow/goal-runs/{sessionID}/{run-id}/iter-{N}.md",                                   "role": "process_output",   "aliases": [], "note": "每回合 eval 留痕 (CONTINUE 分支写, 收尾时过期)" },
+      { "id": "goal-runs-ctrl",                "stage": "infra",       "canonical_path": ".shadow/goal-runs/{sessionID}/current.json",                                           "role": "control_marker",   "aliases": [], "note": "active run 句柄 (per-session)" },
+      { "id": "l5-unresolved",                 "stage": "infra",       "canonical_path": ".shadow/iterations/{iter}/.l5-unresolved.json",                                       "role": "control_marker",   "aliases": [], "note": "L5 跨轮未解决警告清单 (实施 #6); 实施 v2.1 落地" },
+      { "id": "l5-halt",                       "stage": "infra",       "canonical_path": ".shadow/iterations/{iter}/.l5-halt.json",                                             "role": "control_marker",   "aliases": [], "note": "3 试 halt 清单 (实施 #16 no-advisory); count>3 项升级; L1 system 注入 HALT 信号" },
+      { "id": "bypass-log",                    "stage": "infra",       "canonical_path": ".shadow/iterations/{iter}/bypass-log.md",                                              "role": "evidence_archive", "aliases": [], "note": "Bypass audit log (实施 #3); AI 写 bypass-shdw: 注释自动收录; L6 部署前 user 必审" }
     ]
   },
 
@@ -219,16 +223,16 @@
   },
 
   "scale_schema": {
-    "_comment": "Schema for .shadow/scale.md. Consumed by 5 skills (see CLAUDE.md). shadow-init writes a default-valorized scale.md; walker fills in real values during the 规模判定 step.",
+    "_comment": "Schema for .shadow/scale.md. Consumed by 5 skills (see CLAUDE.md). shadow-init writes a default-valorized scale.md; walker fills in real values during the 规模判定 step. v2.1 升 strict: 默认按 L 规模 + 扩展模式跑, 不因 scale 标签降级 (用户偏好: production-grade 不分规模).",
     "fields": {
-      "scale":               { "type": "string",  "enum": ["S", "M", "L"], "default": "M" },
-      "persona_dimensions":  { "type": "integer", "min": 3, "max": 12,       "default": 6 },
-      "persona_max":         { "type": "integer", "min": 3, "max": 20,       "default": 8 },
-      "wire_passes":         { "type": "integer", "min": 1, "max": 5,        "default": 3 },
-      "coverage_dimensions": { "type": "integer", "min": 5, "max": 30,       "default": 14 },
-      "l3_required":         { "type": "boolean",                          "default": true },
-      "l3_extended_mode":    { "type": "boolean",                          "default": false },
-      "l6_core_phases_only": { "type": "boolean",                          "default": false }
+      "scale":               { "type": "string",  "enum": ["S", "M", "L"], "default": "M", "note": "标签, 不改行为 (v2.1 strict: 所有 scale 走 L 级参数)" },
+      "persona_dimensions":  { "type": "integer", "min": 3, "max": 12,       "default": 8,  "note": "v2.1: 6→8 (L 级)" },
+      "persona_max":         { "type": "integer", "min": 3, "max": 20,       "default": 12, "note": "v2.1: 8→12 (L 级)" },
+      "wire_passes":         { "type": "integer", "min": 1, "max": 5,        "default": 4,  "note": "v2.1: 3→4 (L 级)" },
+      "coverage_dimensions": { "type": "integer", "min": 5, "max": 30,       "default": 20, "note": "v2.1: 14→20 (L 级)" },
+      "l3_required":         { "type": "boolean",                          "default": true,  "note": "已 strict (L3 韧性设计所有规模必跑)" },
+      "l3_extended_mode":    { "type": "boolean",                          "default": true,  "note": "v2.1: false→true (9 维 + 12 模式 + 8 字段 全跑)" },
+      "l6_core_phases_only": { "type": "boolean",                          "default": false, "note": "已 strict (L6 全 9 phase, 不只核心 5 phase)" }
     }
   },
 
