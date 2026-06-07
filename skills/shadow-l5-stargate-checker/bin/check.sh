@@ -64,9 +64,12 @@ if [[ ! -d "$SHADOW_DIR" ]]; then
 fi
 
 # 拼 bun 命令
+# 实施 A5 fix: 不再 `bun plugins/shadow-hooks.ts --run-stop-gate` (opencode 装 plugin 时
+# 多个 named export 触发 bun "paths[0] undefined" 错). 改用 wrapper bun 脚本加载默认
+# export.runStopGate, CLI args 透传.
+WRAPPER="$REPO_ROOT/skills/shadow-l5-stargate-checker/bin/_run-stop-gate.ts"
 BUN_ARGS=(
-  "plugins/shadow-hooks.ts"
-  "--run-stop-gate"
+  "$WRAPPER"
   "--project-root" "$PROJECT_ROOT"
   "--schema" "$SCHEMA_PATH"
 )

@@ -2623,7 +2623,10 @@ function auditL5Consistency(
   return { rows, overallCoverage, threshold }
 }
 
-export function runStopGate(opts: {
+// 实施 A5: 不用 `export function` (opencode 装 plugin 时, 额外 named export
+// 触发 bun "paths[0] undefined" 错误, 详见 commit log). 改用 module-level
+// function + 把 runStopGate 挂到 default export 上, 供 CLI 走 import default.
+function runStopGate(opts: {
   projectRoot: string
   shadowDir: string
   schema: ShadowSchema
@@ -3061,3 +3064,6 @@ if (process.argv[1]?.endsWith("shadow-hooks.ts") || process.argv[1]?.endsWith("s
 }
 
 export default ShadowHooksPlugin
+// 实施 A5: 挂 runStopGate 到 default export 上, CLI 可通过 import default 调用.
+// 不单独 export 避免 opencode plugin load 失败 (bun paths[0] 错).
+;(ShadowHooksPlugin as any).runStopGate = runStopGate
