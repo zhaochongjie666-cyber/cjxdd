@@ -8,7 +8,7 @@ description: |
   最终结论必须满足 Real Usability Contract：真实持久化、真实认证、跨服务链路、重启后数据保留和 P0 UAT 证据。
   最终验收必须满足 Production Acceptance Contract：真实用户愿意在真实工作中依赖它。
   触发：部署、36、启动、验证。
-version: "7.3.0"
+version: "7.4.0"
 ---
 
 # Shadow 36 — 部署验证（穷尽诊断版）
@@ -105,6 +105,59 @@ version: "7.3.0"
 
 详细步骤（含 5 层策略、证据包、问题分级、诊断表、issues.json 格式、agent 路由表、通过标准）见 `references/phase-detail-4-6.md`。
 详细方法论参考：`references/exploratory-wander.md`。
+
+### Phase 5.8: 穷尽式生产场景自动跑（P0-X Round 2）
+
+> 跟 Phase 5 / 5.6 互补不重复:
+> - Phase 5 验证 **已实现的代码** 跑得对不对 (`uat-script.md` 剧本)
+> - Phase 5.6 漫游发现 **未知 UX 问题** (playwright-cli 探索)
+> - **Phase 5.8 验证跟生产一致的真实账号 / 真实数据 / 真实跨服务** (`production-scenarios/` Playwright 套件)
+
+**位置**: 插在 Phase 5.6 (漫游) 之后, Phase 6 (后端 E2E) 之前. 跟 Phase 5.7 (灾难演练) 平行, 互不替代.
+
+**前置**: 跟前 Phase 一致 — docker compose 已起, 前端可访问, L3 chaos-scenarios 已读. 此外需真实账号 env (L6 walker 从 secrets manager 拉):
+- `E2E_USER_ENGINEER` / `E2E_USER_RESEARCHER` / `E2E_PASSWORD` / `E2E_TENANT_ID`
+- `E2E_BASE_URL` (前端 URL)
+- `E2E_DB_HOST` / `_PORT` / `_USER` / `_PASSWORD` / `_NAME` (DB 直连)
+- `E2E_REDIS_HOST` / `_PORT` (事件总线)
+
+**执行**:
+```bash
+bash skills/shadow-l6-deploy/scripts/run-production-scenarios.sh {slug}
+```
+
+**退出码契约**:
+| 退出码 | 含义 | R11 处理 |
+|--------|------|----------|
+| 0 | 所有 @P0 spec 通过 | 写 smoke-test-passed marker, 4 层验证 PASS |
+| 1 | Playwright 测试失败 | 不写 marker, evidence 落 prod-evidence/, R11 FAIL |
+| 2 | 契约违反 (缺 config / 缺 env / npx 不可用) | 不写 marker, R11 FAIL |
+| 3 | Spec 存在但 selector 不存在 (前端未实现) | 不写 marker, R11 FAIL, 派 L5-impl 修 selector |
+
+**evidence 落点**: `.shadow/iterations/iter-N/L6-deploy/{slug}/prod-evidence/`
+```
+prod-evidence/
+  playwright.log                  # 完整 stdout
+  playwright-output/
+    results.json                  # Playwright JSON 报告
+  test-results/                   # Playwright 内置
+  html-report/                    # Playwright HTML
+  summary.json                    # {"passed": N, "failed": M, "flaky": K, "total_ms": T, "prod_config_hash": "..."}
+  prod-config-hash.txt            # sha256(prod.config.json at run time)
+```
+整目录 `chmod -R 444` (R3 evidence_archive 联动), marker `chmod 444`.
+
+**R11 Round 2 4 层验证** (见 `skills/shadow-artifact-lifecycle/scripts/gate-check-lifecycle.sh:307` 升级):
+- L1: marker 存在 + mtime < 7 天
+- L2: 首行正则 `production-scenarios @production: [0-9]+ passed`
+- L3: `prod-evidence/summary.json.failed == 0` + `playwright.log` 末行有 `passed`
+- L4: marker 中 `prod-config-hash=...` == `prod-evidence/prod-config-hash.txt` (防 marker 复用)
+
+**老项目豁免**: `.shadow/LIFECYCLE.md` 缺席 → R11 走 Round 1 advisory (软警告, exit 0), 行为不变.
+
+**新项目暂不启用**: `.shadow/scale.md` 设 `gate_options.production_scenarios: off` → 跳过本 phase (跟 Round 1 一致).
+
+**详细步骤 / 失败定位 / 8 维穷举矩阵**: `skills/shadow-l2-e2e/templates/production-scenarios.md` + `skills/shadow-l2-e2e/references/production-scenario-contract.md`.
 
 ### Phase 5.7: 灾难演练（33 L3 韧性层验证）
 

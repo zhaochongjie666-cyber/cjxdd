@@ -1,5 +1,14 @@
 # UAT 剧本详细指南
 
+> **边界澄清 (2026-06-07 P0-X Round 2 起)**: UAT 剧本 (uat-script.md) 跟
+> `production-scenarios/` 是**互补不重复**的两层产物.
+> - UAT = 用户视角 Markdown 剧本 (L6 Phase 7 现场跑, 人工/Playwright 验证)
+> - Production Scenarios = 可执行 Playwright spec.ts 套件 (L6 Phase 5.8 自动跑, 跟生产一致)
+>
+> L2 walker 两者都必须产出, L6 两者都必须跑. 一者通过 ≠ 另一者通过.
+> Production Scenarios 失败 → R11 硬阻断, 即便 UAT 100% PASS.
+> 详见 `production-scenario-contract.md` § 9 跟 uat-script.md 的边界表.
+
 ## UAT 剧本结构
 
 每个业务线在 `.shadow/L2-e2e/BXX-{slug}/uat-script.md` 产出用户验收剧本。

@@ -224,3 +224,71 @@ cd /tmp && bash $HOME/.claude/hooks/session-start.sh
 echo '{"tool_name":"Skill","tool_input":{"skill":"shadow-l6-deploy"}}' \
   | bash $HOME/.claude/hooks/pre-skill.sh
 ```
+
+## 穷尽式生产场景 + R11 Round 2 (P0-X, 2026-06-07 启用)
+
+> 解决"测试通过 ≠ 真实可用" gap: 单元/集成测试可全过, 但用户拿浏览器点登录都登录不了. R11 Round 2 把 L2 验收跟 L6 部署闭合到"真实生产行为", 跑不通就硬阻断.
+
+### 8 维穷举矩阵 (L2 必填)
+
+L2 walker 必须为每个 BXX 在 `production-scenarios/` 下生成 Playwright spec 套件, 8 维强制覆盖:
+
+| 维度 | 数据来源 | L 规模最低 |
+|------|---------|-----------|
+| 1. Rules (RXX) | spec.md | P0 100%, P1 ≥ 80% |
+| 2. Pages (data-page) | wire.svg | 100% 出现 |
+| 3. Interactions (data-action) | wire.svg | P0 路径 100% |
+| 4. Roles | research.md 画像 + L2 6 维发散 | 每个 core role ≥ 1 spec |
+| 5. Data scale | intent.md 性能 | ≥ 100 records + ≥ 50MB 资产 |
+| 6. Cross-service | architecture.md + event-contract | ≥ 2 services, ≥ 1 cross-BXX |
+| 7. Error states | L3 failure-modes.md P0 | 每个 P0 1 spec |
+| 8. Chaos | L3 chaos-scenarios.md @chaos P0 | 每个 P0 1 spec |
+
+### 跟生产一致契约 (prod.config.json)
+
+```json
+{
+  "version": "1.0.0", "scale": "L", "project_type": "fullstack",
+  "production_contract": {
+    "real_accounts": { "required": true, "source": "env:E2E_USER_*" },
+    "data_scale": { "min_records": 100, "min_asset_size_mb": 50 },
+    "cross_service": { "min_services": 2, "min_cross_bxx_paths": 1 },
+    "no_mocks_in_p0": { "forbidden_patterns": ["InMemoryRepository", "MockDB", "fake-login"] }
+  }
+}
+```
+
+### L6 Phase 5.8 自动跑
+
+```bash
+bash skills/shadow-l6-deploy/scripts/run-production-scenarios.sh {slug}
+# 跑通写 .shadow/iterations/iter-N/L6-deploy/{slug}/smoke-test-passed
+# evidence 落 .shadow/iterations/iter-N/L6-deploy/{slug}/prod-evidence/ (chmod 444)
+```
+
+### R11 Round 2 4 层验证 (新项目硬阻断)
+
+| 层 | 验证 | 失败处置 |
+|----|------|----------|
+| L1 | marker 存在 + mtime < 7 天 | FAIL (stale) |
+| L2 | marker 首行正则 `production-scenarios @production: [0-9]+ passed` | FAIL (旧 marker) |
+| L3 | `prod-evidence/summary.json.failed == 0` + `playwright.log` 末行 passed | FAIL (测试失败) |
+| L4 | marker hash == `prod-evidence/prod-config-hash.txt` (sha256) | FAIL (marker 复用) |
+
+### 零迁移策略 (老项目豁免)
+
+| 项目类型 | R11 行为 |
+|---------|---------|
+| 新项目 (`.shadow/LIFECYCLE.md` 存在) | **4 层验证, 任一失败 → exit 1 硬阻断** |
+| 老项目 (`.shadow/LIFECYCLE.md` 缺席) | Round 1 advisory (软警告, exit 0, 行为不变) |
+
+新项目暂不启用: 在 `.shadow/scale.md` 设 `gate_options.production_scenarios: off` (off / warn / hard, 默认 hard).
+
+### 详细文档
+
+- L2 设计: `skills/shadow-l2-e2e/templates/production-scenarios.md` (Walker 模板)
+- L2 契约: `skills/shadow-l2-e2e/references/production-scenario-contract.md` (8 维穷举 / 跟生产一致 / 退出码契约)
+- L6 部署: `skills/shadow-l6-deploy/SKILL.md` Phase 5.8 段 + `references/phase-detail-7-9.md`
+- R11 门禁: `skills/shadow-artifact-lifecycle/scripts/gate-check-lifecycle.sh:307-412` (替换原 R11 段) + CLAUDE.md §9
+- Schema 登记: `skills/shadow-init/templates/shadow-schema.json` (production-scenarios-config + production-scenarios-evidence)
+- 烟雾测试: `skills/smoke-r11-round2.sh` (16 项断言, 验证老/新项目分叉)

@@ -12,7 +12,7 @@ description: |
   核心工具：14 维覆盖矩阵（S/M/L 项目可缩放）+ 6 维用户画像发散 + 5 层旅程穷举 + 交叉矩阵。
   四层覆盖完整性：业务线 + 页面 + 交互点 + API 端点，目标 100%。
   三面手：设计（场景设计）+ 实现（Step 绑定骨架 → L5-impl 填实）+ 跟踪（覆盖率追踪 + flaky 检测）。
-version: "9.0.0"
+version: "9.1.0"
 ---
 
 # Shadow·BDD+CM — 穷尽覆盖验收
@@ -256,6 +256,103 @@ UAT 详细模板和示例见 `references/uat-guide.md`。
 
 构建矩阵时发现规则未定义/歧义/冲突/遗漏异常 → 追加到 e2e.md 末尾"Spec 回溯清单"。
 回溯动作：在 spec.md 末尾追加"L2 回溯修正"章节，标注 `@backtrack: L2-e2e-{slug}`。
+
+### 9. 穷尽式生产场景 (Production Scenarios, P0-X Round 2)
+
+> 跟 uat-script.md 互补: uat 是 Markdown 用户视角剧本, production-scenarios 是可执行 Playwright 套件 (跟生产一致). L6 两者都必须跑.
+> 详细契约见 `references/production-scenario-contract.md`, 模板见 `templates/production-scenarios.md`.
+
+#### 9.1 8 维穷举 (必填)
+
+L2 walker 必须为每个 BXX 在 `production-scenarios/` 下产出对应文件, 按 8 维穷举:
+
+| # | 维度 | 数据来源 | L 规模最低 |
+|---|------|---------|-----------|
+| 1 | Rules (RXX) | spec.md `${SLUG}-R[0-9]+` | P0 100%, P1 ≥ 80% |
+| 2 | Pages (data-page) | wire.svg | 100% 出现 |
+| 3 | Interactions (data-action) | wire.svg | P0 路径 100% |
+| 4 | Roles | research.md 画像 + 6 维发散 | 每个 core role ≥ 1 spec |
+| 5 | Data scale | intent.md 性能 | ≥ 100 records + ≥ 50MB 资产 |
+| 6 | Cross-service | architecture.md API + event-contract | ≥ 2 services, ≥ 1 cross-BXX |
+| 7 | Error states | L3 failure-modes.md P0 | 每个 P0 failure-mode 1 spec |
+| 8 | Chaos | L3 chaos-scenarios.md @chaos P0 | 每个 P0 chaos 1 spec |
+
+S/M 规模 dim 5/6/8 折算见 production-scenario-contract.md § 2.
+
+#### 9.2 prod.config.json (机器可读契约)
+
+每个 BXX 必须写 `production-scenarios/prod.config.json`, 关键字段:
+
+```json
+{
+  "version": "1.0.0",
+  "scale": "L",
+  "project_type": "fullstack",
+  "production_contract": {
+    "real_accounts": { "required": true, "source": "env:E2E_USER_*" },
+    "data_scale": { "min_records": 100, "min_asset_size_mb": 50 },
+    "cross_service": { "min_services": 2, "min_cross_bxx_paths": 1 },
+    "no_mocks_in_p0": { "forbidden_patterns": ["InMemoryRepository", "MockDB", "fake-login"] }
+  },
+  "scenario_inventory": { "P0_minimum_spec_files": 4 }
+}
+```
+
+#### 9.3 spec 集合最小要求
+
+| 规模 | 最小 spec 文件数 | 命名模式 |
+|------|------------------|---------|
+| L | 4 P0 + 2 F + 2 C = 8 | `P0_main_*.spec.ts` / `P0_cross_bxx_*.spec.ts` / `P0_persistence_*.spec.ts` / `P0_auth_*.spec.ts` / `F_*.spec.ts` / `C_*.spec.ts` |
+| M | 2 P0 + 1 F + 1 C = 4 | 同上 (数量减半) |
+| S | 1 P0 + 1 F = 2 | 同上 (数量减半) |
+
+#### 9.4 helpers 三件套 (强制)
+
+- `helpers/auth.ts` — 真实账号登录 (env 驱动, 验证 token 落 localStorage)
+- `helpers/db.ts` — pg 直连, `assertMinRecords(table, tenantColumn, tenantId, min)`
+- `helpers/event.ts` — Redis Streams `eventSeen(eventType, timeoutMs)`, 真实事件总线断言
+
+#### 9.5 L5-impl 接力
+
+L2 写骨架 (含 `test.skip` 防护), L5-impl 阶段:
+1. 移除 `test.skip` 标志 (接通真实 selector / API)
+2. `helpers/auth.ts` 等填实真实 env 引用
+3. 跑 `npx playwright test --list` 验证 spec 被收集, 缺则 build fail
+4. 跑通后写 marker (L6 阶段) 或 CI 测试
+
+#### 9.6 跟 e2e.binding.yaml 的关系
+
+在 e2e.binding.yaml 顶层追加 `production_scenarios` 块 (flat 形式, 不嵌套到 binding:):
+
+```yaml
+production_scenarios:
+  prod_config: production-scenarios/prod.config.json
+  playwright_config: production-scenarios/playwright.config.ts
+  specs:
+    - id: PS-B01-MAIN-01
+      rule_refs: [b01-R01, b01-R02, b01-R03, b01-R11]
+      file: production-scenarios/specs/P0_main_01.spec.ts
+      tags: [@production, @P0]
+      min_real_accounts: 2
+      min_data_records: 100
+      cross_bxx: true
+```
+
+L5-impl 阶段校验 `specs[*].file` 全部存在, 缺则 fail.
+
+#### 9.7 L2 check-e2e.sh 新增检查
+
+`check_production_scenarios()` 函数 (本 SKILL.md 之外, 在 `scripts/check-e2e.sh`) 静态校验:
+- `production-scenarios/prod.config.json` 存在且 `production_contract.real_accounts.required == true`
+- `production-scenarios/specs/` 下 `.spec.ts` 文件数 ≥ `scenario_inventory.P0_minimum_spec_files`
+- 所有 spec 都标了 `@production` 标签 (grep 命中)
+- 8 维穷举矩阵在 e2e.md 末尾以"## 8 维穷举矩阵"小节存在 (可选, 仅 L 规模强制)
+
+老项目 (无 production-scenarios/): 该函数 no-op, 零破坏.
+
+#### 9.8 L6 接力 (P0-X Round 2)
+
+L6 Phase 5.8 自动跑 `npx playwright test --grep @production`, evidence 落 `prod-evidence/`, R11 4 层验证硬门禁. 详见 `skills/shadow-l6-deploy/SKILL.md` Phase 5.8 段.
 
 ## 四层覆盖完整性校验（强制）
 

@@ -424,6 +424,99 @@ check_l1_backtrack() {
   fi
 }
 
+check_production_scenarios() {
+  # P0-X Round 2: 穷尽式生产场景静态校验
+  # 行为: production-scenarios/ 不存在 → no-op (老项目零破坏)
+  #        production-scenarios/ 存在 → 校验 prod.config.json + spec 文件 + @production 标签
+  local ps_dir="$SHADOW_DIR/L2-e2e/$SLUG/production-scenarios"
+  local config="$ps_dir/prod.config.json"
+  local specs_dir="$ps_dir/specs"
+  local binding="$SHADOW_DIR/L2-e2e/$SLUG/e2e.binding.yaml"
+
+  if [ ! -d "$ps_dir" ]; then
+    warn "production-scenarios/ 目录缺失 (P0-X Round 2 软警告, 老项目零破坏; 新项目需 L2 阶段补齐)" "l2.production-scenarios.dir" "missing"
+    return 0
+  fi
+  ok "production-scenarios/ 目录存在" "l2.production-scenarios.dir" "$ps_dir"
+
+  # 1) prod.config.json 存在且合法
+  if [ ! -f "$config" ]; then
+    fail "prod.config.json 缺失" "l2.production-scenarios.config" "$config"
+  else
+    if command -v jq >/dev/null 2>&1; then
+      if jq -e '.production_contract.real_accounts.required == true' "$config" >/dev/null 2>&1; then
+        ok "prod.config.json 声明 real_accounts.required=true" "l2.production-scenarios.config.real-accounts" "true"
+      else
+        fail "prod.config.json 未声明 real_accounts.required=true" "l2.production-scenarios.config.real-accounts" "missing"
+      fi
+      if jq -e '.production_contract.data_scale.min_records' "$config" >/dev/null 2>&1; then
+        local min_n
+        min_n=$(jq -r '.production_contract.data_scale.min_records' "$config")
+        ok "prod.config.json 声明 data_scale.min_records=$min_n" "l2.production-scenarios.config.data-scale" "$min_n"
+      else
+        fail "prod.config.json 未声明 data_scale.min_records" "l2.production-scenarios.config.data-scale" "missing"
+      fi
+      if jq -e '.production_contract.cross_service.min_services' "$config" >/dev/null 2>&1; then
+        ok "prod.config.json 声明 cross_service.min_services" "l2.production-scenarios.config.cross-service" "present"
+      else
+        fail "prod.config.json 未声明 cross_service.min_services" "l2.production-scenarios.config.cross-service" "missing"
+      fi
+      if jq -e '.production_contract.no_mocks_in_p0.forbidden_patterns' "$config" >/dev/null 2>&1; then
+        ok "prod.config.json 声明 no_mocks_in_p0.forbidden_patterns" "l2.production-scenarios.config.no-mocks" "present"
+      else
+        warn "prod.config.json 缺 no_mocks_in_p0.forbidden_patterns (P0 强烈建议)" "l2.production-scenarios.config.no-mocks" "missing"
+      fi
+    else
+      warn "jq 未装, 跳过 prod.config.json 字段级校验" "l2.production-scenarios.config" "no-jq"
+    fi
+  fi
+
+  # 2) spec 文件数量
+  if [ ! -d "$specs_dir" ]; then
+    fail "specs/ 目录缺失" "l2.production-scenarios.specs-dir" "$specs_dir"
+    return 0
+  fi
+  local n_total n_p0 n_tagged p0_min
+  n_total=$(find "$specs_dir" -name "*.spec.ts" 2>/dev/null | wc -l | tr -d '[:space:]')
+  n_p0=$(find "$specs_dir" -name "*.spec.ts" 2>/dev/null | xargs grep -l "@P0" 2>/dev/null | wc -l | tr -d '[:space:]')
+  n_tagged=$(find "$specs_dir" -name "*.spec.ts" 2>/dev/null | xargs grep -l "@production" 2>/dev/null | wc -l | tr -d '[:space:]')
+  if [ -f "$config" ] && command -v jq >/dev/null 2>&1; then
+    p0_min=$(jq -r '.scenario_inventory.P0_minimum_spec_files // 4' "$config" 2>/dev/null || echo 4)
+  else
+    p0_min=4
+  fi
+  if [ "${n_p0:-0}" -ge "$p0_min" ]; then
+    ok "P0 spec 数量 $n_p0 >= $p0_min" "l2.production-scenarios.p0-count" "$n_p0"
+  else
+    fail "P0 spec 数量 $n_p0 < $p0_min (L 规模下限)" "l2.production-scenarios.p0-count" "$n_p0"
+  fi
+  if [ "${n_total:-0}" -gt 0 ] && [ "${n_tagged:-0}" -eq "${n_total:-0}" ]; then
+    ok "全部 $n_total 个 spec 标了 @production" "l2.production-scenarios.tagged" "$n_total"
+  else
+    fail "spec 标签缺失: $n_tagged/$n_total 标了 @production" "l2.production-scenarios.tagged" "$n_tagged/$n_total"
+  fi
+
+  # 3) 8 维穷举矩阵 (e2e.md 末尾段, 仅 L 规模强制)
+  local scale
+  scale=$(jq -r '.scale // "M"' "$config" 2>/dev/null || echo "M")
+  if [ "$scale" = "L" ] && [ -f "$L2_FILE" ]; then
+    if grep -Eq "^##.*8[[:space:]]*维穷举|8-Dimension Production Coverage|穷尽式生产场景" "$L2_FILE" 2>/dev/null; then
+      ok "e2e.md 包含 8 维穷举矩阵段 (L 规模强制)" "l2.production-scenarios.coverage-matrix-in-e2e" "present"
+    else
+      warn "e2e.md 缺 8 维穷举矩阵段 (L 规模建议, 见 SKILL.md § 9.1)" "l2.production-scenarios.coverage-matrix-in-e2e" "missing"
+    fi
+  fi
+
+  # 4) e2e.binding.yaml 顶层 production_scenarios 块 (建议, 非阻断)
+  if [ -f "$binding" ]; then
+    if grep -Eq "^production_scenarios:" "$binding" 2>/dev/null; then
+      ok "e2e.binding.yaml 含 production_scenarios 顶层块" "l2.production-scenarios.binding-block" "present"
+    else
+      warn "e2e.binding.yaml 缺 production_scenarios 顶层块 (见 SKILL.md § 9.6)" "l2.production-scenarios.binding-block" "missing"
+    fi
+  fi
+}
+
 echo "=== L2 E2E Check: $SLUG ==="
 [ -f "$SPEC_FILE" ] && ok "L1 spec.md 已发现" "l2.l1-spec.exists" "$SPEC_FILE" || fail "L1 spec.md 缺失: $SPEC_FILE" "l2.l1-spec.exists" "$SPEC_FILE"
 [ -n "$FLOW_FILE" ] && ok "L1 flow.mermaid 已发现: $(basename "$FLOW_FILE")" "l2.l1-flow.exists" "$FLOW_FILE" || warn "L1 flow.mermaid 未发现" "l2.l1-flow.exists"
@@ -444,6 +537,7 @@ check_coverage_completeness
 check_wire_page_coverage
 check_wire_interaction_coverage
 check_l1_backtrack
+check_production_scenarios
 if [ -f "$SPEC_FILE" ]; then
   check_labeled_items "$SPEC_FILE" "给 L2 的输入" "l2.l1-handoff" \
     "主路径" "失败路径" "权限/角色场景" "状态断言" "错误码/失败信号"

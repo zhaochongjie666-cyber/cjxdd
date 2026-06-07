@@ -45,6 +45,11 @@ fi
 # === Plugins ===
 # 约定: 项目根的 plugins/ 目录 (不是 .opencode/plugins/)
 # 这样更显眼, 跟 agents/ skills/ 平级
+#
+# TUI plugin 必须显式列在 tui.json, 不会有 dir auto-discovery
+# (见 packages/opencode/specs/tui-plugins.md: "There is no directory auto-discovery for TUI plugins")
+# 这里软链文件 + 同步 tui.json 两件事都做
+TUI_PLUGIN_NAMES=()
 if [[ -d "$SCRIPT_DIR/plugins" ]]; then
     mkdir -p "$OPENCODE_DIR/plugins"
     PLUGIN_COUNT=0
@@ -53,8 +58,49 @@ if [[ -d "$SCRIPT_DIR/plugins" ]]; then
         plugin_name=$(basename "$plugin_file")
         ln -sfn "$plugin_file" "$OPENCODE_DIR/plugins/$plugin_name"
         PLUGIN_COUNT=$((PLUGIN_COUNT + 1))
+        # 只把 .tsx 的列为 TUI plugin (TUI plugin 用 Solid JSX)
+        if [[ "$plugin_name" == *.tsx ]]; then
+            TUI_PLUGIN_NAMES+=("$plugin_name")
+        fi
     done
     echo "   🔗 plugins ($PLUGIN_COUNT plugins)"
+
+    # 同步 tui.json: 增量加 .tsx plugin, 保留已有 entry 不动
+    if [[ ${#TUI_PLUGIN_NAMES[@]} -gt 0 ]]; then
+        TUI_JSON="$OPENCODE_DIR/tui.json"
+        if [[ ! -f "$TUI_JSON" ]]; then
+            # 不存在则新建
+            {
+                echo '{'
+                echo '  "$schema": "https://opencode.ai/tui.json",'
+                echo '  "plugin": ['
+                first=1
+                for pn in "${TUI_PLUGIN_NAMES[@]}"; do
+                    if [[ $first -eq 0 ]]; then echo '    ,'; fi
+                    echo -n "    \"./plugins/$pn\""
+                    first=0
+                done
+                echo
+                echo '  ]'
+                echo '}'
+            } > "$TUI_JSON"
+            echo "   📝 tui.json (新建, ${#TUI_PLUGIN_NAMES[@]} TUI plugins)"
+        else
+            # 存在则合并: 用 jq 加缺失的 plugin
+            if command -v jq >/dev/null 2>&1; then
+                ADDED=0
+                for pn in "${TUI_PLUGIN_NAMES[@]}"; do
+                    if ! jq -e --arg p "./plugins/$pn" '.plugin | index($p) != null' "$TUI_JSON" >/dev/null 2>&1; then
+                        jq --arg p "./plugins/$pn" '.plugin += [$p]' "$TUI_JSON" > "${TUI_JSON}.tmp" && mv "${TUI_JSON}.tmp" "$TUI_JSON"
+                        ADDED=$((ADDED + 1))
+                    fi
+                done
+                [[ $ADDED -gt 0 ]] && echo "   📝 tui.json (新增 $ADDED plugin)" || echo "   📝 tui.json (无变化)"
+            else
+                echo "   ⚠️  jq 未装, 跳过 tui.json 合并 (手动加 plugins: [...])"
+            fi
+        fi
+    fi
 fi
 
 # === npm install for extensions with package.json ===

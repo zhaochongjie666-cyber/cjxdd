@@ -174,7 +174,7 @@ if [[ -d "$shadow_dir" ]]; then
             done <<< "$bad"
             violations=$((violations + n))
         fi
-    done < <(find "$shadow_dir" -type d \( -name "wander-evidence" -o -name "chaos-drill-evidence" \) 2>/dev/null)
+    done < <(find "$shadow_dir" -type d \( -name "wander-evidence" -o -name "chaos-drill-evidence" -o -name "prod-evidence" \) 2>/dev/null)
 
     # issues.json 文件
     while IFS= read -r issues_file; do
@@ -304,34 +304,111 @@ if [[ -d "$shadow_dir" ]]; then
     fi
 fi
 
-# ───────── R11 真实烟雾测试门禁 (P0-X Round 1: 软警告) ─────────
-# 检测 marker: .shadow/L6-deploy/{slug}/smoke-test-passed
-# marker 内容: "iso8601-timestamp + e2e 简短描述" (Walker 在 L6 末尾跑通真实 E2E 后写)
-# 阈值: marker 存在 + mtime < 7 天 → pass; 否则 → 软警告 (本轮不硬阻断)
+# ───────── R11 真实烟雾测试门禁 (P0-X Round 2: 硬阻断 for 新项目) ─────────
+# 检测 marker: .shadow/iterations/iter-N/L6-deploy/{slug}/smoke-test-passed
+# Round 2 行为:
+#   老项目 (.shadow/LIFECYCLE.md 缺席) → Round 1 advisory (软警告, exit 0, 行为不变)
+#   新项目 (.shadow/LIFECYCLE.md 存在) → 4 层验证, 任一失败 exit 1
+#     L1: marker 存在 + mtime < 7 天
+#     L2: 首行正则 'production-scenarios @production: [0-9]+ passed'
+#     L3: prod-evidence/summary.json.failed == 0 + playwright.log 末行有 'passed'
+#     L4: marker hash == prod-evidence/prod-config-hash.txt (防 marker 复用)
 # 设计原则: 6 硬门禁 (R1/R3/R5/R6/R10) 都是"产物形态"验证, 本 R11 补"行为验证"盲区
+is_new_project=0
+[[ -f "$shadow_dir/LIFECYCLE.md" ]] && is_new_project=1
 r11_pass=0
 r11_stale=0
 r11_total=0
+r11_round2_fail=0
+r11_layer_fail=""
 if [[ -d "$shadow_dir" ]]; then
     while IFS= read -r marker; do
         [[ -z "$marker" ]] && continue
         r11_total=$((r11_total + 1))
-        # 检查 marker mtime (mtime 7 天内的视为"新近"真实验证)
-        if [[ $(find "$marker" -mtime -7 2>/dev/null) ]]; then
-            r11_pass=$((r11_pass + 1))
+        slug_dir=$(dirname "$marker")
+        evidence_dir="$slug_dir/prod-evidence"
+
+        if [[ $is_new_project -eq 0 ]]; then
+            # 老项目: Round 1 advisory 行为 (mtime 7 天)
+            if [[ $(find "$marker" -mtime -7 2>/dev/null) ]]; then
+                r11_pass=$((r11_pass + 1))
+            else
+                r11_stale=$((r11_stale + 1))
+            fi
         else
-            r11_stale=$((r11_stale + 1))
+            # 新项目: Round 2 4 层验证
+            # L1: mtime
+            if [[ ! $(find "$marker" -mtime -7 2>/dev/null) ]]; then
+                r11_round2_fail=$((r11_round2_fail + 1))
+                r11_layer_fail="${r11_layer_fail}L1-stale(${marker##*/}) "
+                continue
+            fi
+            # L2: marker 内容格式
+            head1=$(head -n 1 "$marker")
+            if ! grep -qE 'production-scenarios @production: [0-9]+ passed' <<<"$head1"; then
+                r11_round2_fail=$((r11_round2_fail + 1))
+                r11_layer_fail="${r11_layer_fail}L2-content(${marker##*/}) "
+                continue
+            fi
+            marker_hash=$(grep -oE 'prod-config-hash=[a-f0-9]+' <<<"$head1" | head -1 | cut -d= -f2)
+            # L3: evidence dir + summary.json
+            if [[ ! -d "$evidence_dir" ]]; then
+                r11_round2_fail=$((r11_round2_fail + 1))
+                r11_layer_fail="${r11_layer_fail}L3-evidence-missing(${marker##*/}) "
+                continue
+            fi
+            if [[ ! -s "$evidence_dir/summary.json" ]]; then
+                r11_round2_fail=$((r11_round2_fail + 1))
+                r11_layer_fail="${r11_layer_fail}L3-summary-missing(${marker##*/}) "
+                continue
+            fi
+            failed_n=$(jq -r '.failed // 99' "$evidence_dir/summary.json" 2>/dev/null || echo 99)
+            if [[ "$failed_n" -ne 0 ]]; then
+                r11_round2_fail=$((r11_round2_fail + 1))
+                r11_layer_fail="${r11_layer_fail}L3-failed=$failed_n(${marker##*/}) "
+                continue
+            fi
+            # L4: hash 防 marker 复用
+            if [[ -z "$marker_hash" ]]; then
+                r11_round2_fail=$((r11_round2_fail + 1))
+                r11_layer_fail="${r11_layer_fail}L4-hash-missing(${marker##*/}) "
+                continue
+            fi
+            actual_hash=$(cat "$evidence_dir/prod-config-hash.txt" 2>/dev/null | tr -d '[:space:]' | head -c 64)
+            if [[ -z "$actual_hash" ]]; then
+                r11_round2_fail=$((r11_round2_fail + 1))
+                r11_layer_fail="${r11_layer_fail}L4-hash-empty(${marker##*/}) "
+                continue
+            fi
+            if [[ "$marker_hash" != "$actual_hash" ]]; then
+                r11_round2_fail=$((r11_round2_fail + 1))
+                r11_layer_fail="${r11_layer_fail}L4-hash-mismatch(${marker##*/}) "
+                continue
+            fi
+            r11_pass=$((r11_pass + 1))
         fi
     done < <(find "$shadow_dir" -path "*/L6-deploy/*/smoke-test-passed" -type f 2>/dev/null)
 fi
-if [[ $r11_total -eq 0 ]]; then
-    r11_status="skip (无 L6-deploy)"
-elif [[ $r11_stale -eq 0 && $r11_pass -gt 0 ]]; then
-    r11_status="pass ($r11_pass 个 marker 新近)"
-elif [[ $r11_pass -eq 0 && $r11_stale -gt 0 ]]; then
-    r11_status="warn ($r11_stale 个 marker 过期 ≥ 7 天)"
+if [[ $is_new_project -eq 0 ]]; then
+    # 老项目: Round 1 advisory 输出
+    if [[ $r11_total -eq 0 ]]; then
+        r11_status="skip (无 L6-deploy, 老项目 advisory)"
+    elif [[ $r11_stale -eq 0 && $r11_pass -gt 0 ]]; then
+        r11_status="pass ($r11_pass 个 marker 新近, 老项目 advisory)"
+    elif [[ $r11_pass -eq 0 && $r11_stale -gt 0 ]]; then
+        r11_status="warn ($r11_stale 个 marker 过期 ≥ 7 天, 老项目 advisory)"
+    else
+        r11_status="warn (混合: $r11_pass 新 / $r11_stale 旧, 老项目 advisory)"
+    fi
 else
-    r11_status="warn (混合: $r11_pass 新 / $r11_stale 旧)"
+    # 新项目: Round 2 硬门禁
+    if [[ $r11_total -eq 0 ]]; then
+        r11_status="FAIL (新项目无 L6-deploy marker — 必须跑 Phase 5.8 写 marker)"
+    elif [[ $r11_round2_fail -eq 0 && $r11_pass -gt 0 ]]; then
+        r11_status="pass ($r11_pass 个 marker 全部 4 层验证通过)"
+    else
+        r11_status="FAIL ($r11_round2_fail 个 marker 验证失败, $r11_pass 通过) 失败层: $r11_layer_fail"
+    fi
 fi
 echo "  R11 真实烟雾测试: $r11_status"
 
@@ -343,11 +420,16 @@ echo "  R3 证据写阻断: $violations 修复 (硬门禁)"
 echo "  R5 漂移扫描: $r5_status (识别率 $pct%, 阈值 80%)"
 echo "  R6 路径 locality: $r6_drift 漂移"
 echo "  R10 自动归档: $r10_count 路径已检查"
-echo "  R11 真实烟雾测试: $r11_status (P0-X Round 1: 软警告, Round 2 上硬阻断)"
+if [[ $is_new_project -eq 0 ]]; then
+    echo "  R11 真实烟雾测试: $r11_status (老项目, Round 1 advisory)"
+else
+    echo "  R11 真实烟雾测试: $r11_status (新项目, Round 2 硬门禁)"
+fi
 echo ""
 
 # R5 硬阻断: 识别率 < 80% 且 .shadow/LIFECYCLE.md 存在 (新项目)
 # R3 硬阻断: evidence_archive 被改写 (违反只读, 累计 ≥ 3 次)
+# R11 Round 2 硬阻断 (新项目): 任一 marker 4 层验证失败 → exit 1
 # R5 advisory (老项目): 降级为提示, exit 0
 if [[ "$r5_status" == "fail" ]]; then
     echo "[lifecycle-gate] ❌ R5 硬门禁触发 (新项目识别率 < 80%), exit 1"
@@ -360,6 +442,13 @@ if [[ $R3_HARD_BLOCK -eq 1 ]]; then
 fi
 if [[ $violations -gt 0 ]]; then
     echo "[lifecycle-gate] ❌ R3 硬门禁触发 (evidence_archive 写违反), exit 1"
+    exit 1
+fi
+if [[ $is_new_project -eq 1 ]] && [[ $r11_round2_fail -gt 0 ]]; then
+    echo "[lifecycle-gate] ❌ R11 Round 2 硬门禁触发 (新项目 $r11_round2_fail 个 marker 4 层验证失败), exit 1"
+    echo "[lifecycle-gate]    处置: 1) 跑 L6 Phase 5.8 重生成 marker (bash skills/shadow-l6-deploy/scripts/run-production-scenarios.sh <slug>)"
+    echo "[lifecycle-gate]          2) 旧项目 (无 LIFECYCLE.md) 不触发本门禁"
+    echo "[lifecycle-gate]          3) 失败层: $r11_layer_fail"
     exit 1
 fi
 if [[ "$r5_status" == "advisory" ]]; then

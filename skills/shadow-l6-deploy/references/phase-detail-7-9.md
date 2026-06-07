@@ -218,6 +218,110 @@ DEPLOY_PASS / DEPLOY_FAIL / DEPLOY_PARTIAL
 
 ---
 
+## Phase 5.8: 穷尽式生产场景自动跑（P0-X Round 2）
+
+> **位置**: 插在 Phase 5.6 (漫游) 之后, Phase 6 (后端 E2E) 之前. 跟 Phase 5.7 (灾难演练) 平行.
+> **角色**: 跟 Phase 5 互补 — Phase 5 验证"已实现代码跑得对", Phase 5.8 验证"跟生产一致的真实账号/数据/跨服务跑得对".
+> **触发条件**: `.shadow/L2-e2e/{slug}/production-scenarios/prod.config.json` 存在.
+
+### 5.8.1 前置 env 校验
+
+L6 walker 必须在跑 Playwright 前确保以下 env 已设 (L2 prod.config.json.production_contract.real_accounts.required=true 时):
+
+| 变量 | 必填 | 来源 |
+|------|------|------|
+| `E2E_USER_ENGINEER` | fullstack/frontend 必填 | secrets manager / `~/.config/shadow/secrets.env` |
+| `E2E_USER_RESEARCHER` | fullstack 必填 | 同上 |
+| `E2E_PASSWORD` | 必填 | 同上 (env-only, 永不进 git) |
+| `E2E_TENANT_ID` | 必填 | 真实租户 ID |
+| `E2E_BASE_URL` | 必填 | 前端入口 URL |
+| `E2E_DB_HOST` / `_PORT` / `_USER` / `_PASSWORD` / `_NAME` | fullstack 必填 | docker compose service |
+| `E2E_REDIS_HOST` / `_PORT` | fullstack 必填 | 事件总线 |
+| `E2E_ALLOW_CHAOS` | 选填 (0/1) | 是否允许真实故障注入 |
+| `E2E_ALLOW_RESTART` | 选填 (0/1) | 是否允许真实重启 backend |
+
+**任一必填缺 → exit 2 → 部署报告 `production_scenarios: FAIL` → 不写 marker → R11 必 fail**.
+
+### 5.8.2 执行命令
+
+```bash
+bash skills/shadow-l6-deploy/scripts/run-production-scenarios.sh {slug}
+```
+
+脚本会:
+1. 验证 `prod.config.json` 存在
+2. 验证 env (缺则 exit 2)
+3. pre-flight `npx playwright --version` (缺则 exit 2)
+4. 算 `sha256(prod.config.json)` 写入 `prod-evidence/prod-config-hash.txt`
+5. `cd production-scenarios/ && npx playwright test --grep @P0 --reporter=json,html,list --output=$EVIDENCE_DIR/playwright-output --trace=on --video=retain-on-failure --screenshot=on`
+6. 解析 `playwright-output/results.json` 写 `summary.json` (passed/failed/flaky/total_ms)
+7. exit 0 → 写 `smoke-test-passed` marker (含 `production-scenarios @production: N passed | prod-config-hash=...`); exit 1/2/3 → 不写 marker
+8. `chmod 444 marker; chmod -R 444 prod-evidence/` (R3 联动)
+
+### 5.8.3 退出码契约
+
+| 退出码 | 含义 | 修复路径 |
+|--------|------|----------|
+| 0 | 所有 @P0 spec 通过 | — |
+| 1 | Playwright 测试失败 | 查 `prod-evidence/playwright.log` + `playwright-output/test-results/`, 修代码或修 spec |
+| 2 | 契约违反 (缺 config / 缺 env / npx 不可用) | L2 阶段补 `prod.config.json` / 补 env / `npm install -D @playwright/test && npx playwright install --with-deps chromium` |
+| 3 | Spec 存在但 selector 不存在 (前端未实现) | 派 L5-impl 修 selector, 别改 prod.config.json |
+
+### 5.8.4 evidence 落点 (R3 evidence_archive 联动)
+
+`.shadow/iterations/iter-N/L6-deploy/{slug}/prod-evidence/`:
+
+```
+prod-evidence/
+  playwright.log                  # 完整 stdout (tee)
+  playwright-output/
+    results.json                  # Playwright JSON 报告
+  test-results/                   # Playwright 内置 (含 trace.zip, video.webm, screenshots)
+  html-report/                    # Playwright HTML
+  summary.json                    # {"passed", "failed", "flaky", "total_ms", "exit_code", "prod_config_hash", "project_type", "scale"}
+  prod-config-hash.txt            # sha256(prod.config.json at run time), 防 marker 复用
+```
+
+### 5.8.5 R11 Round 2 4 层验证 (gate-check-lifecycle.sh:307 升级)
+
+R11 消费本 phase 产出的 marker, 4 层全部通过才 PASS:
+
+| 层 | 验证 | 失败处置 |
+|----|------|----------|
+| L1 | marker 存在 + mtime < 7 天 | FAIL (stale) |
+| L2 | 首行正则 `production-scenarios @production: [0-9]+ passed` | FAIL (Round 1 旧 marker, 提示重跑 Phase 5.8) |
+| L3 | `prod-evidence/summary.json.failed == 0` + `playwright.log` 末行有 `passed` | FAIL (测试失败, 看 playwright.log) |
+| L4 | marker 中 `prod-config-hash=...` == `prod-evidence/prod-config-hash.txt` (sha256 匹配) | FAIL (marker 复用, 看 L3 evidence 跟 L4 hash 是否同次跑) |
+
+新项目 (`.shadow/LIFECYCLE.md` 存在) 任一层 fail → `exit 1` 硬阻断.
+老项目 (`.shadow/LIFECYCLE.md` 缺席) → 走 Round 1 advisory (软警告, exit 0), 行为不变.
+
+### 5.8.6 跟 8 维穷举的关系
+
+Phase 5.8 只跑 `@P0` (避免 R11 suite 超时), P1 走 nightly.
+P0 spec 必须覆盖 8 维中至少 4 个 (L 规模, 见 `skills/shadow-l2-e2e/references/production-scenario-contract.md` §2):
+
+| 维度 | P0 spec 文件名模式 | 跑通后断言 |
+|------|-------------------|------------|
+| 1. Rules | `P0_main_*.spec.ts` | RXX 行为 + DB 状态 |
+| 2-3. Pages/Interactions | (合并到 P0_main_*) | page selector 命中 |
+| 4. Roles | `P0_auth_*.spec.ts` | 真实账号 + 越权 403 + audit log |
+| 5. Data scale | `P0_persistence_*.spec.ts` | assertMinRecords + restart survival |
+| 6. Cross-service | `P0_cross_bxx_*.spec.ts` | eventSeen + 跨 BXX DB 可见 |
+| 7-8. Error/Chaos | `F_*.spec.ts` / `C_*.spec.ts` | 503/400/403 状态码 + 浏览器降级提示 |
+
+### 5.8.7 已知陷阱
+
+| 陷阱 | 处置 |
+|------|------|
+| cjxdd 已有 pytest-style marker (1 处) | 重跑 Phase 5.8 覆盖, 旧 marker 自动失效 (L2 fail) |
+| npx playwright 没装 | pre-flight 友好报错, 引导 `npm install -D @playwright/test && npx playwright install --with-deps chromium` |
+| GFW 阻断 chromium download | 引用 docker-helper 镜像源探测 (见 CLAUDE.md "Docker 镜像源自动探测" 段) |
+| 大项目 P0 suite 超时 (10+ min) | 只跑 `@P0`, P1 走 nightly; R11 不重试 flaky |
+| 真实账号泄密 | env 传递, marker 内容里 email 局部打码 (`xxxx****@***`), 不存明文密码到任何落盘文件 |
+| SSR-only 项目 | `real_accounts.required=false` + 注明 rationale, 其余维度照跑 |
+| API-only 项目 | spec 改用 `request` fixture (`@playwright/test` 1.16+ 原生), 不截屏/录屏, 但 trace.zip + summary.json 保留 |
+
 ## Phase 9: 层内自检（L6 Gate）详细检查项
 
 ### 结构性检查
