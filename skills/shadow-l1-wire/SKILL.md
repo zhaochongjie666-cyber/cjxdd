@@ -329,6 +329,17 @@ page-task-list 骨架布局：
 - [ ] 每个页面有 ≥4 个状态变体（normal/loading/empty/error）
 - [ ] `metadata#wire-coverage` 覆盖率 100%
 - [ ] `metadata#wire-contract` 包含所有页面和交互
+- [ ] **viewBox 密度 ≥ 30%** — 跑 `bash skills/shadow-l1-wire/scripts/check-density.sh wire.svg`, exit 0 才算 Pass 3 完成 (实施 A4 双保险第一层)
+
+### 6.5 viewBox 密度自检 (实施 A4)
+
+跑 `bash skills/shadow-l1-wire/scripts/check-density.sh <wire.svg>` (或 `SHADOW_DIR=... bash .../check-density.sh` 不带参数), 检查项:
+
+1. **viewBox 不能过大** — `<g transform="translate(x,y)">` 的 min/max x/y 算 bbox, 跟 viewBox 面积比 < 30% 必 fail. 修了 spec 报 9600x7200 内容只占 800x430 这种"画布巨大 内容挤角"反模式.
+2. **节点不能过少** — `<rect>/<text>/<g>/<line>/<path>/<circle>/...` 总节点 < 5 也 fail.
+3. **修复指引** — 脚本打印 `viewBox="0 0 used_w used_h"` 建议值, 直接复制.
+
+**双保险**: 第一层 (本脚本, 写时立即检) + 第二层 (L5 段 5.8 跑 `plugins/shadow-hooks.ts:checkWireSvgDensity`, 写完事后审计). 两层都用同一算法, 保证 0% 漏判.
 
 ### 3-Pass 全流程示例
 

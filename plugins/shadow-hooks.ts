@@ -2163,6 +2163,122 @@ function extractRxxIds(text: string): Set<string> {
   return out
 }
 
+// 实施 A4: page component 计数 (取并集: src/pages/** + export default *Page)
+// 替代原 /Page|page\./i 文件名粗略 (cloud-gpu AdminPages.tsx 等 batched 文件被误算 1)
+function countPageComponents(sourceDirs: string[]): { count: number; breakdown: string } {
+  const breakdown: string[] = []
+  let pagesDirCount = 0
+  let exportPageCount = 0
+  const seenFiles = new Set<string>()
+  for (const dir of sourceDirs) {
+    if (!existsSync(dir)) continue
+
+    // 1) src/pages/**/*.tsx (React/Vue 约定)
+    const pagesDir = join(dir, "pages")
+    if (existsSync(pagesDir)) {
+      const walk = (d: string) => {
+        let entries: ReturnType<typeof readdirSync>
+        try { entries = readdirSync(d, { withFileTypes: true }) } catch { return }
+        for (const e of entries) {
+          const p = join(d, e.name)
+          if (e.isDirectory()) walk(p)
+          else if (e.isFile() && /\.tsx?$/.test(e.name) && !seenFiles.has(p)) {
+            pagesDirCount++
+            seenFiles.add(p)
+          }
+        }
+      }
+      walk(pagesDir)
+    }
+
+    // 2) export default function *Page (明示 page component, 去重)
+    const walkExport = (d: string) => {
+      let entries: ReturnType<typeof readdirSync>
+      try { entries = readdirSync(d, { withFileTypes: true }) } catch { return }
+      for (const e of entries) {
+        if (/node_modules|\.venv|__pycache__|dist|build|target|\.git|\.shadow/.test(e.name)) continue
+        const p = join(d, e.name)
+        if (e.isDirectory()) walkExport(p)
+        else if (e.isFile() && /\.(tsx|jsx|ts|js)$/.test(e.name) && !seenFiles.has(p)) {
+          try {
+            const st = statSync(p)
+            if (st.size > 524288 || st.size < 10) continue
+            const t = readFileSync(p, "utf-8")
+            // 匹配 "export default function FooPage" / "export default function (props) =>"
+            // 简化: 找 "export default function" 后跟 *Page* 命名 (大小写不敏感)
+            const m = t.match(/export\s+default\s+function\s+(\w*[Pp]age\w*)/g)
+            if (m) {
+              exportPageCount += m.length
+              seenFiles.add(p)
+            }
+          } catch {}
+        }
+      }
+    }
+    walkExport(dir)
+  }
+  if (pagesDirCount > 0) breakdown.push(`src/pages=${pagesDirCount}`)
+  if (exportPageCount > 0) breakdown.push(`export-default-page=${exportPageCount}`)
+  return { count: pagesDirCount + exportPageCount, breakdown: breakdown.join(" ") || "(无 pages 目录也无 export default *Page)" }
+}
+
+// 实施 A4: wire.svg viewBox density check
+// 优先解析 <g transform="translate(x,y)"> 取 min/max x/y 算 bbox,
+// 没 <g translate> 时 fallback 到 <rect>/<text> 的 x 坐标.
+// 二次检查: 数 <rect>/<text>/<g> 总节点, < 5 也报稀疏.
+function checkWireSvgDensity(wireFiles: string[]): { file: string; density: number; nodeCount: number; sparse: boolean }[] {
+  const out: { file: string; density: number; nodeCount: number; sparse: boolean }[] = []
+  const G_RE = /<g\s+transform\s*=\s*["']translate\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)["']/g
+  const RECT_X_RE = /<rect[^>]*\sx\s*=\s*["']?(-?\d+(?:\.\d+)?)/g
+  const TEXT_X_RE = /<text[^>]*\sx\s*=\s*["']?(-?\d+(?:\.\d+)?)/g
+  const VB_RE = /<svg[^>]*viewBox\s*=\s*["']([\d.\s\-]+)["']/
+  for (const f of wireFiles) {
+    let text = ""
+    try { text = readFileSync(f, "utf-8") } catch { continue }
+    const vb = text.match(VB_RE)
+    if (!vb) continue
+    const parts = vb[1].trim().split(/\s+/).map(Number)
+    if (parts.length < 4) continue
+    const [, , w, h] = parts
+    if (!w || !h) continue
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+    let foundAny = false
+    // 优先: <g translate>
+    for (const m of text.matchAll(G_RE)) {
+      foundAny = true
+      const x = parseFloat(m[1]), y = parseFloat(m[2])
+      if (x < minX) minX = x; if (x > maxX) maxX = x
+      if (y < minY) minY = y; if (y > maxY) maxY = y
+    }
+    // Fallback: <rect x> + <text x> (无 g translate 时)
+    if (!foundAny) {
+      const xs: number[] = []
+      const ys: number[] = []
+      for (const m of text.matchAll(RECT_X_RE)) xs.push(parseFloat(m[1]))
+      for (const m of text.matchAll(TEXT_X_RE)) xs.push(parseFloat(m[1]))
+      // y 也抽 (用同样的 y 字段)
+      const Y_RE = /<(rect|text)[^>]*\sy\s*=\s*["']?(-?\d+(?:\.\d+)?)/g
+      for (const m of text.matchAll(Y_RE)) ys.push(parseFloat(m[2]))
+      if (xs.length > 0) {
+        minX = Math.min(...xs); maxX = Math.max(...xs)
+        if (ys.length > 0) { minY = Math.min(...ys); maxY = Math.max(...ys) }
+        else { minY = 0; maxY = 0 }
+        foundAny = true
+      }
+    }
+    let density = 0
+    if (foundAny && minX !== Infinity) {
+      const usedW = Math.max(1, maxX - minX), usedH = Math.max(1, maxY - minY)
+      density = (usedW * usedH) / (w * h)
+    }
+    // 二次检查: 总节点数
+    const nodeCount = (text.match(/<(rect|text|g|line|polyline|path|polygon|ellipse|circle)\b/g) || []).length
+    const sparse = density < 0.3 || nodeCount < 5
+    out.push({ file: f, density, nodeCount, sparse })
+  }
+  return out
+}
+
 function extractFmeaIds(text: string): Set<string> {
   const out = new Set<string>()
   let m: RegExpExecArray | null
@@ -2377,37 +2493,33 @@ function auditL5Consistency(
     })
   }
 
-  // 2) wire ↔ code (data-page → page component)
-  // 简化: 只数 wire.svg 数, 跟 source dirs 里 page component 数对比
+  // 2) wire ↔ code (data-page → page component) — 实施 A4 重写
+  // 旧版: 文件名含 "Page" / "page." 算 1, batched 文件 (AdminPages.tsx) 误算 1
+  // 新版: data-page Set 去重 + countPageComponents (取 src/pages + export *Page 并集)
   const wireFiles = findWireFiles(shadowDir)
   if (wireFiles.length > 0) {
-    let dataPages = 0
+    // data-page 去重 (Set)
+    const dataPageSet = new Set<string>()
     for (const f of wireFiles) {
       try {
         const text = readFileSync(f, "utf-8")
-        const matches = text.match(/data-page\s*=\s*["']([^"']+)["']/g)
-        if (matches) dataPages += matches.length
+        const matches = text.matchAll(/data-page\s*=\s*["']([^"']+)["']/g)
+        for (const m of matches) dataPageSet.add(m[1])
       } catch {}
     }
-    // 估算实现: 数 src 下含 "page" / "Page" 的文件 (粗略)
-    let pageComponents = 0
-    const pageRe = /Page|page\./i
-    for (const dir of sourceDirs) {
-      if (!existsSync(dir)) continue
-      try {
-        const files = readdirSync(dir, { recursive: true }) as unknown as string[]
-        for (const f of files) {
-          if (typeof f === "string" && pageRe.test(f)) pageComponents++
-        }
-      } catch {}
-    }
+    const dataPages = dataPageSet.size
+    // page component 真计数
+    const pageC = countPageComponents(sourceDirs)
+    const pageComponents = pageC.count
+    const diff = dataPages - pageComponents
     rows.push({
       dimension: "wire",
       designed: dataPages,
       implemented: pageComponents,
       coverage: dataPages > 0 ? Math.min(1, pageComponents / dataPages) : 1,
-      missing: dataPages > pageComponents ? [`${dataPages - pageComponents} 个 data-page 未实现`] : [],
-      note: `${wireFiles.length} wire.svg, ${dataPages} data-page, 源码 ~${pageComponents} 个 page 组件 (粗略估计)`,
+      // 实施 A4: 差 ≥ 2 必 hard fail (旧版只数 1 个文件就报)
+      missing: diff > 1 ? [`${diff} 个 data-page 多于实现 (≥ 2 → 硬错)`, ...[...dataPageSet].slice(0, 5)] : [],
+      note: `${wireFiles.length} wire.svg, ${dataPages} distinct data-page (去重自 ${dataPages}), 源码 ${pageComponents} 个 page (${pageC.breakdown})`,
     })
   } else {
     rows.push({
@@ -2720,6 +2832,35 @@ export function runStopGate(opts: {
       sections.push(`✓ Reviewer 报告: ${basename(r.reportPath)} verdict=${verdict} (${counts}) — 结构化校验通过`)
     } else {
       sections.push(`(Reviewer 报告: 本 iter 无 reviews/ 目录, 跳过)`)
+    }
+  }
+
+  // 5.8) wire.svg viewBox density (实施 A4) — 双保险第二层
+  // 第一层: skills/shadow-l1-wire/scripts/check-density.sh 写时自检 (L1 wire skill 内)
+  // 第二层: 这里事后审计, 写完 wire.svg 后 L5 必跑
+  // 新项目 (LIFECYCLE.md 存在) density < 0.3 → hard, 老项目 → 软警告
+  if (shadowDir) {
+    const wireFiles2 = findWireFiles(shadowDir)
+    if (wireFiles2.length > 0) {
+      const densities = checkWireSvgDensity(wireFiles2)
+      const sparse = densities.filter(d => d.sparse)
+      if (sparse.length > 0) {
+        const isNewProject = existsSync(join(shadowDir, "LIFECYCLE.md"))
+        const list = sparse.map(d =>
+          `  ${d.file}: density=${(d.density * 100).toFixed(0)}% (节点=${d.nodeCount})`
+        ).join("\n")
+        if (isNewProject) {
+          const msg = `wire.svg viewBox 过空 (新项目硬门禁):\n${list}\n修复: 重设 viewBox = (max_x-min_x) × (max_y-min_y) + padding (10%-20%)`
+          errors.push(msg)
+          tracked.push({ section: "wire-svg-density", content: msg, level: "error" })
+        } else {
+          sections.push(`⚠️ wire.svg viewBox 较空 (老项目软警告):\n${list}`)
+        }
+      } else {
+        sections.push(`✓ wire.svg viewBox 密度: ${densities.length} 个文件都 ≥ 30%`)
+      }
+    } else {
+      sections.push(`(wire.svg viewBox: 无, 跳过)`)
     }
   }
 
