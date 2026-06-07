@@ -19,6 +19,8 @@ version: "1.0.0"
 
 **前置条件**：系统必须已安装 Docker Engine 和 Docker Compose 插件（`docker compose` 命令可用）。所有外部服务依赖一律通过 Docker 启动，不允许本机直接安装 PostgreSQL/Redis/Minio 等。
 
+> **🔗 关联 Skill**：[`docker-helper`](../docker-helper/SKILL.md) — 解决中国区 Docker Registry 拉取问题。**Step 4 拉镜像前**必须先调 [`docker-helper/scripts/probe-registry.sh`](../docker-helper/scripts/probe-registry.sh) 探测网络;若探测 exit 1 (GFW 阻断),**强制先装 docker-helper skill 再拉镜像**,不可跳步。详见 Step 3.5。
+
 ## 输入
 
 | 来源 | 文件 | 使用方式 |
@@ -74,6 +76,49 @@ version: "1.0.0"
 - [ ] 测试框架已安装（`pytest --version` / `npx vitest --version`）
 - [ ] 空测试能跑过（`pytest test_env.py -v` → PASS）
 - [ ] 测试失败也能检测到（故意写一个断言失败 → 非零退出码）
+
+### Step 3.5: Docker Registry 网络可达性探测（GFW 检测）
+
+> **⚠️ 强制条款**:在中国区/受限网络环境下,直接 `docker pull postgres:16` 会超时或 403。
+> **必须**在 Step 4 拉任何镜像前,跑 `docker-helper/scripts/probe-registry.sh` 探测网络。
+> 探测 exit 1 (GFW 阻断) 时,**强制先装 `docker-helper` skill** 再继续 Step 4。**不允许跳步直接拉镜像**。
+
+```bash
+# 1. 探测 docker.io / docker.1ms.run 可达性
+bash skills/docker-helper/scripts/probe-registry.sh
+PROBE_EXIT=$?
+
+# 2. 根据退出码决策
+case "${PROBE_EXIT}" in
+    0)  # docker.io 直连 OK
+        echo "✓ 直连可用, 正常 docker pull"
+        ;;
+    1)  # GFW 区域, 代理可达
+        echo "✗ GFW 阻断, 必须先装 docker-helper"
+        # 强制装 docker-helper (Walker 触发 skill loading, 不允许静默)
+        echo "→ 触发: 装 skill docker-helper"
+        # Walker 调 Skill 工具加载 docker-helper, 走代理前缀 docker.1ms.run
+        ;;
+    2|3)  # Docker 未装 / 完全无网络
+        echo "✗ Docker 未装或完全离线, 阻断"
+        exit "${PROBE_EXIT}"
+        ;;
+esac
+```
+
+**决策表**:
+
+| 退出码 | 含义 | 处置 |
+|--------|------|------|
+| 0 | docker.io 直连 OK | 正常进入 Step 4 |
+| 1 | GFW 阻断, docker.1ms.run 代理可达 | **强制装 docker-helper**, 拉镜像时用 `docker.1ms.run/library/<image>` 代理前缀 |
+| 2 | Docker 未装 / daemon 未运行 | 阻断, 让用户先装 Docker |
+| 3 | 完全无法访问任何 Registry | 阻断, 建议用户检查网络/VPN |
+
+**检查**:
+- [ ] `probe-registry.sh` 跑过, 退出码已记录
+- [ ] exit 1 时, `docker-helper` skill 已加载并执行
+- [ ] exit 1 时, 后续 `docker pull` 命令全部走 `docker.1ms.run/library/` 代理前缀
 
 ### Step 4: 服务依赖启动（Docker 部署）
 

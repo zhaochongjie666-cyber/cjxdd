@@ -12,6 +12,11 @@ description: >
 
 # Docker Helper — 中国区 Docker 镜像助手
 
+> **🔗 何时自动加载本 skill**:
+> - **`shadow-scaffold` Step 3.5** — 探测到 `probe-registry.sh` 退出码 = 1 (GFW 阻断 docker.io 但 docker.1ms.run 可达) 时, **强制加载本 skill** 走代理前缀拉镜像
+> - `shadow-l5-impl` / `shadow-l6-deploy` 任何 `docker pull` 失败时
+> - 用户在对话中提到 "Docker 镜像"、"拉不到镜像"、"中国 Docker"、"docker 代理" 时
+
 ## 核心能力
 
 1. **镜像源配置** — 检测当前环境，配置最优的中国区 Docker Registry 镜像源
@@ -54,13 +59,13 @@ description: >
 收到任务后先检测：
 
 ```bash
-# Docker 是否安装且运行
+# 推荐: 用 scripts/probe-registry.sh 一键探测 (scaffold 强制调用此脚本)
+bash scripts/probe-registry.sh
+# 退出码: 0=直连OK, 1=GFW+代理可达, 2=Docker未装, 3=全断
+
+# 手动检测 (调试时)
 docker info 2>&1 | head -5
-
-# 当前镜像源配置
 cat /etc/docker/daemon.json 2>/dev/null
-
-# 已有镜像
 docker images
 ```
 
