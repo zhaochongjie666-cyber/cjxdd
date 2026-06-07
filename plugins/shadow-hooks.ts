@@ -1140,6 +1140,81 @@ function checkLifecycleDrift(shadowDir: string | null): string {
   return lines.join("\n")
 }
 
+// 实施 A2: L6 smoke-test-passed 硬门禁 (R11 Round 2 内联)
+// 跟 skills/shadow-artifact-lifecycle/scripts/gate-check-lifecycle.sh:307-412 R11 段对齐.
+// LIFECYCLE.md 存在 = 新项目, 启 Round 2 4 层验证; 老项目只查 mtime < 7 天.
+// 段 5 把 R5 委托给 shell 脚本, 但用户看不到 R11 专项 — 这函数把 R11 提到段 5.6
+// inline, 错误直接落 errors[] / tracked[], 5 段 summary + toast 都看得到.
+function checkL6SmokePassed(shadowDir: string | null): {
+  total: number
+  pass: number
+  round2Fail: number
+  layerFail: string
+  isNewProject: boolean
+} {
+  const out = { total: 0, pass: 0, round2Fail: 0, layerFail: "", isNewProject: false }
+  if (!shadowDir) return out
+  if (!existsSync(shadowDir)) return out
+  out.isNewProject = existsSync(join(shadowDir, "LIFECYCLE.md"))
+
+  // 走 shadowDir 找所有 smoke-test-passed marker (L6-deploy 路径下)
+  const markers: string[] = []
+  const walk = (d: string) => {
+    let entries: ReturnType<typeof readdirSync>
+    try { entries = readdirSync(d, { withFileTypes: true }) } catch { return }
+    for (const e of entries) {
+      const p = join(d, e.name)
+      if (e.isDirectory()) walk(p)
+      else if (e.isFile() && e.name === "smoke-test-passed" && p.includes("/L6-deploy/")) {
+        markers.push(p)
+      }
+    }
+  }
+  walk(shadowDir)
+
+  const SEVEN_DAYS_MS = 7 * 24 * 3600 * 1000
+  const L2_RE = /production-scenarios @production: \d+ passed/
+  for (const marker of markers) {
+    out.total++
+    const slugDir = dirname(marker)
+    const evidenceDir = join(slugDir, "prod-evidence")
+    const slug = basename(slugDir)
+
+    // L1: mtime < 7 天
+    let mtimeOk = false
+    try {
+      const st = statSync(marker)
+      mtimeOk = Date.now() - st.mtimeMs < SEVEN_DAYS_MS
+    } catch {}
+    if (!mtimeOk) { out.round2Fail++; out.layerFail += `L1-stale(${slug}) `; continue }
+
+    if (!out.isNewProject) { out.pass++; continue }  // 老项目只查 mtime
+
+    // L2: marker 首行
+    let head1 = ""
+    try { head1 = readFileSync(marker, "utf-8").split("\n")[0] } catch {}
+    if (!L2_RE.test(head1)) { out.round2Fail++; out.layerFail += `L2-content(${slug}) `; continue }
+    const markerHash = (head1.match(/prod-config-hash=([a-f0-9]+)/) || [])[1]
+
+    // L3: 邻目录 evidence
+    if (!existsSync(evidenceDir)) { out.round2Fail++; out.layerFail += `L3-evidence-missing(${slug}) `; continue }
+    const summaryPath = join(evidenceDir, "summary.json")
+    if (!existsSync(summaryPath)) { out.round2Fail++; out.layerFail += `L3-summary-missing(${slug}) `; continue }
+    let failedN = 99
+    try { failedN = JSON.parse(readFileSync(summaryPath, "utf-8")).failed ?? 99 } catch {}
+    if (failedN !== 0) { out.round2Fail++; out.layerFail += `L3-failed=${failedN}(${slug}) `; continue }
+
+    // L4: hash 一致
+    if (!markerHash) { out.round2Fail++; out.layerFail += `L4-hash-missing(${slug}) `; continue }
+    const hashPath = join(evidenceDir, "prod-config-hash.txt")
+    const actualHash = existsSync(hashPath) ? readFileSync(hashPath, "utf-8").trim().slice(0, 64) : ""
+    if (markerHash !== actualHash) { out.round2Fail++; out.layerFail += `L4-hash-mismatch(${slug}) `; continue }
+
+    out.pass++
+  }
+  return out
+}
+
 // ════════════════════════════════════════════════════════════════════
 // § 12 Toast 通知 (OpenCode 独有: 右上角弹窗, 不污染 TUI 流)
 // ════════════════════════════════════════════════════════════════════
@@ -2318,6 +2393,32 @@ export function runStopGate(opts: {
     const msg = `R5 跳过: gate-check-lifecycle.sh 不存在 (${gateScript}). 检查 framework 安装.`
     errors.push(msg)
     tracked.push({ section: "r5-missing-script", content: msg, level: "error" })
+  }
+
+  // 5.6) L6 smoke-test-passed 硬门禁 (R11 Round 2 内联) — 实施 A2
+  // 段 5 (R5) 委托给 shell 跑 R1/R3/R5/R6/R10/R11 全集, 但用户看不到 R11 专项.
+  // 这里把 R11 inline 化: 直接读 .l5-unresolved.json-style 找 marker, 4 层验证.
+  // 跟 skills/shadow-artifact-lifecycle/scripts/gate-check-lifecycle.sh:307-412 逻辑对齐.
+  if (shadowDir) {
+    const r11 = checkL6SmokePassed(shadowDir)
+    if (r11.total === 0 && r11.isNewProject) {
+      // 新项目无 marker — 必 hard fail
+      const msg = `L6 smoke-test-passed 硬门禁失败 (R11, 新项目): 无 L6-deploy marker — 必须跑 shadow-l6-deploy Phase 5.8 写 marker\n  shadowDir: ${shadowDir}\n  修复: bash skills/shadow-l6-deploy/scripts/run-production-scenarios.sh {slug} (slug = deployment slug)`
+      errors.push(msg)
+      tracked.push({ section: "l6-smoke-test", content: msg, level: "error" })
+    } else if (r11.round2Fail > 0) {
+      // 4 层验证有失败
+      const baseMsg = r11.isNewProject
+        ? `L6 smoke-test-passed 4 层验证失败 (R11 Round 2, 新项目)`
+        : `L6 smoke-test-passed mtime 失败 (R11 Round 1, 老项目)`
+      const msg = `${baseMsg}: ${r11.round2Fail} 个 marker 失败, ${r11.pass} 通过\n  失败层: ${r11.layerFail.trim() || "(无)"}\n  shadowDir: ${shadowDir}\n  修复: 重跑对应 L6-deploy slug, 或检查 prod-evidence/ 完整性`
+      errors.push(msg)
+      tracked.push({ section: "l6-smoke-test", content: msg, level: "error" })
+    } else if (r11.total > 0) {
+      sections.push(`✓ L6 smoke-test-passed: ${r11.pass} 个 marker 通过 (${r11.isNewProject ? "R11 Round 2 4 层" : "mtime 老项目"})`)
+    } else {
+      sections.push(`(L6 smoke-test-passed: 老项目无 LIFECYCLE.md, 跳过)`)
+    }
   }
 
   // 5.5) L5 Consistency Audit (跟上游设计一致) — 实施 #14
