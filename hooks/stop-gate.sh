@@ -215,7 +215,12 @@ fi
 
 # --- R5 硬门禁: 调 shadow-artifact-lifecycle/scripts/gate-check-lifecycle.sh ---
 # Phase 2: R5 漂移扫描升级为硬门禁 (识别率 < 80% 时 exit 1)
-# 静默执行, 只在 fail 时输出
+# ⚠️  ADVISORY ONLY: stop-gate 必须永远 exit 0 (跟本文件头部注释一致),
+#     跟 file header "Always exit 0 (advisory)" 保持一致. R5 fail 信息通过 stdout
+#     展示给用户/模型, 不阻断 stop hook (否则 Claude Code 会报
+#     "Stop hook error: non-blocking status code: No stderr output").
+#     真正决定硬阻断的是 gate-check-lifecycle.sh 自身的 exit code (0/1/2/3),
+#     而 stop-gate 只做传递 + 展示.
 echo ""
 echo "[shadow] === R5 硬门禁 (调用 gate-check-lifecycle.sh) ==="
 gate_script="$SCRIPT_DIR/../skills/shadow-artifact-lifecycle/scripts/gate-check-lifecycle.sh"
@@ -224,15 +229,14 @@ if [[ -f "$gate_script" ]]; then
     if bash "$gate_script" > /tmp/lifecycle-gate-$$.log 2>&1; then
         echo "[shadow]   ✓ R5: 5 角色一致性 + ${artifacts_count} 工件识别率 ≥ 80%, 通过"
     else
-        echo "[shadow]   ❌ R5 硬门禁触发 (识别率 < 80% 或 evidence_archive 写违反)"
+        echo "[shadow]   ❌ R5 硬门禁触发 (识别率 < 80% 或 evidence_archive 写违反) — ADVISORY"
         echo ""
         echo "[shadow]   gate-check-lifecycle.sh 输出:"
         cat /tmp/lifecycle-gate-$$.log | sed 's/^/      /' | tail -30
         rm -f /tmp/lifecycle-gate-$$.log
         echo ""
-        echo "[shadow]   R5 硬门禁 fail — 请修复后重试"
+        echo "[shadow]   R5 硬门禁 fail — 请修复后重试 (advisory, 不阻断 stop)"
         echo "[shadow]   处置指引见: skills/shadow-artifact-lifecycle/SKILL.md"
-        exit 1
     fi
     rm -f /tmp/lifecycle-gate-$$.log
 else

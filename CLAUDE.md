@@ -1,4 +1,4 @@
-# C3AUDE.md
+# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -38,36 +38,89 @@ If a user gives Claude a task, the right move is usually to **load the `shadow-w
 
 ### OpenCode hooks（自动门禁插件）
 
-OpenCode 使用插件系统而非 shell hooks。等价功能通过 `.opencode/plugins/shadow-hooks.ts` 实现，由 OpenCode 在启动时自动加载：
+OpenCode 使用插件系统而非 shell hooks。等价功能通过 `plugins/shadow-hooks.ts` 实现（仓库根 `plugins/` 目录，被 `install-to-opencode.sh` 软链到 `~/.config/opencode/plugins/`），由 OpenCode 在启动时自动加载。
 
-| Plugin hook | 对应 Claude Code hook | 行为 |
+**5 个 hook 行为对齐基线**: `hooks/*.sh` (Claude Code) 跟 `plugins/shadow-hooks.ts` (OpenCode) 在以下 13 项 P0 行为上 1:1 对齐 (5 项端到端 + 16/16 烟雾测试 PASS, 详见 § "E2E 验证"):
+
+| 行为 | 源 bash | OpenCode 入口 | 行为摘要 |
+|------|---------|---------------|---------|
+| **5 步节奏注入** | `pre-skill.sh:78-88` | L3 toast | 装 skill 前 5 步 reminder |
+| **阶段顺序硬阻断** | `pre-skill.sh:90-112` (exit 2) | L3 throw | 跳 stage → 阻断 |
+| **auto-mark DOING** | `pre-skill.sh:57-75` | L3 synthetic part | 装 skill 时 ⏳→🔄 DOING |
+| **auto-mark DONE** | `post-write-stub-scan.sh:62-87` | L4 synthetic part | 写 stage 产物时 → ✅ DONE, 推下一 stage skill |
+| **stub 实时扫描** | `post-write-stub-scan.sh:111-133` | L4 toast + metadata | 写完单文件立即扫存根, 设 `output.metadata.shadowStubWarning` |
+| **R3 evidence_archive** | `post-write-stub-scan.sh:89-155` | L4 toast | 写入证据存档软警告 (TS 修复了 bash 重复块) |
+| **P0-Y L0 重做门禁** | `pre-skill.sh:114-140` | L3 toast | 14 天 mtime 软警告, 每轮 iter 必查 |
+| **P0-Z wire.svg 变体** | `pre-skill.sh:142-166` | L3 toast | `data-state < data-page × 3` 时软警告 |
+| **R5 硬门禁** | `stop-gate.sh:216-240` | L5 execSync | 调 `gate-check-lifecycle.sh`, exit 1 → error toast |
+| **L5 stage 漂移** | `stop-gate.sh:95-141` | L5 toast | 产物存在但 status 是 ⏳/🔄 → DRIFT |
+| **lifecycle 漂移 (5 类)** | `stop-gate.sh:147-214` | L5 toast | `.skel` / 老 L3 别名 / 部署报告别名 / feature-status 漂移 / 老 wire 路径 |
+| **5 类意图识别** | `lib.sh:detect_intent_pattern` | L2 synthetic part | zh-new-build / zh-continue / en-new-build / en-greenfield + 路由 |
+| **5 类压力信号** | `lib.sh:check_pressure_signals` | L2 + L3 part | RUSH/TIME/SKIP/SIMPLIFY/WORKLOAD + 30s fingerprint 去重 |
+| **stage 状态查询** | `user-prompt-submit.sh:58-96` | L2 part | "当前 stage" / "下一 stage" / "where am i" → 中英回答 |
+| **5 角色 lifecycle 分布** | `session-start.sh:64-74` | L1 system prompt | session-start 打印 design_baseline/process_output/evidence_archive/control_marker 计数 |
+| **BXX 维度 per-bizline** | `lib.sh:91-121` | L1+L5 | `## BXX 业务线名` 分组的 status / pending / stage 漂移 |
+| **Toast 去重 (1500ms)** | — (plugin 独有) | notify() | 5 段 stop-gate 不连弹, 同 key 短时间抑制 |
+
+**事件映射**:
+
+| Plugin hook | 对应 Claude Code hook | 入口 |
 |------------|----------------------|------|
-| `experimental.chat.system.transform` | `SessionStart` | 注入 pipeline 上下文（iter、status 摘要）到 system prompt |
-| `chat.message` | `UserPromptSubmit` | 检测用户消息中的"做一个系统"意图，注入 Walker 提示 |
-| `tool.execute.before` (Skill) | `PreToolUse` (Skill) | 5 步节奏提醒 + 管线阶段顺序硬阻断 |
-| `tool.execute.after` (Write/Edit) | `PostToolUse` (Write\|Edit) | 实时扫存根模式，命中即告警 |
-| `event` (`session.idle`) | `Stop` | 全项目存根扫描 + pipeline 完成度检查 |
-
-插件通过 `install-to-opencode.sh` 软链到 `~/.config/opencode/plugins/`。
+| `experimental.chat.system.transform` | `SessionStart` | L1 注入 5 角色分布 + current stage + 5 步节奏 + CONTEXT-MAP |
+| `chat.message` | `UserPromptSubmit` | L2 stage 查询 (短路) + 压力信号 + 4 类意图 + 路由 |
+| `tool.execute.before` (Skill + Task) | `PreToolUse` (Skill/Task) | L3 6 段流水线 + task worker 派单 WO 校验 |
+| `tool.execute.after` (Write/Edit) | `PostToolUse` (Write\|Edit) | L4 5 段: auto-mark DONE → R3 → stub scan |
+| `event` (`message.updated` finish=stop) | `Stop` | L5 5 段编排器 + execSync R5 |
 
 **BXX 业务线维度**：status.md 按 Walker 规范用 `## BXX 业务线名` 分节时，session-start 和 stop-gate 自动按 BXX 分组输出；多业务线项目的待办不会再混成一锅。
 
-### OpenCode Goal 模式（`/goal` 自驱循环）
+**Toast 通道 (OpenCode 独有)**: plugin 用 `client.tui.showToast({variant, title, message, duration})` 弹右上角通知, 4 variant (info/success/warning/error), 不污染 TUI 文本流. 加 1500ms 去重 Map, 防 5 段 stop-gate 连续弹屏.
 
-OpenCode 端的第二种 plugin：`plugins/goal-mode.ts`。注册 slash 命令 `/goal`（别名 `/g`），
-弹 DialogPrompt 收多行目标，plugin 监听 `session.idle` 事件，**用独立 session 评估**是否完成，
-未完成则回填目标继续推进，最多 10 轮。
+**E2E 验证状态** (5 项端到端对比 bash vs plugin, 行为对齐):
+- L1 SessionStart: pipeline 摘要 / 5 角色 / 当前 stage / 5 步节奏 ✅
+- L2 stage 查询 "当前 stage": 1:1 字符级一致 ✅
+- L3 装 skill: auto-mark + 5 步 + P0-Y + P0-Z + 阶段硬阻断 ✅
+- L4 stub 扫描 + auto-mark DONE: 修复 bash 重复块, 等价 ✅
+- L5 stop-gate: 真实 R5 execSync, 5 段汇总成 1 toast ✅
 
-| 步骤 | 行为 |
-|------|------|
-| 1. 启动 | `/goal` → DialogPrompt 收目标 → 写 `.shadow/goal-runs/{run-id}/goal.md` + `current-goal.json` → 灌目标到主 session |
-| 2. 评估 | 每次 `session.idle` → 创建独立 evaluator session（`session.create({ title })`）→ 发 EVAL prompt（带主 session 最近 assistant 输出）→ 收 COMPLETE / CONTINUE 决策 |
-| 3. 推进 | COMPLETE → 写 `final.md` ✅, toast success; CONTINUE → 灌目标回主 session, toast info |
-| 4. 上限 | 10 轮未达成 → 写 `final.md` ❌ FAI3URE-CAP, toast error |
+### Docker 镜像源自动探测（scaffold Step 3.5）
 
-**评估机制**：evaluator session 是 short-lived, 走 `session.create()` + `session.prompt()` + `session.messages()` 三件套, 不污染主 session 流。
+中国区/受限网络下直接 `docker pull postgres:16` 会超时或 403。`scaffold` Step 3.5 强制在拉任何镜像前跑探测, exit 1 时**强制先装 `docker-helper` skill**:
 
-**生命周期注册**：`shadow-schema.json:lifecycle_artifacts` 末尾 3 行 `goal-run-goal` / `goal-run-final` / `goal-runs-ctrl`, hook 自动识别。
+```bash
+bash skills/docker-helper/scripts/probe-registry.sh
+# 退出码:
+#   0 — docker.io 直连 OK, 走 daemon.json 镜像源
+#   1 — GFW 阻断, docker.1ms.run 代理可达 → 装 docker-helper, 走代理前缀
+#   2 — Docker 未装 / daemon 未运行 → 阻断
+#   3 — 完全无法访问任何 Registry → 阻断, 建议 VPN
+```
+
+`skills/shadow-scaffold/SKILL.md` Step 3.5 跟 `skills/docker-helper/SKILL.md` 顶部"何时自动加载"块**互相引用**, 任何 walker 跑 scaffold Step 4 (Docker 部署) 时, 强制先做 GFW 探测. 跑 `skills/smoke-scaffold-docker.sh` (16 项断言) 验证集成完整.
+
+详见 § "Scaffold + Docker" (若有) 或 `skills/docker-helper/SKILL.md` § 1 "环境检测".
+
+### `/cjgoal` 自驱循环（OpenCode + Claude Code 都有）
+
+**OpenCode 端**: `plugins/goal-mode.tsx` (TUI plugin) 注册 slash 命令 `/cjgoal` (别名 `/cj` / `/g`)。
+inline `/cjgoal {目标}` 回车, plugin 监听 `message.part.updated` 抓 user text, 写 `.shadow/goal-runs/{run-id}/goal.md` + `current-goal.json`, 监听 `session.idle` 事件, **用独立 evaluator session 评估**是否完成 (CONTINUE/COMPLETE), 未完成则回填目标继续推进, 最多 10 轮. 过程通过 `ui.toast` 右上角弹窗通知.
+
+**Claude Code 端**: `commands/cjgoal.md` (slash command, `install-to-claude-code.sh` 软链到 `~/.claude/commands/`). 跟 OpenCode 行为对齐但**实现简化** — Claude Code 没有 TUI plugin SDK (`session.create` / `client.tui.showToast`), 用 prompt-based workflow: 写 goal.md + current-goal.json, 引导 walker 推进, 用户手动调 `/cjgoal done` 标记完成 (写 `final.md`).
+
+**差异表**:
+
+| 维度 | OpenCode `/cjgoal` | Claude Code `/cjgoal` |
+|------|-------------------|----------------------|
+| 命令注册 | TUI plugin `command.register` | `commands/cjgoal.md` slash command |
+| 目标输入 | inline `/cjgoal {text}` | 命令参数 `$ARGUMENTS` |
+| 评估循环 | 自动: `session.idle` → 独立 evaluator session → COMPLETE/CONTINUE (10 轮 cap) | **手动**: `/cjgoal done` 写 final.md |
+| Toast 通知 | TUI toast | 无 |
+| 产物位置 | `.shadow/goal-runs/{runId}/goal.md` + `current-goal.json` | 同 |
+| 完成标志 | plugin 自动写 `final.md` ✅ / ❌ FAI3URE-CAP | 用户触发 `/cjgoal done` 写 `final.md` |
+
+**生命周期注册**: `shadow-schema.json:lifecycle_artifacts` 末尾 `goal-run-goal` / `goal-run-final` / `goal-runs-ctrl`, hook 自动识别.
+
+**OpenCode 端评估机制**: evaluator session 是 short-lived, 走 `session.create()` + `session.prompt()` + `session.messages()` 三件套, 不污染主 session 流. Claude Code 端无此机制, 用户手动 `/cjgoal done` 触发 final.md.
 
 ### 工具名约定
 
@@ -128,6 +181,11 @@ The Walker is **not a dispatcher** — it does the work itself, reading files, w
 ```
 agents/
   shadow-walker.md             ← The agent (345 lines). Read this first to understand the framework.
+
+plugins/                       ← OpenCode 端实现 (跟 agents/ skills/ 平级)
+  shadow-hooks.ts              ← 5 hook body + 30 helper, 行为对齐 hooks/*.sh (1353 行)
+  back-cover.ts                ← 防"伪完成"硬锁, verify_completion 工具
+  goal-mode.tsx                ← OpenCode TUI plugin: /cjgoal 自驱循环 (10 轮 cap)
 
 skills/
   shadow-init/                 ← Initialize .shadow/ skeleton (status.md + scale.md + iter dir) — **always run first for new projects**
@@ -353,7 +411,7 @@ Shadow 30+ 份 `.shadow/` 工件按生命周期角色分 **5 类**,以 `.shadow/
 - **AI 行为层** — Hook 软提醒, AI 仍可自决
 - **产物层** — R5 漂移扫描 + R3 证据写阻断 + R10 自动归档,产物不合规直接 exit 1
 
-## § 9 真实烟雾测试门禁 (R11, P0-X Round 1)
+## § 9 真实烟雾测试门禁 (R11, P0-X Round 2 — 新项目硬阻断 / 老项目 advisory)
 
 **问题**: "测试通过 ≠ 真实可用" gap。单元/集成测试可以全过, 但用户拿浏览器点击时**登录都登录不了**。6 硬门禁 (R1/R3/R5/R6/R10) 都是**产物形态**验证, 没人验证**产物跑起来行为对不对**。R11 补这个盲区。
 
@@ -363,41 +421,65 @@ Shadow 30+ 份 `.shadow/` 工件按生命周期角色分 **5 类**,以 `.shadow/
 |------|------------------|-----|
 | 验证对象 | 产物文件在不在 / 角色对不对 | 产物跑起来行为对不对 |
 | 检查时机 | L5-impl 写代码时 + L6 部署末尾 | L6 部署末尾 (真实验证后) |
-| 阻断力度 | 软警告 + 硬阻断 (按门禁) | Round 1 软警告, Round 2 硬阻断 |
-| 自动化程度 | schema 驱动自动跑 | Round 2: 自动 Playwright |
+| 阻断力度 | 软警告 + 硬阻断 (按门禁) | **新项目: 4 层验证硬阻断** / 老项目: advisory |
+| 自动化程度 | schema 驱动自动跑 | **新项目: 自动 Playwright** (L6 Phase 5.8) |
 
-### 9.2 R11 检测逻辑
+### 9.2 R11 检测逻辑 (Round 2 升级)
 
-扫 `.shadow/iterations/iter-N/L6-deploy/*/smoke-test-passed`:
+扫 `.shadow/iterations/iter-N/L6-deploy/*/smoke-test-passed`, **4 层验证**:
 
-| 状态 | 条件 | 输出 |
-|------|------|------|
-| skip | 完全没有 `.shadow/L6-deploy/` | "skip (无 L6-deploy)" |
-| pass | 1+ 个 marker 且 mtime < 7 天 | "pass (N 个 marker 新近)" |
-| warn stale | 1+ 个 marker 但 mtime ≥ 7 天 | "warn (N 个 marker 过期 ≥ 7 天)" |
-| warn 缺 | 部分 slug 缺 marker | "warn (N 个 slug 缺 marker)" |
-| warn 混合 | 部分新部分旧 | "warn (混合: X 新 / Y 旧)" |
+| 层 | 验证 | 失败处置 |
+|----|------|----------|
+| **L1** | marker 存在 + mtime < 7 天 | FAIL (stale) |
+| **L2** | marker 首行正则 `production-scenarios @production: [0-9]+ passed` | FAIL (Round 1 旧 marker, 提示重跑 Phase 5.8) |
+| **L3** | `prod-evidence/summary.json.failed == 0` + `playwright.log` 末行有 `passed` | FAIL (测试失败, 看 playwright.log) |
+| **L4** | marker 中 `prod-config-hash=...` == `prod-evidence/prod-config-hash.txt` (sha256 匹配) | FAIL (marker 复用, 看 L3 evidence 跟 L4 hash 是否同次跑) |
 
-### 9.3 Walker 怎么写 marker
+**项目分叉**:
+- 新项目 (`.shadow/LIFECYCLE.md` 存在) → 4 层验证, **任一失败 → exit 1 硬阻断**
+- 老项目 (`.shadow/LIFECYCLE.md` 缺席) → Round 1 advisory (软警告, exit 0), 行为不变
 
-L6 末尾, 真实验证(例如 Playwright 真点登录)通过后:
+实现位置: `skills/shadow-artifact-lifecycle/scripts/gate-check-lifecycle.sh:307-412` (替换原 R11 段) + 末尾硬门禁触发 (`exit 1`)。
+
+### 9.3 穷尽式生产场景 (L2 新增产物)
+
+L2 必须为每个 BXX 在 `production-scenarios/` 下生成 8 维穷举的 Playwright spec 套件:
+
+- `prod.config.json` — 机器可读的"跟生产一致"契约
+- `playwright.config.ts` — `@playwright/test` 配置
+- `specs/P0_main_*.spec.ts` / `P0_cross_bxx_*.spec.ts` / `P0_persistence_*.spec.ts` / `P0_auth_*.spec.ts` / `F_*.spec.ts` — Playwright 测试
+- `helpers/{auth,db,event}.ts` — 真实账号/DB/事件总线 helper
+- `fixtures/accounts.example.json` + `seed.example.sql` — 模板 (不入库)
+- `e2e.binding.yaml` 追加 `production_scenarios` 顶层块
+
+8 维穷举: Rules / Pages / Interactions / Roles / Data scale / Cross-service / Error states / Real-world chaos. 详见 `skills/shadow-l2-e2e/templates/production-scenarios.md` + `references/production-scenario-contract.md`.
+
+### 9.4 L6 Phase 5.8 自动跑
+
+L6 Phase 5.8 在 Phase 5.6 (漫游) 之后, Phase 6 (后端 E2E) 之前, 自动跑:
 
 ```bash
-TS=$(date -Iseconds)
-echo "${TS} | login E2E: POST /api/auth/login 200 + browser navigated to /home" \
-    > .shadow/iterations/iter-N/L6-deploy/{slug}/smoke-test-passed
+bash skills/shadow-l6-deploy/scripts/run-production-scenarios.sh {slug}
 ```
 
-### 9.4 Round 2 计划(下次)
+- exit 0 → 写 marker (含 `production-scenarios @production: N passed | prod-config-hash=...`), evidence 落 `prod-evidence/`, chmod 444
+- exit 1/2/3 → 不写 marker, 留 evidence, R11 必 fail
 
-1. L6 末尾自动跑 `playwright test`
-2. 失败 → **exit 1 硬阻断**
-3. trace 收集到 `wander-evidence/` (R3 联动 chmod 444)
-4. marker 自动写 (e2e 跑通 → mtime 自动刷新 → R11 自动 pass)
+退出码契约:
+- 0: 所有 @P0 spec 通过
+- 1: Playwright 测试失败
+- 2: 契约违反 (缺 config / 缺 env / npx 不可用)
+- 3: Spec 存在但 selector 不存在 (前端未实现, 派 L5-impl 修 selector)
 
-> Round 1 故意是软警告: 怕改了之后老项目 (cjxdd-demo 等 7+) 突然被卡, 破坏零迁移承诺。
-> Round 2 之前: 老项目继续 advisory exit 0; 新项目 (有 LIFECYCLE.md) 收到 warn 但不阻断。
-> Round 2 之后: 新项目硬阻断; 老项目仍 advisory (LIFECYCLE.md 缺席 = 老项目标记)。
+### 9.5 历史
+
+- **2026-06-07** (本升级): Round 1 → Round 2 启用. 新项目硬阻断, 老项目 advisory 零破坏.
+- **Round 1 故意是软警告** (历史): 怕改了之后老项目 (cjxdd-demo 等 7+) 突然被卡, 破坏零迁移承诺.
+- **Round 2 之后**: 新项目 (有 LIFECYCLE.md) 硬阻断; 老项目 (LIFECYCLE.md 缺席) 仍 advisory, 一劳永逸豁免.
+
+### 9.6 暂不启用策略
+
+新项目 (有 LIFECYCLE.md) 暂不启用 R11 Round 2: 在 `.shadow/scale.md` 加 `gate_options.production_scenarios: off` (off / warn / hard, 默认 hard). cjxdd 第一次 L6 部署前, 若 4 BXX production-scenarios 还没准备好, 可临时 off.
 
 ## § 10 L0 调研重做门禁 (P0-Y Round 1)
 
