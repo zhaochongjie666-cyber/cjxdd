@@ -154,7 +154,8 @@ ls $DEMO/.xdd/iterations/iter-1/pipeline/status.md
 
 # 2. 开 tmux 会话 (命名 "xdd-test" 方便 attach)
 tmux new-session -d -s xdd-test -c $DEMO
-tmux send-keys -t xdd-test "claude" Enter          # 启 m2cc (Claude Code CLI)
+# 启 m2cc (用户的自定义 Claude Code CLI 快捷指令, 配置 MiniMax 模型)
+tmux send-keys -t xdd-test "m2cc" Enter
 sleep 8                                           # 等 m2cc 启动 + SessionStart hook 跑
 
 # 3. 监督: 跑 xdd 6 Phase 完整流程
