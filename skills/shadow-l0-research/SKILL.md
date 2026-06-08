@@ -69,11 +69,108 @@ L0 是"每轮的起点", **不是"项目一次性"**, **不是"iter-1 例外"**�
 
 ## 怎么做
 
-### 1. 确定调研范围
+### 1. (v2 新增) **L1 消费 — 跑 L0 前先读已有 L1**
 
-从用户的需求描述中提取调研方向。不要缩小范围——宁可多记录，不可遗漏。
+L0 不是"零起点发散", 是**站在已有 L1 肩膀上**继续发散. iter-1 第一次跑没 L1 可读 (首次), iter-2+ 跑前**必读**现 L1 避免重发明.
 
-### 2. 发散调研
+**读哪些** (按 iter-N 当前 L1 状态, 7 类必读):
+```
+.shadow/L1-business/intent.md                # 项目意图 / 成功标准
+.shadow/L1-business/business-landscape.md    # 业务全景 / 限界上下文概览
+.shadow/L1-business/{BXX}*/research.md      # 各业务线 research.md
+.shadow/L1-business/{BXX}*/spec.md           # 各业务线 spec.md (RXX 规则现状)
+.shadow/L1.5-architecture/architecture.md    # 架构决策 D1..D20
+.shadow/L2-e2e/coverage-matrix.md            # 已覆盖的验收维度
+.shadow/L3-resilience/failure-modes/         # 失败模式目录
+```
+
+**读完标 3 段到笔记本** (写 `00-l1-recap.md` 或每节头部):
+- **已有什么**: 哪些规则 / 端点 / 兜底 / 画像 / 旅程 已存在 (列 RXX / API 端点)
+- **缺什么**: 哪些维度空白 (e.g. 业务线 X 没 research.md, 角色 Y 没画像)
+- **本轮增量**: 本轮新需求涉及哪些 RXX / 端点 / 画像 (跟 L1 delta)
+
+**为什么 v2 加这段**:
+- 旧"零起点发散" → iter-2+ 大量重写 7 笔记本, 跟 iter-1 L1 重复 → 浪费时间
+- 新"L1 增量发散" → iter-2+ 只发散"本轮新需求", 旧维度标注 "@inherits: iter-1 §X" → 笔记本聚焦
+- L1 → L0 反向链: 笔记能溯源到 L1 的 RXX / 端点, L1 Research 收敛时省力
+
+### 2. (v2 新增) **Brainstorm — 跟用户对话探索方案**
+
+L0 跑前**先**跟用户 brainstorm, **再**发散写 7 笔记本. Brainstorm 是"用户驱动 + AI 引导"的对话, 不是 AI 单向发散.
+
+**触发**: 用户说 "想做一个 XX" / "想加 XX 功能" / "想优化 XX" 但需求模糊时, walker 自动进入 brainstorm 模式 (问 5-10 引导问).
+
+**5-10 引导问 (按需挑, 不全问)**:
+| # | 引导问 | 目的 |
+|---|--------|------|
+| 1 | "想解决什么具体问题? 痛点 / 现状 / 期望" | 锚定问题空间 |
+| 2 | "谁最痛? 用现有方案遇到啥障碍" | 锁定核心用户 |
+| 3 | "想过哪些方案? 各方案利弊?" | 探索方案空间 |
+| 4 | "有哪些硬约束 (合规 / 性能 / 预算 / 集成)? 不能妥协的有哪些?" | 划清边界 |
+| 5 | "成功长啥样? 哪些数字或事实能证明做对了" | 定义验收标准 |
+| 6 | "现在最担心失败的是啥? 怎么算失败" | 暴露风险 |
+| 7 | "有现成组件 / 内部系统 / 团队可复用吗? 还是要从零造" | 评估复用面 |
+| 8 | "时间预算 / 优先级 / MVP 边界?" | 划 MVP |
+| 9 | "谁会反对? 他们的顾虑是啥? 怎么回" | 政治面 |
+| 10 | "做完的下一个项目 / 下一个 iter 大概会接啥? 提前留啥接口" | 演进路径 |
+
+**Brainstorm 产物**: 写到 `.shadow/L0-research/08-brainstorm.md`, 格式:
+```markdown
+# Brainstorm — {项目 / 主题}
+
+> 跟用户对话时间: {ISO ts} / 参与人: {user} + {walker}
+> 引导问: 5-10 选 {N} 问 (按用户需求模糊度)
+
+## 1. 想解决什么具体问题
+{用户原话 + AI 总结}
+
+## 2. 谁最痛
+{用户描述}
+
+...
+
+## 3. 想过的方案
+- 方案 A: {描述, 利弊}
+- 方案 B: {描述, 利弊}
+- 方案 C: {描述, 利弊}
+
+## 4. 硬约束
+- {约束 1}
+- {约束 2}
+
+## 5. 成功标准
+- {可量化 1} (e.g. 延迟 < 200ms)
+- {可量化 2} (e.g. 用户 7 日留存 > 60%)
+
+## 6. 担心失败
+- {风险 1}
+- {风险 2}
+
+## 7. 复用 / 集成
+- {现成组件}
+- {需新造}
+
+## 8. MVP 边界
+- v1 含: {核心功能}
+- v1 不含: {非核心, 留后续}
+
+## 9. 政治面
+- 反对者 / 顾虑 / 回应
+
+## 10. 演进路径
+- 下一 iter / 下一项目
+```
+
+**为什么 v2 加 brainstorm**:
+- 旧 L0 假设用户上来就能写需求 → 实际很多场景用户只有模糊方向 (e.g. "我想做个 AI 笔记")
+- brainstorm 引导问帮用户从模糊 → 具体, 写出来的 7 笔记本有"根"
+- 跟"用户探索方案" 哲学一致: 不替用户做决定, 帮用户想清楚
+
+### 3. 确定调研范围
+
+从用户需求 + brainstorm 结论中提取调研方向。不要缩小范围——宁可多记录，不可遗漏。
+
+### 4. 发散调研
 
 按以下方向自由记录（不限顺序、不限数量）：
 
@@ -87,16 +184,56 @@ L0 是"每轮的起点", **不是"项目一次性"**, **不是"iter-1 例外"**�
 | 约束与风险 | 合规要求？性能要求？安全风险？已知陷阱？ |
 | 灵感与假设 | 如果这样做会怎样？这个方向可行吗？ |
 
-### 3. 外部调研（必须）
+### 5. 外部调研（v2 强化）
 
-使用 Web Search 搜索至少 3 个方向：
-- `{domain} best practices`
-- `{domain} open source` / `github {domain}`
-- `{domain} lessons learned` / `{domain} production experience`
+使用 Web Search 搜索至少 **5 个方向** (v2 从 3 升 5, 模板更具体):
 
-搜索结果、文章要点、开源项目观察全部记录在笔记中。
+| # | 搜索方向 | 模板 | 应该抄什么 |
+|---|---------|------|-----------|
+| 1 | **行业最佳实践** | `{domain} best practices 2026` / `{domain} industry standards` / `{domain} RFC` | 行业公认的"对"做法, 模式命名 (e.g. "Circuit Breaker"), 引用源 |
+| 2 | **竞品分析** | `{competitor_name} architecture` / `{competitor_name} review` / `{competitor_name} pricing` | 竞品怎么做的, 优缺点, 用户抱怨, 截图描述 |
+| 3 | **技术方案** | `{tech} open source` / `github {tech}` / `{tech} benchmark` | 开源项目 (star > 1k), 性能基准, 维护状态, license |
+| 4 | **安全事件 / 教训** | `{domain} security incident` / `{domain} postmortem` / `{domain} advisory` | 历史踩过的坑, 失败模式, 跟 L3 failure-modes 对齐 |
+| 5 | **用户反馈** | `{domain} user feedback` / `{competitor} complaints reddit` / `{domain} survey 2026` | 真实用户抱怨 / 期望 / 用法, 跟 03-user-personas / 04-user-journeys 对齐 |
 
-### 4. 记录用户理解（必须）
+**产物**: 搜索结果、文章要点、开源项目观察、URL 引用全部记录在 7 笔记本, **特别是 07-external-references.md** (主索引):
+
+```markdown
+# 07 External References
+
+> 本轮调研引用的所有外部来源, 按方向分类.
+
+## 行业最佳实践
+- [{title}]({url}) — {1 句要点} (引自 {author/source})
+- [...]
+
+## 竞品分析
+- [{title}]({url}) — {1 句要点}
+- [...]
+
+## 技术方案 (开源)
+- [{repo}]({github_url}) — star={N}, license={X}, {1 句关键点}
+- [...]
+
+## 安全事件 / 教训
+- [{title}]({url}) — {1 句踩坑}
+- [...]
+
+## 用户反馈
+- [{title}]({url}) — {1 句用户原话}
+- [...]
+
+## 引用规则
+- L1 Research 收敛时, 这些 URL 是关键引用源, 必须可点开
+- iter-2+ 跑 L0 时, 已有引用标 "@inherits: iter-1 §XX" 不重抄
+```
+
+**v2 强化理由**:
+- 旧 3 方向太弱, 漏安全事件 (跟 L3 失败模式对齐) 跟用户反馈 (跟画像对齐)
+- 5 方向是 v2 新基线, 跟 L1.5 质量属性 / L3 FMEA / L1 画像三方对齐
+- 07-external-references.md 主索引化, 引用可溯源
+
+### 6. 记录用户理解（必须）
 
 用户画像发散（如果 `.shadow/scale.md` 存在，按 `persona_dimensions` 参数取维度数；否则默认 6 维度，每个维度至少 1 个画像变体）：
 
@@ -131,13 +268,15 @@ L0 是"每轮的起点", **不是"项目一次性"**, **不是"iter-1 例外"**�
 
 ```
 .shadow/L0-research/
+  00-l1-recap.md              — (v2 必含) L1 消费摘要: 已有 / 缺 / 本轮增量
   01-industry-notes.md        — 行业调研笔记
   02-competitor-analysis.md   — 竞品分析笔记
   03-user-personas.md         — 用户画像发散（必须包含 §4 的 6 维度画像）
   04-user-journeys.md         — 用户旅程穷举（必须包含 §4 的 5 层次旅程）
   05-tech-research.md         — 技术方案调研笔记
   06-events-brainstorm.md     — 事件风暴发散
-  07-external-references.md   — 外部来源汇总
+  07-external-references.md   — (v2 强化) 外部来源汇总, 5 方向分类 + URL 主索引
+  08-brainstorm.md            — (v2 新增) 跟用户 brainstorm 引导问答案
   ...（自由增加，不限数量）
 ```
 
@@ -147,6 +286,8 @@ L0 是"每轮的起点", **不是"项目一次性"**, **不是"iter-1 例外"**�
 - **无品味约束**：不需要精简、不需要精确、不需要克制
 - **无门禁检查**：L0 不设 gate
 - **无下游消费**：L1 Research 不直接消费 L0 笔记，而是从中**收敛提取**关键结论
-- **必须进行外部调研**：搜索行业最佳实践、开源项目、社区经验
+- **必须进行外部调研**：搜索 5 方向 (v2: 行业 / 竞品 / 技术 / 安全 / 用户反馈), 产物写到 07-external-references.md
 - **必须进行用户理解**：画像发散 + 旅程穷举
-- **文件命名必须以上述 7 个为基准**：L1 Research 按文件名定位各分节。可增加额外文件，不可省略基准文件
+- **必须 brainstorm (v2)**: 用户需求模糊时跑 5-10 引导问, 写到 08-brainstorm.md
+- **必须消费 L1 (v2)**: iter-2+ 跑前读现有 L1, 写 00-l1-recap.md
+- **文件命名必须以上述 9 个为基准 (v2: 7 → 9, 加 00-l1-recap.md + 08-brainstorm.md)**：L1 Research 按文件名定位各分节。可增加额外文件，不可省略基准文件
