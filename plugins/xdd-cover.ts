@@ -1,4 +1,4 @@
-// back-cover.ts — OpenCode plugin: 防"伪完成"硬锁
+// xdd-cover.ts — OpenCode plugin: 防"伪完成"硬锁
 // 简化版: 只用 Node.js 内置 + Hooks 类型, 不依赖 zod/@opencode-ai/plugin
 // 设计: /home/zhaocj/.claude/skills/opencode-learning/notes/back-cover-pure-plugin.md
 

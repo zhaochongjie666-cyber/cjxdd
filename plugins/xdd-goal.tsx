@@ -1,4 +1,4 @@
-// plugins/goal-mode.tsx — Shadow Goal 模式 (OpenCode TUI plugin)
+// plugins/xdd-goal.tsx — xdd Goal 模式 (OpenCode TUI plugin)
 //
 // v3 修复 (2026-06-08, 用户报告):
 //   1. 解析 newline 失败: 旧正则 \s+(.+) 不跨行, 改用 ^\s*\/(?:cjgoal|cj|g)(?:@[\w-]+)?\s*([\s\S]+)$ 跨行匹配
@@ -18,7 +18,7 @@
 // AI 把 /cjgoal {text} 当普通 user message 看到并执行 (TUI chat 流会显示 AI 的回复, 这是 OpenCode 架构).
 // Claude Code 端等价 slash command 见 commands/cjgoal.md (prompt-based, 简化版).
 //
-// 多 session 隔离: 每个 session 独立目录 .shadow/goal-runs/{sessionID}/, 包含 diag.log / current.json / {runId}/goal.md.
+// 多 session 隔离: 每个 session 独立目录 .xdd/goal-runs/{sessionID}/, 包含 diag.log / current.json / {runId}/goal.md.
 /** @jsxImportSource @opentui/solid */
 import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { existsSync, mkdirSync, writeFileSync, unlinkSync, appendFileSync, readdirSync, readFileSync } from "fs"
@@ -26,7 +26,7 @@ import { join, dirname } from "path"
 
 // Boot diag: 写到 stderr (OpenCode 会捕获到 stderr.log)
 const bootLog = (msg: string): void => {
-  try { process.stderr.write(`[shadow-goal] ${msg}\n`) } catch {}
+  try { process.stderr.write(`[xdd-goal] ${msg}\n`) } catch {}
 }
 bootLog(`module-import pid=${process.pid}`)
 
@@ -89,9 +89,9 @@ function resolveProjectRoot(api: TuiPluginApi): string {
   return p.directory || p.worktree || process.cwd()
 }
 
-// per-session 目录: .shadow/goal-runs/{sessionID}/
-function sessionDir(shadowDir: string, sessionID: string): string {
-  return join(shadowDir, "goal-runs", sessionID)
+// per-session 目录: .xdd/goal-runs/{sessionID}/
+function sessionDir(xddDir: string, sessionID: string): string {
+  return join(xddDir, "goal-runs", sessionID)
 }
 
 // per-session current state: {sessionDir}/current.json
@@ -150,12 +150,12 @@ function toast(
 const plugin: TuiPlugin = async (api) => {
   bootLog("tui called")
   const root = resolveProjectRoot(api)
-  const shadowDir = join(root, ".shadow")
-  const hasShadow = existsSync(shadowDir)
-  if (!hasShadow) {
-    bootLog(`no shadow dir at ${shadowDir} (root=${root}); /cjgoal 会提示先跑 shadow-init`)
+  const xddDir = join(root, ".xdd")
+  const hasxdd = existsSync(xddDir)
+  if (!hasxdd) {
+    bootLog(`no xdd dir at ${xddDir} (root=${root}); /cjgoal 会提示先跑 xdd-init`)
   } else {
-    bootLog(`shadow dir OK at ${shadowDir}`)
+    bootLog(`xdd dir OK at ${xddDir}`)
   }
 
   let run: Run | null = null
@@ -165,9 +165,9 @@ const plugin: TuiPlugin = async (api) => {
   // ---- /cjgoal slash command: 让 OpenCode input 输 /cjgoal 时有补全 ----
   api.command?.register(() => [{
     title: "/cjgoal {目标}",
-    value: "shadow.cjgoal.start",
+    value: "xdd.cjgoal.start",
     description: "选 /cjgoal + 回车 = 补全到 input, 再输目标文字 + 回车 = 启动",
-    category: "Shadow",
+    category: "xdd",
     slash: { name: "cjgoal", aliases: ["cj", "g"] },
     onSelect: () => {
       try {
@@ -180,7 +180,7 @@ const plugin: TuiPlugin = async (api) => {
 
   // ---- helper: 拿到 sessionID 后初始化 per-session diag + 尝试恢复 run ----
   function initSession(sessionID: string): string {
-    const sDir = sessionDir(shadowDir, sessionID)
+    const sDir = sessionDir(xddDir, sessionID)
     mkdirSync(sDir, { recursive: true })
     _diagPath = join(sDir, "diag.log")
     return sDir
@@ -210,8 +210,8 @@ const plugin: TuiPlugin = async (api) => {
     const subMatch = SUBCMD_RE.exec(afterPrefix)
     if (subMatch) {
       const sub = subMatch[1].toLowerCase()
-      if (!hasShadow) {
-        toast(api, "warning", "Goal ⚠", "项目无 .shadow/ 目录. 请先跑 shadow-init 初始化.", 6000)
+      if (!hasxdd) {
+        toast(api, "warning", "Goal ⚠", "项目无 .xdd/ 目录. 请先跑 xdd-init 初始化.", 6000)
         return
       }
       const sDir = initSession(sessionID)
@@ -294,9 +294,9 @@ const plugin: TuiPlugin = async (api) => {
       return
     }
 
-    if (!hasShadow) {
-      diag({ ev: "skip", reason: "no-shadow-dir", root, sessionID })
-      toast(api, "warning", "Goal ⚠", "项目无 .shadow/ 目录. 请先跑 shadow-init 初始化.", 6000)
+    if (!hasxdd) {
+      diag({ ev: "skip", reason: "no-xdd-dir", root, sessionID })
+      toast(api, "warning", "Goal ⚠", "项目无 .xdd/ 目录. 请先跑 xdd-init 初始化.", 6000)
       return
     }
 
@@ -464,5 +464,5 @@ const plugin: TuiPlugin = async (api) => {
   return  // plugin 返回 void
 }
 
-const mod: TuiPluginModule & { id: string } = { id: "shadow-goal", tui: plugin }
+const mod: TuiPluginModule & { id: string } = { id: "xdd-goal", tui: plugin }
 export default mod

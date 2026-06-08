@@ -1,4 +1,4 @@
-// shadow-hooks.ts — OpenCode plugin: Shadow 体系的 OpenCode 端实现
+// xdd-hooks.ts — OpenCode plugin: xdd 体系的 OpenCode 端实现
 // 行为对齐基线: hooks/*.sh (Claude Code). 详见 .claude/plans/eager-brewing-oasis.md.
 //
 // 5 个 hook 翻译自 hooks/*.sh:
@@ -8,7 +8,7 @@
 //   L4 tool.execute.after (write/edit)     ↔ PostToolUse Write/Edit (post-write-stub-scan.sh)
 //   L5 event (message.updated finish=stop) ↔ Stop (stop-gate.sh)
 //
-// 单一源真理: skills/shadow-init/templates/shadow-schema.json. 用 realpathSync
+// 单一源真理: skills/xdd-init/templates/xdd-schema.json. 用 realpathSync
 // 解开软链找真正位置, 这样 plugin 无论是直接调还是通过软链调都能找到 schema.
 //
 // 安装: install-to-opencode.sh 软链到 ~/.config/opencode/plugins/
@@ -29,10 +29,10 @@ import { join, dirname, basename } from "path"
 import { execSync } from "child_process"
 
 // ════════════════════════════════════════════════════════════════════
-// § 1 类型定义 (单一源真理来自 shadow-schema.json)
+// § 1 类型定义 (单一源真理来自 xdd-schema.json)
 // ════════════════════════════════════════════════════════════════════
 
-interface ShadowStage {
+interface xddStage {
   id: string
   num: number
   display: string
@@ -66,13 +66,13 @@ interface LifecycleRoles {
   template_instance: string
 }
 
-interface ShadowSchema {
-  shadow_version: string
-  stages: ShadowStage[]
+interface xddSchema {
+  xdd_version: string
+  stages: xddStage[]
   stub_patterns: StubPatterns
   scale_schema: { fields: Record<string, { type: string; default: unknown; enum?: string[]; min?: number; max?: number }> }
   status_md: { version: number; markers: Record<string, string>; stage_row_regex: string; bxx_section_regex: string; last_updated_field: string }
-  shadow_init: { required_files: string[]; default_bizlines: string[]; status_md_template_header: string[]; status_md_template_table: string[] }
+  xdd_init: { required_files: string[]; default_bizlines: string[]; status_md_template_header: string[]; status_md_template_table: string[] }
   lifecycle_artifacts?: { roles: LifecycleRoles; artifacts: LifecycleArtifact[] }
 }
 
@@ -87,10 +87,10 @@ interface GateResult {
 // § 2 Schema & 路径解析
 // ════════════════════════════════════════════════════════════════════
 
-let _schemaCache: ShadowSchema | null = null
+let _schemaCache: xddSchema | null = null
 let _schemaPath = ""
 
-// 实施 A5: CLI 入口强绕 Meta 旁路. CLI 进程跑 bun shadow-hooks.ts --run-stop-gate
+// 实施 A5: CLI 入口强绕 Meta 旁路. CLI 进程跑 bun xdd-hooks.ts --run-stop-gate
 // 时 set true, 真实 OpenCode event ctx 永不动 (默认 false).
 // 这让用户能在 cjxdd 自身 (framework meta) 跑通 stop-gate 看真硬门禁.
 let _forceRunStopGate = false
@@ -107,21 +107,21 @@ function resolveSchemaPath(): string {
   }
   const repoRoot = join(realDir, "..")
   const cwd = process.cwd()
-  if (existsSync(join(cwd, ".shadow", "shadow-schema.json"))) return join(cwd, ".shadow", "shadow-schema.json")
-  if (existsSync(join(repoRoot, ".shadow", "shadow-schema.json"))) return join(repoRoot, ".shadow", "shadow-schema.json")
-  if (existsSync(join(repoRoot, "framework", "shadow-schema.json"))) return join(repoRoot, "framework", "shadow-schema.json")
-  if (existsSync(join(repoRoot, "skills", "shadow-init", "templates", "shadow-schema.json"))) {
-    return join(repoRoot, "skills", "shadow-init", "templates", "shadow-schema.json")
+  if (existsSync(join(cwd, ".xdd", "xdd-schema.json"))) return join(cwd, ".xdd", "xdd-schema.json")
+  if (existsSync(join(repoRoot, ".xdd", "xdd-schema.json"))) return join(repoRoot, ".xdd", "xdd-schema.json")
+  if (existsSync(join(repoRoot, "framework", "xdd-schema.json"))) return join(repoRoot, "framework", "xdd-schema.json")
+  if (existsSync(join(repoRoot, "skills", "xdd-init", "templates", "xdd-schema.json"))) {
+    return join(repoRoot, "skills", "xdd-init", "templates", "xdd-schema.json")
   }
-  return join(cwd, ".shadow", "shadow-schema.json")
+  return join(cwd, ".xdd", "xdd-schema.json")
 }
 
-function loadShadowSchema(): ShadowSchema | null {
+function loadxddSchema(): xddSchema | null {
   if (_schemaCache) return _schemaCache
   _schemaPath = resolveSchemaPath()
   if (!existsSync(_schemaPath)) return null
   try {
-    _schemaCache = JSON.parse(readFileSync(_schemaPath, "utf-8")) as ShadowSchema
+    _schemaCache = JSON.parse(readFileSync(_schemaPath, "utf-8")) as xddSchema
     return _schemaCache
   } catch {
     return null
@@ -131,7 +131,7 @@ function loadShadowSchema(): ShadowSchema | null {
 function findProjectRoot(start: string = process.cwd()): string | null {
   let dir = start
   for (let i = 0; i < 8; i++) {
-    if (existsSync(join(dir, ".shadow")) || existsSync(join(dir, ".git"))) return dir
+    if (existsSync(join(dir, ".xdd")) || existsSync(join(dir, ".git"))) return dir
     const parent = dirname(dir)
     if (parent === dir) return null
     dir = parent
@@ -139,10 +139,10 @@ function findProjectRoot(start: string = process.cwd()): string | null {
   return null
 }
 
-function findShadowDir(start: string = process.cwd()): string | null {
+function findxddDir(start: string = process.cwd()): string | null {
   let dir = start
   for (let i = 0; i < 8; i++) {
-    if (existsSync(join(dir, ".shadow"))) return join(dir, ".shadow")
+    if (existsSync(join(dir, ".xdd"))) return join(dir, ".xdd")
     const parent = dirname(dir)
     if (parent === dir) return null
     dir = parent
@@ -151,7 +151,7 @@ function findShadowDir(start: string = process.cwd()): string | null {
 }
 
 // ───────── Meta 任务检测 (P0-7 Round 1) ─────────
-// 当项目根就是 Shadow framework 自身 (cjxdd) 时, hook 不应注入
+// 当项目根就是 xdd framework 自身 (cjxdd) 时, hook 不应注入
 // "build me X" → walker 引导, 不应注 stage 状态查询答案.
 // 判定: 项目根同时存在 agents/xdd-walker.md + skills/xdd-init/SKILL.md
 //       + hooks/xdd-gate-lib.sh.
@@ -171,22 +171,22 @@ function resolveGateScriptPath(): string {
   } catch {
     // fall through
   }
-  return join(realDir, "..", "skills", "shadow-artifact-lifecycle", "scripts", "gate-check-lifecycle.sh")
+  return join(realDir, "..", "skills", "xdd-artifact-lifecycle", "scripts", "gate-check-lifecycle.sh")
 }
 
 // ════════════════════════════════════════════════════════════════════
 // § 3 Iter & Status
 // ════════════════════════════════════════════════════════════════════
 
-function readCurrentIter(shadowDir: string): string | null {
-  const f = join(shadowDir, "current-iteration")
+function readCurrentIter(xddDir: string): string | null {
+  const f = join(xddDir, "current-iteration")
   if (!existsSync(f)) return null
   return readFileSync(f, "utf-8").trim() || null
 }
 
-function readStatusMd(shadowDir: string, iter: string): string | null {
+function readStatusMd(xddDir: string, iter: string): string | null {
   if (!iter) return null
-  const f = join(shadowDir, "iterations", iter, "pipeline", "status.md")
+  const f = join(xddDir, "iterations", iter, "pipeline", "status.md")
   if (!existsSync(f)) return null
   return readFileSync(f, "utf-8")
 }
@@ -236,24 +236,24 @@ function updateStageStatus(statusPath: string, stageDisplay: string, newMark: st
 // § 4 Stage 查询
 // ════════════════════════════════════════════════════════════════════
 
-function getStageBySkill(schema: ShadowSchema, skill: string): ShadowStage | null {
+function getStageBySkill(schema: xddSchema, skill: string): xddStage | null {
   return schema.stages.find((s) => s.skill === skill) || null
 }
-function getStageByAlias(schema: ShadowSchema, name: string): ShadowStage | null {
+function getStageByAlias(schema: xddSchema, name: string): xddStage | null {
   return schema.stages.find((s) => s.aliases.includes(name)) || null
 }
-function getStageById(schema: ShadowSchema, id: string): ShadowStage | null {
+function getStageById(schema: xddSchema, id: string): xddStage | null {
   return schema.stages.find((s) => s.id === id) || null
 }
-function getStageByDisplay(schema: ShadowSchema, display: string): ShadowStage | null {
+function getStageByDisplay(schema: xddSchema, display: string): xddStage | null {
   return schema.stages.find((s) => s.display === display) || null
 }
-function nextStageId(schema: ShadowSchema, cur: string): string | null {
+function nextStageId(schema: xddSchema, cur: string): string | null {
   const cs = getStageById(schema, cur)
   if (!cs) return null
   return schema.stages.find((s) => s.num === cs.num + 1)?.id || null
 }
-function nextStageSkill(schema: ShadowSchema, cur: string): string | null {
+function nextStageSkill(schema: xddSchema, cur: string): string | null {
   const next = nextStageId(schema, cur)
   return next ? getStageById(schema, next)?.skill || null : null
 }
@@ -270,7 +270,7 @@ function patternToRegex(pat: string): RegExp {
   )
 }
 
-function matchStageByOutput(schema: ShadowSchema, absFilePath: string, projectRoot: string): string | null {
+function matchStageByOutput(schema: xddSchema, absFilePath: string, projectRoot: string): string | null {
   const rel = absFilePath.startsWith(projectRoot + "/")
     ? absFilePath.slice(projectRoot.length + 1)
     : absFilePath
@@ -372,19 +372,19 @@ function extractContextMap(statusMd: string | null): string {
 // ════════════════════════════════════════════════════════════════════
 
 let _stubRegexes: RegExp[] | null = null
-function getStubRegexes(schema: ShadowSchema): RegExp[] {
+function getStubRegexes(schema: xddSchema): RegExp[] {
   if (_stubRegexes) return _stubRegexes
   _stubRegexes = schema.stub_patterns.patterns.map((p) => new RegExp(p))
   return _stubRegexes
 }
 
-function isSourceFile(filePath: string, schema: ShadowSchema): boolean {
+function isSourceFile(filePath: string, schema: xddSchema): boolean {
   return schema.stub_patterns.ext_globs.some((g) => filePath.endsWith(g.replace("*", "")))
 }
 
 function scanStubsInFile(
   filePath: string,
-  schema: ShadowSchema,
+  schema: xddSchema,
   cap: number = 10,
 ): { line: number; text: string }[] {
   if (!existsSync(filePath) || !isSourceFile(filePath, schema)) return []
@@ -432,12 +432,12 @@ function l5ItemHash(section: string, content: string): string {
   return djb2(`${section}::${content}`)
 }
 
-function l5UnresolvedPath(shadowDir: string, iter: string): string {
-  return join(shadowDir, "iterations", iter, ".l5-unresolved.json")
+function l5UnresolvedPath(xddDir: string, iter: string): string {
+  return join(xddDir, "iterations", iter, ".l5-unresolved.json")
 }
 
-function readL5Unresolved(shadowDir: string, iter: string): L5Item[] {
-  const p = l5UnresolvedPath(shadowDir, iter)
+function readL5Unresolved(xddDir: string, iter: string): L5Item[] {
+  const p = l5UnresolvedPath(xddDir, iter)
   if (!existsSync(p)) return []
   try {
     const data = JSON.parse(readFileSync(p, "utf-8"))
@@ -447,8 +447,8 @@ function readL5Unresolved(shadowDir: string, iter: string): L5Item[] {
   }
 }
 
-function writeL5Unresolved(shadowDir: string, iter: string, items: L5Item[]): void {
-  const p = l5UnresolvedPath(shadowDir, iter)
+function writeL5Unresolved(xddDir: string, iter: string, items: L5Item[]): void {
+  const p = l5UnresolvedPath(xddDir, iter)
   try {
     writeFileSync(p, JSON.stringify({
       iter,
@@ -465,11 +465,11 @@ function writeL5Unresolved(shadowDir: string, iter: string, items: L5Item[]): vo
 //   - 当前 run 出现的: 续期 (last_seen, count++), 或新增
 //   - 当前 run 没出现: 自动消项 (resolved)
 function syncL5Unresolved(
-  shadowDir: string,
+  xddDir: string,
   iter: string,
   current: { section: string; content: string }[],
 ): L5Item[] {
-  const existing = readL5Unresolved(shadowDir, iter)
+  const existing = readL5Unresolved(xddDir, iter)
   const now = new Date().toISOString()
   const currentByHash = new Map<string, { section: string; content: string }>()
   for (const c of current) {
@@ -502,7 +502,7 @@ function syncL5Unresolved(
     })
   }
   merged.sort((a, b) => b.last_seen.localeCompare(a.last_seen))
-  writeL5Unresolved(shadowDir, iter, merged)
+  writeL5Unresolved(xddDir, iter, merged)
   return merged
 }
 
@@ -534,7 +534,7 @@ function scanBypassInFile(filePath: string): { line: number; reason: string }[] 
 
 function scanBypassMarkers(projectRoot: string, sourceDirs: string[]): { file: string; line: number; reason: string }[] {
   const results: { file: string; line: number; reason: string }[] = []
-  const skip = /node_modules|\.venv|__pycache__|dist|build|target|\.git|\.shadow/
+  const skip = /node_modules|\.venv|__pycache__|dist|build|target|\.git|\.xdd/
   const visited = new Set<string>()
   for (const dir of sourceDirs) {
     if (!existsSync(dir)) continue
@@ -548,7 +548,7 @@ function scanBypassMarkers(projectRoot: string, sourceDirs: string[]): { file: s
         return
       }
       for (const e of entries) {
-        if (e.name.startsWith(".") && e.name !== ".shadow") continue
+        if (e.name.startsWith(".") && e.name !== ".xdd") continue
         if (skip.test(e.name)) continue
         const p = join(d, e.name)
         if (e.isDirectory()) walk(p)
@@ -573,12 +573,12 @@ interface BypassLogEntry {
   first_seen: string
 }
 
-function bypassLogPath(shadowDir: string, iter: string): string {
-  return join(shadowDir, "iterations", iter, "bypass-log.md")
+function bypassLogPath(xddDir: string, iter: string): string {
+  return join(xddDir, "iterations", iter, "bypass-log.md")
 }
 
-function readBypassLog(shadowDir: string, iter: string): Map<string, BypassLogEntry> {
-  const p = bypassLogPath(shadowDir, iter)
+function readBypassLog(xddDir: string, iter: string): Map<string, BypassLogEntry> {
+  const p = bypassLogPath(xddDir, iter)
   const out = new Map<string, BypassLogEntry>()
   if (!existsSync(p)) return out
   try {
@@ -601,9 +601,9 @@ function readBypassLog(shadowDir: string, iter: string): Map<string, BypassLogEn
   return out
 }
 
-function appendBypassLog(shadowDir: string, iter: string, newEntries: BypassLogEntry[]): { added: number; total: number } {
-  const p = bypassLogPath(shadowDir, iter)
-  const existing = readBypassLog(shadowDir, iter)
+function appendBypassLog(xddDir: string, iter: string, newEntries: BypassLogEntry[]): { added: number; total: number } {
+  const p = bypassLogPath(xddDir, iter)
+  const existing = readBypassLog(xddDir, iter)
   const now = new Date().toISOString()
   let added = 0
   let newSection = ""
@@ -664,7 +664,7 @@ function findSourceDirs(projectRoot: string): string[] {
 
 function scanSourceDirs(
   sourceDirs: string[],
-  schema: ShadowSchema,
+  schema: xddSchema,
   cap: number = 25,
 ): { file: string; line: number; text: string }[] {
   const findings: { file: string; line: number; text: string }[] = []
@@ -705,7 +705,7 @@ function matchGlob(glob: string, target: string): boolean {
 }
 
 function lifecycleRoleOf(
-  schema: ShadowSchema | null,
+  schema: xddSchema | null,
   filePath: string,
   projectRoot: string,
 ): string {
@@ -724,7 +724,7 @@ function lifecycleRoleOf(
 }
 
 function countRoleFiles(
-  schema: ShadowSchema | null,
+  schema: xddSchema | null,
   projectRoot: string,
   role: string,
 ): number {
@@ -733,7 +733,7 @@ function countRoleFiles(
   for (const art of schema.lifecycle_artifacts.artifacts) {
     if (art.role !== role) continue
     if (art.canonical_path.startsWith("skills/")) continue
-    const rel = art.canonical_path.replace(/^\.\/+/, "").replace(/^\.shadow\//, "")
+    const rel = art.canonical_path.replace(/^\.\/+/, "").replace(/^\.xdd\//, "")
     const abs = join(projectRoot, rel)
     if (abs.endsWith("/*")) {
       const dir = abs.slice(0, -2)
@@ -753,9 +753,9 @@ function countRoleFiles(
 // § 8 业务逻辑: WO 统计 / 意图 / 压力 / stage 查询
 // ════════════════════════════════════════════════════════════════════
 
-function countWoReports(shadowDir: string, iter: string | null): string {
-  if (!shadowDir || !iter) return "total=0"
-  const woDir = join(shadowDir, "iterations", iter, "work-orders")
+function countWoReports(xddDir: string, iter: string | null): string {
+  if (!xddDir || !iter) return "total=0"
+  const woDir = join(xddDir, "iterations", iter, "work-orders")
   if (!existsSync(woDir)) return "total=0"
   let done = 0, partial = 0, blocked = 0, failed = 0
   function walk(d: string) {
@@ -860,29 +860,29 @@ function matchStageQuery(text: string): "current" | "next" | null {
 
 function answerStageQuery(
   query: "current" | "next",
-  shadowDir: string | null,
+  xddDir: string | null,
   iter: string | null,
   statusMd: string | null,
-  schema: ShadowSchema | null,
+  schema: xddSchema | null,
 ): string {
-  if (!schema) return "[shadow] Schema 未加载, 无法回答 stage 状态。"
+  if (!schema) return "[xdd] Schema 未加载, 无法回答 stage 状态。"
   if (query === "current") {
     const pending = detectPendingStage(statusMd)
     const doing = detectDoingStage(statusMd)
     const current = pending || doing
-    if (!current) return `[shadow] === Stage 状态查询 ===\n[shadow] iter: ${iter || "(无)"}\n[shadow] current: 全部 ✅ DONE`
+    if (!current) return `[xdd] === Stage 状态查询 ===\n[xdd] iter: ${iter || "(无)"}\n[xdd] current: 全部 ✅ DONE`
     const stage = getStageByDisplay(schema, current) || getStageByAlias(schema, current)
-    if (!stage) return `[shadow] === Stage 状态查询 ===\n[shadow] iter: ${iter || "(无)"}\n[shadow] current: ${current} (schema 未匹配)`
-    return `[shadow] === Stage 状态查询 ===\n[shadow] iter: ${iter || "(无)"}\n[shadow] current: ${stage.display} (skill=${stage.skill})\n[shadow] expected output: ${stage.output_patterns[0] || ""}`
+    if (!stage) return `[xdd] === Stage 状态查询 ===\n[xdd] iter: ${iter || "(无)"}\n[xdd] current: ${current} (schema 未匹配)`
+    return `[xdd] === Stage 状态查询 ===\n[xdd] iter: ${iter || "(无)"}\n[xdd] current: ${stage.display} (skill=${stage.skill})\n[xdd] expected output: ${stage.output_patterns[0] || ""}`
   } else {
     const pending = detectPendingStage(statusMd)
-    if (!pending) return `[shadow] === 下一 Stage ===\n[shadow] 没有 pending stage (可能全部 ✅ DONE)`
+    if (!pending) return `[xdd] === 下一 Stage ===\n[xdd] 没有 pending stage (可能全部 ✅ DONE)`
     const stage = getStageByDisplay(schema, pending) || getStageByAlias(schema, pending)
-    if (!stage) return `[shadow] === 下一 Stage ===\n[shadow] 当前 ⏳: ${pending}\n[shadow] 下一 stage: 未知 (schema 未匹配)`
+    if (!stage) return `[xdd] === 下一 Stage ===\n[xdd] 当前 ⏳: ${pending}\n[xdd] 下一 stage: 未知 (schema 未匹配)`
     const nextId = nextStageId(schema, stage.id)
     const next = nextId ? getStageById(schema, nextId) : null
-    if (!next) return `[shadow] === 下一 Stage ===\n[shadow] 当前 ⏳: ${pending}\n[shadow] 没有下一 stage (可能 pipeline 末尾)`
-    return `[shadow] === 下一 Stage ===\n[shadow] 当前 ⏳: ${pending}\n[shadow] 下一 stage: ${next.display} (skill=${next.skill})`
+    if (!next) return `[xdd] === 下一 Stage ===\n[xdd] 当前 ⏳: ${pending}\n[xdd] 没有下一 stage (可能 pipeline 末尾)`
+    return `[xdd] === 下一 Stage ===\n[xdd] 当前 ⏳: ${pending}\n[xdd] 下一 stage: ${next.display} (skill=${next.skill})`
   }
 }
 
@@ -890,10 +890,10 @@ function answerStageQuery(
 // § 9 门禁: P0-Y L0 重做 / P0-Z wire 变体 / 阶段顺序硬阻断
 // ════════════════════════════════════════════════════════════════════
 
-function checkL0RedoSoftWarn(shadowDir: string | null, iter: string | null): string | null {
-  if (!shadowDir || !iter) return null
+function checkL0RedoSoftWarn(xddDir: string | null, iter: string | null): string | null {
+  if (!xddDir || !iter) return null
   if (!/^iter-([1-9]|[1-9][0-9]+)$/.test(iter)) return null
-  const l0Dir = join(shadowDir, "iterations", iter, "L0-research")
+  const l0Dir = join(xddDir, "iterations", iter, "L0-research")
   if (!existsSync(l0Dir)) return `L0 调研目录不存在 (期望: ${l0Dir}/)`
   const mdFiles = readdirSync(l0Dir).filter((f) => f.endsWith(".md"))
   if (mdFiles.length === 0) return `L0 调研目录为空 (无 .md 笔记本, 期望: ${l0Dir}/*.md)`
@@ -905,9 +905,9 @@ function checkL0RedoSoftWarn(shadowDir: string | null, iter: string | null): str
   return null
 }
 
-function checkWireSvgVariants(skillName: string, shadowDir: string | null): string | null {
-  if (skillName !== "shadow-l1-wire" || !shadowDir) return null
-  const wireSvg = join(shadowDir, "L1-business", "wire.svg")
+function checkWireSvgVariants(skillName: string, xddDir: string | null): string | null {
+  if (skillName !== "xdd-wire" || !xddDir) return null
+  const wireSvg = join(xddDir, "L1-business", "wire.svg")
   if (!existsSync(wireSvg)) return null
   const text = readFileSync(wireSvg, "utf-8")
   const pages = new Set<string>()
@@ -930,12 +930,12 @@ function checkWireSvgVariants(skillName: string, shadowDir: string | null): stri
 
 function enforceStageOrder(
   skillName: string,
-  shadowDir: string | null,
+  xddDir: string | null,
   iter: string | null,
   statusMd: string | null,
-  schema: ShadowSchema,
+  schema: xddSchema,
 ): void {
-  if (!shadowDir || !iter) return
+  if (!xddDir || !iter) return
   const pending = detectPendingStage(statusMd)
   if (!pending) return
   const pendingStage = getStageByDisplay(schema, pending) || getStageByAlias(schema, pending)
@@ -954,14 +954,14 @@ function enforceStageOrder(
 
 function autoMarkDoing(
   skillName: string,
-  shadowDir: string | null,
+  xddDir: string | null,
   iter: string | null,
-  schema: ShadowSchema,
+  schema: xddSchema,
 ): string | null {
-  if (!shadowDir || !iter) return null
+  if (!xddDir || !iter) return null
   const stage = getStageBySkill(schema, skillName)
   if (!stage) return null
-  const statusPath = join(shadowDir, "iterations", iter, "pipeline", "status.md")
+  const statusPath = join(xddDir, "iterations", iter, "pipeline", "status.md")
   if (!existsSync(statusPath)) return null
   for (const line of readFileSync(statusPath, "utf-8").split("\n")) {
     if (!line.includes(stage.display) || !line.match(/^\|/)) continue
@@ -976,17 +976,17 @@ function autoMarkDoing(
 
 function autoMarkDone(
   filePath: string,
-  shadowDir: string | null,
+  xddDir: string | null,
   iter: string | null,
-  schema: ShadowSchema,
+  schema: xddSchema,
   projectRoot: string,
 ): string | null {
-  if (!shadowDir || !iter) return null
+  if (!xddDir || !iter) return null
   const stageId = matchStageByOutput(schema, filePath, projectRoot)
   if (!stageId) return null
   const stage = getStageById(schema, stageId)
   if (!stage) return null
-  const statusPath = join(shadowDir, "iterations", iter, "pipeline", "status.md")
+  const statusPath = join(xddDir, "iterations", iter, "pipeline", "status.md")
   if (!existsSync(statusPath)) return null
   for (const line of readFileSync(statusPath, "utf-8").split("\n")) {
     if (line.includes(stage.display) && line.match(/^\|/)) {
@@ -1004,7 +1004,7 @@ function autoMarkDone(
 }
 
 function evidenceArchiveWarn(
-  schema: ShadowSchema | null,
+  schema: xddSchema | null,
   filePath: string,
   projectRoot: string,
 ): string | null {
@@ -1038,7 +1038,7 @@ function runR5HardGate(gateScriptPath: string): GateResult {
 }
 
 function checkStageDrift(
-  schema: ShadowSchema,
+  schema: xddSchema,
   statusMd: string | null,
   projectRoot: string,
 ): string {
@@ -1071,8 +1071,8 @@ function checkStageDrift(
   return lines.join("\n")
 }
 
-function checkLifecycleDrift(shadowDir: string | null): string {
-  if (!shadowDir) return ""
+function checkLifecycleDrift(xddDir: string | null): string {
+  if (!xddDir) return ""
   const lines: string[] = []
   // .skel files
   const skel: string[] = []
@@ -1085,13 +1085,13 @@ function checkLifecycleDrift(shadowDir: string | null): string {
       }
     } catch { /* ignore */ }
   }
-  walkSkel(shadowDir)
+  walkSkel(xddDir)
   if (skel.length > 0) {
     lines.push(`.skel files found (L3-skeleton 已废, 由 harness-plan 替代):`)
     for (const s of skel.slice(0, 10)) lines.push(`  ${s}`)
   }
   // 老 L3 文件名
-  const l3Dir = join(shadowDir, "L3-resilience")
+  const l3Dir = join(xddDir, "L3-resilience")
   if (existsSync(l3Dir)) {
     const found: string[] = []
     for (const n of ["policies.md", "chaos-experiments.md", "resilience-test-matrix.md"]) {
@@ -1104,17 +1104,17 @@ function checkLifecycleDrift(shadowDir: string | null): string {
     }
   }
   // deploy-report.md alias
-  if (existsSync(join(shadowDir, "L6-deploy", "deploy-report.md"))) {
-    lines.push(`Found .shadow/L6-deploy/deploy-report.md (alias). Canonical = deployment-report.md`)
+  if (existsSync(join(xddDir, "L6-deploy", "deploy-report.md"))) {
+    lines.push(`Found .xdd/L6-deploy/deploy-report.md (alias). Canonical = deployment-report.md`)
   }
-  if (existsSync(join(shadowDir, "reviewer"))) {
-    lines.push(`Found .shadow/reviewer/ (schema-老路径). Canonical = .shadow/iterations/{iter}/reviews/`)
+  if (existsSync(join(xddDir, "reviewer"))) {
+    lines.push(`Found .xdd/reviewer/ (schema-老路径). Canonical = .xdd/iterations/{iter}/reviews/`)
   }
   // feature-status 位置漂移
-  if (existsSync(join(shadowDir, "feature-status"))) {
-    lines.push(`Found .shadow/feature-status/ (top-level). Canonical = .shadow/iterations/{iter}/feature-status/{slug}/`)
+  if (existsSync(join(xddDir, "feature-status"))) {
+    lines.push(`Found .xdd/feature-status/ (top-level). Canonical = .xdd/iterations/{iter}/feature-status/{slug}/`)
   }
-  const l5Dir = join(shadowDir, "L5-plan")
+  const l5Dir = join(xddDir, "L5-plan")
   if (existsSync(l5Dir)) {
     const fsInL5: string[] = []
     function walkFs(d: string) {
@@ -1130,23 +1130,23 @@ function checkLifecycleDrift(shadowDir: string | null): string {
     }
     walkFs(l5Dir)
     if (fsInL5.length > 0) {
-      lines.push(`Found L5-plan/{slug}/feature-status/. Canonical = .shadow/iterations/{iter}/feature-status/{slug}/`)
+      lines.push(`Found L5-plan/{slug}/feature-status/. Canonical = .xdd/iterations/{iter}/feature-status/{slug}/`)
       for (const p of fsInL5) lines.push(`  ${p}`)
     }
   }
   // wire 老路径
-  if (existsSync(join(shadowDir, "L1-business", "wireframes"))) {
-    lines.push(`Found .shadow/L1-business/wireframes/. Canonical = .shadow/L1-business/wire.svg (项目级单张)`)
+  if (existsSync(join(xddDir, "L1-business", "wireframes"))) {
+    lines.push(`Found .xdd/L1-business/wireframes/. Canonical = .xdd/L1-business/wire.svg (项目级单张)`)
   }
   return lines.join("\n")
 }
 
 // 实施 A2: L6 smoke-test-passed 硬门禁 (R11 Round 2 内联)
-// 跟 skills/shadow-artifact-lifecycle/scripts/gate-check-lifecycle.sh:307-412 R11 段对齐.
+// 跟 skills/xdd-artifact-lifecycle/scripts/gate-check-lifecycle.sh:307-412 R11 段对齐.
 // LIFECYCLE.md 存在 = 新项目, 启 Round 2 4 层验证; 老项目只查 mtime < 7 天.
 // 段 5 把 R5 委托给 shell 脚本, 但用户看不到 R11 专项 — 这函数把 R11 提到段 5.6
 // inline, 错误直接落 errors[] / tracked[], 5 段 summary + toast 都看得到.
-function checkL6SmokePassed(shadowDir: string | null): {
+function checkL6SmokePassed(xddDir: string | null): {
   total: number
   pass: number
   round2Fail: number
@@ -1154,11 +1154,11 @@ function checkL6SmokePassed(shadowDir: string | null): {
   isNewProject: boolean
 } {
   const out = { total: 0, pass: 0, round2Fail: 0, layerFail: "", isNewProject: false }
-  if (!shadowDir) return out
-  if (!existsSync(shadowDir)) return out
-  out.isNewProject = existsSync(join(shadowDir, "LIFECYCLE.md"))
+  if (!xddDir) return out
+  if (!existsSync(xddDir)) return out
+  out.isNewProject = existsSync(join(xddDir, "LIFECYCLE.md"))
 
-  // 走 shadowDir 找所有 smoke-test-passed marker (L6-deploy 路径下)
+  // 走 xddDir 找所有 smoke-test-passed marker (L6-deploy 路径下)
   const markers: string[] = []
   const walk = (d: string) => {
     let entries: ReturnType<typeof readdirSync>
@@ -1171,7 +1171,7 @@ function checkL6SmokePassed(shadowDir: string | null): {
       }
     }
   }
-  walk(shadowDir)
+  walk(xddDir)
 
   const SEVEN_DAYS_MS = 7 * 24 * 3600 * 1000
   const L2_RE = /production-scenarios @production: \d+ passed/
@@ -1217,7 +1217,7 @@ function checkL6SmokePassed(shadowDir: string | null): {
 }
 
 // 实施 A3: Reviewer 报告结构化校验
-// 跟 skills/shadow-reviewer/SKILL.md:198-220 内嵌模板对齐, 但模板是 AI 自由输出,
+// 跟 skills/xdd-reviewer/SKILL.md:198-220 内嵌模板对齐, 但模板是 AI 自由输出,
 // 框架加硬约束: verdict 白名单 + 矛盾判定 + verdict=PASS 必含 P1/INFO 表 + 表格
 // file:line 引用覆盖率 ≥ 50%.
 // 解决 demo 当前 "PASS with WARN" 但 warn 表 0 行 / "CONDITIONAL PASS — 1 P1" 但
@@ -1244,15 +1244,15 @@ const REVIEWER_VERDICT_RES: RegExp[] = [
   /^\s*[Vv]erdict\s*[:=]\s*([A-Z][A-Z _\/-]{0,40})/im,                             // Verdict: PASS
 ]
 
-function verifyReviewerReport(shadowDir: string | null, iter: string | null): ReviewerReportCheck {
+function verifyReviewerReport(xddDir: string | null, iter: string | null): ReviewerReportCheck {
   const out: ReviewerReportCheck = {
     ok: true, reasons: [], reportPath: null, verdict: null,
     pCounts: { P0: 0, P1: 0, P2: 0, INFO: 0, FAI3: 0, FAIL: 0 },
   }
-  if (!shadowDir || !iter) return out
+  if (!xddDir || !iter) return out
   // 实施 A3: 兼容 2 个路径 — canonical reviews/ + 旧 gate/
-  const reviewsDir = join(shadowDir, "iterations", iter, "reviews")
-  const gateDir = join(shadowDir, "iterations", iter, "gate")
+  const reviewsDir = join(xddDir, "iterations", iter, "reviews")
+  const gateDir = join(xddDir, "iterations", iter, "gate")
 
   // 找最近一份 review-report 类文件
   let latest: { path: string; mtime: number } | null = null
@@ -1373,9 +1373,9 @@ function verifyReviewerReport(shadowDir: string | null, iter: string | null): Re
 // ════════════════════════════════════════════════════════════════════
 
 const DEBUG = process.env.SHADOW_DEBUG === "1"
-const log = (msg: string) => { if (DEBUG) console.log(`[shadow-hook] ${msg}`) }
+const log = (msg: string) => { if (DEBUG) console.log(`[xdd-hook] ${msg}`) }
 
-const DIAG_LOG = "/tmp/shadow-hook.log"
+const DIAG_LOG = "/tmp/xdd-hook.log"
 function diag(entry: Record<string, unknown>): void {
   try { appendFileSync(DIAG_LOG, JSON.stringify({ ts: Date.now(), ...entry }) + "\n") } catch { /* ignore */ }
 }
@@ -1453,8 +1453,8 @@ function classifyApiError(rawError: unknown): ApiErrorInfo {
     return {
       code,
       category: "content_filter",
-      title: "Shadow: 模型 API 内容过滤触发",
-      reason: "模型输出被 provider 的安全过滤拒绝, 不是 Shadow 框架 bug.",
+      title: "xdd: 模型 API 内容过滤触发",
+      reason: "模型输出被 provider 的安全过滤拒绝, 不是 xdd 框架 bug.",
       recovery: [
         "1) 重发 \"继续\" 让 AI 重新生成, 大概率能过 (transient)",
         "2) 把上一步拆小步 (分多次写文件, 每次写一小段)",
@@ -1468,7 +1468,7 @@ function classifyApiError(rawError: unknown): ApiErrorInfo {
     return {
       code,
       category: "context_overflow",
-      title: "Shadow: 上下文超限",
+      title: "xdd: 上下文超限",
       reason: "对话历史超过模型 context 窗口, provider 拒绝.",
       recovery: [
         "1) 跑 /compact 压缩对话历史 (OpenCode 内置)",
@@ -1483,7 +1483,7 @@ function classifyApiError(rawError: unknown): ApiErrorInfo {
     return {
       code,
       category: "rate_limit",
-      title: "Shadow: 模型 API 限流",
+      title: "xdd: 模型 API 限流",
       reason: "短时间请求过多, provider 返回 429.",
       recovery: [
         "1) 等 30-60s 重发",
@@ -1498,7 +1498,7 @@ function classifyApiError(rawError: unknown): ApiErrorInfo {
     return {
       code,
       category: "auth",
-      title: "Shadow: API 鉴权失败",
+      title: "xdd: API 鉴权失败",
       reason: "API key 无效 / 过期 / 配额用完.",
       recovery: [
         "1) 检查 OPENAI_API_KEY / ANTHROPIC_API_KEY / MiniMax token 等环境变量",
@@ -1513,8 +1513,8 @@ function classifyApiError(rawError: unknown): ApiErrorInfo {
     return {
       code,
       category: "model_unavailable",
-      title: "Shadow: 模型服务不可用",
-      reason: "Provider 端故障 (5xx), 不是 Shadow 也不是本地问题.",
+      title: "xdd: 模型服务不可用",
+      reason: "Provider 端故障 (5xx), 不是 xdd 也不是本地问题.",
       recovery: [
         "1) 等 1-2min 重试",
         "2) 切换 provider / 切换模型 (e.g., opus → sonnet)",
@@ -1527,7 +1527,7 @@ function classifyApiError(rawError: unknown): ApiErrorInfo {
   return {
     code,
     category: "unknown",
-    title: "Shadow: 模型 API error",
+    title: "xdd: 模型 API error",
     reason: `未知错误, payload=${payload.slice(0, 200)}`,
     recovery: [
       "1) 把 error 完整信息 (含 code) 贴给 walker 帮忙看",
@@ -1569,18 +1569,18 @@ function pushSyntheticPart(output: any, text: string): void {
 // § 13 Plugin 工厂 + 5 个 hook
 // ════════════════════════════════════════════════════════════════════
 
-export const ShadowHooksPlugin: Plugin = async (input) => {
+export const xddHooksPlugin: Plugin = async (input) => {
   const projectRoot = input.directory
   const client = input.client
-  const shadowDir = findShadowDir(projectRoot)
+  const xddDir = findxddDir(projectRoot)
   const meta = isMetaProject(projectRoot)
-  const schema = loadShadowSchema()
+  const schema = loadxddSchema()
   const schemaPath = resolveSchemaPath()
 
-  log(`loaded for project=${projectRoot} shadowDir=${shadowDir ?? "(none)"} meta=${meta} schema=${schema ? "v" + schema.shadow_version : "(missing)"}`)
+  log(`loaded for project=${projectRoot} xddDir=${xddDir ?? "(none)"} meta=${meta} schema=${schema ? "v" + schema.xdd_version : "(missing)"}`)
   diag({
-    ev: "plugin-load", project: projectRoot, shadowDir: shadowDir ?? null,
-    meta, schema: schema ? schema.shadow_version : null, schemaPath,
+    ev: "plugin-load", project: projectRoot, xddDir: xddDir ?? null,
+    meta, schema: schema ? schema.xdd_version : null, schemaPath,
     clientType: typeof client, hasTui: client ? Boolean((client as any).tui) : null,
   })
 
@@ -1606,16 +1606,16 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
     "experimental.chat.system.transform": async (_input, output) => {
       // P0-7 Meta 旁路: 在 cjxdd 仓库自身不注入 status.md 摘要
       if (meta) return
-      if (!shadowDir || !schema) return
-      const iter = readCurrentIter(shadowDir)
+      if (!xddDir || !schema) return
+      const iter = readCurrentIter(xddDir)
       if (!iter) return
-      const status = readStatusMd(shadowDir, iter)
+      const status = readStatusMd(xddDir, iter)
       if (!status) return
 
       const lines: string[] = []
-      lines.push(`# Shadow 上下文`)
+      lines.push(`# xdd 上下文`)
       lines.push(`project_root = ${projectRoot}`)
-      lines.push(`shadow_dir   = ${shadowDir}`)
+      lines.push(`xdd_dir   = ${xddDir}`)
       lines.push(`active_iter  = ${iter}`)
       lines.push("")
 
@@ -1629,15 +1629,15 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
       }
       lines.push("")
 
-      const woCounts = countWoReports(shadowDir, iter)
+      const woCounts = countWoReports(xddDir, iter)
       const woTotal = parseInt(woCounts.match(/total=(\d+)/)?.[1] || "0", 10)
       if (woTotal > 0) {
         lines.push(`work_orders: ${woCounts}`)
-        lines.push(`(reports in .shadow/iterations/${iter}/work-orders/<WO>/report.md)`)
+        lines.push(`(reports in .xdd/iterations/${iter}/work-orders/<WO>/report.md)`)
         lines.push("")
       }
 
-      lines.push(`lifecycle (artifact role distribution, 5 classes from .shadow/shadow-schema.json):`)
+      lines.push(`lifecycle (artifact role distribution, 5 classes from .xdd/xdd-schema.json):`)
       for (const role of ["design_baseline", "process_output", "evidence_archive", "control_marker"] as const) {
         const count = countRoleFiles(schema, projectRoot, role)
         const label = role === "design_baseline" ? "设计基线  "
@@ -1681,7 +1681,7 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
           lines.push(`策略:`)
           lines.push(`  - 写朴素的工程措辞, 避免涉及安全/对抗性/恶意语境的词汇 (哪些是"安全语境"具体由 provider 定义)`)
           lines.push(`  - 写示例代码时, 不要演示攻击/注入/绕过的具体 payload — 用抽象描述代替 ("一段输入" 即可)`)
-          lines.push(`  - 注释里要避开的, 用阴影/Shadow 自有约定 (bypass-shdw:) 替代, 而不是直接写"绕过"`)
+          lines.push(`  - 注释里要避开的, 用阴影/xdd 自有约定 (bypass-shdw:) 替代, 而不是直接写"绕过"`)
           lines.push(`  - 触发后: 用户看到的 toast 会有 3 步恢复指引, 直接照做`)
           lines.push(`  - 不确定时: 拆小步写, 错了用户说"继续"让 AI 重写`)
           lines.push(``)
@@ -1697,18 +1697,18 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
       }
 
       // 实施 #6: L5 跨轮保活 — 注入 .l5-unresolved.json 内容, 强制 AI 看到未解决警告
-      const unresolved = readL5Unresolved(shadowDir, iter)
+      const unresolved = readL5Unresolved(xddDir, iter)
       // 实施 #16 (no-advisory): halt 优先 — 任何项 count > 3 注入 HALT 信号
       const haltItems = unresolved.filter((it) => it.count > 3)
       if (haltItems.length > 0) {
         lines.push("")
         lines.push(`🛑🛑🛑 HALT (实施 #16 no-advisory) — ${haltItems.length} 项持续 > 3 轮未修复 ╳${"".repeat(3)}`)
-        lines.push(`严苛模式: 走 Shadow = 严丝不漏, 没 advisory 灰色地带. 下面这些不是 "warning 你可以忽略",`)
+        lines.push(`严苛模式: 走 xdd = 严丝不漏, 没 advisory 灰色地带. 下面这些不是 "warning 你可以忽略",`)
         lines.push(`是连续 3 轮没修掉的 hard fail. 你必须停下, 不要继续埋头改代码.`)
         lines.push("")
         lines.push(`强制处置 (按优先级):`)
         lines.push(`  1) **回退上游 design**: 这条 fail 可能是 spec 写得不合理, 改 spec/arch, 别让代码硬撑`)
-        lines.push(`  2) **调 scale 字段**: 写 .shadow/scale.md 把对应字段调到 L 级 (默认已经 L 级, 误报才改)`)
+        lines.push(`  2) **调 scale 字段**: 写 .xdd/scale.md 把对应字段调到 L 级 (默认已经 L 级, 误报才改)`)
         lines.push(`  3) **走变更令**: 这是 design 跟实现脱节, 不是代码 bug, 走 xdd-walker 重新协调`)
         lines.push(`  4) **写 \`bypass-shdw: <具体原因>\` 注释**: 真要绕过, 必须带 reason 进 audit log`)
         lines.push(``)
@@ -1719,7 +1719,7 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
           lines.push(`  • [${item.section}] ${firstLine}  _(×${item.count}, since=${item.first_seen.slice(0, 10)})_`)
         }
         if (haltItems.length > 5) {
-          lines.push(`  ... 还有 ${haltItems.length - 5} 项, 查 ${shadowDir}/iterations/${iter}/.l5-halt.json`)
+          lines.push(`  ... 还有 ${haltItems.length - 5} 项, 查 ${xddDir}/iterations/${iter}/.l5-halt.json`)
         }
         lines.push("")
         lines.push(`这是 halt, 不是 warning. 停下, 问 user.`)
@@ -1736,19 +1736,19 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
           lines.push(`  ${mark} [${item.section}] ${firstLine} _(×${item.count}, first=${item.first_seen.slice(0, 10)})_`)
         }
         if (unresolved.length > 8) {
-          lines.push(`  ... 还有 ${unresolved.length - 8} 项, 查 ${shadowDir}/iterations/${iter}/.l5-unresolved.json`)
+          lines.push(`  ... 还有 ${unresolved.length - 8} 项, 查 ${xddDir}/iterations/${iter}/.l5-unresolved.json`)
         }
       }
 
       // 实施 #3: Bypass audit log 也注入, 跟 unresolved 一起被 AI 看见
-      const bypassLog = bypassLogPath(shadowDir, iter)
+      const bypassLog = bypassLogPath(xddDir, iter)
       if (existsSync(bypassLog)) {
         try {
           const text = readFileSync(bypassLog, "utf-8")
           const entries = (text.match(/^##\s+\S+\s+\|/gm) || []).length
           if (entries > 0) {
             lines.push("")
-            lines.push(`=== Bypass Audit Log (实施 #3) — ${entries} 条 \`bypass-shdw:\` 标注 (${shadowDir}/iterations/${iter}/bypass-log.md) ===`)
+            lines.push(`=== Bypass Audit Log (实施 #3) — ${entries} 条 \`bypass-shdw:\` 标注 (${xddDir}/iterations/${iter}/bypass-log.md) ===`)
             lines.push(`AI 显式标记的 "绕过" 段都在这里. L6 部署前 user 必审.`)
             lines.push(`前 ${Math.min(5, entries)} 条:`)
             const entryRe = /^##\s+(\S+)\s+\|\s+(.+?):(\d+)\n- reason:\s*(.+)$/gm
@@ -1771,14 +1771,14 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
     // 4 段流水线: stage 查询 (短路) → 压力信号 → 意图识别 → 意图路由
     // ────────────────────────────────────────────────────────────
     "chat.message": async (_input, output) => {
-      if (!shadowDir || !schema) return
+      if (!xddDir || !schema) return
       const text = (output.parts ?? [])
         .filter((p: any) => p.type === "text" && !p.synthetic)
         .map((p: any) => p.text)
         .join("\n")
       if (!text) return
-      const iter = readCurrentIter(shadowDir)
-      const status = iter ? readStatusMd(shadowDir, iter) : null
+      const iter = readCurrentIter(xddDir)
+      const status = iter ? readStatusMd(xddDir, iter) : null
 
       // P0-7 Meta 旁路: 在 cjxdd 仓库自身不触发"build me X" → walker 引导,
       // 也不响应"当前 stage"查询 (framework 自身的 status.md 不是产品项目).
@@ -1795,7 +1795,7 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
       // 1) stage 状态查询 (优先, 短路)
       const query = matchStageQuery(text)
       if (query) {
-        pushSyntheticPart(output, answerStageQuery(query, shadowDir, iter, status, schema))
+        pushSyntheticPart(output, answerStageQuery(query, xddDir, iter, status, schema))
         diag({ ev: "stage-query", query, iter })
         return
       }
@@ -1812,31 +1812,31 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
       if (!hintKind) return
 
       // 4) 意图路由
-      if (shadowDir) {
+      if (xddDir) {
         const stage = detectPendingStage(status) || detectDoingStage(status)
         const cur = stage ? `当前阶段: ${stage}` : "全部 ✅ DONE"
         if (hintKind === "zh-new-build" || hintKind === "en-new-build" || hintKind === "en-greenfield") {
           pushSyntheticPart(output,
-            `[shadow] 检测到新做意图, 但 .shadow/ 已存在 (iter=${iter}).\n` +
-            `[shadow] ${cur}\n` +
-            `[shadow] → 若扩展: 加载下一 stage skill (查 status.md 5 步节奏).\n` +
-            `[shadow] → 若 "从零重写": 启动新 iter — "shadow walker, start iter-2".`)
+            `[xdd] 检测到新做意图, 但 .xdd/ 已存在 (iter=${iter}).\n` +
+            `[xdd] ${cur}\n` +
+            `[xdd] → 若扩展: 加载下一 stage skill (查 status.md 5 步节奏).\n` +
+            `[xdd] → 若 "从零重写": 启动新 iter — "xdd walker, start iter-2".`)
         } else if (hintKind === "zh-continue") {
           pushSyntheticPart(output,
-            `[shadow] 检测到继续/扩展意图. Walker 在跑 (iter=${iter}).\n` +
-            `[shadow] ${cur}\n` +
-            `[shadow] → 继续从当前 status.md 阶段推进; 需要时加载下一 skill.`)
+            `[xdd] 检测到继续/扩展意图. Walker 在跑 (iter=${iter}).\n` +
+            `[xdd] ${cur}\n` +
+            `[xdd] → 继续从当前 status.md 阶段推进; 需要时加载下一 skill.`)
         }
       } else if (hintKind === "zh-new-build") {
         pushSyntheticPart(output,
-          `[shadow] 检测到"从零开发"意图, 但 .shadow/ 尚未初始化。\n` +
-          `[shadow] 建议两步走: 1) 跑 shadow-init 生成骨架; 2) 加载 xdd-walker subagent`)
+          `[xdd] 检测到"从零开发"意图, 但 .xdd/ 尚未初始化。\n` +
+          `[xdd] 建议两步走: 1) 跑 xdd-init 生成骨架; 2) 加载 xdd-walker subagent`)
       } else if (hintKind === "en-new-build" || hintKind === "en-greenfield") {
         pushSyntheticPart(output,
-          `[shadow] Detected new-build / greenfield intent, but .shadow/ is not initialized.\n` +
-          `[shadow] Recommended two-step: 1) run shadow-init; 2) load xdd-walker subagent.`)
+          `[xdd] Detected new-build / greenfield intent, but .xdd/ is not initialized.\n` +
+          `[xdd] Recommended two-step: 1) run xdd-init; 2) load xdd-walker subagent.`)
       }
-      diag({ ev: "intent-detect", hintKind, hasShadow: Boolean(shadowDir), iter })
+      diag({ ev: "intent-detect", hintKind, hasxdd: Boolean(xddDir), iter })
     },
 
     // ────────────────────────────────────────────────────────────
@@ -1854,17 +1854,17 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
         if (/worker/i.test(agentName)) {
           const prompt = String(args.prompt ?? args.description ?? "")
           const woMatch = prompt.match(/WO-\d+/)
-          const woPathMatch = prompt.match(/\.shadow\/iterations\/iter-\d+\/work-orders\/WO-\d+[^\s]*\.md/)
+          const woPathMatch = prompt.match(/\.xdd\/iterations\/iter-\d+\/work-orders\/WO-\d+[^\s]*\.md/)
           if (!woMatch && !woPathMatch) {
-            notify(client, "warning", "Shadow: WO 缺失",
+            notify(client, "warning", "xdd: WO 缺失",
               `派了 ${agentName} 但 prompt 里没找到 WO-NNN 引用. 建议先写 work order.`)
           } else if (woPathMatch) {
             const woPath = woPathMatch[0]
             if (!existsSync(woPath)) {
-              notify(client, "error", "Shadow: WO 不存在",
+              notify(client, "error", "xdd: WO 不存在",
                 `${woMatch?.[0]} 引用了 WO 文件但不存在: ${woPath}`)
             } else {
-              notify(client, "info", "Shadow: 派单",
+              notify(client, "info", "xdd: 派单",
                 `派 ${woMatch?.[0]} 给 ${agentName}`, 2500)
             }
           }
@@ -1872,12 +1872,12 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
         return
       }
 
-      if (input.tool !== "skill" || !shadowDir || !schema) return
+      if (input.tool !== "skill" || !xddDir || !schema) return
       const args = (output as any).args ?? {}
       const skillName = args.name ?? ""
       log(`loading skill: ${skillName}`)
-      const iter = readCurrentIter(shadowDir)
-      const status = iter ? readStatusMd(shadowDir, iter) : null
+      const iter = readCurrentIter(xddDir)
+      const status = iter ? readStatusMd(xddDir, iter) : null
 
       // 1) 压力信号
       const pressure = checkPressureSignals(JSON.stringify(args) + " " + skillName, "tool-args")
@@ -1888,38 +1888,38 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
 
       // 2) auto-mark DOING
       if (iter) {
-        const doingHint = autoMarkDoing(skillName, shadowDir, iter, schema)
+        const doingHint = autoMarkDoing(skillName, xddDir, iter, schema)
         if (doingHint) {
           diag({ ev: "auto-mark-doing", skill: skillName, hint: doingHint })
-          pushSyntheticPart(output, `[shadow] → status.md 自动更新: ${doingHint}`)
+          pushSyntheticPart(output, `[xdd] → status.md 自动更新: ${doingHint}`)
         }
       }
 
       // 3) 阶段顺序硬阻断
       try {
-        enforceStageOrder(skillName, shadowDir, iter, status, schema)
+        enforceStageOrder(skillName, xddDir, iter, status, schema)
       } catch (e: any) {
         const errMsg = e?.message || String(e)
         diag({ ev: "stage-order-block", skill: skillName, err: errMsg })
-        notify(client, "error", "Shadow: 阶段跳序",
+        notify(client, "error", "xdd: 阶段跳序",
           `当前 ⏳=${detectPendingStage(status) || "(无)"}\n` +
           `你试图加载 ${skillName}\n按顺序先完成当前 ⏳ 阶段`, 8000)
         throw new Error(errMsg)
       }
 
       // 4) P0-Y L0 重做门禁 (软警告)
-      const l0Warn = checkL0RedoSoftWarn(shadowDir, iter)
+      const l0Warn = checkL0RedoSoftWarn(xddDir, iter)
       if (l0Warn) {
         diag({ ev: "p0y-l0-redo-warn", iter, reason: l0Warn })
-        notify(client, "warning", "Shadow: L0 调研过期 (P0-Y Round 1)",
-          `原因: ${l0Warn}\n处置: 调 shadow-l0-research skill 重新做调研`, 6000)
+        notify(client, "warning", "xdd: L0 调研过期 (P0-Y Round 1)",
+          `原因: ${l0Warn}\n处置: 调 xdd-l0 skill 重新做调研`, 6000)
       }
 
       // 5) P0-Z wire.svg 状态变体门禁 (软警告)
-      const wireWarn = checkWireSvgVariants(skillName, shadowDir)
+      const wireWarn = checkWireSvgVariants(skillName, xddDir)
       if (wireWarn) {
         diag({ ev: "p0z-wire-warn", skill: skillName, reason: wireWarn })
-        notify(client, "warning", "Shadow: wire.svg 状态变体被简化 (P0-Z Round 1)", wireWarn, 8000)
+        notify(client, "warning", "xdd: wire.svg 状态变体被简化 (P0-Z Round 1)", wireWarn, 8000)
       }
 
       // 6) 5 步节奏
@@ -1927,10 +1927,10 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
         `1. 读 SKILL.md 全文 (<500 行)`,
         `2. 读 references/* 中对应文件`,
         `3. 按 SKILL.md 流程一步步做, 不要跳步`,
-        `4. 完成后更新 .shadow/iterations/${iter || "iter-N"}/pipeline/status.md`,
+        `4. 完成后更新 .xdd/iterations/${iter || "iter-N"}/pipeline/status.md`,
         `5. 用 "node-walker-final" commit 类型或类似方式标记阶段完成`,
       ].join("\n")
-      notify(client, "info", `Shadow: 5 步节奏 · ${skillName}`, rhythm, 5000)
+      notify(client, "info", `xdd: 5 步节奏 · ${skillName}`, rhythm, 5000)
     },
 
     // ────────────────────────────────────────────────────────────
@@ -1948,13 +1948,13 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
       if (!filePath || !existsSync(filePath)) return
 
       // 1) auto-mark DONE
-      if (shadowDir) {
-        const iter = readCurrentIter(shadowDir)
+      if (xddDir) {
+        const iter = readCurrentIter(xddDir)
         if (iter) {
-          const doneHint = autoMarkDone(filePath, shadowDir, iter, schema, projectRoot)
+          const doneHint = autoMarkDone(filePath, xddDir, iter, schema, projectRoot)
           if (doneHint) {
             diag({ ev: "auto-mark-done", file: filePath, hint: doneHint })
-            pushSyntheticPart(output, `[shadow] → status.md 自动更新: ${doneHint}`)
+            pushSyntheticPart(output, `[xdd] → status.md 自动更新: ${doneHint}`)
           }
         }
       }
@@ -1963,7 +1963,7 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
       const r3Warn = evidenceArchiveWarn(schema, filePath, projectRoot)
       if (r3Warn) {
         diag({ ev: "r3-evidence-warn", file: filePath })
-        notify(client, "warning", "Shadow: R3 evidence_archive 写入", r3Warn, 6000)
+        notify(client, "warning", "xdd: R3 evidence_archive 写入", r3Warn, 6000)
       }
 
       // 3) stub scan
@@ -1972,31 +1972,31 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
         const stubList = stubs.map((s) => `  L${s.line}: ${s.text}`).join("\n")
         log(`STUB DETECTED in ${filePath}: ${stubs.length} patterns`)
         diag({ ev: "stub-detect", file: filePath, count: stubs.length })
-        notify(client, "warning", "Shadow: 存根警告",
+        notify(client, "warning", "xdd: 存根警告",
           `${filePath}\n含 ${stubs.length} 处存根模式:\n${stubList}\n` +
           `工藤伦底线: 必须真实实现, 不允许 pass/TODO/NotImplementedError 顶包。`, 6000)
         output.metadata = {
           ...(output.metadata ?? {}),
-          shadowStubWarning: true,
-          shadowStubCount: stubs.length,
+          xddStubWarning: true,
+          xddStubCount: stubs.length,
         }
       }
 
       // 4) Reviewer 报告结构化校验 (实施 A3 inline) — 写完即验
-      // 路径: .shadow/iterations/{iter}/reviews/*-review-*.md
-      if (shadowDir && /\/(reviews)\/[^\/]*-review-[^\/]+\.md$/.test(filePath)) {
-        const iter = readCurrentIter(shadowDir)
+      // 路径: .xdd/iterations/{iter}/reviews/*-review-*.md
+      if (xddDir && /\/(reviews)\/[^\/]*-review-[^\/]+\.md$/.test(filePath)) {
+        const iter = readCurrentIter(xddDir)
         if (iter) {
-          const v = verifyReviewerReport(shadowDir, iter)
+          const v = verifyReviewerReport(xddDir, iter)
           if (v.reportPath && !v.ok) {
             const list = v.reasons.map(x => `  - ${x}`).join("\n")
             diag({ ev: "reviewer-verify-fail", file: v.reportPath, reasons: v.reasons })
-            notify(client, "warning", "Shadow: Reviewer 报告结构异常",
+            notify(client, "warning", "xdd: Reviewer 报告结构异常",
               `${v.reportPath}\n${list}\n请补 P0/P1/P2 表格 + file:line 证据 + 合法 verdict (白名单: PASS / FAI3 / WARN / CONDITIONALPASS / CONDITIONAL FAIL / NEEDSEVIDENCE)`, 8000)
             output.metadata = {
               ...(output.metadata ?? {}),
-              shadowReviewerVerifyWarning: true,
-              shadowReviewerVerifyReasons: v.reasons,
+              xddReviewerVerifyWarning: true,
+              xddReviewerVerifyReasons: v.reasons,
             }
           }
         }
@@ -2017,7 +2017,7 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
       if (event?.type !== "message.updated") return
       const info = event?.properties?.info
       if (!info || info.role !== "assistant" || info.finish !== "stop") return
-      if (!shadowDir || !schema) return
+      if (!xddDir || !schema) return
 
       // P0-7 Meta 旁路: 在 cjxdd 仓库自身不跑 stop-gate (R5/lifecycle 漂移
       // 检查不适用 framework 自身)
@@ -2031,12 +2031,12 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
 
       setTimeout(() => {
         try {
-          runStopGate({ projectRoot, shadowDir, schema, client, diag, skipMetaBypass: _forceRunStopGate })
+          runStopGate({ projectRoot, xddDir, schema, client, diag, skipMetaBypass: _forceRunStopGate })
           _toastLast.clear()
           clearPressureFingerprints()
         } catch (err) {
           diag({ ev: "stop-gate-fail", err: String(err) })
-          notify(client, "error", "Shadow: 漫游 stop-gate 异常", String(err), 6000)
+          notify(client, "error", "xdd: 漫游 stop-gate 异常", String(err), 6000)
         }
       }, 100)
     },
@@ -2074,10 +2074,10 @@ const IMPL_RE = /@implements\s+([A-Z]{1,3}\d{1,3}(?:\s*[,、]\s*[A-Z]{1,3}\d{1,3
 const FAILSAFE_RE = /\b(retry|circuitBreaker|circuit_breaker|fallback|degrade|timeout|backoff|bulkhead|rateLimit|throttle|hystrix|resilience4j)\b/i
 
 // 找所有 spec.md (L1)
-function findSpecFiles(shadowDir: string): string[] {
+function findSpecFiles(xddDir: string): string[] {
   const out: string[] = []
   // 1) per-BXX
-  const l1Dir = join(shadowDir, "L1-business")
+  const l1Dir = join(xddDir, "L1-business")
   if (existsSync(l1Dir)) {
     try {
       for (const e of readdirSync(l1Dir, { withFileTypes: true })) {
@@ -2094,9 +2094,9 @@ function findSpecFiles(shadowDir: string): string[] {
   return out
 }
 
-function findArchFiles(shadowDir: string): string[] {
+function findArchFiles(xddDir: string): string[] {
   const out: string[] = []
-  const archDir = join(shadowDir, "L1.5-architecture")
+  const archDir = join(xddDir, "L1.5-architecture")
   if (!existsSync(archDir)) return out
   try {
     // per-BXX architecture.md
@@ -2113,9 +2113,9 @@ function findArchFiles(shadowDir: string): string[] {
   return out
 }
 
-function findFailureModesFiles(shadowDir: string): string[] {
+function findFailureModesFiles(xddDir: string): string[] {
   const out: string[] = []
-  const l3Dir = join(shadowDir, "L3-resilience")
+  const l3Dir = join(xddDir, "L3-resilience")
   if (!existsSync(l3Dir)) return out
   try {
     for (const e of readdirSync(l3Dir, { withFileTypes: true })) {
@@ -2128,9 +2128,9 @@ function findFailureModesFiles(shadowDir: string): string[] {
   return out
 }
 
-function findWireFiles(shadowDir: string): string[] {
+function findWireFiles(xddDir: string): string[] {
   const out: string[] = []
-  const l1Dir = join(shadowDir, "L1-business")
+  const l1Dir = join(xddDir, "L1-business")
   if (!existsSync(l1Dir)) return out
   // 项目级 wire.svg
   const top = join(l1Dir, "wire.svg")
@@ -2197,7 +2197,7 @@ function countPageComponents(sourceDirs: string[]): { count: number; breakdown: 
       let entries: ReturnType<typeof readdirSync>
       try { entries = readdirSync(d, { withFileTypes: true }) } catch { return }
       for (const e of entries) {
-        if (/node_modules|\.venv|__pycache__|dist|build|target|\.git|\.shadow/.test(e.name)) continue
+        if (/node_modules|\.venv|__pycache__|dist|build|target|\.git|\.xdd/.test(e.name)) continue
         const p = join(d, e.name)
         if (e.isDirectory()) walkExport(p)
         else if (e.isFile() && /\.(tsx|jsx|ts|js)$/.test(e.name) && !seenFiles.has(p)) {
@@ -2297,7 +2297,7 @@ function scanImplements(sourceDirs: string[]): { direct: Set<string>; fileLevel:
   const direct = new Set<string>()
   const fileLevel = new Set<string>()
   if (sourceDirs.length === 0) return { direct, fileLevel }
-  const skip = /node_modules|\.venv|__pycache__|dist|build|target|\.git|\.shadow/
+  const skip = /node_modules|\.venv|__pycache__|dist|build|target|\.git|\.xdd/
   const visited = new Set<string>()
   // 实施 A1 启发式: 判定 file-level 标记的两种方式
   //   1) 行号 ≤ 30 (文件头 30 行)
@@ -2374,7 +2374,7 @@ function verifyFileLevelImplements(fileLevel: Set<string>, sourceDirs: string[])
   const verified = new Set<string>()
   if (fileLevel.size === 0) return verified
   if (sourceDirs.length === 0) return verified
-  const skip = /node_modules|\.venv|__pycache__|dist|build|target|\.git|\.shadow/
+  const skip = /node_modules|\.venv|__pycache__|dist|build|target|\.git|\.xdd/
   for (const code of fileLevel) {
     // 短码 R\d+ 在源里出现 = 实际被引用
     const re = new RegExp(`\\b${code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`)
@@ -2408,7 +2408,7 @@ function verifyFileLevelImplements(fileLevel: Set<string>, sourceDirs: string[])
 function scanFailsafes(sourceDirs: string[]): { retry: number; circuitBreaker: number; fallback: number; timeout: number; total: number } {
   const out = { retry: 0, circuitBreaker: 0, fallback: 0, timeout: 0, total: 0 }
   if (sourceDirs.length === 0) return out
-  const skip = /node_modules|\.venv|__pycache__|dist|build|target|\.git|\.shadow/
+  const skip = /node_modules|\.venv|__pycache__|dist|build|target|\.git|\.xdd/
   const visited = new Set<string>()
   for (const dir of sourceDirs) {
     if (!existsSync(dir)) continue
@@ -2447,7 +2447,7 @@ function scanFailsafes(sourceDirs: string[]): { retry: number; circuitBreaker: n
 // 主入口: 跑 4 维一致性审计
 function auditL5Consistency(
   projectRoot: string,
-  shadowDir: string,
+  xddDir: string,
   sourceDirs: string[],
   threshold: number = 0.9,
 ): ConsistencyReport {
@@ -2459,7 +2459,7 @@ function auditL5Consistency(
   const failsafes = scanFailsafes(sourceDirs)
 
   // 1) spec ↔ code (RXX → @implements)
-  const specFiles = findSpecFiles(shadowDir)
+  const specFiles = findSpecFiles(xddDir)
   if (specFiles.length > 0) {
     const designedSet = new Set<string>()
     for (const f of specFiles) {
@@ -2490,14 +2490,14 @@ function auditL5Consistency(
       implemented: 0,
       coverage: 1,
       missing: [],
-      note: "(无 .shadow/L1-business/**/spec.md, 跳过)",
+      note: "(无 .xdd/L1-business/**/spec.md, 跳过)",
     })
   }
 
   // 2) wire ↔ code (data-page → page component) — 实施 A4 重写
   // 旧版: 文件名含 "Page" / "page." 算 1, batched 文件 (AdminPages.tsx) 误算 1
   // 新版: data-page Set 去重 + countPageComponents (取 src/pages + export *Page 并集)
-  const wireFiles = findWireFiles(shadowDir)
+  const wireFiles = findWireFiles(xddDir)
   if (wireFiles.length > 0) {
     // data-page 去重 (Set)
     const dataPageSet = new Set<string>()
@@ -2534,7 +2534,7 @@ function auditL5Consistency(
   }
 
   // 3) arch ↔ code (API endpoint → route)
-  const archFiles = findArchFiles(shadowDir)
+  const archFiles = findArchFiles(xddDir)
   if (archFiles.length > 0) {
     let endpoints = 0
     for (const f of archFiles) {
@@ -2582,7 +2582,7 @@ function auditL5Consistency(
   }
 
   // 4) l3 ↔ code (failure-modes 跟兜底机制对应)
-  const fmeaFiles = findFailureModesFiles(shadowDir)
+  const fmeaFiles = findFailureModesFiles(xddDir)
   if (fmeaFiles.length > 0) {
     const designedSet = new Set<string>()
     for (const f of fmeaFiles) {
@@ -2628,15 +2628,15 @@ function auditL5Consistency(
 // function + 把 runStopGate 挂到 default export 上, 供 CLI 走 import default.
 function runStopGate(opts: {
   projectRoot: string
-  shadowDir: string
-  schema: ShadowSchema
+  xddDir: string
+  schema: xddSchema
   client: unknown
   diag: (e: Record<string, unknown>) => void
   skipMetaBypass?: boolean
 }): { errors: number; warnings: number; sections: number; unresolved: number; halt: number } {
-  const { projectRoot, shadowDir, schema, client, diag } = opts
-  const iter = readCurrentIter(shadowDir)
-  const status = iter ? readStatusMd(shadowDir, iter) : null
+  const { projectRoot, xddDir, schema, client, diag } = opts
+  const iter = readCurrentIter(xddDir)
+  const status = iter ? readStatusMd(xddDir, iter) : null
   const sections: string[] = []
   const errors: string[] = []
   const warnings: string[] = []
@@ -2677,7 +2677,7 @@ function runStopGate(opts: {
         first_seen: "",
       }))
       if (iter) {
-        const { added, total } = appendBypassLog(shadowDir, iter, newEntries)
+        const { added, total } = appendBypassLog(xddDir, iter, newEntries)
         if (added > 0) {
           sections.push(`  → 新增 ${added} 条到 bypass-log.md (累计 ${total} 条, L6 部署前 user 必审)`)
         }
@@ -2721,7 +2721,7 @@ function runStopGate(opts: {
   }
 
   // 4) Lifecycle 漂移 — 实施 #16 (no-advisory): hard
-  const lifecycle = checkLifecycleDrift(shadowDir)
+  const lifecycle = checkLifecycleDrift(xddDir)
   if (lifecycle) {
     const msg = `Lifecycle 漂移:\n${lifecycle.split("\n").map((l) => `  ${l}`).join("\n")}`
     errors.push(msg)
@@ -2729,7 +2729,7 @@ function runStopGate(opts: {
   } else sections.push(`✓ Lifecycle 漂移: 无`)
 
   // 5) R5 硬门禁 — 实施 #16 (no-advisory): R5 跳过也升 hard
-  // 走 Shadow = 严丝不漏, R5 是核心关卡. 脚本不在 = framework setup 缺, 也是 hard fail.
+  // 走 xdd = 严丝不漏, R5 是核心关卡. 脚本不在 = framework setup 缺, 也是 hard fail.
   const gateScript = resolveGateScriptPath()
   if (existsSync(gateScript)) {
     const r5 = runR5HardGate(gateScript)
@@ -2759,12 +2759,12 @@ function runStopGate(opts: {
   // 5.6) L6 smoke-test-passed 硬门禁 (R11 Round 2 内联) — 实施 A2
   // 段 5 (R5) 委托给 shell 跑 R1/R3/R5/R6/R10/R11 全集, 但用户看不到 R11 专项.
   // 这里把 R11 inline 化: 直接读 .l5-unresolved.json-style 找 marker, 4 层验证.
-  // 跟 skills/shadow-artifact-lifecycle/scripts/gate-check-lifecycle.sh:307-412 逻辑对齐.
-  if (shadowDir) {
-    const r11 = checkL6SmokePassed(shadowDir)
+  // 跟 skills/xdd-artifact-lifecycle/scripts/gate-check-lifecycle.sh:307-412 逻辑对齐.
+  if (xddDir) {
+    const r11 = checkL6SmokePassed(xddDir)
     if (r11.total === 0 && r11.isNewProject) {
       // 新项目无 marker — 必 hard fail
-      const msg = `L6 smoke-test-passed 硬门禁失败 (R11, 新项目): 无 L6-deploy marker — 必须跑 shadow-l6-deploy Phase 5.8 写 marker\n  shadowDir: ${shadowDir}\n  修复: bash skills/shadow-l6-deploy/scripts/run-production-scenarios.sh {slug} (slug = deployment slug)`
+      const msg = `L6 smoke-test-passed 硬门禁失败 (R11, 新项目): 无 L6-deploy marker — 必须跑 xdd-l6 Phase 5.8 写 marker\n  xddDir: ${xddDir}\n  修复: bash skills/xdd-l6/scripts/run-production-scenarios.sh {slug} (slug = deployment slug)`
       errors.push(msg)
       tracked.push({ section: "l6-smoke-test", content: msg, level: "error" })
     } else if (r11.round2Fail > 0) {
@@ -2772,7 +2772,7 @@ function runStopGate(opts: {
       const baseMsg = r11.isNewProject
         ? `L6 smoke-test-passed 4 层验证失败 (R11 Round 2, 新项目)`
         : `L6 smoke-test-passed mtime 失败 (R11 Round 1, 老项目)`
-      const msg = `${baseMsg}: ${r11.round2Fail} 个 marker 失败, ${r11.pass} 通过\n  失败层: ${r11.layerFail.trim() || "(无)"}\n  shadowDir: ${shadowDir}\n  修复: 重跑对应 L6-deploy slug, 或检查 prod-evidence/ 完整性`
+      const msg = `${baseMsg}: ${r11.round2Fail} 个 marker 失败, ${r11.pass} 通过\n  失败层: ${r11.layerFail.trim() || "(无)"}\n  xddDir: ${xddDir}\n  修复: 重跑对应 L6-deploy slug, 或检查 prod-evidence/ 完整性`
       errors.push(msg)
       tracked.push({ section: "l6-smoke-test", content: msg, level: "error" })
     } else if (r11.total > 0) {
@@ -2787,7 +2787,7 @@ function runStopGate(opts: {
   //       arch↔code (endpoint→route) / l3↔code (FMEA→兜底机制)
   // 阈值: 任一维 coverage < 0.9 → hard error (L5-impl 偷工)
   if (sourceDirs.length > 0) {
-    const audit = auditL5Consistency(projectRoot, shadowDir, sourceDirs, 0.9)
+    const audit = auditL5Consistency(projectRoot, xddDir, sourceDirs, 0.9)
     const auditedRows = audit.rows.filter((r) => r.designed > 0)
     if (auditedRows.length > 0) {
       const summary = auditedRows.map((r) => {
@@ -2824,7 +2824,7 @@ function runStopGate(opts: {
   // 这类 sham 报告. 硬约束: verdict 白名单 + 矛盾判定 + verdict=PASS 必含 P1/INFO 表
   // + 表格 file:line 引用覆盖率 ≥ 50%.
   if (iter) {
-    const r = verifyReviewerReport(shadowDir, iter)
+    const r = verifyReviewerReport(xddDir, iter)
     if (r.reportPath && r.reasons.length > 0) {
       const list = r.reasons.map(x => `  - ${x}`).join("\n")
       const msg = `Reviewer 报告结构化校验失败 (${r.reportPath}):\n${list}\n修复: 补 P0/P1/P2 表格 + file:line 证据 + 合法 verdict (白名单: PASS / FAI3 / WARN / CONDITIONALPASS / CONDITIONAL FAIL / NEEDSEVIDENCE)`
@@ -2840,16 +2840,16 @@ function runStopGate(opts: {
   }
 
   // 5.8) wire.svg viewBox density (实施 A4) — 双保险第二层
-  // 第一层: skills/shadow-l1-wire/scripts/check-density.sh 写时自检 (L1 wire skill 内)
+  // 第一层: skills/xdd-wire/scripts/check-density.sh 写时自检 (L1 wire skill 内)
   // 第二层: 这里事后审计, 写完 wire.svg 后 L5 必跑
   // 新项目 (LIFECYCLE.md 存在) density < 0.3 → hard, 老项目 → 软警告
-  if (shadowDir) {
-    const wireFiles2 = findWireFiles(shadowDir)
+  if (xddDir) {
+    const wireFiles2 = findWireFiles(xddDir)
     if (wireFiles2.length > 0) {
       const densities = checkWireSvgDensity(wireFiles2)
       const sparse = densities.filter(d => d.sparse)
       if (sparse.length > 0) {
-        const isNewProject = existsSync(join(shadowDir, "LIFECYCLE.md"))
+        const isNewProject = existsSync(join(xddDir, "LIFECYCLE.md"))
         const list = sparse.map(d =>
           `  ${d.file}: density=${(d.density * 100).toFixed(0)}% (节点=${d.nodeCount})`
         ).join("\n")
@@ -2874,12 +2874,12 @@ function runStopGate(opts: {
   let unresolvedCount = 0
   let haltItems: L5Item[] = []
   if (iter) {
-    const merged = syncL5Unresolved(shadowDir, iter, tracked)
+    const merged = syncL5Unresolved(xddDir, iter, tracked)
     unresolvedCount = merged.length
     haltItems = merged.filter((it) => it.count > HALT_THRESHOLD)
     if (haltItems.length > 0) {
       // 写 halt 标记文件 (control_marker), 供 L1 system transform 读
-      const haltPath = join(shadowDir, "iterations", iter, ".l5-halt.json")
+      const haltPath = join(xddDir, "iterations", iter, ".l5-halt.json")
       try {
         writeFileSync(haltPath, JSON.stringify({
           iter,
@@ -2934,13 +2934,13 @@ function runStopGate(opts: {
   const summary = summaryLines.join("\n")
   // toast 调度: 实施 #16 — 没了 warning 灰色地带, 全是 error (12s 红) 或 success (3s 绿)
   const baseTitle = errors.length > 0
-    ? `Shadow: 漫游 stop-gate · ${errors.length} 错误`
-    : "Shadow: 漫游 stop-gate"
+    ? `xdd: 漫游 stop-gate · ${errors.length} 错误`
+    : "xdd: 漫游 stop-gate"
   const titleSuffix = unresolvedCount > 0 ? ` · ${unresolvedCount} 项跨轮未解决` : ""
   // 3 试 halt 优先级最高 — error 弹窗 + 强制 AI 看
   if (haltItems.length > 0) {
     notify(client, "error",
-      `🛑 Shadow: 3 试 HALT · ${haltItems.length} 项持续未修复`,
+      `🛑 xdd: 3 试 HALT · ${haltItems.length} 项持续未修复`,
       summary, 15000)
   } else if (errors.length > 0) {
     notify(client, "error", baseTitle + titleSuffix, summary, 12000)
@@ -2957,7 +2957,7 @@ function runStopGate(opts: {
 
 // ════════════════════════════════════════════════════════════════════
 // 实施 A5: stop-gate CLI 入口
-// 用法: bun plugins/shadow-hooks.ts --run-stop-gate --project-root <dir> [--iter N]
+// 用法: bun plugins/xdd-hooks.ts --run-stop-gate --project-root <dir> [--iter N]
 // 强绕 Meta 旁路 (在 cjxdd 自身 / 任何 cwd 都能跑), 把 5 段 + 5.5 段 + 5.6+ 段
 // 全部输出到 stdout. 让用户/AI 能直接验证硬门禁真 fire, 不必切到 demo session.
 // ════════════════════════════════════════════════════════════════════
@@ -2978,16 +2978,16 @@ function runStopGateCli(): number {
   // 1. 强制强绕 Meta 旁路 (关键)
   _forceRunStopGate = true
 
-  // 2. 找 .shadow 目录
-  const shadowDir = findShadowDir(projectRoot) ?? join(projectRoot, ".shadow")
+  // 2. 找 .xdd 目录
+  const xddDir = findxddDir(projectRoot) ?? join(projectRoot, ".xdd")
 
-  // 3. 装 schema (允许 CLI 临时指定, e.g. --schema ./skills/shadow-init/templates/shadow-schema.json)
+  // 3. 装 schema (允许 CLI 临时指定, e.g. --schema ./skills/xdd-init/templates/xdd-schema.json)
   if (schemaPath) {
     _schemaCache = null
     _schemaPath = schemaPath
     process.env.SHADOW_SCHEMA = schemaPath
   }
-  const schema = loadShadowSchema()
+  const schema = loadxddSchema()
   if (!schema) {
     console.error(`[cli] 无法装 schema (path=${_schemaPath || "(默认)"})`)
     return 2
@@ -3013,7 +3013,7 @@ function runStopGateCli(): number {
 
   // 6. iter 覆盖 (status.md 走 readStatusMd 内部读 iter 目录, 但 iter 决定读哪段 status)
   //    如果 --iter 指定, 把 current-iteration 临时指向它 (写完恢复)
-  const curIterFile = join(shadowDir, "current-iteration")
+  const curIterFile = join(xddDir, "current-iteration")
   let origIter: string | null = null
   if (iterOverride) {
     try {
@@ -3028,7 +3028,7 @@ function runStopGateCli(): number {
   let result: { errors: number; warnings: number; sections: number; unresolved: number; halt: number } | null = null
   try {
     result = runStopGate({
-      projectRoot, shadowDir, schema,
+      projectRoot, xddDir, schema,
       client: cliClient, diag: cliDiag,
       skipMetaBypass: true,
     })
@@ -3056,14 +3056,14 @@ function runStopGateCli(): number {
   return 0
 }
 
-// CLI 入口 (Bun 跑 shadow-hooks.ts 时 main module 自身执行; OpenCode 加载时
+// CLI 入口 (Bun 跑 xdd-hooks.ts 时 main module 自身执行; OpenCode 加载时
 // input.client 等存在, 走 plugin factory 路径, 不走 main 分支).
-if (process.argv[1]?.endsWith("shadow-hooks.ts") || process.argv[1]?.endsWith("shadow-hooks")) {
+if (process.argv[1]?.endsWith("xdd-hooks.ts") || process.argv[1]?.endsWith("xdd-hooks")) {
   const ec = runStopGateCli()
   if (ec >= 0) process.exit(ec)
 }
 
-export default ShadowHooksPlugin
+export default xddHooksPlugin
 // 实施 A5: 挂 runStopGate 到 default export 上, CLI 可通过 import default 调用.
 // 不单独 export 避免 opencode plugin load 失败 (bun paths[0] 错).
-;(ShadowHooksPlugin as any).runStopGate = runStopGate
+;(xddHooksPlugin as any).runStopGate = runStopGate
