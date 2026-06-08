@@ -40,10 +40,27 @@ version: "5.0.0"
 
 **先** 读取 `.shadow/L5-plan/{slug}/harness-plan.md` **顶部"上游引用矩阵"**（6 张表: 规则/端点/事件/失败模式/页面/验收场景 → 上游文件 + 段行号）。
 
+**plan-iter-check (v5.1 必做, 防 iter 间设计冲突)**: 读 `.shadow/current-iteration` 看当前活跃 iter, 跟 plan 顶部 metadata 块的 `@iter: N` 对比:
+
+| 情况 | 行为 |
+|------|------|
+| `@iter == current-iteration` | ✅ 正常, 继续读 plan |
+| `@iter < current-iteration` | ⛔ **plan 过期**: 提示 "plan 是 iter-N 时的, 当前是 iter-M (M>N), 走 L5-plan 重新生成, 不要再读这个 plan 写代码" |
+| `@iter > current-iteration` | ⛔ **plan 错位**: 提示 "plan 是 iter-N 时的, 但 current-iteration 是 iter-M (M<N), 不正常, 检查 .shadow/SHADOW_VERSION 跟 status.md" |
+
+**为什么必做**: 用户的核心需求 "iter 间设计冲突保留正向". 旧 plan 跟新上游 (spec/arch) 冲突时, coder 不查 `@iter` 就直接写, 写出来是**反向 (iter-N 旧设计)** 而不是正向 (iter-M 新设计). 例: iter-1 plan 写 "心跳失败 >=3 标 OFFLINE", iter-2 spec 改 ">=5", current-iter=2, plan @iter=1 → coder 写 ">=3" → 跟新 spec 冲突 → 业务错. 走 plan-iter-check 立即停.
+
 **然后** 对每个 Batch:
 - 看 plan 该 Batch 的文件清单, 每行有 `@upstream` 列, 列出上游文件 + 段
 - **跳读所有 `@upstream`** (用 Read tool 读对应段) — 这是 v5 新增的纪律
 - 旧"只读 plan" 在 v5 算违规 (会被 §13 L5 Consistency Audit 的 4 维审计抓)
+
+**iter 间 delta 必读 (v5.1 新增)**: 读 `.shadow/iterations/iter-{N-1}/pipeline/status.md` 的"## 变更记录"段, 看 iter-N 改的 RXX 跟 iter-N-1 的差:
+- 看到 `反向 (⛔ 删)` → code 要改
+- 看到 `正向 (✅ 增)` → code 要加
+- 看到 `修改 (🔄 改)` → code 要替换
+
+**只保留正向**: 走 iter-N+1 plan 时, 把 iter-N plan 跟新 spec 对比, **反向的标记 ⛔ 过期**, 正向的标记 ✅ 仍有效. coder 看到 ⛔ 必查, 看到 ✅ 跳过 (因为代码已经是正向).
 
 ### 2. 领域模型一致性检查
 

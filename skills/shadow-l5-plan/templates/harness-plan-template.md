@@ -1,6 +1,18 @@
 # Harness Plan 模板 (v5 — 入口 + 索引)
 
 ```markdown
+---
+@iter: N                       # 这个 plan 是 iter-N 的 (必填, 跟 current-iteration 对齐)
+@generated-at: {ISO ts}        # 生成时间
+@upstream-iter: N-1            # 上游 (spec/arch/event) 是 iter-N-1 时的快照 (必填, 首次 iter=0/1 时写 "init")
+@replaces-plan: {旧 plan 路径}  # 替代了 iter-N-1 的哪个 plan (首次 iter=0/1 时写 "无 (初始)")
+@upstream-changed-since-iter-N-1:
+  - spec.md R03 (心跳失败阈值 3→5)            # 反向: iter-N-1 code 写 ">=3" 现在要改 ">=5" (⛔)
+  - spec.md R10 (新规则: SSH 节点注册)        # 正向: iter-N-1 没这条, 新加 (✅)
+  - arch.md POST /api/v1/nodes (URL 改 /v1/nodes/register)  # 反向: iter-N-1 code 调旧 URL (⛔)
+@delta: 见 .shadow/iterations/iter-{N-1}/pipeline/status.md "## 变更记录" 段
+---
+
 # Harness Plan: {业务线名称}
 
 ## 上下文

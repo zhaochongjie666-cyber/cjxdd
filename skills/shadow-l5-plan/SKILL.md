@@ -237,6 +237,26 @@ Harness 计划（本层写的）:
 
 **生命周期角色**(`design_baseline` 设计基线,**模糊地带**):文件本身的"全局约束段 / 兜底约束段 / Batch 顺序"段是设计基线,跨迭代有效(下个需求来时回查"全局约束"和"批次划分");"逐文件实现指令段"实现完后过期,但依附文件保留作审计基线。详见 `.shadow/shadow-schema.json:lifecycle_artifacts` → `harness-plan`。
 
+**iter 标记 (v5.1 新增, 防 iter 间设计冲突)**: plan 顶部必含 metadata 块, 写明"这个 plan 是基于哪个 iter 的上游生成的" + "替代了 iter-N-1 的哪个 plan". L5-impl coder 启动时**必检** `current-iteration` 跟 plan 的 `@iter` 是否一致, 不一致 → 拒绝读, 提示 "plan 过期, 重跑 L5 plan":
+
+```markdown
+---
+@iter: N                    # 这个 plan 是 iter-N 的
+@generated-at: 2026-06-08T... # 生成时间
+@upstream-iter: N-1         # 上游 (spec/arch) 是 iter-N-1 时的快照
+@replaces-plan: .shadow/L5-plan/{slug}/harness-plan.iter-N-1.md  # 替代了 iter-N-1 的 plan
+@upstream-changed-since-iter-N-1: 
+  - spec.md R03 (心跳失败阈值 3→5)   # 反向: iter-N-1 code 写 ">=3" 现在要改 ">=5"
+  - spec.md R10 (新规则)              # 正向: iter-N-1 没这条, 新加
+  - arch.md POST /api/v1/nodes (URL 改)  # 反向: iter-N-1 code 调旧 URL
+@delta: 见 status.md "变更记录" 段
+---
+```
+
+**为什么 @upstream-changed-since-iter-N-1 必填**: L5-impl coder 看到 `@iter: N` 跟 `@upstream-iter: N-1` 知道 "上游是 iter-N-1 时的, 但当前 upstream 可能是 iter-N 的, 我得先 diff". `@upstream-changed-since-iter-N-1` 列具体改了哪几条 RXX / 端点, coder 重点关注. **iter 间冲突保留正向**: 看到 `反向 (⛔ 删)` 知道要改 code, 看到 `正向 (✅ 增)` 知道要加新 code. 这就是用户的核心需求 "保留正向那个".
+
+详见 `references/iter-propagation.md` (待写) + `agents/shadow-walker.md §变更记录` schema 扩段.
+
 一份"入口 + 索引"的执行计划，结构如下：
 
 1. **上下文**（一句话：项目是什么 / 实现什么模块 / 业务目标）

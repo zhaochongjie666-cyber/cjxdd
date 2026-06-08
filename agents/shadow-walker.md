@@ -324,15 +324,37 @@ downstream: WO-008 会消费这批表
 | `design_baseline` 矛盾(spec.md RXX vs architecture.md API 端点) | 必回上层:用上面"按层"决策树 |
 | `design_baseline` 增量(新规则/新 API 端点) | 增量跑下游(spec → arch → plan → impl → l6),不全跑 |
 
-**需求变更记录**：在 status.md 末尾加 `## 变更记录` 段：
+**需求变更记录**：在 status.md 末尾加 `## 变更记录` 段，**v5.1 schema 扩**加三态标记（防 iter 间设计冲突）：
 
 ```markdown
-## 变更记录
+## 变更记录 (v5.1 schema — 3 态标记)
 
-| 时间 | 变更内容 | 影响范围 | 处理 |
-|------|---------|---------|------|
-| iter-1 31 Research | "审批"实为"评论" | intent.md + business-landscape.md + B01 research.md | 重写意图 → 重收敛 |
+| 时间 | iter | 变更内容 | 影响范围 | 状态 | 处理 |
+|------|------|---------|---------|------|------|
+| 2026-06-08 14:30 | iter-1→2 | spec.md R03 心跳失败阈值 3→5 | L1 spec / L5 plan / code | ⛔ 反向 (旧 code 写 ">=3" 要改 ">=5") | 走 L5 plan 重生成 + L5-impl 改 code |
+| 2026-06-08 14:30 | iter-1→2 | spec.md R10 新规则 SSH 节点注册 | L1 spec / L5 plan / code | ✅ 正向 (新加, 无旧 code) | 走 L5 plan 重生成 + L5-impl 加 code |
+| 2026-06-08 14:30 | iter-1→2 | arch.md POST /api/v1/nodes URL 改 | L1.5 arch / L5 plan / code | ⛔ 反向 (旧 code 调旧 URL) | 走 L5 plan 重生成 + L5-impl 改 URL |
+| 2026-06-08 14:30 | iter-1→2 | L3 failure-modes.md F12 触发阈值 5s→3s | L3 FMEA / L5 plan / code | 🔄 修改 (旧 code 阈值要调) | 走 L5 plan 重生成 + L5-impl 调阈值 |
+| 2026-06-08 14:30 | iter-1→2 | spec.md 删 R07 (旧规则废弃) | L1 spec / L5 plan / code | ⛔ 反向 (旧 code 调 R07 方法要删) | 走 L5 plan 重生成 + L5-impl 删 method |
 ```
+
+**3 态含义**:
+- **⛔ 反向**: iter-N-1 旧 code 跟新上游冲突, **改 code 让 code 跟新上游一致**（用户原话 "保留正向那个"）
+- **✅ 正向**: iter-N-1 没这条, 新上游加, **新加 code**
+- **🔄 修改**: 旧 code 部分对部分错 (e.g. 阈值要调, 方法签名变), **增量改 code**
+
+**iter 间 plan-iter-diff audit (v5.1 新增机制, 防 plan 反向残留)**:
+- 走 L5-plan 跑完新 harness-plan.md 后, **必跑 audit**: 把新 plan vs iter-N-1 plan + 新上游 (spec/arch) 三方 diff
+- 反向残留检测: 找出新 plan 里跟新 spec.md / arch.md 矛盾的指令 (例如新 spec 写 ">=5" 但新 plan 还写 ">=3") → hard error, 走 L5-plan 重跑修正
+- 跟 §13 L5 Consistency Audit 协同: 4 维脱节检查时, 把 plan-iter-diff 的反向残留列表也作为硬门禁
+
+**iter 间保留正向的工作流**:
+1. iter-N 走完上游 stage (L1 spec / L1.5 arch / L3 FMEA 改)
+2. status.md 末尾加 `## 变更记录` 段, 3 态标记
+3. 走 L5-plan, 在 status.md 顶部 + plan 顶部 metadata 加 `@iter: N` + `@upstream-changed-since-iter-N-1`
+4. 走 L5-impl, plan-iter-check 必做 (防过期 plan), 跳读 upstream + 跳读变更记录, 写代码时按 3 态处理 (⛔ 改 / ✅ 加 / 🔄 调)
+5. 走 L5 reviewer + L6 deploy, 跑 plan-iter-diff audit (防反向残留)
+6. iter-N+1 旧产物进 `.shadow/iterations/iter-N/` 冻结, 不删 (审计基线)
 
 ### 每个阶段的 5 步节奏
 
