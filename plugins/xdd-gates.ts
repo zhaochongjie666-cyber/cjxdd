@@ -153,14 +153,14 @@ function findShadowDir(start: string = process.cwd()): string | null {
 // ───────── Meta 任务检测 (P0-7 Round 1) ─────────
 // 当项目根就是 Shadow framework 自身 (cjxdd) 时, hook 不应注入
 // "build me X" → walker 引导, 不应注 stage 状态查询答案.
-// 判定: 项目根同时存在 agents/shadow-walker.md + skills/shadow-init/SKILL.md
-//       + hooks/lib.sh.
+// 判定: 项目根同时存在 agents/xdd-walker.md + skills/xdd-init/SKILL.md
+//       + hooks/xdd-gate-lib.sh.
 function isMetaProject(projectRoot: string | null): boolean {
   if (!projectRoot) return false
   return (
-    existsSync(join(projectRoot, "agents/shadow-walker.md")) &&
-    existsSync(join(projectRoot, "skills/shadow-init/SKILL.md")) &&
-    existsSync(join(projectRoot, "hooks/lib.sh"))
+    existsSync(join(projectRoot, "agents/xdd-walker.md")) &&
+    existsSync(join(projectRoot, "skills/xdd-init/SKILL.md")) &&
+    existsSync(join(projectRoot, "hooks/xdd-gate-lib.sh"))
   )
 }
 
@@ -823,7 +823,7 @@ function checkPressureSignals(text: string, source: string = "unknown"): string 
   setTimeout(() => _pressureFingerprints.delete(fp), PRESSURE_WINDOW_MS)
   return `🐢  压力信号检测 (source=${source}, 命中 ${matches.length} 类: ${matches.join(" ")})
 
-Walker 3 步硬底线 (写死在 agents/shadow-walker.md):
+Walker 3 步硬底线 (写死在 agents/xdd-walker.md):
   1. 不写存根    — pass / TODO / NotImplementedError 都不行
   2. 不用假实现  — InMemoryRepository / mock DB / 硬编码 current_user 都不行
   3. 说了完成就是真完成 — 功能必须跑过 + 有运行证据
@@ -1709,7 +1709,7 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
         lines.push(`强制处置 (按优先级):`)
         lines.push(`  1) **回退上游 design**: 这条 fail 可能是 spec 写得不合理, 改 spec/arch, 别让代码硬撑`)
         lines.push(`  2) **调 scale 字段**: 写 .shadow/scale.md 把对应字段调到 L 级 (默认已经 L 级, 误报才改)`)
-        lines.push(`  3) **走变更令**: 这是 design 跟实现脱节, 不是代码 bug, 走 shadow-walker 重新协调`)
+        lines.push(`  3) **走变更令**: 这是 design 跟实现脱节, 不是代码 bug, 走 xdd-walker 重新协调`)
         lines.push(`  4) **写 \`bypass-shdw: <具体原因>\` 注释**: 真要绕过, 必须带 reason 进 audit log`)
         lines.push(``)
         lines.push(`不要做的事: 删 unresolved.json / 改 stub_patterns 配 schema 躲检查 / 装作没看见`)
@@ -1830,11 +1830,11 @@ export const ShadowHooksPlugin: Plugin = async (input) => {
       } else if (hintKind === "zh-new-build") {
         pushSyntheticPart(output,
           `[shadow] 检测到"从零开发"意图, 但 .shadow/ 尚未初始化。\n` +
-          `[shadow] 建议两步走: 1) 跑 shadow-init 生成骨架; 2) 加载 shadow-walker subagent`)
+          `[shadow] 建议两步走: 1) 跑 shadow-init 生成骨架; 2) 加载 xdd-walker subagent`)
       } else if (hintKind === "en-new-build" || hintKind === "en-greenfield") {
         pushSyntheticPart(output,
           `[shadow] Detected new-build / greenfield intent, but .shadow/ is not initialized.\n` +
-          `[shadow] Recommended two-step: 1) run shadow-init; 2) load shadow-walker subagent.`)
+          `[shadow] Recommended two-step: 1) run shadow-init; 2) load xdd-walker subagent.`)
       }
       diag({ ev: "intent-detect", hintKind, hasShadow: Boolean(shadowDir), iter })
     },
