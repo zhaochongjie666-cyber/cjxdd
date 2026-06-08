@@ -289,7 +289,7 @@ cat *.jsonl 2>/dev/null | grep -oE '\[xdd\] ⚠️.*' | sort | uniq -c
 | Skill 装载次数 | `jq -r 'select(.message.content[]?.name \| test("xdd-")) \| .message.content[].name' ~/.claude/<sid>/*.jsonl \| sort \| uniq -c` |
 | Hook 阻止了几次 (exit 2)? | `grep -c 'exit code: 2\|❌ HARD BLOCK' ~/.claude/<sid>/*.jsonl` |
 | 5 段 stop-gate 警告 (drift / pending / stub)? | `grep -c '\[xdd\] ⚠️\|DRIFT:' ~/.claude/<sid>/*.jsonl` |
-| 是否写到产物 (.xdd/bdd/, .xdd/L0-research/)? | `jq -r '.message.content[]? \| select(.type == "tool_use" and .name == "Write") \| .input.file_path' ~/.claude/<sid>/*.jsonl \| grep ".xdd/"` |
+| 是否写到产物 (.xdd/bdd/, .xdd/research/)? | `jq -r '.message.content[]? \| select(.type == "tool_use" and .name == "Write") \| .input.file_path' ~/.claude/<sid>/*.jsonl \| grep ".xdd/"` |
 | 模型卡在哪? (重复 user message) | `jq -r 'select(.type == "user") \| .message.content' ~/.claude/<sid>/*.jsonl \| sort \| uniq -c \| sort -rn` |
 
 **示例复盘流程**:

@@ -51,16 +51,16 @@ else
 fi
 echo ""
 
-# 检查 2: L1-business 存在且有 spec.md
+# 检查 2: business 存在且有 spec.md
 L1_EXISTS=false
 L1_SPEC_EXISTS=false
-if [ -d "$SHADOW_DIR/L1-business" ]; then
-    echo "✅ L1-business/ 目录存在"
+if [ -d "$SHADOW_DIR/business" ]; then
+    echo "✅ business/ 目录存在"
     L1_EXISTS=true
     CHECKLIST+=("l1_dir:yes")
     
     # 检查是否有 spec.md
-    SPEC_COUNT=$(find "$SHADOW_DIR/L1-business" -name "spec.md" 2>/dev/null | wc -l)
+    SPEC_COUNT=$(find "$SHADOW_DIR/business" -name "spec.md" 2>/dev/null | wc -l)
     if [ "$SPEC_COUNT" -gt 0 ]; then
         echo "✅ L1 spec.md 存在 ($SPEC_COUNT 个)"
         L1_SPEC_EXISTS=true
@@ -71,7 +71,7 @@ if [ -d "$SHADOW_DIR/L1-business" ]; then
         CHECKLIST+=("l1_spec:no")
     fi
 else
-    echo "❌ L1-business/ 目录不存在"
+    echo "❌ business/ 目录不存在"
     CHECKLIST+=("l1_dir:no")
     CHECKLIST+=("l1_spec:no")
 fi
@@ -85,10 +85,10 @@ if [ -d "$SHADOW_DIR/L5-plan" ]; then
     L5_PLAN_EXISTS=true
     CHECKLIST+=("l5_plan_dir:yes")
     
-    # 检查是否有 harness-plan.md
-    PLAN_COUNT=$(find "$SHADOW_DIR/L5-plan" -name "harness-plan.md" 2>/dev/null | wc -l)
+    # 检查是否有 plan.md
+    PLAN_COUNT=$(find "$SHADOW_DIR/L5-plan" -name "plan.md" 2>/dev/null | wc -l)
     if [ "$PLAN_COUNT" -gt 0 ]; then
-        echo "✅ L5 Plan 有 harness-plan.md ($PLAN_COUNT 个)"
+        echo "✅ L5 Plan 有 plan.md ($PLAN_COUNT 个)"
         IMPL_COUNT=$(grep -r "@implements:" "$SHADOW_DIR/L5-plan/" 2>/dev/null | wc -l || echo 0)
         if [ "$IMPL_COUNT" -gt 0 ]; then
             echo "✅ L5 Plan 有 @implements 标记 ($IMPL_COUNT 处)"
@@ -100,7 +100,7 @@ if [ -d "$SHADOW_DIR/L5-plan" ]; then
             CHECKLIST+=("l5_plan_impl:no")
         fi
     else
-        echo "❌ L5 Plan 无 harness-plan.md"
+        echo "❌ L5 Plan 无 plan.md"
         CHECKLIST+=("l5_plan_impl:no")
     fi
 else
@@ -126,7 +126,7 @@ echo ""
 
 # 检查 5: INDEX.md 存在
 INDEX_EXISTS=false
-if [ -f "$SHADOW_DIR/L1-business/INDEX.md" ]; then
+if [ -f "$SHADOW_DIR/business/INDEX.md" ]; then
     echo "✅ INDEX.md 存在"
     INDEX_EXISTS=true
     GRADE_SCORE=$((GRADE_SCORE + 10))
@@ -139,7 +139,7 @@ echo ""
 
 # 检查 6: TRACE.md 存在
 TRACE_EXISTS=false
-if [ -f "$SHADOW_DIR/L1-business/TRACE.md" ]; then
+if [ -f "$SHADOW_DIR/business/TRACE.md" ]; then
     echo "✅ TRACE.md 存在"
     TRACE_EXISTS=true
     GRADE_SCORE=$((GRADE_SCORE + 10))
@@ -233,7 +233,7 @@ case "$GRADE" in
     C)
         echo "项目需要整理 L1 文档，建议:"
         echo "  1. 从代码 @implements 反推 L1 spec"
-        echo "  2. 整理 L1-business 目录结构"
+        echo "  2. 整理 business 目录结构"
         echo "  3. 生成 INDEX.md + TRACE.md"
         ;;
     D)

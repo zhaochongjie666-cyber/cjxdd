@@ -35,7 +35,7 @@ version: "1.0.0"
 扫描代码结构，生成 Harness 计划：
 - 识别主要模块和接口
 - 提取函数签名和参数类型
-- 生成 harness-plan.md
+- 生成 plan.md
 
 ### Step 2: 证据补全
 

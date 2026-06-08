@@ -242,7 +242,7 @@ flowchart TD
   class N10,N15 frontendNode
 ```
 
-#### 6.2 项目级流程总图 (`.shadow/L1-business/project.flow.mermaid`)
+#### 6.2 项目级流程总图 (`.shadow/business/project.flow.mermaid`)
 
 逆向重建时只生成一张项目级流程总图。业务线/模块以 subgraph 泳道呈现，不拆 `biz-{name}.project.flow.mermaid`：
 

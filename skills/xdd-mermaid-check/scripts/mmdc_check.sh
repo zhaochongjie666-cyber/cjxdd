@@ -35,7 +35,7 @@ check_with_mmdc() {
 echo "=== Mermaid Render Validation (mmdc) ==="
 echo ""
 
-l1_dir="${SHADOW_DIR}/L1-business"
+l1_dir="${SHADOW_DIR}/business"
 if [ ! -d "$l1_dir" ]; then
     echo -e "${YELLOW}${l1_dir}/ not found${NC}"
     exit 0

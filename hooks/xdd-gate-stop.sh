@@ -111,8 +111,8 @@ if [[ -n "$md" && -f "$md" ]]; then
         product_exists=0
         for pat in $patterns; do
             # 把 pattern 转成目录: 去掉最后一段 (文件名) 和 * 通配
-            # ".xdd/L0-research/*.md" → ".xdd/L0-research"
-            # ".xdd/L1-business/{slug}/intent.md" → ".xdd/L1-business" (粗粒度, 也够用)
+            # ".xdd/research/*.md" → ".xdd/research"
+            # ".xdd/business/{slug}/intent.md" → ".xdd/business" (粗粒度, 也够用)
             # "Dockerfile" → "." (项目根)
             check_dir=$(echo "$pat" | sed -E 's|/[^/]*\*?[^/]*$||' | sed 's|{slug}||g')
             [[ -z "$check_dir" ]] && check_dir="."
@@ -150,18 +150,18 @@ echo ""
 echo "[xdd] === Lifecycle Drift (Phase 2: 软警告 + R5 硬门禁) ==="
 lifecycle_drift=0
 
-# 3.1 .skel 文件遗留 (L3-skeleton DEPRECATED, 被 harness-plan 替代)
+# 3.1 .skel 文件遗留 (L3-skeleton DEPRECATED, 被 plan 替代)
 skel_files=$(find "$xdd_dir" -name "*.skel" 2>/dev/null | head -10)
 if [[ -n "$skel_files" ]]; then
-    echo "[xdd]   ⚠️  .skel files found (L3-skeleton 已废, 由 harness-plan 替代):"
+    echo "[xdd]   ⚠️  .skel files found (L3-skeleton 已废, 由 plan 替代):"
     echo "$skel_files" | sed 's/^/      /'
     echo "[xdd]     → 归档到 .xdd/legacy/ (Phase 3 处理)"
     lifecycle_drift=1
 fi
 
 # 3.2 老 L3 文件名 (单→复, plan→matrix, failsafe→policies)
-if [[ -d "$xdd_dir/L3-resilience" ]]; then
-    old_l3=$(find "$xdd_dir/L3-resilience" -type f \( \
+if [[ -d "$xdd_dir/resilience" ]]; then
+    old_l3=$(find "$xdd_dir/resilience" -type f \( \
         -name "policies.md" -o \
         -name "chaos-experiments.md" -o \
         -name "resilience-test-matrix.md" \
@@ -174,8 +174,8 @@ if [[ -d "$xdd_dir/L3-resilience" ]]; then
 fi
 
 # 3.3 deployment-report.md vs deploy-report.md
-if [[ -f "$xdd_dir/L6-deploy/deploy-report.md" ]]; then
-    echo "[xdd]   ⚠️  Found .xdd/L6-deploy/deploy-report.md (alias). Canonical = deployment-report.md"
+if [[ -f "$xdd_dir/verify/deploy-report.md" ]]; then
+    echo "[xdd]   ⚠️  Found .xdd/verify/deploy-report.md (alias). Canonical = deployment-report.md"
     lifecycle_drift=1
 fi
 # 老的 schema reviewer 路径
@@ -199,8 +199,8 @@ if [[ -d "$xdd_dir/L5-plan" ]]; then
 fi
 
 # 3.5 L1 wire 老 schema 路径
-if [[ -d "$xdd_dir/L1-business/wireframes" ]]; then
-    echo "[xdd]   ⚠️  Found .xdd/L1-business/wireframes/. Canonical = .xdd/L1-business/wire.svg (项目级单张)"
+if [[ -d "$xdd_dir/business/wireframes" ]]; then
+    echo "[xdd]   ⚠️  Found .xdd/business/wireframes/. Canonical = .xdd/business/wire.svg (项目级单张)"
     lifecycle_drift=1
 fi
 

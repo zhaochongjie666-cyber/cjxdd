@@ -168,7 +168,7 @@ bash skills/xdd-l6/scripts/run-production-scenarios.sh {slug}
 | 2 | 契约违反 (缺 config / 缺 env) | 不写 marker |
 | 3 | Spec 存在但 selector 不存在 | 不写 marker, 派 L5-impl 修 selector |
 
-**evidence 落点**: `.xdd/iterations/iter-N/L6-deploy/{slug}/prod-evidence/`
+**evidence 落点**: `.xdd/iterations/iter-N/verify/{slug}/prod-evidence/`
 
 ### Phase 6: 后端 E2E 场景验证
 
@@ -244,16 +244,16 @@ L6 必须回答：真实用户是否愿意在真实工作中依赖这个系统�
 
 ## 真实烟雾测试 (R11 门禁)
 
-部署完成后, Walker 必须为每个 L6-deploy/{slug}/ 写 marker:
+部署完成后, Walker 必须为每个 verify/{slug}/ 写 marker:
 
 ```bash
 TS=$(date -Iseconds)
 echo "${TS} | login E2E: POST /api/auth/login 200 + browser navigated to /home + 后续 GET /api/me 200" \
-    > .xdd/iterations/iter-N/L6-deploy/{slug}/smoke-test-passed
+    > .xdd/iterations/iter-N/verify/{slug}/smoke-test-passed
 ```
 
 R11 检测逻辑(`gate-check-lifecycle.sh` 自动跑):
-- 扫 `.xdd/iterations/iter-N/L6-deploy/*/smoke-test-passed`
+- 扫 `.xdd/iterations/iter-N/verify/*/smoke-test-passed`
 - marker mtime < 7 天 → pass(新近的真实验证)
 - marker mtime ≥ 7 天 → warn (stale)
 - 完全没有 marker → warn (缺 marker)

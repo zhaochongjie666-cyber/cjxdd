@@ -113,14 +113,14 @@ fi
 
 # === P0-Y Round 1: L0 调研重做门禁 (每轮 iter 软警告) ===
 # 问题: 每轮 iter 启动时, L0 调研常被跳过 — 但新需求可能涉及新方案/新竞品/新约束
-# 检测: 扫 .xdd/iterations/iter-N/L0-research/ 是否存在, 且 mtime ≤ 14 天
+# 检测: 扫 .xdd/iterations/iter-N/research/ 是否存在, 且 mtime ≤ 14 天
 # Round 1: 软警告 (不阻断); Round 2: 硬阻断
 # 适用: iter-1 也算"项目首轮开发", 必须重做 (不是项目级例外)
 xdd_dir=$(get_xdd_dir)
 iter=$(get_current_iter)
 # iter-1, iter-2, iter-3, ... 都需 L0 refresh
 if [[ -n "$iter" ]] && [[ "$iter" =~ ^iter-([1-9]|[1-9][0-9]+)$ ]] && [[ -n "$xdd_dir" ]]; then
-    l0_dir="$xdd_dir/iterations/$iter/L0-research"
+    l0_dir="$xdd_dir/iterations/$iter/research"
     l0_warn=""
     if [[ ! -d "$l0_dir" ]]; then
         l0_warn="L0 调研目录不存在"
@@ -133,7 +133,7 @@ if [[ -n "$iter" ]] && [[ "$iter" =~ ^iter-([1-9]|[1-9][0-9]+)$ ]] && [[ -n "$xd
         echo ""
         echo "[xdd] 🐢 P0-Y Round 1: L0 调研重做软警告"
         echo "[xdd]    原因: $l0_warn"
-        echo "[xdd]    期望: $xdd_dir/iterations/$iter/L0-research/ 存在 + 有 .md 笔记本 + mtime ≤ 14 天"
+        echo "[xdd]    期望: $xdd_dir/iterations/$iter/research/ 存在 + 有 .md 笔记本 + mtime ≤ 14 天"
         echo "[xdd]    处置: 调 xdd-l0 skill 重新做调研 (新需求可能涉及新方案/新竞品)"
         echo "[xdd]    注意: 每轮 iter (含 iter-1) 都需 L0 调研, L0 是'每轮的起点'"
     fi
@@ -144,7 +144,7 @@ fi
 # AI 偷工减料时常说 "状态变体可简化" / "主路径 12-15 页", 把 state 简化掉
 # 检测: 扫 wire.svg 的 data-page (页数) 和 data-state (变体数), ratio < 3 → 软警告
 if [[ "$skill_name" == "xdd-wire" ]] && [[ -n "$xdd_dir" ]]; then
-    wire_svg="$xdd_dir/L1-business/wire.svg"
+    wire_svg="$xdd_dir/business/wire.svg"
     if [[ -f "$wire_svg" ]]; then
         # unique data-page 数量
         page_count=$(grep -oE 'data-page="[^"]+"' "$wire_svg" 2>/dev/null | sort -u | wc -l)

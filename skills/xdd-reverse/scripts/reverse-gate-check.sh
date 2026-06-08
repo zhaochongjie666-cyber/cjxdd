@@ -25,7 +25,7 @@ check_phase_a() {
     local total=5
     
     # A1: .shadow/ 目录结构
-    if [ -d "$SHADOW_DIR/L1-business/$SLUG" ] && [ -d "$SHADOW_DIR/L1.5-architecture/$SLUG" ] && [ -d "$SHADOW_DIR/L5-plan/$SLUG" ]; then
+    if [ -d "$SHADOW_DIR/business/$SLUG" ] && [ -d "$SHADOW_DIR/arch/$SLUG" ] && [ -d "$SHADOW_DIR/L5-plan/$SLUG" ]; then
         echo "✅ A1: .shadow/ 目录结构 — PASS"
         passed=$((passed + 1))
     else
@@ -41,7 +41,7 @@ check_phase_a() {
     fi
     
     # A3: 骨架 flow
-    if [ -f "$SHADOW_DIR/L1-business/project.flow.mermaid" ] || [ -f "$SHADOW_DIR/L1-business/$SLUG/flow.mermaid" ]; then
+    if [ -f "$SHADOW_DIR/business/project.flow.mermaid" ] || [ -f "$SHADOW_DIR/business/$SLUG/flow.mermaid" ]; then
         echo "✅ A3: 骨架 flow — PASS"
         passed=$((passed + 1))
     else
@@ -49,8 +49,8 @@ check_phase_a() {
     fi
     
     # A4: 置信度标注
-    local phase_a_flow="$SHADOW_DIR/L1-business/project.flow.mermaid"
-    [ -f "$phase_a_flow" ] || phase_a_flow="$SHADOW_DIR/L1-business/$SLUG/flow.mermaid"
+    local phase_a_flow="$SHADOW_DIR/business/project.flow.mermaid"
+    [ -f "$phase_a_flow" ] || phase_a_flow="$SHADOW_DIR/business/$SLUG/flow.mermaid"
     if [ -f "$phase_a_flow" ]; then
         if grep -q "CONF:" "$phase_a_flow"; then
             echo "✅ A4: 置信度标注 — PASS"
@@ -63,7 +63,7 @@ check_phase_a() {
     fi
     
     # A5: L1.5 骨架
-    if [ -f "$SHADOW_DIR/L1.5-architecture/$SLUG/architecture.md" ] && [ -f "$SHADOW_DIR/L1.5-architecture/$SLUG/file-list.md" ]; then
+    if [ -f "$SHADOW_DIR/arch/$SLUG/architecture.md" ] && [ -f "$SHADOW_DIR/arch/$SLUG/file-list.md" ]; then
         echo "✅ A5: L1.5 骨架 — PASS"
         passed=$((passed + 1))
     else
@@ -90,9 +90,9 @@ check_phase_b() {
     echo "--- Phase B: F1-F11 质量门禁检查 ---"
     local passed=0
     local total=11
-    local flow_file="$SHADOW_DIR/L1-business/project.flow.mermaid"
-    [ -f "$flow_file" ] || flow_file="$SHADOW_DIR/L1-business/$SLUG/flow.mermaid"
-    local spec_file="$SHADOW_DIR/L1-business/$SLUG/spec.md"
+    local flow_file="$SHADOW_DIR/business/project.flow.mermaid"
+    [ -f "$flow_file" ] || flow_file="$SHADOW_DIR/business/$SLUG/flow.mermaid"
+    local spec_file="$SHADOW_DIR/business/$SLUG/spec.md"
     
     if [ ! -f "$flow_file" ]; then
         echo "❌ 流程图不存在，无法检查 Phase B"

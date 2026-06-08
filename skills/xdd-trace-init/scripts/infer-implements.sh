@@ -23,7 +23,7 @@ echo "项目目录: $PROJECT_DIR"
 echo ""
 
 # 检查 spec.md 是否存在
-SPEC_FILE="$SHADOW_DIR/L1-business/$SLUG/spec.md"
+SPEC_FILE="$SHADOW_DIR/business/$SLUG/spec.md"
 if [ ! -f "$SPEC_FILE" ]; then
     echo "错误: spec.md 不存在: $SPEC_FILE" >&2
     exit 1
@@ -72,13 +72,13 @@ infer_by_content() {
 }
 
 # 生成推断报告
-echo "## @implements 推断结果" > "$SHADOW_DIR/L1-business/$SLUG/infer-report.md"
-echo "" >> "$SHADOW_DIR/L1-business/$SLUG/infer-report.md"
-echo "> 生成时间: $(date '+%Y-%m-%d %H:%M:%S')" >> "$SHADOW_DIR/L1-business/$SLUG/infer-report.md"
-echo "> 业务线: $SLUG" >> "$SHADOW_DIR/L1-business/$SLUG/infer-report.md"
-echo "" >> "$SHADOW_DIR/L1-business/$SLUG/infer-report.md"
-echo "| 规则 | 推断文件 | 策略 | 置信度 | 状态 |" >> "$SHADOW_DIR/L1-business/$SLUG/infer-report.md"
-echo "|------|---------|------|--------|------|" >> "$SHADOW_DIR/L1-business/$SLUG/infer-report.md"
+echo "## @implements 推断结果" > "$SHADOW_DIR/business/$SLUG/infer-report.md"
+echo "" >> "$SHADOW_DIR/business/$SLUG/infer-report.md"
+echo "> 生成时间: $(date '+%Y-%m-%d %H:%M:%S')" >> "$SHADOW_DIR/business/$SLUG/infer-report.md"
+echo "> 业务线: $SLUG" >> "$SHADOW_DIR/business/$SLUG/infer-report.md"
+echo "" >> "$SHADOW_DIR/business/$SLUG/infer-report.md"
+echo "| 规则 | 推断文件 | 策略 | 置信度 | 状态 |" >> "$SHADOW_DIR/business/$SLUG/infer-report.md"
+echo "|------|---------|------|--------|------|" >> "$SHADOW_DIR/business/$SLUG/infer-report.md"
 
 # 逐条规则推断
 echo "正在推断规则实现..."
@@ -97,34 +97,34 @@ echo "$RULES" | while IFS= read -r rule; do
         # 高置信度：文件名匹配
         local file_list
         file_list=$(echo "$inferred_files" | tr '\n' ',' | sed 's/,$//' | sed "s|$PROJECT_DIR/||g")
-        echo "| $rule | $file_list | 文件名匹配 | HIGH | 待确认 |" >> "$SHADOW_DIR/L1-business/$SLUG/infer-report.md"
+        echo "| $rule | $file_list | 文件名匹配 | HIGH | 待确认 |" >> "$SHADOW_DIR/business/$SLUG/infer-report.md"
     else
         # 策略 2: 内容语义匹配
         inferred_files=$(infer_by_content "$rule" "$rule_desc")
         if [ -n "$inferred_files" ]; then
             local file_list
             file_list=$(echo "$inferred_files" | tr '\n' ',' | sed 's/,$//' | sed "s|$PROJECT_DIR/||g" | head -c 100)
-            echo "| $rule | $file_list | 内容语义 | MEDIUM | 需人工确认 |" >> "$SHADOW_DIR/L1-business/$SLUG/infer-report.md"
+            echo "| $rule | $file_list | 内容语义 | MEDIUM | 需人工确认 |" >> "$SHADOW_DIR/business/$SLUG/infer-report.md"
         else
-            echo "| $rule | - | 无匹配 | LOW | 无法推断 |" >> "$SHADOW_DIR/L1-business/$SLUG/infer-report.md"
+            echo "| $rule | - | 无匹配 | LOW | 无法推断 |" >> "$SHADOW_DIR/business/$SLUG/infer-report.md"
         fi
     fi
 done
 
-echo "" >> "$SHADOW_DIR/L1-business/$SLUG/infer-report.md"
-echo "---" >> "$SHADOW_DIR/L1-business/$SLUG/infer-report.md"
-echo "" >> "$SHADOW_DIR/L1-business/$SLUG/infer-report.md"
-echo "## 下一步操作" >> "$SHADOW_DIR/L1-business/$SLUG/infer-report.md"
-echo "" >> "$SHADOW_DIR/L1-business/$SLUG/infer-report.md"
-echo "1. 查看推断报告: $SHADOW_DIR/L1-business/$SLUG/infer-report.md" >> "$SHADOW_DIR/L1-business/$SLUG/infer-report.md"
-echo "2. 确认 HIGH 置信度的推断结果" >> "$SHADOW_DIR/L1-business/$SLUG/infer-report.md"
-echo "3. 人工确认 MEDIUM 置信度的推断结果" >> "$SHADOW_DIR/L1-business/$SLUG/infer-report.md"
-echo "4. 为 LOW 置信度的规则手动指定实现文件" >> "$SHADOW_DIR/L1-business/$SLUG/infer-report.md"
-echo "5. 确认后运行: bash skills/shadow-trace-init/scripts/trace.sh coverage $SLUG" >> "$SHADOW_DIR/L1-business/$SLUG/infer-report.md"
+echo "" >> "$SHADOW_DIR/business/$SLUG/infer-report.md"
+echo "---" >> "$SHADOW_DIR/business/$SLUG/infer-report.md"
+echo "" >> "$SHADOW_DIR/business/$SLUG/infer-report.md"
+echo "## 下一步操作" >> "$SHADOW_DIR/business/$SLUG/infer-report.md"
+echo "" >> "$SHADOW_DIR/business/$SLUG/infer-report.md"
+echo "1. 查看推断报告: $SHADOW_DIR/business/$SLUG/infer-report.md" >> "$SHADOW_DIR/business/$SLUG/infer-report.md"
+echo "2. 确认 HIGH 置信度的推断结果" >> "$SHADOW_DIR/business/$SLUG/infer-report.md"
+echo "3. 人工确认 MEDIUM 置信度的推断结果" >> "$SHADOW_DIR/business/$SLUG/infer-report.md"
+echo "4. 为 LOW 置信度的规则手动指定实现文件" >> "$SHADOW_DIR/business/$SLUG/infer-report.md"
+echo "5. 确认后运行: bash skills/shadow-trace-init/scripts/trace.sh coverage $SLUG" >> "$SHADOW_DIR/business/$SLUG/infer-report.md"
 
 echo ""
-echo "推断报告已生成: $SHADOW_DIR/L1-business/$SLUG/infer-report.md"
+echo "推断报告已生成: $SHADOW_DIR/business/$SLUG/infer-report.md"
 echo ""
-cat "$SHADOW_DIR/L1-business/$SLUG/infer-report.md"
+cat "$SHADOW_DIR/business/$SLUG/infer-report.md"
 echo ""
 echo "✅ @implements 推断完成"

@@ -893,7 +893,7 @@ function answerStageQuery(
 function checkL0RedoSoftWarn(xddDir: string | null, iter: string | null): string | null {
   if (!xddDir || !iter) return null
   if (!/^iter-([1-9]|[1-9][0-9]+)$/.test(iter)) return null
-  const l0Dir = join(xddDir, "iterations", iter, "L0-research")
+  const l0Dir = join(xddDir, "iterations", iter, "research")
   if (!existsSync(l0Dir)) return `L0 调研目录不存在 (期望: ${l0Dir}/)`
   const mdFiles = readdirSync(l0Dir).filter((f) => f.endsWith(".md"))
   if (mdFiles.length === 0) return `L0 调研目录为空 (无 .md 笔记本, 期望: ${l0Dir}/*.md)`
@@ -907,7 +907,7 @@ function checkL0RedoSoftWarn(xddDir: string | null, iter: string | null): string
 
 function checkWireSvgVariants(skillName: string, xddDir: string | null): string | null {
   if (skillName !== "xdd-wire" || !xddDir) return null
-  const wireSvg = join(xddDir, "L1-business", "wire.svg")
+  const wireSvg = join(xddDir, "business", "wire.svg")
   if (!existsSync(wireSvg)) return null
   const text = readFileSync(wireSvg, "utf-8")
   const pages = new Set<string>()
@@ -1087,11 +1087,11 @@ function checkLifecycleDrift(xddDir: string | null): string {
   }
   walkSkel(xddDir)
   if (skel.length > 0) {
-    lines.push(`.skel files found (L3-skeleton 已废, 由 harness-plan 替代):`)
+    lines.push(`.skel files found (L3-skeleton 已废, 由 plan 替代):`)
     for (const s of skel.slice(0, 10)) lines.push(`  ${s}`)
   }
   // 老 L3 文件名
-  const l3Dir = join(xddDir, "L3-resilience")
+  const l3Dir = join(xddDir, "resilience")
   if (existsSync(l3Dir)) {
     const found: string[] = []
     for (const n of ["policies.md", "chaos-experiments.md", "resilience-test-matrix.md"]) {
@@ -1104,8 +1104,8 @@ function checkLifecycleDrift(xddDir: string | null): string {
     }
   }
   // deploy-report.md alias
-  if (existsSync(join(xddDir, "L6-deploy", "deploy-report.md"))) {
-    lines.push(`Found .xdd/L6-deploy/deploy-report.md (alias). Canonical = deployment-report.md`)
+  if (existsSync(join(xddDir, "verify", "deploy-report.md"))) {
+    lines.push(`Found .xdd/verify/deploy-report.md (alias). Canonical = deployment-report.md`)
   }
   if (existsSync(join(xddDir, "reviewer"))) {
     lines.push(`Found .xdd/reviewer/ (schema-老路径). Canonical = .xdd/iterations/{iter}/reviews/`)
@@ -1135,8 +1135,8 @@ function checkLifecycleDrift(xddDir: string | null): string {
     }
   }
   // wire 老路径
-  if (existsSync(join(xddDir, "L1-business", "wireframes"))) {
-    lines.push(`Found .xdd/L1-business/wireframes/. Canonical = .xdd/L1-business/wire.svg (项目级单张)`)
+  if (existsSync(join(xddDir, "business", "wireframes"))) {
+    lines.push(`Found .xdd/business/wireframes/. Canonical = .xdd/business/wire.svg (项目级单张)`)
   }
   return lines.join("\n")
 }
@@ -1158,7 +1158,7 @@ function checkL6SmokePassed(xddDir: string | null): {
   if (!existsSync(xddDir)) return out
   out.isNewProject = existsSync(join(xddDir, "LIFECYCLE.md"))
 
-  // 走 xddDir 找所有 smoke-test-passed marker (L6-deploy 路径下)
+  // 走 xddDir 找所有 smoke-test-passed marker (verify 路径下)
   const markers: string[] = []
   const walk = (d: string) => {
     let entries: ReturnType<typeof readdirSync>
@@ -1166,7 +1166,7 @@ function checkL6SmokePassed(xddDir: string | null): {
     for (const e of entries) {
       const p = join(d, e.name)
       if (e.isDirectory()) walk(p)
-      else if (e.isFile() && e.name === "smoke-test-passed" && p.includes("/L6-deploy/")) {
+      else if (e.isFile() && e.name === "smoke-test-passed" && p.includes("/verify/")) {
         markers.push(p)
       }
     }
@@ -2077,7 +2077,7 @@ const FAILSAFE_RE = /\b(retry|circuitBreaker|circuit_breaker|fallback|degrade|ti
 function findSpecFiles(xddDir: string): string[] {
   const out: string[] = []
   // 1) per-BXX
-  const l1Dir = join(xddDir, "L1-business")
+  const l1Dir = join(xddDir, "business")
   if (existsSync(l1Dir)) {
     try {
       for (const e of readdirSync(l1Dir, { withFileTypes: true })) {
@@ -2088,7 +2088,7 @@ function findSpecFiles(xddDir: string): string[] {
       }
     } catch {}
   }
-  // 2) 老路径: L1-business 顶层 spec.md
+  // 2) 老路径: business 顶层 spec.md
   const topSpec = join(l1Dir, "spec.md")
   if (existsSync(topSpec) && !out.includes(topSpec)) out.push(topSpec)
   return out
@@ -2096,7 +2096,7 @@ function findSpecFiles(xddDir: string): string[] {
 
 function findArchFiles(xddDir: string): string[] {
   const out: string[] = []
-  const archDir = join(xddDir, "L1.5-architecture")
+  const archDir = join(xddDir, "arch")
   if (!existsSync(archDir)) return out
   try {
     // per-BXX architecture.md
@@ -2115,7 +2115,7 @@ function findArchFiles(xddDir: string): string[] {
 
 function findFailureModesFiles(xddDir: string): string[] {
   const out: string[] = []
-  const l3Dir = join(xddDir, "L3-resilience")
+  const l3Dir = join(xddDir, "resilience")
   if (!existsSync(l3Dir)) return out
   try {
     for (const e of readdirSync(l3Dir, { withFileTypes: true })) {
@@ -2130,7 +2130,7 @@ function findFailureModesFiles(xddDir: string): string[] {
 
 function findWireFiles(xddDir: string): string[] {
   const out: string[] = []
-  const l1Dir = join(xddDir, "L1-business")
+  const l1Dir = join(xddDir, "business")
   if (!existsSync(l1Dir)) return out
   // 项目级 wire.svg
   const top = join(l1Dir, "wire.svg")
@@ -2490,7 +2490,7 @@ function auditL5Consistency(
       implemented: 0,
       coverage: 1,
       missing: [],
-      note: "(无 .xdd/L1-business/**/spec.md, 跳过)",
+      note: "(无 .xdd/business/**/spec.md, 跳过)",
     })
   }
 
@@ -2764,7 +2764,7 @@ function runStopGate(opts: {
     const r11 = checkL6SmokePassed(xddDir)
     if (r11.total === 0 && r11.isNewProject) {
       // 新项目无 marker — 必 hard fail
-      const msg = `L6 smoke-test-passed 硬门禁失败 (R11, 新项目): 无 L6-deploy marker — 必须跑 xdd-l6 Phase 5.8 写 marker\n  xddDir: ${xddDir}\n  修复: bash skills/xdd-l6/scripts/run-production-scenarios.sh {slug} (slug = deployment slug)`
+      const msg = `L6 smoke-test-passed 硬门禁失败 (R11, 新项目): 无 verify marker — 必须跑 xdd-l6 Phase 5.8 写 marker\n  xddDir: ${xddDir}\n  修复: bash skills/xdd-l6/scripts/run-production-scenarios.sh {slug} (slug = deployment slug)`
       errors.push(msg)
       tracked.push({ section: "l6-smoke-test", content: msg, level: "error" })
     } else if (r11.round2Fail > 0) {
@@ -2772,7 +2772,7 @@ function runStopGate(opts: {
       const baseMsg = r11.isNewProject
         ? `L6 smoke-test-passed 4 层验证失败 (R11 Round 2, 新项目)`
         : `L6 smoke-test-passed mtime 失败 (R11 Round 1, 老项目)`
-      const msg = `${baseMsg}: ${r11.round2Fail} 个 marker 失败, ${r11.pass} 通过\n  失败层: ${r11.layerFail.trim() || "(无)"}\n  xddDir: ${xddDir}\n  修复: 重跑对应 L6-deploy slug, 或检查 prod-evidence/ 完整性`
+      const msg = `${baseMsg}: ${r11.round2Fail} 个 marker 失败, ${r11.pass} 通过\n  失败层: ${r11.layerFail.trim() || "(无)"}\n  xddDir: ${xddDir}\n  修复: 重跑对应 verify slug, 或检查 prod-evidence/ 完整性`
       errors.push(msg)
       tracked.push({ section: "l6-smoke-test", content: msg, level: "error" })
     } else if (r11.total > 0) {

@@ -172,10 +172,10 @@ tmux attach -t xdd-test      # 或另开窗口: tmux capture-pane -p -t xdd-test
 
 # 5. 检查产出
 cat $DEMO/.xdd/iterations/iter-1/pipeline/status.md   # 看各 Phase 状态
-ls $DEMO/.xdd/L0-research/ 2>/dev/null              # Phase 1 笔记本
+ls $DEMO/.xdd/research/ 2>/dev/null              # Phase 1 笔记本
 ls $DEMO/.xdd/bdd/ 2>/dev/null                      # Phase 2 BDD
-ls $DEMO/.xdd/L1.5-architecture/ 2>/dev/null         # Phase 2.5 Arch
-ls $DEMO/.xdd/L3-resilience/ 2>/dev/null            # Phase 3 L3 韧性
+ls $DEMO/.xdd/arch/ 2>/dev/null         # Phase 2.5 Arch
+ls $DEMO/.xdd/resilience/ 2>/dev/null            # Phase 3 L3 韧性
 
 # 6. 跑 smoke 验证
 bash skills/smoke-xdd-e2e.sh
@@ -312,7 +312,7 @@ skill-name/
    - `project.flow.mermaid` with `BXX-NYY` node IDs
    - `spec.md` with `RXX` rule IDs (one rule = one feature)
    - `architecture.md` with API endpoint and event-contract lists
-   - `harness-plan.md` with per-method implementation instructions and test assertions
+   - `plan.md` with per-method implementation instructions and test assertions
    - Code annotated with `@implements RXX` and node IDs back to the business intent
 
 3. **全局约束 (Global constraints)** — Cross-cutting concerns (multi-tenant isolation, auth/authz, unified error format, event publishing, pagination, transaction boundaries) are defined once in the Phase 4 Harness plan "global constraints" section and enforced uniformly.
@@ -343,7 +343,7 @@ Iterations are isolated via `.xdd/iterations/iter-N/`:
 ├── core/                      ← shared, edited in place across iterations
 ├── bdd/                       ← shared design documents (跨迭代)
 ├── arch/                      ← shared
-├── L3-resilience/             ← shared
+├── resilience/             ← shared
 └── plan/                      ← shared
 ```
 
@@ -361,10 +361,10 @@ Walker maintains a `pipeline/status.md` per iteration with a fixed skeleton: per
 |------|---------|--------|
 | **L0 v2** (brainstorm + L1 消费 + web search 5 方向) | `skills/xdd-l0/SKILL.md` (v2.0) | 改 L0 笔记本模板 / 引导问 / L1 消费机制 |
 | **L0 每轮重做门禁** (per-iter, 14 天 mtime) | `plugins/xdd-gates.ts` L3 P0-Y 段 + `xdd-gate-pre-skill.sh:114-140` | 改 L0 笔记本 / 调 freshness 阈值 |
-| **L1-business 5 角色 lifecycle** (design_baseline / process_output / evidence_archive / control_marker / template_instance) | `.xdd/xdd-schema.json:lifecycle_artifacts[]` + `skills/xdd-artifact-lifecycle/SKILL.md` | 改 schema / 加新工件 / 调 drift 检测 |
+| **business 5 角色 lifecycle** (design_baseline / process_output / evidence_archive / control_marker / template_instance) | `.xdd/xdd-schema.json:lifecycle_artifacts[]` + `skills/xdd-artifact-lifecycle/SKILL.md` | 改 schema / 加新工件 / 调 drift 检测 |
 | **L2.5 bdd v9.2** (Design-Conformance Gherkin) | `skills/xdd-bdd/SKILL.md` (v9.2) | 改 Gherkin 业务约束翻译 / L5 reviewer audit 配套 |
 | **L3 韧性** (9/10 维 + 12/10 模式 + 5/8 字段 FMEA) | `skills/xdd-l3/SKILL.md` | 改韧性模式 / 失败模式 / L 规模扩展 |
-| **L4 plan v5** (plan 是入口+索引, 上游是 detail) | `skills/xdd-plan/SKILL.md` (v5) + `templates/harness-plan-template.md` | 改 plan 顶部 @upstream 矩阵 / plan 模板 |
+| **L4 plan v5** (plan 是入口+索引, 上游是 detail) | `skills/xdd-plan/SKILL.md` (v5) + `templates/plan-template.md` | 改 plan 顶部 @upstream 矩阵 / plan 模板 |
 | **L4 plan v5.1** (iter 间 3 态 + plan-iter-check + @iter 标记) | `skills/xdd-plan/SKILL.md` (v5.1) + `agents/xdd-walker.md` 变更记录段 | 改 iter 间冲突保留正向机制 |
 | **L5-impl v5.2** (Pre-write Signoff) | `skills/xdd-execute/SKILL.md` (v5.2) | 改 method 写前 sign-off 模板 / reviewer hard error 规则 |
 | **L5 Consistency Audit** (4 维 spec↔code / wire↔code / arch↔code / l3↔code) | `plugins/xdd-gates.ts:§13` (auditL5Consistency 主入口) | 改 4 维阈值 / 加新维度 |

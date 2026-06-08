@@ -27,7 +27,7 @@
 │       ├── L5-plan/                    # L5 执行计划
 │       │   └── {slug}/
 │       │       └── plan-{batch}.md
-│       ├── L6-deploy/                  # L6 部署验证
+│       ├── verify/                  # L6 部署验证
 │       │   └── {slug}/
 │       │       ├── deployment-report.md
 │       │       └── uat-evidence/
@@ -45,7 +45,7 @@
 │           └── ux/                     # UX 审查报告
 │               └── {slug}/
 │
-├── L1-business/                        # L1 业务设计（跨迭代共享）
+├── business/                        # L1 业务设计（跨迭代共享）
 │   ├── intent.md                       # 项目意图定义
 │   ├── business-landscape.md           # 业务全景
 │   ├── project.flow.mermaid            # 项目级唯一流程总图
@@ -56,7 +56,7 @@
 │   │   └── template-selection.yaml     # Wire 模板选择（可选）
 │   └── ...
 │
-├── L1.5-architecture/                  # L1.5 架构规划（跨迭代共享）
+├── arch/                  # L1.5 架构规划（跨迭代共享）
 │   ├── aggregate-landscape.md          # 聚合全景
 │   ├── event-contract.md               # 事件契约
 │   └── BXX-{slug}/
@@ -73,7 +73,7 @@
 │
 ├── L5-plan/                            # L5 Plan（跨迭代共享）
 │   └── {slug}/
-│       └── harness-plan.md
+│       └── plan.md
 │
 ├── .hashes/                            # 内容变更哈希缓存（可选）
 │   ├── l1/
@@ -93,11 +93,11 @@
 
 ## 标准约束
 
-- **迭代作用域**路径：gate / pipeline / feature-status / L5-plan / L6-deploy / reviews
-- **跨迭代共享**路径：L1-business / L1.5-architecture / L2-e2e / L5-plan / INDEX.md / TRACE.md
+- **迭代作用域**路径：gate / pipeline / feature-status / L5-plan / verify / reviews
+- **跨迭代共享**路径：business / arch / L2-e2e / L5-plan / INDEX.md / TRACE.md
 - 所有层产物必须采用目录式路径
 - 禁止平铺文件名（如 `<slug>.spec.md`）
-- 禁止旧目录名（如 `L1.5-arch` / `L2-acceptance` / `L6-deploy` / `L5-implementation`）
+- 禁止旧目录名（如 `L1.5-arch` / `L2-acceptance` / `verify` / `L5-implementation`）
 - L1 线框图主标准为 `wire.svg`
 - 每次新迭代自动递增 ID（iter-1 → iter-2 → ...），由 `iter-helpers.sh` 管理
 

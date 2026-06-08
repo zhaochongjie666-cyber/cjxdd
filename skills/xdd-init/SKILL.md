@@ -32,7 +32,7 @@ bash ~/.claude/skills/xdd-init/scripts/init.sh
 1. 读 `.xdd/xdd-schema.json` 里的 `xdd_version` 字段
 2. 检查 `.xdd/` 是否已存在（已存在则 abort，要求 `--force` 或新 iter）
 3. 生成 4 个文件：`xdd-version`、`current-iteration`、`iterations/iter-1/pipeline/status.md`、`scale.md`
-4. 在 L0-research/ 建占位 `.gitkeep`
+4. 在 research/ 建占位 `.gitkeep`
 5. 打印下一步操作清单
 
 ## 参数
@@ -57,7 +57,7 @@ bash ~/.claude/skills/xdd-init/scripts/init.sh
 │   └── iter-1/
 │       └── pipeline/
 │           └── status.md             # 12 行阶段表，全部 ⏳
-└── L0-research/
+└── research/
     └── .gitkeep                      # 提示 walker 第一个阶段是发散调研
 ```
 

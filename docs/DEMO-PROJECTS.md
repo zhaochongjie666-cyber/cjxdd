@@ -68,7 +68,7 @@ echo '{}' | bash ~/.claude/hooks/xdd-gate-stop.sh
 │   ├── bdd/                     # (待生成)
 │   ├── arch/                    # (待生成, L 规模全规模触发)
 │   ├── add/                     # (待生成)
-│   ├── L3-resilience/           # (待生成, 9 维 + 12 模式 + 8 字段)
+│   ├── resilience/           # (待生成, 9 维 + 12 模式 + 8 字段)
 │   └── iterations/iter-1/pipeline/status.md
 │       ## B01 / B02 / B03     # 多业务线维度
 │       ## cross-BXX 一致性     # 6 项强制

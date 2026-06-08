@@ -115,7 +115,7 @@ pi 的 hook 跟 CC 类似,通过 `~/.pi/settings.json` 配置。xdd 仓库根的
 | 部署 | 服务跑不起来 | Phase 6 |
 | 逆推 | 有代码没 `.xdd/` | xdd-reverse |
 
-4. **如果 `.xdd/` 不存在** — **跑 `xdd-init`** 一次性生成:`.xdd/xdd-version`、`current-iteration`、`iterations/iter-1/pipeline/status.md`、`scale.md`、`L0-research/` 等。
+4. **如果 `.xdd/` 不存在** — **跑 `xdd-init`** 一次性生成:`.xdd/xdd-version`、`current-iteration`、`iterations/iter-1/pipeline/status.md`、`scale.md`、`research/` 等。
 5. **拿出第一个工具**
 
 ### 流水线(标准项目)

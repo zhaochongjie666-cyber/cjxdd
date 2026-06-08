@@ -7,18 +7,18 @@
 
 | Stage | Skill 名称 | 关键产出 (路径) | 状态钩子 (判定 stage done) |
 |-------|-----------|------------------|---------------------------|
-| L0-research | `shadow-l0-research` | `.shadow/L0-research/*.md` | 至少 1 个 .md 写入 |
-| L1-research | `shadow-l1-research` | `.shadow/L1-business/{slug}/intent.md` + `business-landscape.md` + `BXX-*/research.md` | intent.md 存在 |
-| L1-flow | `shadow-l1-flow` | `.shadow/L1-business/project.flow.mermaid` | project.flow.mermaid 存在 |
-| L1-spec | `shadow-l1-spec` | `.shadow/L1-business/{slug}/spec.md` (含 RXX 规则) | spec.md 存在 |
-| L1-wire | `shadow-l1-wire` | `.shadow/L1-business/{slug}/wireframes/*.svg` | 至少 1 个 .svg 写入 |
-| L1.5-arch | `shadow-l1p5-architecture` | `.shadow/L1.5-architecture/{slug}/architecture.md` + `aggregate-landscape.md` + `event-contract.md` | architecture.md 存在 |
+| research | `shadow-l0-research` | `.shadow/research/*.md` | 至少 1 个 .md 写入 |
+| L1-research | `shadow-l1-research` | `.shadow/business/{slug}/intent.md` + `business-landscape.md` + `BXX-*/research.md` | intent.md 存在 |
+| L1-flow | `shadow-l1-flow` | `.shadow/business/project.flow.mermaid` | project.flow.mermaid 存在 |
+| L1-spec | `shadow-l1-spec` | `.shadow/business/{slug}/spec.md` (含 RXX 规则) | spec.md 存在 |
+| L1-wire | `shadow-l1-wire` | `.shadow/business/{slug}/wireframes/*.svg` | 至少 1 个 .svg 写入 |
+| L1.5-arch | `shadow-l1p5-architecture` | `.shadow/arch/{slug}/architecture.md` + `aggregate-landscape.md` + `event-contract.md` | architecture.md 存在 |
 | Scaffold | `shadow-scaffold` | 项目目录树 + Dockerfile + Hello API | hello API 通过 smoke test |
 | L2-e2e | `shadow-l2-e2e` | `.shadow/L2-e2e/{slug}/e2e.md` + `uat-script.md` | uat-script.md 存在 |
-| L5-plan | `shadow-l5-plan` | `.shadow/L5-plan/{slug}/harness-plan.md` | harness-plan.md 存在 |
+| L5-plan | `shadow-l5-plan` | `.shadow/L5-plan/{slug}/plan.md` | plan.md 存在 |
 | L5-impl | `shadow-l5-impl` | 项目实现代码 + 测试代码 | 至少 1 个 impl + 1 个 test 文件 |
 | Reviewer | `shadow-reviewer` | `.shadow/reviewer/{slug}/review-report.md` | review-report.md 存在 |
-| L6-deploy | `shadow-l6-deploy` | 部署报告 + smoke 验证 | 部署成功 + smoke 通过 |
+| verify | `shadow-l6-deploy` | 部署报告 + smoke 验证 | 部署成功 + smoke 通过 |
 
 ## 2. 状态机 (Stage State Machine)
 
@@ -180,7 +180,7 @@ ${EXPECTED_OUTPUTS[stage]}
 "tool.execute.after": async (input, output) => {
   if (!["write", "edit", "apply_patch"].includes(input.tool)) return
   const filePath = input.args?.filePath ?? ""
-  const matchedStage = matchStageByOutput(filePath)  // /L0-research/* → L0, /intent.md → L1-research, etc.
+  const matchedStage = matchStageByOutput(filePath)  // /research/* → L0, /intent.md → L1-research, etc.
 
   if (matchedStage && currentStage === matchedStage) {
     // 标 stage DONE
@@ -232,47 +232,47 @@ import { join, dirname, relative } from "path"
 // ─────────── 常量: stage 顺序 + 技能名 + 预期产出 ───────────
 
 const STAGES = [
-  "L0-research", "L1-research", "L1-flow", "L1-spec", "L1-wire",
-  "L1.5-architecture", "scaffold", "L2-e2e",
-  "L5-plan", "L5-impl", "reviewer", "L6-deploy",
+  "research", "L1-research", "L1-flow", "L1-spec", "L1-wire",
+  "arch", "scaffold", "L2-e2e",
+  "L5-plan", "L5-impl", "reviewer", "verify",
 ] as const
 type Stage = (typeof STAGES)[number]
 
 const SKILL_FOR_STAGE: Record<Stage, string> = {
-  "L0-research": "shadow-l0-research",
+  "research": "shadow-l0-research",
   "L1-research": "shadow-l1-research",
   "L1-flow": "shadow-l1-flow",
   "L1-spec": "shadow-l1-spec",
   "L1-wire": "shadow-l1-wire",
-  "L1.5-architecture": "shadow-l1p5-architecture",
+  "arch": "shadow-l1p5-architecture",
   "scaffold": "shadow-scaffold",
   "L2-e2e": "shadow-l2-e2e",
   "L5-plan": "shadow-l5-plan",
   "L5-impl": "shadow-l5-impl",
   "reviewer": "shadow-reviewer",
-  "L6-deploy": "shadow-l6-deploy",
+  "verify": "shadow-l6-deploy",
 }
 
 // 预期产出: stage → 路径模式 (glob)
 const EXPECTED_OUTPUTS: Record<Stage, string[]> = {
-  "L0-research":        [".shadow/L0-research/*.md"],
-  "L1-research":        [".shadow/L1-business/{slug}/intent.md",
-                          ".shadow/L1-business/{slug}/business-landscape.md",
-                          ".shadow/L1-business/{slug}/BXX-*/research.md"],
-  "L1-flow":            [".shadow/L1-business/project.flow.mermaid"],
-  "L1-spec":            [".shadow/L1-business/{slug}/spec.md"],
-  "L1-wire":            [".shadow/L1-business/{slug}/wireframes/*.svg"],
-  "L1.5-architecture":  [".shadow/L1.5-architecture/{slug}/architecture.md",
-                          ".shadow/L1.5-architecture/{slug}/aggregate-landscape.md",
-                          ".shadow/L1.5-architecture/{slug}/event-contract.md"],
+  "research":        [".shadow/research/*.md"],
+  "L1-research":        [".shadow/business/{slug}/intent.md",
+                          ".shadow/business/{slug}/business-landscape.md",
+                          ".shadow/business/{slug}/BXX-*/research.md"],
+  "L1-flow":            [".shadow/business/project.flow.mermaid"],
+  "L1-spec":            [".shadow/business/{slug}/spec.md"],
+  "L1-wire":            [".shadow/business/{slug}/wireframes/*.svg"],
+  "arch":  [".shadow/arch/{slug}/architecture.md",
+                          ".shadow/arch/{slug}/aggregate-landscape.md",
+                          ".shadow/arch/{slug}/event-contract.md"],
   "scaffold":           ["Dockerfile", "src/**/main.*", "tests/**/test_*.py"],
   "L2-e2e":             [".shadow/L2-e2e/{slug}/e2e.md",
                           ".shadow/L2-e2e/{slug}/uat-script.md"],
-  "L5-plan":            [".shadow/L5-plan/{slug}/harness-plan.md"],
+  "L5-plan":            [".shadow/L5-plan/{slug}/plan.md"],
   "L5-impl":            ["src/**/*.{ts,py,go,java}",
                           "tests/**/*.{ts,py,go,java}"],
   "reviewer":           [".shadow/reviewer/{slug}/review-report.md"],
-  "L6-deploy":          [".shadow/L6-deploy/{slug}/deploy-report.md"],
+  "verify":          [".shadow/verify/{slug}/deploy-report.md"],
 }
 
 // ─────────── 辅助函数 ───────────
@@ -580,11 +580,11 @@ ShadowFlowPlugin({
 
 ## 10. 测试方案 (用现有的 test-in-tmux 技能)
 
-1. 初始化 `.shadow/iterations/iter-1/pipeline/status.md`, 第一行标 `| L0-research | ⏳ |`
-2. 启动 OpenCode, 问"当前 stage" → L2 应输出 "L0-research"
+1. 初始化 `.shadow/iterations/iter-1/pipeline/status.md`, 第一行标 `| research | ⏳ |`
+2. 启动 OpenCode, 问"当前 stage" → L2 应输出 "research"
 3. 加载 `shadow-l1-spec` skill → L3 应抛错 "跳序, 先完成 L0/L1-research"
 4. 加载 `shadow-l0-research` skill → L3 应标 DOING
-5. 写入 `.shadow/L0-research/01-notes.md` → L4 应标 L0-research DONE
+5. 写入 `.shadow/research/01-notes.md` → L4 应标 research DONE
 6. 加载 `shadow-l1-research` skill → L3 应允许 (上一 stage 已 DONE)
 7. 写入 `intent.md` → L4 应标 L1-research DONE
 8. 问"下一 stage" → L2 应输出 "L1-flow → shadow-l1-flow"

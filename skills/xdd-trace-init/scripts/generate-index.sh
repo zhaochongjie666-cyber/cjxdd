@@ -8,15 +8,15 @@ set -euo pipefail
 
 PROJECT_DIR="${1:-.}"
 SHADOW_DIR="$PROJECT_DIR/.shadow"
-INDEX_FILE="$SHADOW_DIR/L1-business/INDEX.md"
+INDEX_FILE="$SHADOW_DIR/business/INDEX.md"
 
 echo "=== INDEX.md 生成 ==="
 echo "项目目录: $PROJECT_DIR"
 echo ""
 
 # 检查 .shadow 目录
-if [ ! -d "$SHADOW_DIR/L1-business" ]; then
-    echo "错误: $SHADOW_DIR/L1-business 目录不存在" >&2
+if [ ! -d "$SHADOW_DIR/business" ]; then
+    echo "错误: $SHADOW_DIR/business 目录不存在" >&2
     exit 1
 fi
 
@@ -34,7 +34,7 @@ cat > "$INDEX_FILE" << EOF
 EOF
 
 # 扫描每个业务线
-for slug_dir in "$SHADOW_DIR/L1-business"/*/; do
+for slug_dir in "$SHADOW_DIR/business"/*/; do
     [ -d "$slug_dir" ] || continue
     [ "$(basename "$slug_dir")" = "INDEX.md" ] && continue
     [ "$(basename "$slug_dir")" = "TRACE.md" ] && continue
@@ -109,7 +109,7 @@ echo "INDEX.md 已生成: $INDEX_FILE"
 echo ""
 echo "下一步:"
 echo "  1. 指定主业务线（在 ⭐ 列标记）"
-echo "  2. 运行: bash skills/shadow-trace-init/scripts/trace.sh matrix > $SHADOW_DIR/L1-business/TRACE.md"
+echo "  2. 运行: bash skills/shadow-trace-init/scripts/trace.sh matrix > $SHADOW_DIR/business/TRACE.md"
 echo "  3. 运行: bash skills/shadow-trace-init/scripts/trace.sh coverage <slug> 查看各业务线覆盖详情"
 echo ""
 echo "✅ INDEX.md 生成完成"

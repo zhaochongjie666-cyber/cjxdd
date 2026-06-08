@@ -50,7 +50,7 @@ PROJECT_ROOT="${PWD}"
 **为什么不支持 Meta 任务:**
 
 - **递归污染**: walker 假定 "我是给产品项目干活", 会在 `.xdd/` 写 status.md, 触发 Phase 1 调研, 把 framework 源码当产品代码反复迭代
-- **schema 错配**: 14 个 skill 的产物 schema (status.md / intent.md / spec.md / architecture.md / harness-plan.md) 假定产物是产品代码, 写 framework 源码时输出毫无意义
+- **schema 错配**: 14 个 skill 的产物 schema (status.md / intent.md / spec.md / architecture.md / plan.md) 假定产物是产品代码, 写 framework 源码时输出毫无意义
 - **CI 混乱**: framework 自己跑过 pipeline 后, 仓库的 `.xdd/` 会变成"虚假的产品项目状态", 污染 reviewer / stop-gate / smoke test
 
 **适用场景 (Non-Meta):**
@@ -144,7 +144,7 @@ PROJECT_ROOT="${PWD}"
 | 逆推 | 有代码没 `.xdd/` | xdd-reverse |
 | **多工种新做** | ≥3 个明确工种 | 先 Phase 1-2，**再派 worker** 平行干 Phase 4-5 |
 
-4. **如果 `.xdd/` 不存在** — **跑 `xdd-init`** 一次性生成：`.xdd/xdd-version`、`current-iteration`、`iterations/iter-1/pipeline/status.md`、`scale.md` (带 strict-default 字段)、L0-research/ 等目录。脚本：`bash skills/xdd-init/scripts/init.sh`（`--bizlines` 多业务线、`--iter N` 开新 iter、`--force` 覆盖、`--strict-mode`）。
+4. **如果 `.xdd/` 不存在** — **跑 `xdd-init`** 一次性生成：`.xdd/xdd-version`、`current-iteration`、`iterations/iter-1/pipeline/status.md`、`scale.md` (带 strict-default 字段)、research/ 等目录。脚本：`bash skills/xdd-init/scripts/init.sh`（`--bizlines` 多业务线、`--iter N` 开新 iter、`--force` 覆盖、`--strict-mode`）。
 5. **拿出第一个工具**
 
 ### 流水线（标准项目）
@@ -255,10 +255,10 @@ xdd 用迭代隔离目录管理不同轮次：
 │   │   └── ...
 │   └── iter-2/                ← 新需求（活跃）
 ├── L1-research/               ← 共享（跨迭代）
-├── L1-business/               ← 共享
-├── L1.5-architecture/         ← 共享
+├── business/               ← 共享
+├── arch/         ← 共享
 ├── L1-bdd/                    ← 共享
-└── L3-resilience/             ← 共享
+└── resilience/             ← 共享
 ```
 
 **新迭代创建**：当前迭代全 ✅ + 用户有新需求 → 自动递增 iter-{N+1}。

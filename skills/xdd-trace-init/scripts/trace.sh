@@ -57,7 +57,7 @@ extract_covers_test() {
 # 从 spec.md 提取所有规则 ID
 extract_rules_from_spec() {
     local slug="$1"
-    local spec="$SHADOW_DIR/L1-business/${slug}/${slug}.spec.md"
+    local spec="$SHADOW_DIR/business/${slug}/${slug}.spec.md"
     if [ -f "$spec" ]; then
         grep -oP "${slug}-R\d+" "$spec" 2>/dev/null | sort -u
     fi
@@ -145,7 +145,7 @@ cmd_forward() {
     # 查找 spec 中的规则描述
     local slug
     slug="$(echo "$rule" | sed -E 's/-R[0-9]+$//')"
-    local spec="$SHADOW_DIR/L1-business/${slug}/${slug}.spec.md"
+    local spec="$SHADOW_DIR/business/${slug}/${slug}.spec.md"
     if [ -f "$spec" ]; then
         local desc
         desc="$(grep -A1 "$rule" "$spec" 2>/dev/null | tail -1 | sed 's/^[[:space:]]*//' | head -c 120)"
@@ -219,7 +219,7 @@ cmd_reverse() {
         for r in $(echo "$rules" | tr ',' '\n' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//'); do
             local slug
             slug="$(echo "$r" | sed -E 's/-R[0-9]+$//')"
-            local spec="$SHADOW_DIR/L1-business/${slug}/${slug}.spec.md"
+            local spec="$SHADOW_DIR/business/${slug}/${slug}.spec.md"
             if [ -f "$spec" ]; then
                 local desc
                 desc="$(grep -A1 "$r" "$spec" 2>/dev/null | tail -1 | sed 's/^[[:space:]]*//' | head -c 80)"
@@ -243,7 +243,7 @@ cmd_node() {
     # Find spec rules referencing this node
     echo -e "  ${YELLOW}关联的 L1 规则:${NC}"
     local found=0
-    for spec in "$SHADOW_DIR/L1-business"/*/spec.md; do
+    for spec in "$SHADOW_DIR/business"/*/spec.md; do
         [ -f "$spec" ] || continue
         if grep -q "$node" "$spec" 2>/dev/null; then
             found=1
@@ -285,7 +285,7 @@ cmd_biz() {
 
     # Find all nodes in project.flow.mermaid for this biz
     echo -e "  ${YELLOW}流程节点清单:${NC}"
-    for flow in "$SHADOW_DIR/L1-business/project.flow.mermaid" "$SHADOW_DIR/L1-business/flow.mermaid" "$SHADOW_DIR/L1-business"/*/flow.mermaid "$SHADOW_DIR/L1-business"/*/*.flow.mermaid; do
+    for flow in "$SHADOW_DIR/business/project.flow.mermaid" "$SHADOW_DIR/business/flow.mermaid" "$SHADOW_DIR/business"/*/flow.mermaid "$SHADOW_DIR/business"/*/*.flow.mermaid; do
         [ -f "$flow" ] || continue
         local nodes
         nodes=$(grep -oE "N[0-9]{2}" "$flow" 2>/dev/null | sort -u || true)
@@ -324,7 +324,7 @@ cmd_coverage() {
     else
         while IFS= read -r d; do
             slugs+=("$(basename "$d")")
-        done < <(find "$SHADOW_DIR/L1-business/" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
+        done < <(find "$SHADOW_DIR/business/" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
     fi
 
     # 构建映射
@@ -393,7 +393,7 @@ cmd_matrix() {
     local slugs=()
     while IFS= read -r d; do
         slugs+=("$(basename "$d")")
-    done < <(find "$SHADOW_DIR/L1-business/" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
+    done < <(find "$SHADOW_DIR/business/" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
 
     # 构建映射
     declare -A rule_files
@@ -430,7 +430,7 @@ cmd_matrix() {
             short_rule="$(echo "$rule" | sed -E 's/^.*-R/R/')"
 
             # 描述
-            local spec="$SHADOW_DIR/L1-business/${slug}/${slug}.spec.md"
+            local spec="$SHADOW_DIR/business/${slug}/${slug}.spec.md"
             if [ -f "$spec" ]; then
                 desc="$(grep -A1 "$rule" "$spec" 2>/dev/null | tail -1 | sed 's/^[[:space:]]*//' | head -c 60)"
             else
@@ -513,6 +513,6 @@ case "${1:-help}" in
         echo "  trace.sh biz B01"
         echo "  trace.sh reverse backend/app/api/v1/auth.py"
         echo "  bash skills/shadow-trace-init/scripts/trace.sh coverage auto-labeling-platform"
-        echo "  bash skills/shadow-trace-init/scripts/trace.sh matrix > .shadow/L1-business/TRACE.md"
+        echo "  bash skills/shadow-trace-init/scripts/trace.sh matrix > .shadow/business/TRACE.md"
         ;;
 esac

@@ -195,7 +195,7 @@ Scenario: 网络分区下标注提交降级
 5 份文档，路径规范：
 
 ```
-.xdd/L3-resilience/
+.xdd/resilience/
 └── BXX-{slug}/
     ├── failure-modes.md           # 失败模式目录 (FMEA 8 维度 × 5 字段)
     ├── failsafe-design.md         # 兜底设计 (10 模式 × 实现位置)

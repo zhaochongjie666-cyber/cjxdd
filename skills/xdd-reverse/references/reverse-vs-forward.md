@@ -37,7 +37,7 @@ L1 (业务母版) → L1.5 (架构) → [L2→L4] + [L3→L5] → L6 (部署)
 - L1 Gate PASS（三角链接完整）
 - L1.5 Gate PASS（规则映射完整）
 - L2 Gate PASS（E2E 场景覆盖）
-- L5 Plan PASS（harness-plan.md 承接完整）
+- L5 Plan PASS（plan.md 承接完整）
 - L5 Gate PASS（Harness 计划所有测试 GREEN）
 - L5 Gate PASS（真实代码 @implements 追溯完整）
 - L6 Gate PASS（运行态证据完整）

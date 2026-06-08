@@ -111,8 +111,8 @@ esac
 - 如不满足，先安装 Docker
 
 **产出**：
-- `docker-compose.yml` — 从 `.xdd/L1.5-architecture/BXX-{slug}/` 拷贝到项目根目录
-- `docker-compose.test.yml` — 从 `.xdd/L1.5-architecture/BXX-{slug}/` 拷贝到项目根目录
+- `docker-compose.yml` — 从 `.xdd/arch/BXX-{slug}/` 拷贝到项目根目录
+- `docker-compose.test.yml` — 从 `.xdd/arch/BXX-{slug}/` 拷贝到项目根目录
 - `docker-compose.dev.yml` — 开发用服务依赖配置
 - `.env.example` — 环境变量模板
 - 运行中的 Docker 服务实例

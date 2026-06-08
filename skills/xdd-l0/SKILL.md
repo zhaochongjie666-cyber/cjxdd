@@ -4,7 +4,7 @@ alias: xdd·L0-Research
 description: |
   xdd L0 发散笔记本 — 自由发散调研阶段 (v2 — brainstorm + L1 消费 + web search 5 方向)。
   什么都往里扔，不评判、不精简、不怕重复。
-  产出 .xdd/L0-research/ 目录下的自由格式笔记文件 + 00-l1-recap.md (L1 消费摘要) + 08-brainstorm.md (5-10 引导问答案)。
+  产出 .xdd/research/ 目录下的自由格式笔记文件 + 00-l1-recap.md (L1 消费摘要) + 08-brainstorm.md (5-10 引导问答案)。
   下游（xdd-bdd）不消费这些笔记，只消费从笔记中收敛出的结论。
   无门禁检查。不设品味约束。
   触发：发散、笔记本、笔记、调研笔记、brainstorm、发散调研、L0。
@@ -35,20 +35,20 @@ version: "2.0.0"
 L0 是"每轮的起点", **不是"项目一次性"**, **不是"iter-1 例外"**。
 **项目一直都是迭代的**: iter-1 是项目首轮开发, iter-2/3/... 是后续开发, 每轮都必须重做 L0。
 
-- iter-1: 项目首轮开发, 写 L0 到 `.xdd/iterations/iter-1/L0-research/`
-- iter-2+: 后续开发, 写 L0 到 `.xdd/iterations/iter-N/L0-research/`
-- schema 里的 `.xdd/L0-research/*.md` 是历史位置; per-iter 是新约定
+- iter-1: 项目首轮开发, 写 L0 到 `.xdd/iterations/iter-1/research/`
+- iter-2+: 后续开发, 写 L0 到 `.xdd/iterations/iter-N/research/`
+- schema 里的 `.xdd/research/*.md` 是历史位置; per-iter 是新约定
 
 ### 触发检测 (pre-skill.sh 自动)
 
-每轮 iter (含 iter-1) 装 L1+ skill 时, 若 `.xdd/iterations/iter-N/L0-research/`:
+每轮 iter (含 iter-1) 装 L1+ skill 时, 若 `.xdd/iterations/iter-N/research/`:
 - 目录不存在 → 软警告
 - 目录存在但无 `.md` 笔记本 → 软警告
 - 1+ 个 `.md` 但 mtime ≥ 14 天 → 软警告
 
 ### 怎么重做 (Walker 流程)
 
-1. **创目录**: `mkdir -p .xdd/iterations/iter-N/L0-research/`
+1. **创目录**: `mkdir -p .xdd/iterations/iter-N/research/`
 2. **写 9 份笔记**: 按下方产出清单的 9 份文件
 3. **mtime 自动刷新**: 文件写入后 mtime 是当前时间 → R11/R12-style 软警告自动消失
 
@@ -78,13 +78,13 @@ L0 不是"零起点发散", 是**站在已有 L1 肩膀上**继续发散. iter-1
 
 **读哪些** (按 iter-N 当前 L1 状态, 7 类必读):
 ```
-.xdd/L1-business/intent.md                # 项目意图 / 成功标准
-.xdd/L1-business/business-landscape.md    # 业务全景 / 限界上下文概览
-.xdd/L1-business/{BXX}*/research.md      # 各业务线 research.md
-.xdd/L1-business/{BXX}*/spec.md           # 各业务线 spec.md (RXX 规则现状)
-.xdd/L1.5-architecture/architecture.md    # 架构决策 D1..D20
+.xdd/business/intent.md                # 项目意图 / 成功标准
+.xdd/business/business-landscape.md    # 业务全景 / 限界上下文概览
+.xdd/business/{BXX}*/research.md      # 各业务线 research.md
+.xdd/business/{BXX}*/spec.md           # 各业务线 spec.md (RXX 规则现状)
+.xdd/arch/architecture.md    # 架构决策 D1..D20
 .xdd/L2-bdd/coverage-matrix.md            # 已覆盖的验收维度
-.xdd/L3-resilience/failure-modes/         # 失败模式目录
+.xdd/resilience/failure-modes/         # 失败模式目录
 ```
 
 **读完标 3 段到笔记本** (写 `00-l1-recap.md` 或每节头部):
@@ -117,7 +117,7 @@ L0 跑前**先**跟用户 brainstorm, **再**发散写 9 笔记本. Brainstorm �
 | 9 | "谁会反对? 他们的顾虑是啥? 怎么回" | 政治面 |
 | 10 | "做完的下一个项目 / 下一个 iter 大概会接啥? 提前留啥接口" | 演进路径 |
 
-**Brainstorm 产物**: 写到 `.xdd/L0-research/08-brainstorm.md`, 格式:
+**Brainstorm 产物**: 写到 `.xdd/research/08-brainstorm.md`, 格式:
 ```markdown
 # Brainstorm — {项目 / 主题}
 
@@ -263,14 +263,14 @@ L0 跑前**先**跟用户 brainstorm, **再**发散写 9 笔记本. Brainstorm �
 
 ## 产出
 
-`.xdd/L0-research/` 目录下的笔记文件。
+`.xdd/research/` 目录下的笔记文件。
 
 **生命周期角色**（`process_output` 过程产物）：9 份发散笔记本,服务本轮 L1 收敛用;L1 Research 完成后即弃,新需求来时重新发散。详见 `.xdd/xdd-schema.json:lifecycle_artifacts` → `l0-notebooks`。
 
 **最小结构要求**（内容自由，但以下分节必须存在，xdd-bdd 按分节名称提取）：
 
 ```
-.xdd/L0-research/
+.xdd/research/
   00-l1-recap.md              — (v2 必含) L1 消费摘要: 已有 / 缺 / 本轮增量
   01-industry-notes.md        — 行业调研笔记
   02-competitor-analysis.md   — 竞品分析笔记

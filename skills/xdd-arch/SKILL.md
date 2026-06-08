@@ -129,7 +129,7 @@ ADD+SDD+PDD 核心理念：**质量属性（性能、可用性、安全性、可
 
 ### 8. 事件契约（EDD 独立产出）
 
-**产出**：`.xdd/L1.5-architecture/event-contract.md`
+**产出**：`.xdd/arch/event-contract.md`
 
 核心要素：
 - **事件清单汇总表**：事件 ID、事件名、来源聚合、传递方式、订阅方、流程节点
@@ -145,7 +145,7 @@ ADD+SDD+PDD 核心理念：**质量属性（性能、可用性、安全性、可
 
 ### 10. 聚合全景
 
-**产出**：`.xdd/L1.5-architecture/aggregate-landscape.md`
+**产出**：`.xdd/arch/aggregate-landscape.md`
 
 核心要素：
 - **聚合清单**（按业务线分组）：聚合根、包含实体/值对象、一致性边界、发布事件
@@ -172,7 +172,7 @@ ADD+SDD+PDD 核心理念：**质量属性（性能、可用性、安全性、可
 
 ### 技术架构
 
-`.xdd/L1.5-architecture/BXX-{slug}/architecture.md`
+`.xdd/arch/BXX-{slug}/architecture.md`
 
 一份文档，包含：
 - 质量属性场景（3-5 个）
@@ -189,7 +189,7 @@ ADD+SDD+PDD 核心理念：**质量属性（性能、可用性、安全性、可
 
 ### 事件契约（EDD 独立产出）
 
-`.xdd/L1.5-architecture/event-contract.md`
+`.xdd/arch/event-contract.md`
 
 - 事件清单汇总表
 - 每个事件的详细契约
@@ -197,7 +197,7 @@ ADD+SDD+PDD 核心理念：**质量属性（性能、可用性、安全性、可
 
 ### 聚合全景
 
-`.xdd/L1.5-architecture/aggregate-landscape.md`
+`.xdd/arch/aggregate-landscape.md`
 
 - 聚合清单（按业务线分组）
 - 聚合间关系图（ID 引用 + 事件驱动）

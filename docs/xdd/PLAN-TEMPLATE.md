@@ -50,7 +50,7 @@ Phase 2 BDD / Phase 4 Plan / Phase 5 Execute / Other
 - `<path/to/bdd>` — 关注 §X 段
 - `<path/to/add>` — 关注 §Y 段
 - `<path/to/arch>` — 关注 §Z 段
-- `<path/to/harness-plan>` — 关注 Batch N
+- `<path/to/plan>` — 关注 Batch N
 
 ## 下游（推荐）
 - 消费方 WO-XXX（worker 名字）会读 `<path/to/your/output>`

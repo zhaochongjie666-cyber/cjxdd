@@ -37,7 +37,7 @@ version: "1.0.0"
 
 | 角色 | 英文 | 典型产物 | 命运 |
 |------|------|----------|------|
-| **设计基线** | `design_baseline` | `spec.md` / `architecture.md` / `failure-modes.md` / `failsafe-design.md` / `harness-plan.md`(约束段) / 项目代码 | 跨迭代累积,原位修改 |
+| **设计基线** | `design_baseline` | `spec.md` / `architecture.md` / `failure-modes.md` / `failsafe-design.md` / `plan.md`(约束段) / 项目代码 | 跨迭代累积,原位修改 |
 | **过程产物** | `process_output` | L0 笔记本 / `status.md` / 审查报告 / 部署报告 / e2e/{feature}.binding.yaml(未填实) | iter 冻结时随 iter 一起冻结 |
 | **证据存档** | `evidence_archive` | `wander-evidence/` / `chaos-drill-evidence/` / `issues.json` | 永远不删,加 `.archived` 锁 |
 | **控制标记** | `control_marker` | `xdd-version` / `current-iteration` / `scale.md` / `.passed` / `.done` | 跨迭代顶层 + iter 局部 |
@@ -66,7 +66,7 @@ jq -r '.lifecycle_artifacts.artifacts[] | select(.role == "design_baseline") | .
 ```bash
 # 给任意文件路径查角色
 source hooks/xdd-gate-lib.sh && load_xdd_schema
-lifecycle_role_of .xdd/L1-business/spec.md
+lifecycle_role_of .xdd/business/spec.md
 # → design_baseline
 ```
 
@@ -77,9 +77,9 @@ xdd-walker 干活时常问"我现在该写什么文件"。查 schema:
 ```bash
 # 查 Phase 2 DESIGN 阶段的所有预期产物
 jq -r '.lifecycle_artifacts.artifacts[] | select(.stage == "2_DESIGN") | "\(.role): \(.canonical_path)"' .xdd/xdd-schema.json
-# → design_baseline: .xdd/L1-business/{slug}/spec.md
+# → design_baseline: .xdd/business/{slug}/spec.md
 # → design_baseline: .xdd/project.flow.mermaid
-# → design_baseline: .xdd/L1.5-architecture/{slug}/architecture.md
+# → design_baseline: .xdd/arch/{slug}/architecture.md
 ```
 
 ### 4. 跑门禁检查(5 角色一致性)
@@ -106,7 +106,7 @@ bash skills/xdd-artifact-lifecycle/scripts/gate-check-lifecycle.sh
 
 | 模糊工件 | 怎么定 | 看 references/ |
 |----------|--------|----------------|
-| `harness-plan.md` 约束段 vs 指令段 | 标 `design_baseline`;note 说明"指令段实现完即过期" | `lifecycle-vs-locality.md` § 4 |
+| `plan.md` 约束段 vs 指令段 | 标 `design_baseline`;note 说明"指令段实现完即过期" | `lifecycle-vs-locality.md` § 4 |
 | `scale.md` 标记 vs 基线 | 标 `control_marker`;note 说明"被 5 个 skill 读,具 design_baseline 一些属性" | 同上 § 5 |
 | `L6 deployment-report.md` 文件 vs 证据段 | 标 `process_output`;note 说明"内部 evidence 段是 evidence_archive" | 同上 § 6 |
 | `e2e/{feature}.binding.yaml` 未填实 vs 填实 | 标 `process_output`;note 说明"填实后转 design_baseline" | 同上 § 7 |
@@ -135,7 +135,7 @@ bash skills/xdd-artifact-lifecycle/scripts/gate-check-lifecycle.sh
 ## 约束
 
 - **不要再发明第 6 类** — 5 类足够;模糊地带用 note 字段说明,不增加 role
-- **判别用 4 问,不用位置** — 一个文件放 `.xdd/L0-research/` 不代表一定是 process_output,要看"下次开发会不会主动读"
+- **判别用 4 问,不用位置** — 一个文件放 `.xdd/research/` 不代表一定是 process_output,要看"下次开发会不会主动读"
 - **aliases[] 是历史包袱,不是规范** — 老项目漂移收纳到 aliases,新项目用 canonical_path;不要新增别名
 - **不要硬阻断老项目** — R5 漂移扫描是新增的,只在新建/活跃 iter 上跑
 

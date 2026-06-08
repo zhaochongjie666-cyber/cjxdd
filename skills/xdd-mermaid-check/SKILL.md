@@ -11,7 +11,7 @@ version: "1.1.0"
 
 ## 角色职责
 
-纯工具 skill，验证 `.shadow/L1-business/project.flow.mermaid` 能否通过 mermaid-cli (mmdc) 正确渲染为 SVG 图片。
+纯工具 skill，验证 `.shadow/business/project.flow.mermaid` 能否通过 mermaid-cli (mmdc) 正确渲染为 SVG 图片。
 
 不做业务设计、不修改任何文件，只输出 PASS/FAIL 验证结果。
 
@@ -24,7 +24,7 @@ version: "1.1.0"
 
 ### 首次执行
 
-1. **扫描文件** → 查找 `.shadow/L1-business/project.flow.mermaid`
+1. **扫描文件** → 查找 `.shadow/business/project.flow.mermaid`
 2. **验证总图** → 调用 `mmdc -i <file> -o /tmp/_mmdc_XXXXXX.svg`
 3. **汇总结果** → 输出 PASS/FAIL 统计
 
@@ -81,7 +81,7 @@ Checking project-level project.flow.mermaid...
 |------|------|------|
 | `mmdc not found` | 未安装 mermaid-cli | `npm install -g @mermaid-js/mermaid-cli` |
 | `FAIL` | project.flow.mermaid 语法错误 | 检查括号匹配、节点定义、箭头语法 |
-| 文件不存在 | 路径不正确 | 确认 `.shadow/L1-business/` 路径 |
+| 文件不存在 | 路径不正确 | 确认 `.shadow/business/` 路径 |
 
 ## 关键约束
 

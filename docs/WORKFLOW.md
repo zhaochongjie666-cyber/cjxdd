@@ -77,7 +77,7 @@
                               ↓
 ┌─────────────────────────────────────────────────────────────────────┐
 │ Phase 4 PLAN          xdd-plan (v5 — plan 是入口+索引, @upstream)    │
-│                       产出: harness-plan.md (逐文件指令 + @upstream) │
+│                       产出: plan.md (逐文件指令 + @upstream) │
 └─────────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -150,7 +150,7 @@ event-contract.md (事件契约)    → @upstream: event-contract.md §EventName
   ↓
 failure-modes.md (FMEA)         → @upstream: failure-modes.md §F0N
   ↓
-harness-plan.md (逐方法指令)    → @upstream 引用矩阵
+plan.md (逐方法指令)    → @upstream 引用矩阵
   ↓
 代码 (@implements RXX + @intent + @upstream)
 ```
@@ -167,11 +167,11 @@ harness-plan.md (逐方法指令)    → @upstream 引用矩阵
 │   │   ├── pipeline/status.md
 │   │   └── gate/
 │   └── iter-2/                ← 当前活跃
-├── L0-research/               ← 跨 iter 共享
-├── L1-business/               ← 跨 iter 共享
-├── L1.5-architecture/         ← 跨 iter 共享
+├── research/               ← 跨 iter 共享
+├── business/               ← 跨 iter 共享
+├── arch/         ← 跨 iter 共享
 ├── L1-bdd/                    ← 跨 iter 共享
-└── L3-resilience/             ← 跨 iter 共享
+└── resilience/             ← 跨 iter 共享
 ```
 
 **iter-N 启动**:

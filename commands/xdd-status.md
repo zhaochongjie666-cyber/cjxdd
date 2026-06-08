@@ -40,7 +40,7 @@ argument-hint: (无参数)
 [xdd]
 [xdd] === Current Stage ===
 [xdd] 1 RESEARCH (skill: xdd-l0)
-[xdd] expected output: .xdd/iterations/iter-1/L0-research/*.md
+[xdd] expected output: .xdd/iterations/iter-1/research/*.md
 [xdd] next stage skill: xdd-bdd
 [xdd]
 [xdd] === 5 步节奏 (Walker discipline) ===

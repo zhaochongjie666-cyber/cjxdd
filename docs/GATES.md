@@ -139,11 +139,11 @@
 
 ## 4. R11 真实烟雾测试 (L6)
 
-部署完成后, Walker 必须为每个 L6-deploy/{slug}/ 写 marker:
+部署完成后, Walker 必须为每个 verify/{slug}/ 写 marker:
 
 ```bash
 echo "${TS} | login E2E: POST /api/auth/login 200 + browser navigated to /home" \
-    > .xdd/iterations/iter-N/L6-deploy/{slug}/smoke-test-passed
+    > .xdd/iterations/iter-N/verify/{slug}/smoke-test-passed
 ```
 
 **新项目 4 层验证**:

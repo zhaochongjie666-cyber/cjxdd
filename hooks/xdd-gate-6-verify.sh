@@ -15,7 +15,7 @@ iter=$(get_current_iter)
 [[ -z "$iter" ]] && { echo "[xdd] (无 current-iteration)"; exit 0; }
 
 # 检查 R11 真实烟雾测试 marker
-marker_dir="$xdd_dir/iterations/$iter/L6-deploy"
+marker_dir="$xdd_dir/iterations/$iter/verify"
 markers=""
 if [[ -d "$marker_dir" ]]; then
     markers=$(find "$marker_dir" -name "smoke-test-passed" 2>/dev/null)
@@ -27,7 +27,7 @@ if [[ -z "$markers" ]]; then
 fi
 
 # 检查 deployment-report.md
-report_dir="$xdd_dir/iterations/$iter/L6-deploy"
+report_dir="$xdd_dir/iterations/$iter/verify"
 if [[ -d "$report_dir" ]]; then
     reports=$(find "$report_dir" -name "deployment-report.md" 2>/dev/null)
     if [[ -n "$reports" ]]; then

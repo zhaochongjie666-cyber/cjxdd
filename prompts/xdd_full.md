@@ -103,7 +103,7 @@ xdd 6 Phase 完整 prompt — 在外部产品项目 (`.xdd/` 存在) 里使用, 
 ### Step 2.5: Arch (scale ≥ M 触发, strict_mode=true 全规模)
 
 ```
-加载 skill("xdd-arch") → 写 .xdd/L1.5-architecture/{slug}/architecture.md
+加载 skill("xdd-arch") → 写 .xdd/arch/{slug}/architecture.md
                          + aggregate-landscape.md
                          + event-contract.md
 ```

@@ -41,10 +41,10 @@ version: 1.0
 > **为什么三阶段？** 单次全量反推容易遗漏细节、过度推断。分阶段确保：Phase A 快速建立全局视图，Phase B 逐线深入有据可查，Phase C 用 Git 历史补充时序和变更意图。
 >
 > **核心原则**：不创建 R 专属模板。每层产出直接复用对应 L 层的产出格式，写入 `.shadow/` 对应层目录：
-> - L1 → `.shadow/L1-business/BXX-{slug}/`
-> - L1.5 → `.shadow/L1.5-architecture/BXX-{slug}/`
+> - L1 → `.shadow/business/BXX-{slug}/`
+> - L1.5 → `.shadow/arch/BXX-{slug}/`
 > - L2 → `.shadow/L2-e2e/BXX-{slug}/`
-> - L6 → `{迭代作用域}/L6-deploy/{slug}/`（注：`{迭代作用域}` = `.shadow/iterations/{当前迭代}`）
+> - L6 → `{迭代作用域}/verify/{slug}/`（注：`{迭代作用域}` = `.shadow/iterations/{当前迭代}`）
 
 ---
 
@@ -73,7 +73,7 @@ version: 1.0
    - 节点用 `[CONF: LOW]` 占位
    - 目标是建立全局拓扑，不要求完整
 3. **L1.5 架构骨架**：生成 architecture.md + file-list.md + quality.md 的初始版本
-4. **Harness 计划**：生成 harness-plan.md 初始版本
+4. **Harness 计划**：生成 plan.md 初始版本
 5. **L4 骨架**：识别已有测试文件或标注「推导」占位
 
 **Phase A 产出**：
@@ -113,7 +113,7 @@ FOR EACH 业务线 BXX IN 业务线清单（按重要性降序）:
   Step B2: 按 r-flow-rebuilder.md 7 Phase 执行完整流程图反推
   Step B3: 用代码证据（函数签名、try-catch、状态字段）标注置信度
   Step B4: 更新 spec.md / research.md / wire 产物
-  Step B5: 更新 harness-plan.md（L5 Plan 出精密执行计划）
+  Step B5: 更新 plan.md（L5 Plan 出精密执行计划）
   Step B6: 运行业务线 Gate 检查
   → 通过 → 标记该业务线为「证据化完成」
   → 失败 → 修正（≤3次）→ 失败则降级为 LOW 并继续下一条
@@ -156,13 +156,13 @@ NEXT 业务线
 
 **产出**：参考 `../../layers/l1/templates/L1.md` 与 `../../layers/l1/templates/mermaid.md`
 - `research.md` — 按 L1 调研格式
-- `.shadow/L1-business/project.flow.mermaid` — 项目级唯一 BXX-NYY 编号流程总图（含多业务域 subgraph、异常分支、状态标注）
+- `.shadow/business/project.flow.mermaid` — 项目级唯一 BXX-NYY 编号流程总图（含多业务域 subgraph、异常分支、状态标注）
 - `spec.md` — 按 L1 规格格式，生成 `{{SLUG}}-R01` 格式规则 ID，含状态转换和异常处理
 - `wire.svg` — UI 线框图主产物（如为前端项目，按 L1 SVG 线框图格式）
 
 ##### Step B5: L3/L4/L1.5 同步更新
 
-- **L3**：从完整流程图更新 harness-plan.md（精确到 @implements 对应规则 ID）
+- **L3**：从完整流程图更新 plan.md（精确到 @implements 对应规则 ID）
 - **L4**：从 spec.md 规则推导测试场景，更新测试代码
 - **L1.5**：从完整流程图更新 file-list.md（精确到文件-规则映射）和 api-contract.yaml
 

@@ -19,15 +19,15 @@ version: 1.0
 档位判定逻辑:
   IF 无 .shadow/ 目录
      → 🟡 档位 D（野生项目）→ 需要完整逆向
-  ELSE IF L1-business/ 存在且有 spec.md
+  ELSE IF business/ 存在且有 spec.md
      AND L5-plan/ 存在且有 @implements
      AND 代码中有 @implements
      → 🟢 档位 A（完整项目，缺索引）
-  ELSE IF L1-business/ 存在且有 spec.md
+  ELSE IF business/ 存在且有 spec.md
      AND (L5-plan 无 @implements OR 代码无 @implements)
      → 🟡 档位 B（有设计，缺标记）
   ELSE IF 代码中有 @implements
-     AND (L1-business 不完整 OR 目录结构混乱)
+     AND (business 不完整 OR 目录结构混乱)
      → 🟡 档位 C（有代码标记，缺整理）
   ELSE
      → 🔴 档位 B-（有部分 .shadow 但无标记）
@@ -42,18 +42,18 @@ version: 1.0
 **执行步骤**：
 
 1. **整理目录结构**
-   - 确认 `.shadow/L1-business/BXX-<slug>/` 目录存在
-   - 项目级流程总图固定为 `.shadow/L1-business/project.flow.mermaid`
+   - 确认 `.shadow/business/BXX-<slug>/` 目录存在
+   - 项目级流程总图固定为 `.shadow/business/project.flow.mermaid`
    - 业务线标准文件名固定为 `research.md` / `spec.md` / `wire.svg`
 
 2. **生成 INDEX.md**
-   - 扫描 `L1-business/` 下所有 slug 子目录
+   - 扫描 `business/` 下所有 slug 子目录
    - 提取每个 slug 的规则数（从 spec.md 中 grep `-R\d+`）
    - 识别主业务（规则最多的或用户指定）
-   - 生成 `.shadow/L1-business/INDEX.md`
+   - 生成 `.shadow/business/INDEX.md`
 
 3. **运行追溯工具**
-   - `bash skills/shadow-trace-init/scripts/trace.sh matrix > .shadow/L1-business/TRACE.md`
+   - `bash skills/shadow-trace-init/scripts/trace.sh matrix > .shadow/business/TRACE.md`
    - 对每个 slug 运行 `bash skills/shadow-trace-init/scripts/trace.sh coverage <slug>`
 
 4. **输出报告**
@@ -76,7 +76,7 @@ version: 1.0
    - 读取 `spec.md` 中所有规则 ID（R01, R02, ...）
    - 对每条规则，分析其描述中的关键词（API路径、组件名、操作类型）
    - 扫描 L5 Plan 文件内容，匹配规则关键词
-   - 为每个 harness-plan.md 推断并写入 `@implements: slug-Rxx`
+   - 为每个 plan.md 推断并写入 `@implements: slug-Rxx`
    - 扫描 L5 代码文件，匹配 L5 Plan 中的 @implements
    - 为代码文件补写 `@implements` 标记
 
@@ -86,7 +86,7 @@ version: 1.0
    - `规则 R01 → 推断文件: auth.py, auth_service.py → 确认? [Y/n]`
 
 5. **生成追溯矩阵**
-   - `bash skills/shadow-trace-init/scripts/trace.sh matrix > .shadow/L1-business/TRACE.md`
+   - `bash skills/shadow-trace-init/scripts/trace.sh matrix > .shadow/business/TRACE.md`
 
 ### 🟡 档位 C：有代码标记，缺整理
 
@@ -101,7 +101,7 @@ version: 1.0
    - 代码中标记但 spec 中缺失的规则 → 标记为需补充
    - spec 中存在但代码中无标记的规则 → 标记为未实现
 
-2. **整理 L1-business 目录结构**
+2. **整理 business 目录结构**
    - 按 slug 归类
    - 补齐缺失的 spec 条目（从代码注释中推断规则描述）
 
@@ -122,10 +122,10 @@ version: 1.0
 
 当 `.shadow/` 已存在但不符合当前目录式标准时：
 
-1. 将 L1 文件整理为项目级 `L1-business/project.flow.mermaid` + 业务线级 `L1-business/<slug>/research.md|spec.md|wire.svg`
-2. 将 L1.5 文件整理为 `L1.5-architecture/<slug>/architecture.md|file-list.md|quality.md|api-contract.yaml`
+1. 将 L1 文件整理为项目级 `business/project.flow.mermaid` + 业务线级 `business/<slug>/research.md|spec.md|wire.svg`
+2. 将 L1.5 文件整理为 `arch/<slug>/architecture.md|file-list.md|quality.md|api-contract.yaml`
 3. 将 L2 文件整理为 `L2-e2e/<slug>/e2e.md`
-4. 将 L6 文件整理为 `L6-deployment/<slug>/deployment-report.md`
+4. 将 L6 文件整理为 `verifyment/<slug>/deployment-report.md`
 5. 统一语义 Gate 报告路径为 `reviews/semantic-gate.md`
 6. 重新生成 `INDEX.md`、`TRACE.md` 并运行 `bash skills/shadow-trace-init/scripts/trace.sh coverage <slug>`
 
@@ -144,10 +144,10 @@ grep -r "@implements" --include="*.py" --include="*.ts" --include="*.tsx" . | gr
 grep -r "@implements" .shadow/L5-plan/ 2>/dev/null | wc -l
 
 # 扫描 L1 spec
-find .shadow/L1-business -name "spec.md" 2>/dev/null
+find .shadow/business -name "spec.md" 2>/dev/null
 
 # 识别 slug
-ls .shadow/L1-business/ 2>/dev/null
+ls .shadow/business/ 2>/dev/null
 ```
 
 ### Step 2: 档位判定
@@ -158,7 +158,7 @@ ls .shadow/L1-business/ 2>/dev/null
 
 统一目录结构为：
 ```
-.shadow/L1-business/
+.shadow/business/
 ├── INDEX.md
 ├── project.flow.mermaid
 ├── <slug1>/
@@ -176,8 +176,8 @@ ls .shadow/L1-business/ 2>/dev/null
 
 | 策略 | 方法 | 准确率 |
 |------|------|:------:|
-| 文件名匹配 | harness-plan.md 文件名含 API/组件名 → 匹配 spec 中同关键词规则 | ~70% |
-| 内容语义匹配 | harness-plan 描述中的关键词与 spec 规则描述比对 | ~80% |
+| 文件名匹配 | plan.md 文件名含 API/组件名 → 匹配 spec 中同关键词规则 | ~70% |
+| 内容语义匹配 | plan 描述中的关键词与 spec 规则描述比对 | ~80% |
 | L1.5 file-list 映射 | 从 L1.5 的 file-list.md 中获取规则→文件映射 | ~90% |
 
 多条策略交叉验证，一致时自动写入 @implements，不一致时标记需人工确认。
@@ -197,7 +197,7 @@ ls .shadow/L1-business/ 2>/dev/null
 ### Step 6: trace.md 生成
 
 ```bash
-bash skills/shadow-trace-init/scripts/trace.sh matrix > .shadow/L1-business/TRACE.md
+bash skills/shadow-trace-init/scripts/trace.sh matrix > .shadow/business/TRACE.md
 ```
 
 ### Step 7: 输出报告
