@@ -1,5 +1,5 @@
 ---
-name: gherkin-writer
+name: xdd-gherkin-writer
 description: |
   需求描述 → 标准 Gherkin (Given-When-Then) 验收场景.
   适用: 自然语言需求/用户故事/产品 PRD/口头描述 → 可执行 .feature 文件.

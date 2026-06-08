@@ -1,5 +1,5 @@
 ---
-name: shadow-trace-init
+name: xdd-trace-init
 alias: Shadow·TraceInit
 description: |
   [Internal] Shadow Trace Init — 追溯初始化, 建立 L1-L5 双向追溯.

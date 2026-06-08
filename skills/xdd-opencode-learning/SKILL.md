@@ -1,5 +1,5 @@
 ---
-name: opencode-learning
+name: xdd-opencode-learning
 description: |
   OpenCode 源码学习 — 遍历代码仓库解答架构/模块/API/配置/工作流等任何源码问题.
   适用: 理解架构、查找核心模块、学习功能实现、阅读源码、构建系统、贡献代码.

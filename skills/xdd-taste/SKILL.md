@@ -1,5 +1,5 @@
 ---
-name: shadow-taste
+name: xdd-taste
 alias: Shadow·Taste
 description: |
   Shadow 品味标准 — Apple 设计哲学映射. 提供统一品味框架, 被 L1-L6 所有层引用.

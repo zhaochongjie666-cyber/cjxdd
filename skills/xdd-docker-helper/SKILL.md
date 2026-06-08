@@ -1,5 +1,5 @@
 ---
-name: docker-helper
+name: xdd-docker-helper
 description: >
   Docker 中国区助手 — 配置中国镜像源 (阿里云/腾讯云/中科大/网易云), 通过镜像代理拉 Docker Hub 镜像,
   基于 Ubuntu 官方镜像构建带中国 apt 源的 Dockerfile, 提供常用基础镜像的快速拉取方案.

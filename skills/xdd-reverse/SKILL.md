@@ -1,5 +1,5 @@
 ---
-name: shadow-reverse
+name: xdd-reverse
 alias: Shadow·Reverse
 description: |
   [Internal] Shadow Reverse — 逆向工程, 从代码反推设计 (L5 back to L1).

@@ -1,5 +1,5 @@
 ---
-name: mermaid-check
+name: xdd-mermaid-check
 description: |
   Mermaid 图表渲染验证 — 用 mermaid-cli (mmdc) 验证 project.flow.mermaid 能否正确渲染为 SVG.
   Shadow L1 AI-Flow 门禁 (步骤 3) 必通过此技能. 适用任何 Mermaid 语法验证场景.

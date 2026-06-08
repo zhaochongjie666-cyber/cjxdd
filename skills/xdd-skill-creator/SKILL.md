@@ -1,5 +1,5 @@
 ---
-name: skill-creator
+name: xdd-skill-creator
 description: Create / edit / optimize skills. Use for: create skill from scratch, edit existing skill, run evals, benchmark variance, optimize description for better triggering accuracy.
 version: "1.1.0"
 ---

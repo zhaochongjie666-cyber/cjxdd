@@ -1,5 +1,5 @@
 ---
-name: test-in-tmux
+name: xdd-test-in-tmux
 description: |
   通用 Tmux 自动化测试 — 通过 tmux 隔离环境启动任意 CLI, 端到端测交互/工具调用/插件触发.
   支持: OpenCode / Pi Coding Agent / Cloud Code / Codex CLI / 其他可交互命令行工具.
