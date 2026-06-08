@@ -72,7 +72,31 @@ version: "7.4.0"
 
 如果项目包含前端，**必须使用 Playwright CLI 进行端到端测试**。
 
-流程：安装 Playwright → 确认前端容器就绪 → 运行测试（有配置用项目配置，无配置用临时配置）。测试必须覆盖 BDD P0 用户验收剧本。
+**默认 headed 模式 (有头浏览器, 方便观察测试过程)**:
+```bash
+# 跑单个场景 (默认 headed, 弹出浏览器窗口)
+playwright test --headed
+
+# 跑指定 spec (headed)
+playwright test e2e/auth/login.spec.ts --headed
+
+# 跑特定 test (headed)
+playwright test -g "用户密码登录成功" --headed
+
+# CI / 无显示器服务器: 加 --no-headed 切到 headless
+playwright test --no-headed
+
+# 单次截图 (headed 模式弹出浏览器, 拍完自动关)
+playwright screenshot --browser=chromium http://localhost:3000/login /tmp/login.png
+```
+
+**为什么默认 headed**:
+- 开发环境显示器可观察测试过程, 容易发现 UI bug / 动画卡顿 / 状态错乱
+- 失败时直接看到浏览器状态, 不需要看 trace 推断
+- 截图/录屏对 demo / 培训 / PR review 都有用
+- CI / 服务器环境用 `--no-headed` 切到 headless, 保证兼容性
+
+**流程**: 安装 Playwright → 确认前端容器就绪 → 运行测试（默认 headed, 项目配置可指定 `--no-headed` 覆盖）。测试必须覆盖 BDD P0 用户验收剧本。
 
 ### Phase 5.6: 系统漫游测试（Exploratory Wander Test）
 

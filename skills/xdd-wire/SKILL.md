@@ -17,7 +17,11 @@ description: xdd-wire，高质量前端的设计图师：svg wireframe。 一般
 设计svg()
 
 do 实现前端()
-  then playwright cli 截图，对比 svg 实现
+  # 跑 Playwright CLI 截图验证 — 默认 headed 模式 (有头), 方便观察测试过程
+  # 例: `playwright open --browser=chromium http://localhost:3000/login`
+  #     `playwright screenshot --browser=chromium http://localhost:3000/login /tmp/login.png`
+  # CI / 服务器环境无显示器时, 加 --no-headed 切到 headless
+  then playwright cli 截图 (headed 模式, 方便观察)
   if 相同
     then break
   else
