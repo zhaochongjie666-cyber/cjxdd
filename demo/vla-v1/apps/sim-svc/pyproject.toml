@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vla-sim-svc"
+version = "0.1.0"
+description = "B01 数据仿真服务 — VLA Platform"
+requires-python = ">=3.11"
+dependencies = [
+    "vla-common",
+    "vla-db",
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "sqlalchemy>=2.0.27",
+    "pydantic>=2.6.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["vla*"]
