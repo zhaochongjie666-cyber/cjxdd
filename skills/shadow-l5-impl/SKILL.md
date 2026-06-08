@@ -13,33 +13,50 @@ version: "5.0.0"
 
 ## 角色
 
-**只读 Harness 计划，机械执行。** 不需要理解架构全局，不需要读上游文档。
+**Harness 计划是入口 + 索引, 上游设计文档是 detail (v5 修订)**。coder 写代码前**必读** plan, 然后**按 `@upstream` 跳读上游对应段**理解设计意图。
 
-Harness 计划是唯一的输入源。它包含了 coder 需要的一切：
+旧"只读 Harness 计划"哲学根因: 让 coder 写"参数对但语义错"的代码 (例如, R03 业务背景是"审核员必须看到 2 个标注才能 approve", coder 只看 plan 写"if status == SUBMITTED: approve" 通过了断言但漏了">=2 个标注"前置条件). v5 强制 coder 读上游 5 分钟, 拿回业务上下文.
+
+**Plan 包含** (自包含层, coder 不必查):
 - 每个文件的类签名、方法签名、字段类型
 - 每个方法的校验条件、状态变更、事件发布
 - 每个方法的测试断言
 - 错误码、错误消息
 - 依赖服务的接口签名
 
+**Plan 索引 + 上游 detail** (v5 新增, coder 写代码前必读):
+- `@upstream: spec.md §R03` → spec.md 业务背景 / 异常路径 / 跟其他规则关系
+- `@upstream: wire.svg page-annotator-workbench` → 页面布局 / 交互区域 / 状态
+- `@upstream: arch.md §API.POST /annotations` → 完整请求/响应 schema / 错误码
+- `@upstream: event-contract.md §AnnotationSubmitted` → 载荷字段 / 订阅者
+- `@upstream: failure-modes.md §F12 (RPN=27)` → 失败原因 / 触发条件 / 检测信号
+- `@upstream: e2e.feature:scenario-R03-submit` → Gherkin 步骤 / 验收剧本
+
+**L5-impl 的纪律**: 写每个文件前 5 分钟, 跳 plan 顶部 **"上游引用矩阵"** + 该文件指令段的 `@upstream` 列表, 全部 `Read` 一遍, 理解设计意图再动键盘。
+
 ## 怎么做
 
-### 1. 读 Harness 计划
+### 1. 读 Harness 计划 + 跳读上游 (v5 修订)
 
-读取 `.shadow/L5-plan/{slug}/harness-plan.md`。
+**先** 读取 `.shadow/L5-plan/{slug}/harness-plan.md` **顶部"上游引用矩阵"**（6 张表: 规则/端点/事件/失败模式/页面/验收场景 → 上游文件 + 段行号）。
 
-不需要读其他任何文件。
+**然后** 对每个 Batch:
+- 看 plan 该 Batch 的文件清单, 每行有 `@upstream` 列, 列出上游文件 + 段
+- **跳读所有 `@upstream`** (用 Read tool 读对应段) — 这是 v5 新增的纪律
+- 旧"只读 plan" 在 v5 算违规 (会被 §13 L5 Consistency Audit 的 4 维审计抓)
 
 ### 2. 领域模型一致性检查
 
-在写任何代码前，对照 Harness 计划中的聚合定义检查理解：
+在写任何代码前，对照 Harness 计划 + 上游 aggregate-landscape.md 中的聚合定义检查理解：
 
 ```
-聚合根类名 → 与 Harness 计划一致？
-聚合边界 → 包含/不包含与 Harness 计划一致？
+聚合根类名 → 与 Harness 计划 + aggregate-landscape.md 一致？
+聚合边界 → 包含/不包含与 Harness 计划 + landscape.md 一致？
 跨聚合引用 → ID 引用而非对象嵌入？
-一致性边界 → 强一致/最终一致与 Harness 计划一致？
+一致性边界 → 强一致/最终一致与 Harness 计划 + landscape.md 一致？
 ```
+
+(landscape.md 通过 plan 里的 `@upstream: aggregate-landscape.md §B01-annotation` 跳读)
 
 ### 3. TDD 循环（按 Batch 逐文件）
 
@@ -90,9 +107,34 @@ L5-Plan: .shadow/L5-plan/user-service/harness-plan.md
 
 **追溯要求**：
 - 每条 spec 规则必须在某个实现文件的 @implements 中出现
-- @implements 引用的规则必须在 spec.md 中存在
+- @implements 引用的规则必须在 spec.md 中存在 (v5: 实现前读过对应段, 不止看 plan)
 - 每个实现文件必须包含 @intent
-- 每个前端页面/组件必须与 wire.svg 交互区域对应
+- 每个前端页面/组件必须与 wire.svg 交互区域对应 (v5: 实现前读过 wire.svg 对应 page 段)
+- v5: 每个实现文件头加 `@upstream: <file>:<section>` 列出实现时读过的上游段, 供 §13 审计追溯
+
+## v5 5 必读纪律 (写代码前)
+
+每个文件实现前, coder **必须** `Read` 下列上游 (5 分钟, 不止 plan):
+
+| # | 上游 | 跳读什么 | 跳过的话会怎样 |
+|---|------|---------|--------------|
+| 1 | **intent.md** | 整个文件 (项目意图) | 不知道"为什么做", 写出来的功能跑偏 |
+| 2 | **spec.md** | 该文件 @implements 的 RXX 段 | 写"参数对但语义错"的代码 (e.g. 漏业务前置条件) |
+| 3 | **architecture.md** | 该文件对应的 API 端点段 (POST/GET/...) | 端点 schema / 错误码不一致, 跟前端对接失败 |
+| 4 | **wire.svg** (前端) | 该文件对应 page 段 (data-page="X") | 页面布局 / 状态 / action 跟设计脱节 |
+| 5 | **failure-modes.md** | 该文件兜底对应的 FMEA 段 (F0N) | 兜底机制挂在错地方 / 触发条件错 / 漏恢复路径 |
+
+事件/聚合/验收场景按需 (e2e / event-contract / aggregate-landscape):
+
+| 上游 | 何时读 |
+|------|--------|
+| event-contract.md | 该方法发布或订阅事件时, 必读对应 §EventName 段 |
+| aggregate-landscape.md | 该文件定义或修改聚合时, 必读对应 §BXX 段 |
+| e2e.feature | 该文件有 BDD 测试时, 必读对应 Scenario |
+
+**怎么跳读**: 打开 plan 顶部 "上游引用矩阵" → 找到当前文件对应的 RXX / 端点 / 失败模式 → 跳到 spec.md §RXX / arch.md §API.X / failure-modes.md §F0N 段 → Read → 5 分钟理解 → 写代码.
+
+**纪律保证**: §13 L5 Consistency Audit 在 4 维脱节 (spec↔code, wire↔code, arch↔code, l3↔code) 时会读 @upstream 引用反查. coder 没读就硬写会被审计抓.
 
 ## 产出
 
@@ -102,16 +144,17 @@ L5-Plan: .shadow/L5-plan/user-service/harness-plan.md
 
 ## 约束
 
-- **只读 Harness 计划**，不读 L1 spec 等上游文档
-- @implements 必须与 Harness 计划中标注的规则一致
-- @intent 必须与 Harness 计划一致
+- **(v5 修订) 先读 plan 顶部"上游引用矩阵"**, 再按每文件指令的 `@upstream` 跳读上游 (intent / spec / arch / wire / FMEA / event / aggregate / e2e 至少 5 必读), **写代码前 5 分钟** 必做
+- @implements 必须与 Harness 计划中标注的规则一致 (且 v5: 实现前读过 spec.md 对应 RXX 段)
+- @intent 必须与 Harness 计划一致 (且 v5: 实现前读过 intent.md)
+- **(v5) @upstream 引用** 必填在文件头, 列出实现时读过的上游段, 供 §13 审计
 - 无存根代码（禁止 pass、return None、TODO）
 - 无硬编码 secret
 - 无生产路径内存仓库
 - 无假登录或硬编码用户
-- 前端必须实现 Harness 计划中定义的所有 state/actions/events
+- 前端必须实现 Harness 计划中定义的所有 state/actions/events (且 v5: 实现前读过 wire.svg 对应 page)
 - 按 Batch 顺序执行，一个 Batch 未完成前不可进入下一个
-- **先写测试再写实现**（TDD：测试断言来自 Harness 计划）
+- **先写测试再写实现**（TDD：测试断言来自 Harness 计划 + 上游 e2e.feature）
 
 ## 代码品味约束
 

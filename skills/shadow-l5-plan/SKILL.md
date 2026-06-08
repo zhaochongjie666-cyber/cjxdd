@@ -18,12 +18,18 @@ version: "2.0.0"
 
 把 L1+L1.5+L2+L3 的全部设计决策**浓缩**成一份 AI coder 可机械执行的指令。
 
-**核心原则**：coder 只看这一份文档，不需要任何上游文档，就能写出正确代码。
+**核心原则（v5 修订）**：Harness 计划是**入口 + 索引**，上游设计文档是 **detail**。
+- **技术细节内联**（类签名、字段类型、校验条件、事件载荷、错误码）—— 在 plan 里写完整，coder 不需要跳来跳去查
+- **设计背景索引**（spec.md 业务背景 / wire.svg 页面布局 / failure-modes.md 失败原因 / e2e.feature 验收剧本）—— 在 plan 里写 `@upstream: <file>:<section>`, coder **被允许且鼓励** 写代码前去上游对应段读一遍, 不然写出来的代码"对但不像"
 
-这意味着 Harness 计划必须是**自包含**的：
-- 每个文件的类签名、方法签名、字段类型——全部内联
-- 每个方法的校验条件、状态变更、事件发布——全部内联
-- 每条 RXX 规则的兜底（L3 ?failsafe）——全部内联
+**为什么改**：
+- 旧"自包含"哲学导致 L5 coder 只看 plan, 不知道 RXX 业务背景, 写出来的代码"参数对但语义错"
+- §13 L5 Consistency Audit 4 维脱节 (spec↔code, wire↔code, arch↔code, l3↔code) 根因之一: coder 不知道上游设计的全貌
+- "plan 是索引, 上游是 detail" 让 coder 写代码前**主动参考 5 分钟上游**, 大幅减少"对但错"
+
+这意味着 Harness 计划必须有：
+- **自包含**层: 每个文件的类签名、方法签名、字段类型——全部内联
+- **索引**层: 每条 RXX / 端点 / 失败模式标注 `@upstream: <file>:<section>`, coder 按需查
 
 ## 三面手（设计 + 实现 + 跟踪）
 
@@ -42,20 +48,66 @@ L5-plan 不只写 Harness 计划，还要让 L5-impl 真能照着写、写完真
 
 ## Harness 计划消费的上游
 
-| 上游 | 消费什么 |
-|------|---------|
-| L1 intent.md | 项目意图、成功标准、意图约束 |
-| L1 research.md | 统一语言、事件清单、限界上下文、EDD 决策、技术选型 |
-| L1 project.flow.mermaid | BXX-NYY 节点编号、流程分支、状态迁移、数据契约 |
-| L1 spec.md | RXX 规则编号、前置条件、异常路径、API 预映射 |
-| L1 wire.svg | 页面结构、交互区域、data-action/data-state（前端项目） |
-| L1.5 architecture.md | 技术栈、分层架构、API 端点清单（请求/响应/错误码）、文件清单、质量属性 |
-| L1.5 aggregate-landscape.md | 聚合清单、聚合间关系、一致性边界 |
-| L1.5 event-contract.md | 事件定义、载荷结构、传递方式、订阅关系 |
-| L2 e2e.md | 验收场景、覆盖矩阵 |
-| L3 failure-modes.md | 失败模式目录（FMEA 3 维度 RPN：影响/频率/难发现度）|
-| L3 failsafe-design.md | 兜底策略与实现位置（熔断/降级/补偿/重试/限流/背压/隔离/幂等/超时/健康检查）|
-| L3 chaos-scenarios.md | 混沌测试场景（@chaos 标签 + 故障注入点 + 预期行为 + 通过标准）|
+| 上游 | 消费什么 | **在 plan 里的体现** |
+|------|---------|---------------------|
+| L1 intent.md | 项目意图、成功标准、意图约束 | §上下文段 + 每文件指令 `@intent:` 引用意图段 |
+| L1 research.md | 统一语言、事件清单、限界上下文、EDD 决策、技术选型 | §技术栈 + §依赖服务 + 每文件 `@upstream: research.md §UC-术语` |
+| L1 project.flow.mermaid | BXX-NYY 节点编号、流程分支、状态迁移、数据契约 | §文件清单按 BXX 分组 + 每方法 `@flow: B01-N03` |
+| **L1 spec.md** | RXX 规则编号、前置条件、异常路径、API 预映射 | **每方法 `@upstream: spec.md §R03` (coder 写代码前必读)** |
+| **L1 wire.svg** | 页面结构、交互区域、data-action/data-state | **每前端文件 `@upstream: wire.svg page-annotator-workbench, action-submit`** |
+| L1.5 architecture.md | 技术栈、分层架构、API 端点清单、文件清单、质量属性 | §技术栈 + §文件清单 + 每方法 `@upstream: arch.md §API.POST /annotations` |
+| L1.5 aggregate-landscape.md | 聚合清单、聚合间关系、一致性边界 | §聚合定义段 + @upstream 引用 |
+| **L1.5 event-contract.md** | 事件定义、载荷结构、传递方式、订阅关系 | **每方法 `@upstream: event-contract.md §AnnotationSubmitted`, 载荷结构内联** |
+| **L2 e2e.md / uat-script.md** | 验收场景、覆盖矩阵、UAT 剧本 | **每文件 `@upstream: e2e.feature:scenario-R03-submit`, 测试断言从 Gherkin 派生** |
+| **L3 failure-modes.md** | 失败模式目录（FMEA 3 维度 RPN）| **每兜底 `@upstream: failure-modes.md §F12 (RPN=27)`, 失败原因在 FMEA 段** |
+| L3 failsafe-design.md | 兜底策略与实现位置 | §兜底约束表 + 每兜底 `@upstream: failsafe-design.md §F12` |
+| L3 chaos-scenarios.md | 混沌测试场景 | §混沌测试段 + @chaos 标签 @upstream 引用 |
+
+**v5 关键修订**：每条上游引用必须用 `@upstream: <file>:<section>` 格式内联在 plan 的对应方法/文件指令里。coder 写代码前**有责任**按 `@upstream` 跳到上游对应段读 5 分钟, 理解设计意图, 不止看 plan 内联的技术细节。
+
+## 上游引用矩阵（Plan 顶部必含段）
+
+Plan 顶部 (在 §技术栈 之后, §文件清单 之前) 加 **"上游引用矩阵"**, 一表让 coder 看一眼就知道每条规则/端点/失败模式对应上游哪段:
+
+```markdown
+## 上游引用矩阵
+
+### 规则 → spec.md 段映射
+| Harness plan 引用 | 上游文件 | 段 / 行 | 用途 |
+|------------------|---------|--------|------|
+| R01 创建标注 | spec.md | §R01 创建标注 (line 23-45) | 校验条件 / 异常路径 / 业务背景 |
+| R02 提交标注 | spec.md | §R02 提交标注 (line 46-78) | 同上 |
+| R03 审核标注 | spec.md | §R03 审核标注 (line 79-110) | 同上 |
+
+### 端点 → architecture.md 段映射
+| Harness plan 端点 | 上游文件 | 段 | 用途 |
+|------------------|---------|----|----|
+| POST /annotations | architecture.md | §API 端点清单 §3.1 (line 145) | 完整请求/响应 schema / 错误码 |
+| GET /tasks/:id/annotations | architecture.md | §API 端点清单 §3.2 | 同上 |
+
+### 事件 → event-contract.md 段映射
+| Harness plan 事件 | 上游文件 | 段 | 用途 |
+|------------------|---------|----|----|
+| AnnotationSubmitted | event-contract.md | §AnnotationSubmitted (line 67) | 载荷字段 / 订阅者 / 版本 |
+
+### 失败模式 → failure-modes.md 段映射
+| Harness plan FMEA | 上游文件 | 段 | 用途 |
+|------------------|---------|----|----|
+| F12 调度层-分区 | failure-modes.md | §F12 (RPN=27) | 失败原因 / 触发条件 / 检测信号 |
+| F23 事件层-积压 | failure-modes.md | §F23 (RPN=18) | 同上 |
+
+### 页面 → wire.svg 段映射
+| Harness plan 页面 | 上游文件 | 段 | 用途 |
+|------------------|---------|----|----|
+| 标注员工作台 | wire.svg | page-annotator-workbench | 页面布局 / 交互区域 / 状态 |
+
+### 验收场景 → e2e.feature 段映射
+| Harness plan 场景 | 上游文件 | 段 | 用途 |
+|------------------|---------|----|----|
+| R01 创建标注验收 | e2e/annotation.feature | Scenario: R01-create-annotation | Gherkin 步骤 → 测试断言 |
+```
+
+**为什么矩阵是 plan 顶部必含**: L5 coder 翻 plan 第一眼就看这表, 知道"这个 RXX 业务上是什么", 然后去上游读细节, 不是直接写代码. 矩阵让 coder **知道上游存在**, 不会忘记读.
 
 ## 怎么做
 
@@ -185,31 +237,39 @@ Harness 计划（本层写的）:
 
 **生命周期角色**(`design_baseline` 设计基线,**模糊地带**):文件本身的"全局约束段 / 兜底约束段 / Batch 顺序"段是设计基线,跨迭代有效(下个需求来时回查"全局约束"和"批次划分");"逐文件实现指令段"实现完后过期,但依附文件保留作审计基线。详见 `.shadow/shadow-schema.json:lifecycle_artifacts` → `harness-plan`。
 
-一份自包含的执行计划，结构如下：
+一份"入口 + 索引"的执行计划，结构如下：
 
-1. **文件清单**（按 Batch 分组，每个文件标注聚合/类型和规则映射）
-2. **全局约束**（跨文件实现约束：多租户、认证、错误格式、事件发布、分页、事务边界等）
-3. **逐文件指令**（每个文件包含）：
-   - 上下文（一句话）
+1. **上下文**（一句话：项目是什么 / 实现什么模块 / 业务目标）
+2. **技术栈**（后端 + 前端 + 基础设施 + 测试）
+3. **依赖服务**（本次不实现但需要调用）
+4. **上游引用矩阵 (v5 必含)**：6 张表（规则→spec.md / 端点→arch.md / 事件→event-contract.md / 失败模式→failure-modes.md / 页面→wire.svg / 验收场景→e2e.feature）映射 harness plan 引用到上游文件 + 段/行号
+5. **文件清单**（按 Batch 分组，每个文件标注聚合/类型、规则映射、**@upstream 引用**）
+6. **全局约束**（跨文件实现约束：多租户、认证、错误格式、事件发布、分页、事务边界等）
+7. **兜底约束 (L3 韧性层)**：失败模式 → 兜底策略 → 实现位置 → 触发条件 → 恢复路径
+8. **逐文件指令**（每个文件包含）：
+   - **上游引用 (v5)**: `@upstream: spec.md §R03-R05, wire.svg page-X, arch.md §API.POST /X, failure-modes.md F12, e2e.feature:R03-scenario`
+   - 上下文（一句话业务含义）
    - 规则映射（RXX + BXX-NYY）
    - 聚合定义（后端）
    - 类/函数完整签名
    - 逐方法实现指令（校验 + 状态 + 事件 + 错误）
-   - 测试断言（具体代码级断言）
+   - 测试断言（具体代码级断言, 从 e2e.feature Gherkin 派生）
    - 验证命令
+   - **@upstream 跳读指引 (v5)**: 写这个文件前, coder 必须 `Read` 列出的所有上游文件对应段, 至少 5 分钟
 
 ## 约束
 
-- **自包含**：coder 不需要读任何上游文档
+- **入口 + 索引 (v5)**: 技术细节（签名/校验/事件载荷/错误码）在 plan 内联; 设计背景（业务含义/页面布局/失败原因/验收剧本）用 `@upstream: <file>:<section>` 标注, coder 写代码前**必读**上游
 - **可判定**：每个校验条件都是具体的 `if` 表达式，不是模糊描述
 - **可验证**：每个方法都有测试断言，coder 先写测试再写实现
-- **每个方法覆盖所有 spec 规则**：RXX 规则编号内联在方法指令中
-- **每个事件与 event-contract.md 一致**：事件名和载荷结构内联
+- **每个方法覆盖所有 spec 规则**：RXX 规则编号内联在方法指令中, 并附 `@upstream: spec.md §R03`
+- **每个事件与 event-contract.md 一致**：事件名和载荷结构内联, 并附 `@upstream: event-contract.md §AnnotationSubmitted`
 - **每个聚合与 aggregate-landscape.md 一致**：聚合边界和一致性边界内联
-- **前端行为与 wire.svg 一致**：data-action/data-state 映射内联
+- **前端行为与 wire.svg 一致**：data-action/data-state 映射内联, 并附 `@upstream: wire.svg page-annotator-workbench`
 - **按 Batch 分组**：依赖序排列，Batch 内可并行
 - **文件清单与 architecture.md 文件清单一致**：不多不少
 - **穷举测试断言**：每个方法的测试断言数 ≥ 校验条件数 + 正常路径数。末尾标注计数行 `✅ 穷举: 测试 N / 校验 M + 正常 P ≥ N`
+- **上游引用矩阵 (v5)**: plan 顶部必含, 6 张表 (规则 / 端点 / 事件 / 失败模式 / 页面 / 验收场景) 映射到上游文件 + 段行号
 
 ## 品味约束
 
