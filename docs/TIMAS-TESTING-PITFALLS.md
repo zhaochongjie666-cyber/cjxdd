@@ -248,6 +248,77 @@ cd /home/zhaocj/ws/cjxdd
 
 ---
 
+## 坑 11: 测完想复盘 → 去 `~/.claude/<session-id>/` 找原始记录
+
+**症状**: 测完 xdd 流程, 想知道:
+- m2cc 实际跑了哪 6 Phase
+- 哪个 skill 装了几次 (auto-mark DOING 时机)
+- hook 警告触发了多少次
+- 模型卡在哪 / 哪里重试过
+
+**解决**: Claude Code 把每次 session 持久化到 `~/.claude/<session-id>/` 目录:
+
+```bash
+# 1. 找最近 session (按 mtime 排序)
+ls -t ~/.claude/ | grep -E "^[a-f0-9-]{36}$" | head -5
+
+# 2. 进 session 目录, 看完整对话
+cd ~/.claude/<session-id>/
+ls
+# 通常有: .jsonl (对话日志) + 其他元数据
+
+# 3. 用 jq 抽用户输入 (测试时跑的命令)
+cat *.jsonl 2>/dev/null | jq -r 'select(.type == "user") | .message.content' | tail -20
+
+# 4. 抽 Assistant 输出 (看模型实际答了什么)
+cat *.jsonl 2>/dev/null | jq -r 'select(.type == "assistant") | .message.content[]?.text' | tail -30
+
+# 5. 抽 tool calls (看实际跑了哪些 skill/写文件/读文件)
+cat *.jsonl 2>/dev/null | jq -r '.message.content[]? | select(.type == "tool_use") | .name' | sort | uniq -c
+
+# 6. 抽 hook 警告 (m2cc 输出里 [xdd] ⚠️ 开头的)
+cat *.jsonl 2>/dev/null | grep -oE '\[xdd\] ⚠️.*' | sort | uniq -c
+```
+
+**常用复盘维度**:
+
+| 问题 | 复盘命令 |
+|------|---------|
+| m2cc 真的调了 walker 吗？ | `grep -E '"subagent_type".*xdd-walker\|xdd-walker-pi"' ~/.claude/<sid>/*.jsonl` |
+| 6 Phase 哪几个跳过了？ | `grep -oE 'Phase [0-9.]+ [A-Z]+\b' ~/.claude/<sid>/*.jsonl \| sort -u` |
+| Skill 装载次数 | `jq -r 'select(.message.content[]?.name \| test("xdd-")) \| .message.content[].name' ~/.claude/<sid>/*.jsonl \| sort \| uniq -c` |
+| Hook 阻止了几次 (exit 2)? | `grep -c 'exit code: 2\|❌ HARD BLOCK' ~/.claude/<sid>/*.jsonl` |
+| 5 段 stop-gate 警告 (drift / pending / stub)? | `grep -c '\[xdd\] ⚠️\|DRIFT:' ~/.claude/<sid>/*.jsonl` |
+| 是否写到产物 (.xdd/bdd/, .xdd/L0-research/)? | `jq -r '.message.content[]? \| select(.type == "tool_use" and .name == "Write") \| .input.file_path' ~/.claude/<sid>/*.jsonl \| grep ".xdd/"` |
+| 模型卡在哪? (重复 user message) | `jq -r 'select(.type == "user") \| .message.content' ~/.claude/<sid>/*.jsonl \| sort \| uniq -c \| sort -rn` |
+
+**示例复盘流程**:
+```bash
+# 假设 session-id 是 abc-123
+SID=~/.claude/abc-123
+
+# 1. 总交互轮数
+echo "轮数: $(jq -r '.type' $SID/*.jsonl | grep -c user)"
+
+# 2. 写的 xdd 产物
+jq -r '.message.content[]? | select(.type == "tool_use" and .name == "Write") | .input.file_path' $SID/*.jsonl | grep ".xdd/" | sort -u
+
+# 3. 阻止的次数 (Phase 跳序 / L0 未做等)
+echo "硬阻断: $(grep -c '❌ HARD BLOCK' $SID/*.jsonl)"
+
+# 4. L5 drift 检测
+echo "L5 drift: $(grep -c 'L5 Stage Drift\|DRIFT:' $SID/*.jsonl)"
+
+# 5. 3 试 HALT 触发
+echo "HALT 触发: $(grep -c 'HALT' $SID/*.jsonl)"
+```
+
+**保留 vs 清理**:
+- ✅ 测试成功的 session: 保留, 作教学 / regression 对照
+- ❌ 反复重试没用的 session: 删 `rm -rf ~/.claude/<bad-sid>`, 避免占空间
+
+---
+
 ## 测试前的预检清单
 
 跑 m2cc 测 xdd 之前, 在 `/tmp/test-xdd-product-s` 跑:
