@@ -219,7 +219,7 @@
       { "id": "research", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/L1-business/{slug}/research.md" },
       { "id": "spec", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/L1-business/{slug}/spec.md" },
       { "id": "flow-mermaid", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/project.flow.mermaid" },
-      { "id": "wire-svg", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/L1-business/wire.svg" },
+      { "id": "wire-svg", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/wire/{page}.svg" },
       { "id": "add", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/add/{slug}/*.md" },
       { "id": "architecture", "stage": "2.5_ARCH", "role": "design_baseline", "canonical_path": "./.xdd/L1.5-architecture/{slug}/architecture.md" },
       { "id": "aggregate-landscape", "stage": "2.5_ARCH", "role": "design_baseline", "canonical_path": "./.xdd/L1.5-architecture/aggregate-landscape.md" },
