@@ -22,8 +22,8 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib.sh
-source "$SCRIPT_DIR/lib.sh"
+# shellcheck source=xdd-gate-lib.sh
+source "$SCRIPT_DIR/xdd-gate-lib.sh"
 
 # Parse tool input from stdin (Claude Code passes JSON).
 input=$(cat)
@@ -43,12 +43,12 @@ tool_input_text=$(echo "$input" | jq -r '.tool_input | tostring' 2>/dev/null)
 check_pressure_signals "$tool_input_text $skill_name"
 
 # Load schema (needed for stage_order lookups). No-op if already loaded.
-load_shadow_schema || {
-    echo "[shadow] ⚠️  .xdd/shadow-schema.json not found (also tried framework/ + framework template) — stage gating disabled this run." >&2
+load_xdd_schema || {
+    echo "[xdd] ⚠️  .xdd/xdd-schema.json not found (also tried framework/ + framework template) — stage gating disabled this run." >&2
     exit 0
 }
 
-echo "[shadow] Skill loading: $skill_name"
+echo "[xdd] Skill loading: $skill_name"
 
 # Skill 名 → stage num (来自 schema 的 STAGE_SKILL_NUM)
 current_order=$(skill_to_num "$skill_name")
@@ -66,24 +66,24 @@ if [[ -n "$stage_id" ]]; then
             | head -1 | awk -F'|' '{print $3}' | xargs)
         if [[ "$cur_status" == *"⏳"* ]]; then
             if update_stage_status "$display_name" "🔄 DOING"; then
-                echo "[shadow] → status.md 自动更新: $display_name  ⏳ → 🔄 DOING"
+                echo "[xdd] → status.md 自动更新: $display_name  ⏳ → 🔄 DOING"
             fi
         elif [[ "$cur_status" == *"✅"* ]]; then
-            echo "[shadow] (本 stage 已标 ✅ DONE — 重新加载是 OK 的, 状态不变)"
+            echo "[xdd] (本 stage 已标 ✅ DONE — 重新加载是 OK 的, 状态不变)"
         fi
     fi
 fi
 
 # Soft reminder: 5-step rhythm.
 cat <<'EOF'
-[shadow] 5-step rhythm check (from walker):
+[xdd] 5-step rhythm check (from walker):
   ① 装工具         ← you are here
   ② 写 checklist 到 status.md（输入 / 产出 / 自检 / 必读 refs）
   ③ 按工具流程干
   ④ 按需读 references/
   ⑤ 自检 + 写状态
 
-[shadow] Before proceeding: confirm status.md has a fresh 30-50 line checklist
+[xdd] Before proceeding: confirm status.md has a fresh 30-50 line checklist
         for this stage. If not, write it first.
 EOF
 
@@ -101,9 +101,9 @@ if [[ -n "$md" && -f "$md" && -n "$current_order" ]]; then
                 pending_order="${STAGE_NUM[$pending_id]:-}"
                 if [[ -n "$pending_order" && "$pending_order" -lt "$current_order" ]]; then
                     echo "" >&2
-                    echo "[shadow] ❌ HARD BLOCK: $stage is still ⏳ pending." >&2
-                    echo "[shadow]    Loading $skill_name would skip earlier pipeline stage." >&2
-                    echo "[shadow]    Complete $stage first (write to status.md, re-run gate)." >&2
+                    echo "[xdd] ❌ HARD BLOCK: $stage is still ⏳ pending." >&2
+                    echo "[xdd]    Loading $skill_name would skip earlier pipeline stage." >&2
+                    echo "[xdd]    Complete $stage first (write to status.md, re-run gate)." >&2
                     exit 2
                 fi
                 ;;
@@ -116,11 +116,11 @@ fi
 # 检测: 扫 .xdd/iterations/iter-N/L0-research/ 是否存在, 且 mtime ≤ 14 天
 # Round 1: 软警告 (不阻断); Round 2: 硬阻断
 # 适用: iter-1 也算"项目首轮开发", 必须重做 (不是项目级例外)
-shadow=$(get_shadow_dir)
+xdd_dir=$(get_xdd_dir)
 iter=$(get_current_iter)
 # iter-1, iter-2, iter-3, ... 都需 L0 refresh
-if [[ -n "$iter" ]] && [[ "$iter" =~ ^iter-([1-9]|[1-9][0-9]+)$ ]] && [[ -n "$shadow" ]]; then
-    l0_dir="$shadow/iterations/$iter/L0-research"
+if [[ -n "$iter" ]] && [[ "$iter" =~ ^iter-([1-9]|[1-9][0-9]+)$ ]] && [[ -n "$xdd_dir" ]]; then
+    l0_dir="$xdd_dir/iterations/$iter/L0-research"
     l0_warn=""
     if [[ ! -d "$l0_dir" ]]; then
         l0_warn="L0 调研目录不存在"
@@ -131,11 +131,11 @@ if [[ -n "$iter" ]] && [[ "$iter" =~ ^iter-([1-9]|[1-9][0-9]+)$ ]] && [[ -n "$sh
     fi
     if [[ -n "$l0_warn" ]]; then
         echo ""
-        echo "[shadow] 🐢 P0-Y Round 1: L0 调研重做软警告"
-        echo "[shadow]    原因: $l0_warn"
-        echo "[shadow]    期望: $shadow/iterations/$iter/L0-research/ 存在 + 有 .md 笔记本 + mtime ≤ 14 天"
-        echo "[shadow]    处置: 调 shadow-l0-research skill 重新做调研 (新需求可能涉及新方案/新竞品)"
-        echo "[shadow]    注意: 每轮 iter (含 iter-1) 都需 L0 调研, L0 是'每轮的起点'"
+        echo "[xdd] 🐢 P0-Y Round 1: L0 调研重做软警告"
+        echo "[xdd]    原因: $l0_warn"
+        echo "[xdd]    期望: $xdd_dir/iterations/$iter/L0-research/ 存在 + 有 .md 笔记本 + mtime ≤ 14 天"
+        echo "[xdd]    处置: 调 xdd-l0 skill 重新做调研 (新需求可能涉及新方案/新竞品)"
+        echo "[xdd]    注意: 每轮 iter (含 iter-1) 都需 L0 调研, L0 是'每轮的起点'"
     fi
 fi
 
@@ -143,8 +143,8 @@ fi
 # SKILL 要求: 每个 page 至少 4 个状态变体 (normal/loading/empty/error)
 # AI 偷工减料时常说 "状态变体可简化" / "主路径 12-15 页", 把 state 简化掉
 # 检测: 扫 wire.svg 的 data-page (页数) 和 data-state (变体数), ratio < 3 → 软警告
-if [[ "$skill_name" == "shadow-l1-wire" ]] && [[ -n "$shadow" ]]; then
-    wire_svg="$shadow/L1-business/wire.svg"
+if [[ "$skill_name" == "xdd-wire" ]] && [[ -n "$xdd_dir" ]]; then
+    wire_svg="$xdd_dir/L1-business/wire.svg"
     if [[ -f "$wire_svg" ]]; then
         # unique data-page 数量
         page_count=$(grep -oE 'data-page="[^"]+"' "$wire_svg" 2>/dev/null | sort -u | wc -l)
@@ -154,12 +154,12 @@ if [[ "$skill_name" == "shadow-l1-wire" ]] && [[ -n "$shadow" ]]; then
             # SKILL.md line 130: 每页 ≥4 状态变体. 实际 ratio 通常 4, 最少 3 算"勉强"
             if [[ $state_count -lt $((page_count * 3)) ]]; then
                 echo ""
-                echo "[shadow] 🐢 P0-Z Round 1: wire.svg 状态变体被简化 (产物形态门禁)"
-                echo "[shadow]    期望: $page_count 页 × ≥4 状态变体 = ≥$((page_count * 4)) 个 data-state"
-                echo "[shadow]    实际: 仅 $state_count 个 data-state (平均 $((state_count / page_count))/页, < 3 警戒值)"
-                echo "[shadow]    AI 报错时常说"状态变体可简化" / "主路径 N 页" — 这是偷工减料"
-                echo "[shadow]    处置: 把 normal/loading/empty/error 4 变体补全, 或在 status.md 标 deferred 注明砍了哪些"
-                echo "[shadow]    SKILL.md 约束: 每个页面有 ≥4 个状态变体 (normal/loading/empty/error)"
+                echo "[xdd] 🐢 P0-Z Round 1: wire.svg 状态变体被简化 (产物形态门禁)"
+                echo "[xdd]    期望: $page_count 页 × ≥4 状态变体 = ≥$((page_count * 4)) 个 data-state"
+                echo "[xdd]    实际: 仅 $state_count 个 data-state (平均 $((state_count / page_count))/页, < 3 警戒值)"
+                echo "[xdd]    AI 报错时常说"状态变体可简化" / "主路径 N 页" — 这是偷工减料"
+                echo "[xdd]    处置: 把 normal/loading/empty/error 4 变体补全, 或在 status.md 标 deferred 注明砍了哪些"
+                echo "[xdd]    SKILL.md 约束: 每个页面有 ≥4 个状态变体 (normal/loading/empty/error)"
             fi
         fi
     fi

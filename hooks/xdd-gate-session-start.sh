@@ -5,7 +5,7 @@
 # Output: a short context block printed to stdout (Claude Code will surface it
 # as additional context for the model). Exit 0 always — never blocks session.
 #
-# L1 (对齐 OpenCode shadow-flow plugin):
+# L1 (对齐 OpenCode xdd-flow plugin):
 #   - 打印 pipeline 摘要
 #   - 打印当前 stage + 预期产物 + 允许的 skill + 下一 stage
 #   - 注入 5 步节奏
@@ -13,39 +13,39 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib.sh
-source "$SCRIPT_DIR/lib.sh"
-load_shadow_schema || echo "[shadow] ⚠️  .xdd/shadow-schema.json not found — stage context degraded" >&2
+# shellcheck source=xdd-gate-lib.sh
+source "$SCRIPT_DIR/xdd-gate-lib.sh"
+load_xdd_schema || echo "[xdd] ⚠️  .xdd/xdd-schema.json not found — stage context degraded" >&2
 
-shadow=$(get_shadow_dir)
-if [[ -z "$shadow" ]]; then
-    echo "[shadow] No .xdd/ found above $PWD. Walker not initialized for this project."
-    echo "[shadow] To start: run shadow-init to scaffold."
-    echo "[shadow]   bash ~/.claude/skills/xdd-init/scripts/init.sh"
-    echo "[shadow]   # or from repo root: ./skills/xdd-init/scripts/init.sh"
-    echo "[shadow] Then load shadow-walker subagent to walk L0→L6."
+xdd_dir=$(get_xdd_dir)
+if [[ -z "$xdd_dir" ]]; then
+    echo "[xdd] No .xdd/ found above $PWD. Walker not initialized for this project."
+    echo "[xdd] To start: run xdd-init to scaffold."
+    echo "[xdd]   bash ~/.claude/skills/xdd-init/scripts/init.sh"
+    echo "[xdd]   # or from repo root: ./skills/xdd-init/scripts/init.sh"
+    echo "[xdd] Then load xdd-walker subagent to walk L0→L6."
     exit 0
 fi
 
 iter=$(get_current_iter)
-echo "[shadow] project_root = $(find_project_root)"
-echo "[shadow] shadow_dir   = $shadow"
+echo "[xdd] project_root = $(find_project_root)"
+echo "[xdd] shadow_dir   = $xdd_dir"
 
 if [[ -z "$iter" ]]; then
-    echo "[shadow] No active iteration (.xdd/current-iteration missing). Walker is idle."
+    echo "[xdd] No active iteration (.xdd/current-iteration missing). Walker is idle."
     exit 0
 fi
-echo "[shadow] active_iter  = $iter"
+echo "[xdd] active_iter  = $iter"
 
 summary=$(read_status_summary)
 if [[ -n "$summary" ]]; then
-    echo "[shadow] pipeline     = $summary"
+    echo "[xdd] pipeline     = $summary"
 fi
 
 # Per-bizline breakdown (only printed for multi-bizline projects).
 breakdown=$(read_bxx_breakdown)
 if [[ -n "$breakdown" ]]; then
-    echo "[shadow] pipeline (per-bizline):"
+    echo "[xdd] pipeline (per-bizline):"
     echo "$breakdown" | sed 's/^/  /'
 fi
 
@@ -54,13 +54,13 @@ wo_counts=$(count_wo_reports)
 wo_total=$(echo "$wo_counts" | grep -oE 'total=[0-9]+' | cut -d= -f2)
 if [[ "${wo_total:-0}" -gt 0 ]]; then
     echo ""
-    echo "[shadow] work_orders: $wo_counts"
-    echo "[shadow] (reports in .xdd/iterations/iter-N/work-orders/<WO>/report.md)"
+    echo "[xdd] work_orders: $wo_counts"
+    echo "[xdd] (reports in .xdd/iterations/iter-N/work-orders/<WO>/report.md)"
 fi
 
 # Phase 1: 工件生命周期 — 角色分布 (按 design_baseline / process_output / evidence_archive / control_marker 5 类, 模板类不计)
 echo ""
-echo "[shadow] lifecycle (artifact role distribution, 5 classes from .xdd/shadow-schema.json):"
+echo "[xdd] lifecycle (artifact role distribution, 5 classes from .xdd/xdd-schema.json):"
 for role in design_baseline process_output evidence_archive control_marker; do
     count=$(count_lifecycle_role_files "$role" 2>/dev/null || echo 0)
     case "$role" in
@@ -93,20 +93,20 @@ if [[ -n "$current" ]]; then
     next_skill="${STAGE_SKILL[$next_id]:-}"
 
     echo ""
-    echo "[shadow] === Current Stage (L1 增强) ==="
-    echo "[shadow] stage: $current"
-    echo "[shadow] skill: $cur_skill"
-    echo "[shadow] expected output: $cur_output"
+    echo "[xdd] === Current Stage (L1 增强) ==="
+    echo "[xdd] stage: $current"
+    echo "[xdd] skill: $cur_skill"
+    echo "[xdd] expected output: $cur_output"
     if [[ -n "$next_skill" ]]; then
-        echo "[shadow] next stage skill: $next_skill"
+        echo "[xdd] next stage skill: $next_skill"
     fi
     echo ""
-    echo "[shadow] 5-step rhythm (Walker discipline):"
-    echo "[shadow]   ① 装 skill 工具 ($cur_skill)"
-    echo "[shadow]   ② 写 checklist 到 status.md"
-    echo "[shadow]   ③ 按 skill 流程干, 落到预期路径"
-    echo "[shadow]   ④ 自检 + 标 ✅ DONE"
-    echo "[shadow]   ⑤ 加载下一 stage ($next_skill)"
+    echo "[xdd] 5-step rhythm (Walker discipline):"
+    echo "[xdd]   ① 装 skill 工具 ($cur_skill)"
+    echo "[xdd]   ② 写 checklist 到 status.md"
+    echo "[xdd]   ③ 按 skill 流程干, 落到预期路径"
+    echo "[xdd]   ④ 自检 + 标 ✅ DONE"
+    echo "[xdd]   ⑤ 加载下一 stage ($next_skill)"
 fi
 
 # If there's a CONTEXT-MAP section in status.md, surface it.
@@ -114,7 +114,7 @@ md=$(get_status_md)
 if [[ -n "$md" && -f "$md" ]]; then
     if grep -q "^## 上下文地图" "$md" 2>/dev/null; then
         echo ""
-        echo "[shadow] context_map (from status.md):"
+        echo "[xdd] context_map (from status.md):"
         awk '/^## 上下文地图/{flag=1; print; next} /^## /{if (flag && !/上下文地图/) exit} flag' "$md" \
             | head -40 \
             | sed 's/^/  /'

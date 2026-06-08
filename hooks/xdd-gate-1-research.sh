@@ -9,11 +9,11 @@ source "$SCRIPT_DIR/xdd-gate-lib.sh"
 
 is_meta_project && exit 0
 
-shadow=$(get_xdd_dir)
-[[ -z "$shadow" ]] && exit 2
+xdd_dir=$(get_xdd_dir)
+[[ -z "$xdd_dir" ]] && exit 2
 
 iter=$(get_current_iter)
-status_path="$shadow/iterations/$iter/pipeline/status.md"
+status_path="$xdd_dir/iterations/$iter/pipeline/status.md"
 [[ ! -f "$status_path" ]] && { echo "[xdd] (无 status.md, Phase 1 跳过)"; exit 0; }
 
 # 读 Phase 1 行

@@ -15,7 +15,7 @@
 find_project_root() {
     local dir="${PWD}"
     while [[ "$dir" != "/" ]]; do
-        if [[ -d "$dir/.shadow" || -d "$dir/.git" ]]; then
+        if [[ -d "$dir/.xdd" || -d "$dir/.git" ]]; then
             echo "$dir"
             return 0
         fi
@@ -36,7 +36,7 @@ find_project_root() {
 # Returns: 0 = 是 Meta 任务 (在改 framework 自身), 1 = 不是 Meta 任务.
 # 用法:
 #   if is_meta_project; then
-#       echo "[shadow] ⚠️ Meta 任务, 跳过意图引导"
+#       echo "[xdd] ⚠️ Meta 任务, 跳过意图引导"
 #       exit 0
 #   fi
 is_meta_project() {
@@ -52,33 +52,33 @@ is_meta_project() {
 }
 
 # Returns the absolute path to .xdd/ in the project, or empty.
-get_shadow_dir() {
+get_xdd_dir() {
     local root
     root=$(find_project_root) || { echo ""; return 0; }
-    if [[ -d "$root/.shadow" ]]; then
-        echo "$root/.shadow"
+    if [[ -d "$root/.xdd" ]]; then
+        echo "$root/.xdd"
     fi
     echo ""
 }
 
 # Returns the current iteration name (e.g. "iter-2"), or empty.
 get_current_iter() {
-    local shadow
-    shadow=$(get_shadow_dir)
-    if [[ -n "$shadow" && -f "$shadow/current-iteration" ]]; then
-        cat "$shadow/current-iteration"
+    local xdd_dir
+    xdd_dir=$(get_xdd_dir)
+    if [[ -n "$xdd_dir" && -f "$xdd_dir/current-iteration" ]]; then
+        cat "$xdd_dir/current-iteration"
     fi
     echo ""
 }
 
 # Returns absolute path to current status.md, or empty.
 get_status_md() {
-    local shadow iter
-    shadow=$(get_shadow_dir)
-    [[ -z "$shadow" ]] && { echo ""; return 0; }
+    local xdd_dir iter
+    xdd_dir=$(get_xdd_dir)
+    [[ -z "$xdd_dir" ]] && { echo ""; return 0; }
     iter=$(get_current_iter)
     [[ -z "$iter" ]] && { echo ""; return 0; }
-    local f="$shadow/iterations/$iter/pipeline/status.md"
+    local f="$xdd_dir/iterations/$iter/pipeline/status.md"
     if [[ -f "$f" ]]; then
         echo "$f"
     fi
@@ -195,17 +195,17 @@ read_pending_stages() {
 # Scans given directories for Shadow "stub" anti-patterns.
 # Echoes "<file>:<line>: <pattern>" lines, capped at $1 (default 20).
 # Directories passed via stdin (one per line).
-# Patterns and excludes come from shadow-schema.json (single source of truth).
+# Patterns and excludes come from xdd-schema.json (single source of truth).
 scan_stub_patterns() {
     local cap="${1:-20}"
     local dirs
     dirs=$(cat)
 
     [[ -z "$dirs" ]] && return 0
-    load_shadow_schema || { echo ""; return 1; }
+    load_xdd_schema || { echo ""; return 1; }
 
     local schema
-    schema="${SHADOW_SCHEMA:-$(_resolve_schema_path)}"
+    schema="${SHADOW_SCHEMA:-$(_resolve_xdd_schema_path)}"
 
     # Build grep -e args from JSON patterns (one -e per pattern).
     local -a grep_args=()
@@ -249,9 +249,9 @@ scan_stub_in_file() {
         *) return 0 ;;
     esac
 
-    load_shadow_schema || { echo ""; return 1; }
+    load_xdd_schema || { echo ""; return 1; }
     local schema
-    schema="${SHADOW_SCHEMA:-$(_resolve_schema_path)}"
+    schema="${SHADOW_SCHEMA:-$(_resolve_xdd_schema_path)}"
 
     local -a grep_args=()
     while IFS= read -r p; do
@@ -275,10 +275,10 @@ find_source_dirs() {
         2>/dev/null
 }
 
-# ─────────── Stage 表 (从 shadow-schema.json 懒加载) ───────────
-# 单一源真理: ../shadow-schema.json 的 .stages[] 段.
+# ─────────── Stage 表 (从 xdd-schema.json 懒加载) ───────────
+# 单一源真理: ../xdd-schema.json 的 .stages[] 段.
 # 用 env var SHADOW_SCHEMA 覆盖路径 (主要用于测试).
-# 所有函数在第一次被调用时 load_shadow_schema 一次, 之后纯数组查表.
+# 所有函数在第一次被调用时 load_xdd_schema 一次, 之后纯数组查表.
 declare -A STAGE_SKILL=()         # stage_id → skill_name
 declare -A STAGE_NUM=()           # stage_id → num
 declare -A STAGE_SKILL_NUM=()     # skill_name → num
@@ -288,11 +288,11 @@ declare -A LIFECYCLE_ROLE=()      # artifact_id → role
 declare -A LIFECYCLE_PATH=()      # artifact_id → canonical_path
 declare -A LIFECYCLE_STAGE=()     # artifact_id → stage
 _SCHEMA_LOADED=0
-_SHADOW_SCHEMA_PATH=""
+_XDD_SCHEMA_PATH=""
 
-# 解析 schema 路径 (hooks 在仓库根 hooks/ 下, schema 在 ../shadow-schema.json).
+# 解析 schema 路径 (hooks 在仓库根 hooks/ 下, schema 在 ../xdd-schema.json).
 # 关键: BASH_SOURCE 是调用时给的路径, 可能是软链. 用 readlink -f 解开找到仓库根.
-_resolve_schema_path() {
+_resolve_xdd_schema_path() {
     if [[ -n "${SHADOW_SCHEMA:-}" ]]; then
         echo "$SHADOW_SCHEMA"
         return
@@ -302,35 +302,35 @@ _resolve_schema_path() {
     repo_root="$(dirname "$(dirname "$self_real")")"
 
     # Phase 2-3 路径解析优先级:
-    #   1. $PWD/.xdd/shadow-schema.json (per-project, shadow-init 复制)
-    #   2. $repo_root/.xdd/shadow-schema.json (跨子目录项目)
-    #   3. $repo_root/.xdd/shadow-schema.json (Phase 1 兼容路径, 老项目)
-    #   4. $repo_root/skills/shadow-init/templates/shadow-schema.json (framework template 兜底)
-    if [[ -f "$PWD/.xdd/shadow-schema.json" ]]; then
-        echo "$PWD/.xdd/shadow-schema.json"
+    #   1. $PWD/.xdd/xdd-schema.json (per-project, xdd-init 复制)
+    #   2. $repo_root/.xdd/xdd-schema.json (跨子目录项目)
+    #   3. $repo_root/.xdd/xdd-schema.json (Phase 1 兼容路径, 老项目)
+    #   4. $repo_root/skills/xdd-init/templates/xdd-schema.json (framework template 兜底)
+    if [[ -f "$PWD/.xdd/xdd-schema.json" ]]; then
+        echo "$PWD/.xdd/xdd-schema.json"
         return
     fi
-    if [[ -f "$repo_root/.xdd/shadow-schema.json" ]]; then
-        echo "$repo_root/.xdd/shadow-schema.json"
+    if [[ -f "$repo_root/.xdd/xdd-schema.json" ]]; then
+        echo "$repo_root/.xdd/xdd-schema.json"
         return
     fi
-    if [[ -f "$repo_root/.xdd/shadow-schema.json" ]]; then
-        echo "$repo_root/.xdd/shadow-schema.json"
+    if [[ -f "$repo_root/.xdd/xdd-schema.json" ]]; then
+        echo "$repo_root/.xdd/xdd-schema.json"
         return
     fi
-    if [[ -f "$repo_root/skills/shadow-init/templates/shadow-schema.json" ]]; then
-        echo "$repo_root/skills/shadow-init/templates/shadow-schema.json"
+    if [[ -f "$repo_root/skills/xdd-init/templates/xdd-schema.json" ]]; then
+        echo "$repo_root/skills/xdd-init/templates/xdd-schema.json"
         return
     fi
-    # 全部找不到, 输出 .xdd/ 路径让 load_shadow_schema 报错
-    echo "$PWD/.xdd/shadow-schema.json"
+    # 全部找不到, 输出 .xdd/ 路径让 load_xdd_schema 报错
+    echo "$PWD/.xdd/xdd-schema.json"
 }
 
 # Load the schema. Idempotent. Returns 0 on success, 1 if schema not found.
-load_shadow_schema() {
+load_xdd_schema() {
     [[ $_SCHEMA_LOADED -eq 1 ]] && return 0
-    _SHADOW_SCHEMA_PATH=$(_resolve_schema_path)
-    [[ -f "$_SHADOW_SCHEMA_PATH" ]] || return 1
+    _XDD_SCHEMA_PATH=$(_resolve_xdd_schema_path)
+    [[ -f "$_XDD_SCHEMA_PATH" ]] || return 1
     command -v jq >/dev/null 2>&1 || return 1
 
     # Populate stage arrays from .stages[]
@@ -338,24 +338,24 @@ load_shadow_schema() {
         [[ -z "$id" ]] && continue
         STAGE_SKILL["$id"]="$skill"
         STAGE_NUM["$id"]="$num"
-        STAGE_SKILL_NUM["$skill"]="$num"
+        [[ "$skill" != "null" && -n "$skill" ]] && STAGE_SKILL_NUM["$skill"]="$num"
         STAGE_OUTPUTS["$id"]="$outputs"
-    done < <(jq -r '.stages[] | [.id, (.num|tostring), .skill, (.output_patterns | join(" "))] | @tsv' "$_SHADOW_SCHEMA_PATH")
+    done < <(jq -r '.stages[] | [.id, (.num|tostring), .skill, (.output_patterns | join(" "))] | @tsv' "$_XDD_SCHEMA_PATH")
 
     # Populate alias map from .stages[].aliases[]
     while IFS=$'\t' read -r alias id; do
         [[ -z "$alias" ]] && continue
         STAGE_ALIAS["$alias"]="$id"
-    done < <(jq -r '.stages[] | (. as $s | ($s.aliases // [])[] | [., $s.id]) | @tsv' "$_SHADOW_SCHEMA_PATH")
+    done < <(jq -r '.stages[] | (. as $s | ($s.aliases // [])[] | [., $s.id]) | @tsv' "$_XDD_SCHEMA_PATH")
 
     # Populate lifecycle_artifacts[] map (Phase 1)
-    if jq -e '.lifecycle_artifacts.artifacts' "$_SHADOW_SCHEMA_PATH" >/dev/null 2>&1; then
+    if jq -e '.lifecycle_artifacts.artifacts' "$_XDD_SCHEMA_PATH" >/dev/null 2>&1; then
         while IFS=$'\t' read -r id stage role path; do
             [[ -z "$id" ]] && continue
             LIFECYCLE_ROLE["$id"]="$role"
             LIFECYCLE_PATH["$id"]="$path"
             LIFECYCLE_STAGE["$id"]="$stage"
-        done < <(jq -r '.lifecycle_artifacts.artifacts[]? | [.id, .stage, .role, .canonical_path] | @tsv' "$_SHADOW_SCHEMA_PATH")
+        done < <(jq -r '.lifecycle_artifacts.artifacts[]? | [.id, .stage, .role, .canonical_path] | @tsv' "$_XDD_SCHEMA_PATH")
     fi
 
     _SCHEMA_LOADED=1
@@ -366,7 +366,7 @@ load_shadow_schema() {
 # Args: $1 = display name from status.md
 # Returns: internal ID (e.g. "L1_Research") or empty
 stage_alias_to_id() {
-    load_shadow_schema || { echo ""; return 0; }
+    load_xdd_schema || { echo ""; return 0; }
     local name="$1"
     [[ -n "${STAGE_ALIAS[$name]:-}" ]] && echo "${STAGE_ALIAS[$name]}"
 }
@@ -457,7 +457,7 @@ match_stage_by_output() {
     local root
     root=$(find_project_root) || return 1
     [[ -z "$root" ]] && return 1
-    load_shadow_schema || { echo ""; return 0; }
+    load_xdd_schema || { echo ""; return 0; }
     # 转成相对路径
     local rel="${file_path#$root/}"
     [[ "$rel" == "$file_path" ]] && return 1  # 不在项目内
@@ -482,7 +482,7 @@ match_stage_by_output() {
 # Args: $1 = skill name
 # Returns: stage internal ID (e.g. "L1_Research") or empty
 skill_to_stage() {
-    load_shadow_schema || { echo ""; return 0; }
+    load_xdd_schema || { echo ""; return 0; }
     local skill="$1"
     for stage in "${!STAGE_SKILL[@]}"; do
         if [[ "${STAGE_SKILL[$stage]}" == "$skill" ]]; then
@@ -495,14 +495,14 @@ skill_to_stage() {
 
 # 把 skill 名转 stage num (0..11). Args: $1 = skill name. Returns num or empty.
 skill_to_num() {
-    load_shadow_schema || { echo ""; return 0; }
+    load_xdd_schema || { echo ""; return 0; }
     local skill="$1"
     [[ -n "${STAGE_SKILL_NUM[$skill]:-}" ]] && echo "${STAGE_SKILL_NUM[$skill]}"
 }
 
 # Args: $1 = current stage id. Returns: next stage id (by num) or empty.
 next_stage_id() {
-    load_shadow_schema || { echo ""; return 0; }
+    load_xdd_schema || { echo ""; return 0; }
     local cur="$1"
     local cur_num="${STAGE_NUM[$cur]:-}"
     [[ -z "$cur_num" ]] && { echo ""; return 0; }
@@ -535,12 +535,12 @@ list_unfinished_stages() {
 # Returns: "done=N partial=N blocked=N failed=N total=N"
 # 用于 session-start 摘要 + worker-dispatch-hint 累计统计.
 count_wo_reports() {
-    local shadow iter wo_dir
-    shadow=$(get_shadow_dir) || { echo "total=0"; return 0; }
-    [[ -z "$shadow" ]] && { echo "total=0"; return 0; }
+    local xdd_dir iter wo_dir
+    xdd_dir=$(get_xdd_dir) || { echo "total=0"; return 0; }
+    [[ -z "$xdd_dir" ]] && { echo "total=0"; return 0; }
     iter=$(get_current_iter)
     [[ -z "$iter" ]] && { echo "total=0"; return 0; }
-    wo_dir="$shadow/iterations/$iter/work-orders"
+    wo_dir="$xdd_dir/iterations/$iter/work-orders"
     [[ ! -d "$wo_dir" ]] && { echo "total=0"; return 0; }
 
     local done=0 partial=0 blocked=0 failed=0
@@ -564,12 +564,12 @@ count_wo_reports() {
 # ─────────── 工件生命周期 (lifecycle_artifacts) ───────────
 # Phase 1 零破坏 — 仅查询不强制. 替代/补充旧的"跨迭代 vs 迭代作用域"位置二分法.
 # 5 类: design_baseline / process_output / evidence_archive / control_marker / template_instance
-# 详见 shadow-schema.json:lifecycle_artifacts.roles.
+# 详见 xdd-schema.json:lifecycle_artifacts.roles.
 
 # 列出所有 (id|role|stage|canonical_path), 供 stop-gate 全量扫描.
 # Returns: 多行, 格式 "id|role|stage|canonical_path"
 list_lifecycle_artifacts() {
-    load_shadow_schema || { echo ""; return 0; }
+    load_xdd_schema || { echo ""; return 0; }
     local id
     for id in "${!LIFECYCLE_ROLE[@]}"; do
         printf "%s|%s|%s|%s\n" "$id" "${LIFECYCLE_ROLE[$id]}" "${LIFECYCLE_STAGE[$id]}" "${LIFECYCLE_PATH[$id]}"
@@ -581,7 +581,7 @@ list_lifecycle_artifacts() {
 # Returns: role 字符串 (design_baseline / process_output / evidence_archive / control_marker / template_instance / unknown)
 # 算法: 把 canonical_path 和 aliases 里的 {iter}/{slug} 转成 *, 用 case glob 匹配
 lifecycle_role_of() {
-    load_shadow_schema || { echo "unknown"; return 0; }
+    load_xdd_schema || { echo "unknown"; return 0; }
     local file="$1"
     [[ -z "$file" ]] && { echo "unknown"; return 0; }
 
@@ -611,7 +611,7 @@ lifecycle_role_of() {
         esac
         # aliases 也试一遍
         local aliases
-        aliases=$(jq -r --arg id "$id" '.lifecycle_artifacts.artifacts[]? | select(.id == $id) | (.aliases // [])[]' "${SHADOW_SCHEMA:-$(_resolve_schema_path)}" 2>/dev/null)
+        aliases=$(jq -r --arg id "$id" '.lifecycle_artifacts.artifacts[]? | select(.id == $id) | (.aliases // [])[]' "${SHADOW_SCHEMA:-$(_resolve_xdd_schema_path)}" 2>/dev/null)
         local alias
         for alias in $aliases; do
             local apat="${alias//\{iter\}/*}"
@@ -636,7 +636,7 @@ lifecycle_role_of() {
 # Args: $1 = role
 # Returns: 多行, 每行一个 canonical_path 模板
 lifecycle_paths_by_role() {
-    load_shadow_schema || { echo ""; return 0; }
+    load_xdd_schema || { echo ""; return 0; }
     local role="$1"
     local id
     for id in "${!LIFECYCLE_ROLE[@]}"; do
@@ -648,11 +648,11 @@ lifecycle_paths_by_role() {
 # Args: $1 = role
 # Returns: 整数 (count)
 count_lifecycle_role_files() {
-    load_shadow_schema || { echo "0"; return 0; }
+    load_xdd_schema || { echo "0"; return 0; }
     local role="$1"
-    local shadow root
-    shadow=$(get_shadow_dir) || { echo "0"; return 0; }
-    [[ -z "$shadow" ]] && { echo "0"; return 0; }
+    local xdd_dir root
+    xdd_dir=$(get_xdd_dir) || { echo "0"; return 0; }
+    [[ -z "$xdd_dir" ]] && { echo "0"; return 0; }
     root=$(find_project_root) || { echo "0"; return 0; }
 
     local count=0
@@ -664,7 +664,7 @@ count_lifecycle_role_files() {
         case "$path" in
             skills/*) continue ;;
         esac
-        # 把 .xdd/ 前缀去掉, 因为 shadow 已是绝对
+        # 把 .xdd/ 前缀去掉, 因为 xdd_dir 已是绝对
         local rel="${path#./}"
         rel="${rel#.xdd/}"
         # 简单 glob 化 + 通配符处理
@@ -791,42 +791,42 @@ check_pressure_signals() {
     categories=$(echo "$categories" | sed 's/ $//')
 
     cat <<'REMINDER_EOF'
-[shadow] ⚠️  压力信号检测 (Phase 2-3 反"加速跳过"护栏)
+[xdd] ⚠️  压力信号检测 (Phase 2-3 反"加速跳过"护栏)
 REMINDER_EOF
     cat <<REMINDER_EOF
-[shadow]    检测到 $total 个压力信号: $categories
-[shadow]    来源可能是 user prompt / AI tool call, 不区分上游, 统一提醒
+[xdd]    检测到 $total 个压力信号: $categories
+[xdd]    来源可能是 user prompt / AI tool call, 不区分上游, 统一提醒
 REMINDER_EOF
     cat <<'REMINDER_EOF'
-[shadow]
-[shadow]  🐢  提醒: 慢慢来, 不要跳步
-[shadow]
-[shadow]    Walker 3 步硬底线 (写死在 agents/xdd-walker.md):
-[shadow]      1. 不写存根    — pass / TODO / NotImplementedError 都不行
-[shadow]      2. 不用假实现  — InMemoryRepository / mock DB / 硬编码 current_user 都不行
-[shadow]      3. 说了完成就是真完成 — 功能必须跑过 + 有运行证据
-[shadow]
-[shadow]    5 步节奏 (写死在每个 skill 的 SKILL.md 顶部):
-[shadow]      ① 装 skill 工具
-[shadow]      ② 写 checklist 到 status.md (30-50 行)
-[shadow]      ③ 按工具流程干, 落到预期路径
-[shadow]      ④ 自检 + 标 ✅ DONE
-[shadow]      ⑤ 加载下一 stage
-[shadow]
-[shadow]    压力下特别容易犯的错:
-[shadow]      ✗  跳过 stage 直接写代码 → pre-skill.sh 硬阻断 (exit 2)
-[shadow]      ✗  跳过 self-check 直接 ✅ → post-write-stub-scan 实时扫存根
-[shadow]      ✗  简化 fixture 用 InMemoryRepository → stub scan 告警
-[shadow]      ✗  用 hardcoded user 假装登录 → stub scan 告警
-[shadow]      ✗  省略 status.md 标记 → 下一 stage 会被 pre-skill 阻断
-[shadow]
-[shadow]    若时间真的紧, 应该做的是:
-[shadow]      ✓  缩小 scope (砍 feature), 不是砍 quality
-[shadow]      ✓  跳过 L1 Wire (纯后端可省), 不是跳 L1 Spec
-[shadow]      ✓  跳过 33 L3 resilience (S 规模可省), 不是跳 32 e2e
-[shadow]      ✓  标 deferred 写在 status.md 末尾的 "## 变更记录" 段
-[shadow]
-[shadow]    收到, 继续。🐢
+[xdd]
+[xdd]  🐢  提醒: 慢慢来, 不要跳步
+[xdd]
+[xdd]    Walker 3 步硬底线 (写死在 agents/xdd-walker.md):
+[xdd]      1. 不写存根    — pass / TODO / NotImplementedError 都不行
+[xdd]      2. 不用假实现  — InMemoryRepository / mock DB / 硬编码 current_user 都不行
+[xdd]      3. 说了完成就是真完成 — 功能必须跑过 + 有运行证据
+[xdd]
+[xdd]    5 步节奏 (写死在每个 skill 的 SKILL.md 顶部):
+[xdd]      ① 装 skill 工具
+[xdd]      ② 写 checklist 到 status.md (30-50 行)
+[xdd]      ③ 按工具流程干, 落到预期路径
+[xdd]      ④ 自检 + 标 ✅ DONE
+[xdd]      ⑤ 加载下一 stage
+[xdd]
+[xdd]    压力下特别容易犯的错:
+[xdd]      ✗  跳过 stage 直接写代码 → pre-skill.sh 硬阻断 (exit 2)
+[xdd]      ✗  跳过 self-check 直接 ✅ → post-write-stub-scan 实时扫存根
+[xdd]      ✗  简化 fixture 用 InMemoryRepository → stub scan 告警
+[xdd]      ✗  用 hardcoded user 假装登录 → stub scan 告警
+[xdd]      ✗  省略 status.md 标记 → 下一 stage 会被 pre-skill 阻断
+[xdd]
+[xdd]    若时间真的紧, 应该做的是:
+[xdd]      ✓  缩小 scope (砍 feature), 不是砍 quality
+[xdd]      ✓  跳过 L1 Wire (纯后端可省), 不是跳 L1 Spec
+[xdd]      ✓  跳过 33 L3 resilience (S 规模可省), 不是跳 32 e2e
+[xdd]      ✓  标 deferred 写在 status.md 末尾的 "## 变更记录" 段
+[xdd]
+[xdd]    收到, 继续。🐢
 REMINDER_EOF
     return 0
 }

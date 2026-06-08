@@ -21,9 +21,9 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib.sh
-source "$SCRIPT_DIR/lib.sh"
-load_shadow_schema || echo "[shadow] ⚠️  .xdd/shadow-schema.json not found — stage auto-update disabled" >&2
+# shellcheck source=xdd-gate-lib.sh
+source "$SCRIPT_DIR/xdd-gate-lib.sh"
+load_xdd_schema || echo "[xdd] ⚠️  .xdd/xdd-schema.json not found — stage auto-update disabled" >&2
 
 MIN_SIZE="${SHADOW_MIN_FILE_SIZE:-300}"
 CAP="${SHADOW_STUB_CAP:-10}"
@@ -68,15 +68,15 @@ if [[ -n "$stage_id" ]]; then
             | head -1 | awk -F'|' '{print $3}' | xargs)
         if [[ "$cur_status" == *"🔄"* || "$cur_status" == *"⏳"* ]]; then
             if update_stage_status "$display_name" "✅ DONE"; then
-                echo "[shadow] → status.md 自动更新: $display_name  → ✅ DONE"
-                echo "[shadow] (L4 增强: 写入了 stage 预期产物, 自动标完成)"
+                echo "[xdd] → status.md 自动更新: $display_name  → ✅ DONE"
+                echo "[xdd] (L4 增强: 写入了 stage 预期产物, 自动标完成)"
                 # 找下一 stage 提示
                 cur_num="${STAGE_NUM[$stage_id]:-}"
                 for k in "${!STAGE_NUM[@]}"; do
                     n="${STAGE_NUM[$k]}"
                     if [[ $((n - cur_num)) -eq 1 ]]; then
                         next_skill="${STAGE_SKILL[$k]:-}"
-                        echo "[shadow] → 下一 stage skill: $next_skill"
+                        echo "[xdd] → 下一 stage skill: $next_skill"
                         break
                     fi
                 done
@@ -97,15 +97,15 @@ rel_path_probe="${file_path#$root/}"
 role=$(lifecycle_role_of "$rel_path_probe")
 if [[ "$role" == "evidence_archive" ]]; then
     echo ""
-    echo "[shadow] 🐢 R3 evidence_archive 写入检测 (Phase 2-3 反证据改写护栏, 第一轮):"
-    echo "[shadow]    角色: evidence_archive (wander-evidence / chaos-drill-evidence / issues.json)"
-    echo "[shadow]    写入: $rel_path_probe"
-    echo "[shadow]"
-    echo "[shadow]    提醒: 证据存档默认只读 (R10 iter 冻结时 + chmod 444)."
-    echo "[shadow]    第一次写入仅警告, 不阻断; 多次写入将由 gate-check 渐进 chmod."
-    echo "[shadow]"
-    echo "[shadow]    若你确认要保留这次写入 (例如 L6 漫游新加截图),"
-    echo "[shadow]    请显式确认: '这个 evidence 写入是有意的' (让 Walker 不会反复警告)."
+    echo "[xdd] 🐢 R3 evidence_archive 写入检测 (Phase 2-3 反证据改写护栏, 第一轮):"
+    echo "[xdd]    角色: evidence_archive (wander-evidence / chaos-drill-evidence / issues.json)"
+    echo "[xdd]    写入: $rel_path_probe"
+    echo "[xdd]"
+    echo "[xdd]    提醒: 证据存档默认只读 (R10 iter 冻结时 + chmod 444)."
+    echo "[xdd]    第一次写入仅警告, 不阻断; 多次写入将由 gate-check 渐进 chmod."
+    echo "[xdd]"
+    echo "[xdd]    若你确认要保留这次写入 (例如 L6 漫游新加截图),"
+    echo "[xdd]    请显式确认: '这个 evidence 写入是有意的' (让 Walker 不会反复警告)."
 fi
 
 if [[ -z "$findings" ]]; then
@@ -121,15 +121,15 @@ else
     rel_path="$file_path"
 fi
 
-echo "[shadow] ⚠️  $rel_path 写入后含 Walker 硬规则 #1/2 禁止的存根模式："
+echo "[xdd] ⚠️  $rel_path 写入后含 Walker 硬规则 #1/2 禁止的存根模式："
 echo "$findings" | sed 's/^/  /'
 echo ""
 if [[ "$is_test_file" == "1" ]]; then
-    echo "[shadow] (这是测试文件 —— 测试中偶尔的 TODO/占位可能是合理的。"
-    echo "[shadow]  如确认是误报，明示告知用户；如要严肃遵守硬规则，立即替换为真实实现。)"
+    echo "[xdd] (这是测试文件 —— 测试中偶尔的 TODO/占位可能是合理的。"
+    echo "[xdd]  如确认是误报，明示告知用户；如要严肃遵守硬规则，立即替换为真实实现。)"
 else
-    echo "[shadow] Walker 硬规则 #1: 不写存根；#2: 不用假实现。"
-    echo "[shadow] 立即修复 —— 用真实实现替换占位代码。"
+    echo "[xdd] Walker 硬规则 #1: 不写存根；#2: 不用假实现。"
+    echo "[xdd] 立即修复 —— 用真实实现替换占位代码。"
 fi
 
 # === P0-5/6 第一轮: R3 evidence_archive 写阻断(渐进保护) ===
@@ -143,15 +143,15 @@ if [[ "$role" == "evidence_archive" ]]; then
     # 计算本路径所在 iter 下的 r3 计数 (临时用 mtime-based, 第二轮改成持久文件)
     # 第一轮简化: 每写一次就 warn, 不实际 chmod (留给 gate-check-lifecycle 触发时 chmod)
     echo ""
-    echo "[shadow] 🐢 R3 evidence_archive 写入检测 (Phase 2-3 反证据改写护栏, 第一轮):"
-    echo "[shadow]    角色: evidence_archive (wander-evidence / chaos-drill-evidence / issues.json)"
-    echo "[shadow]    写入: $rel_path"
-    echo "[shadow]"
-    echo "[shadow]    提醒: 证据存档默认只读 (R10 iter 冻结时 + chmod 444)."
-    echo "[shadow]    第一次写入仅警告, 不阻断; 多次写入将由 gate-check 渐进 chmod."
-    echo "[shadow]"
-    echo "[shadow]    若你确认要保留这次写入 (例如 L6 漫游新加截图),"
-    echo "[shadow]    请显式确认: '这个 evidence 写入是有意的' (让 Walker 不会反复警告)."
+    echo "[xdd] 🐢 R3 evidence_archive 写入检测 (Phase 2-3 反证据改写护栏, 第一轮):"
+    echo "[xdd]    角色: evidence_archive (wander-evidence / chaos-drill-evidence / issues.json)"
+    echo "[xdd]    写入: $rel_path"
+    echo "[xdd]"
+    echo "[xdd]    提醒: 证据存档默认只读 (R10 iter 冻结时 + chmod 444)."
+    echo "[xdd]    第一次写入仅警告, 不阻断; 多次写入将由 gate-check 渐进 chmod."
+    echo "[xdd]"
+    echo "[xdd]    若你确认要保留这次写入 (例如 L6 漫游新加截图),"
+    echo "[xdd]    请显式确认: '这个 evidence 写入是有意的' (让 Walker 不会反复警告)."
 fi
 
 # Build warning. Try a project-relative path for readability (best effort).
@@ -162,15 +162,15 @@ else
     rel_path="$file_path"
 fi
 
-echo "[shadow] ⚠️  $rel_path 写入后含 Walker 硬规则 #1/2 禁止的存根模式："
+echo "[xdd] ⚠️  $rel_path 写入后含 Walker 硬规则 #1/2 禁止的存根模式："
 echo "$findings" | sed 's/^/  /'
 echo ""
 if [[ "$is_test_file" == "1" ]]; then
-    echo "[shadow] (这是测试文件 —— 测试中偶尔的 TODO/占位可能是合理的。"
-    echo "[shadow]  如确认是误报，明示告知用户；如要严肃遵守硬规则，立即替换为真实实现)。)"
+    echo "[xdd] (这是测试文件 —— 测试中偶尔的 TODO/占位可能是合理的。"
+    echo "[xdd]  如确认是误报，明示告知用户；如要严肃遵守硬规则，立即替换为真实实现)。)"
 else
-    echo "[shadow] Walker 硬规则 #1: 不写存根；#2: 不用假实现。"
-    echo "[shadow] 立即修复 —— 用真实实现替换占位代码。"
+    echo "[xdd] Walker 硬规则 #1: 不写存根；#2: 不用假实现。"
+    echo "[xdd] 立即修复 —— 用真实实现替换占位代码。"
 fi
 
 exit 0

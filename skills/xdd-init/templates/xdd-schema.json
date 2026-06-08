@@ -1,0 +1,246 @@
+{
+  "xdd_version": "0.1.0",
+  "stages": [
+    {
+      "id": "0_INIT",
+      "num": 0,
+      "display": "0 INIT",
+      "skill": "xdd-init",
+      "aliases": ["0", "init", "0 init"],
+      "output_patterns": [
+        "./.xdd/",
+        "./.xdd/scale.md",
+        "./.xdd/iterations/{iter}/pipeline/status.md",
+        "./.xdd/core/intent.md"
+      ]
+    },
+    {
+      "id": "1_RESEARCH",
+      "num": 1,
+      "display": "1 RESEARCH",
+      "skill": "xdd-l0",
+      "aliases": ["1", "research", "1 research"],
+      "output_patterns": [
+        "./.xdd/iterations/{iter}/L0-research/*.md",
+        "./.xdd/L0-research/*.md"
+      ]
+    },
+    {
+      "id": "2_DESIGN",
+      "num": 2,
+      "display": "2 DESIGN",
+      "skill": "xdd-bdd",
+      "aliases": ["2", "design", "2 design"],
+      "output_patterns": [
+        "./.xdd/bdd/{slug}/*.feature",
+        "./.xdd/project.flow.mermaid",
+        "./.xdd/add/{slug}/*.md",
+        "./.xdd/wire/{page}/*.svg"
+      ]
+    },
+    {
+      "id": "2.5_ARCH",
+      "num": 3,
+      "display": "2.5 Arch",
+      "skill": "xdd-arch",
+      "aliases": ["2.5", "arch", "2.5 arch"],
+      "output_patterns": [
+        "./.xdd/L1.5-architecture/{slug}/architecture.md",
+        "./.xdd/L1.5-architecture/aggregate-landscape.md",
+        "./.xdd/L1.5-architecture/event-contract.md",
+        "./.xdd/L1.5-architecture/{slug}/docker-compose.yml"
+      ]
+    },
+    {
+      "id": "2.7_SCAFFOLD",
+      "num": 4,
+      "display": "2.7 Scaffold",
+      "skill": "xdd-scaffold",
+      "aliases": ["2.7", "scaffold"],
+      "output_patterns": [
+        "./docker-compose.yml",
+        "./docker-compose.dev.yml",
+        "./.env.example",
+        "./migrations/*.sql"
+      ]
+    },
+    {
+      "id": "3_L3",
+      "num": 5,
+      "display": "3 L3",
+      "skill": "xdd-l3",
+      "aliases": ["3", "l3", "3 l3"],
+      "output_patterns": [
+        "./.xdd/L3-resilience/{slug}/failure-modes.md",
+        "./.xdd/L3-resilience/{slug}/failsafe-design.md",
+        "./.xdd/L3-resilience/{slug}/chaos-scenarios.md",
+        "./.xdd/L3-resilience/{slug}/resilience-test-plan.md",
+        "./.xdd/L3-resilience/{slug}/recovery-runbook.md"
+      ]
+    },
+    {
+      "id": "3_REVIEW",
+      "num": 6,
+      "display": "3 Review",
+      "skill": null,
+      "aliases": ["3 review", "review"],
+      "output_patterns": []
+    },
+    {
+      "id": "4_PLAN",
+      "num": 7,
+      "display": "4 Plan",
+      "skill": "xdd-plan",
+      "aliases": ["4", "plan", "4 plan"],
+      "output_patterns": [
+        "./docs/xdd/plan/{feature}.md"
+      ]
+    },
+    {
+      "id": "5_EXECUTE",
+      "num": 8,
+      "display": "5 Execute",
+      "skill": "xdd-execute",
+      "aliases": ["5", "execute", "5 execute"],
+      "output_patterns": [
+        "./{src,backend,frontend}/**/*.{ts,tsx,js,jsx,py,go,java,kt,rs}",
+        "./tests/**/*.test.*",
+        "./tests/**/test_*.py"
+      ]
+    },
+    {
+      "id": "6_VERIFY",
+      "num": 9,
+      "display": "6 Verify",
+      "skill": "xdd-l6",
+      "aliases": ["6", "verify", "l6", "6 verify"],
+      "output_patterns": [
+        "./.xdd/iterations/{iter}/L6-deploy/{slug}/deployment-report.md",
+        "./.xdd/iterations/{iter}/L6-deploy/{slug}/smoke-test-passed"
+      ]
+    }
+  ],
+  "stub_patterns": {
+    "patterns": [
+      "^[[:space:]]*pass[[:space:]]*$",
+      "^[[:space:]]*TODO",
+      "^[[:space:]]*FIXME",
+      "^[[:space:]]*NotImplementedError",
+      "^[[:space:]]*raise[[:space:]]+NotImplementedError",
+      "InMemoryRepository",
+      "MockDB",
+      "current_user[[:space:]]*=[[:space:]]*[\"']admin[\"']"
+    ],
+    "ext_globs": [
+      "*.py", "*.ts", "*.tsx", "*.js", "*.jsx", "*.go", "*.java", "*.kt", "*.rs"
+    ],
+    "excluded_dirs": [
+      "node_modules", ".venv", "__pycache__", "dist", "build", "target", ".git", ".shadow", ".xdd"
+    ],
+    "min_file_size_bytes": 300,
+    "max_findings_per_file": 10
+  },
+  "scale_schema": {
+    "fields": {
+      "scale": { "type": "enum", "enum": ["S", "M", "L", "XL"], "default": "L" },
+      "strict_mode": { "type": "boolean", "default": true },
+      "l0_required": { "type": "boolean", "default": true },
+      "l3_required": { "type": "boolean", "default": true },
+      "l6_required": { "type": "boolean", "default": true },
+      "scaffold_required": { "type": "boolean", "default": true },
+      "bxx_enabled": { "type": "boolean", "default": false },
+      "persona_max": { "type": "integer", "default": 12 },
+      "persona_dimensions": { "type": "integer", "default": 8 },
+      "coverage_dimensions": { "type": "integer", "default": 20 },
+      "wire_passes": { "type": "integer", "default": 4 },
+      "l3_extended_mode": { "type": "boolean", "default": true },
+      "no_advisory": { "type": "boolean", "default": true },
+      "halt_after": { "type": "integer", "default": 3 }
+    }
+  },
+  "status_md": {
+    "version": 1,
+    "markers": {
+      "pending": "⏳",
+      "doing": "🔄",
+      "done": "✅",
+      "failed": "❌"
+    },
+    "stage_row_regex": "^\\|\\s*\\d",
+    "bxx_section_regex": "^##\\s+B\\d+",
+    "last_updated_field": "last_updated"
+  },
+  "xdd_init": {
+    "required_files": [
+      "xdd-version",
+      "current-iteration",
+      "iterations/iter-1/pipeline/status.md",
+      "scale.md"
+    ],
+    "default_bizlines": [],
+    "status_md_template_header": [
+      "# Pipeline Status — iter-1",
+      "",
+      "last_updated: {{ts}}",
+      "xdd_version: 0.1.0",
+      "strict_mode: true"
+    ],
+    "status_md_template_table": [
+      "| Phase | 状态 | 备注 |",
+      "|-------|------|------|",
+      "| 0 INIT | ⏳ |  |",
+      "| 1 RESEARCH | ⏳ |  |",
+      "| 2 DESIGN | ⏳ |  |",
+      "| 2.5 BDD | ⏳ |  |",
+      "| 2.7 SCAFFOLD | ⏳ |  |",
+      "| 3 L3 | ⏳ |  |",
+      "| 3 Review | ⏳ |  |",
+      "| 4 Plan | ⏳ |  |",
+      "| 5 Execute | ⏳ |  |",
+      "| 6 Verify | ⏳ |  |"
+    ]
+  },
+  "lifecycle_artifacts": {
+    "roles": {
+      "design_baseline": "设计基线 — 跨迭代累积, 原位修改",
+      "process_output": "过程产物 — 一次性消费, iter 冻结",
+      "evidence_archive": "证据存档 — 只读不可变, 加 .archived 锁",
+      "control_marker": "控制标记 — 空文件/单行, 跟生命周期绑定",
+      "template_instance": "模板与实例 — 模板跟 skill, 实例跟项目"
+    },
+    "artifacts": [
+      { "id": "intent", "stage": "0_INIT", "role": "design_baseline", "canonical_path": "./.xdd/core/intent.md" },
+      { "id": "scale", "stage": "0_INIT", "role": "control_marker", "canonical_path": "./.xdd/scale.md" },
+      { "id": "xdd-version", "stage": "0_INIT", "role": "control_marker", "canonical_path": "./.xdd/xdd-version" },
+      { "id": "current-iteration", "stage": "0_INIT", "role": "control_marker", "canonical_path": "./.xdd/current-iteration" },
+      { "id": "status-md", "stage": "0_INIT", "role": "process_output", "canonical_path": "./.xdd/iterations/{iter}/pipeline/status.md" },
+      { "id": "l0-notebooks", "stage": "1_RESEARCH", "role": "process_output", "canonical_path": "./.xdd/iterations/{iter}/L0-research/*.md" },
+      { "id": "business-landscape", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/L1-business/business-landscape.md" },
+      { "id": "research", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/L1-business/{slug}/research.md" },
+      { "id": "spec", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/L1-business/{slug}/spec.md" },
+      { "id": "flow-mermaid", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/project.flow.mermaid" },
+      { "id": "wire-svg", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/L1-business/wire.svg" },
+      { "id": "add", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/add/{slug}/*.md" },
+      { "id": "architecture", "stage": "2.5_ARCH", "role": "design_baseline", "canonical_path": "./.xdd/L1.5-architecture/{slug}/architecture.md" },
+      { "id": "aggregate-landscape", "stage": "2.5_ARCH", "role": "design_baseline", "canonical_path": "./.xdd/L1.5-architecture/aggregate-landscape.md" },
+      { "id": "event-contract", "stage": "2.5_ARCH", "role": "design_baseline", "canonical_path": "./.xdd/L1.5-architecture/event-contract.md" },
+      { "id": "docker-compose", "stage": "2.5_ARCH", "role": "design_baseline", "canonical_path": "./.xdd/L1.5-architecture/{slug}/docker-compose.yml" },
+      { "id": "docker-compose-test", "stage": "2.5_ARCH", "role": "design_baseline", "canonical_path": "./.xdd/L1.5-architecture/{slug}/docker-compose.test.yml" },
+      { "id": "failure-modes", "stage": "3_L3", "role": "design_baseline", "canonical_path": "./.xdd/L3-resilience/{slug}/failure-modes.md" },
+      { "id": "failsafe-design", "stage": "3_L3", "role": "design_baseline", "canonical_path": "./.xdd/L3-resilience/{slug}/failsafe-design.md" },
+      { "id": "chaos-scenarios", "stage": "3_L3", "role": "design_baseline", "canonical_path": "./.xdd/L3-resilience/{slug}/chaos-scenarios.md" },
+      { "id": "resilience-test-plan", "stage": "3_L3", "role": "design_baseline", "canonical_path": "./.xdd/L3-resilience/{slug}/resilience-test-plan.md" },
+      { "id": "recovery-runbook", "stage": "3_L3", "role": "design_baseline", "canonical_path": "./.xdd/L3-resilience/{slug}/recovery-runbook.md" },
+      { "id": "harness-plan", "stage": "4_PLAN", "role": "design_baseline", "canonical_path": "./.xdd/iterations/{iter}/harness-plan/{slug}/plan.md" },
+      { "id": "code", "stage": "5_EXECUTE", "role": "design_baseline", "canonical_path": "./{src,backend,frontend,lib,internal}/**/*.{ts,tsx,js,jsx,py,go,java,kt,rs}" },
+      { "id": "tests", "stage": "5_EXECUTE", "role": "design_baseline", "canonical_path": "./{tests,test,__tests__}/**/*.{test,spec}.{ts,tsx,js,jsx,py,go,java,kt,rs}" },
+      { "id": "deployment-report", "stage": "6_VERIFY", "role": "process_output", "canonical_path": "./.xdd/iterations/{iter}/L6-deploy/{slug}/deployment-report.md" },
+      { "id": "wander-evidence", "stage": "6_VERIFY", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/{iter}/L6-deploy/{slug}/wander-evidence/**/*" },
+      { "id": "chaos-drill-evidence", "stage": "6_VERIFY", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/{iter}/L6-deploy/{slug}/chaos-drill-evidence/**/*" },
+      { "id": "issues-json", "stage": "6_VERIFY", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/{iter}/L6-deploy/{slug}/issues.json" },
+      { "id": "smoke-test-passed", "stage": "6_VERIFY", "role": "control_marker", "canonical_path": "./.xdd/iterations/{iter}/L6-deploy/{slug}/smoke-test-passed" },
+      { "id": "l6-gate-passed", "stage": "6_VERIFY", "role": "control_marker", "canonical_path": "./.xdd/iterations/{iter}/gate/l6.{slug}.passed" },
+      { "id": "skill-templates", "stage": "0_INIT", "role": "template_instance", "canonical_path": "skills/{name}/templates/*.md" }
+    ]
+  }
+}

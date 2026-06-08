@@ -8,12 +8,12 @@ source "$SCRIPT_DIR/xdd-gate-lib.sh"
 
 is_meta_project && exit 0
 
-shadow=$(get_xdd_dir)
-[[ -z "$shadow" ]] && exit 2
+xdd_dir=$(get_xdd_dir)
+[[ -z "$xdd_dir" ]] && exit 2
 
 # 期望: 所有 Phase 5 行的 Task checkbox 都是 [x] (已完成)
 iter=$(get_current_iter)
-status_path="$shadow/iterations/$iter/pipeline/status.md"
+status_path="$xdd_dir/iterations/$iter/pipeline/status.md"
 if [[ ! -f "$status_path" ]]; then
     echo "[xdd] (无 status.md, Phase 5 跳过)"
     exit 0

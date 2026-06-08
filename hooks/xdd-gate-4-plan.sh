@@ -8,8 +8,8 @@ source "$SCRIPT_DIR/xdd-gate-lib.sh"
 
 is_meta_project && exit 0
 
-shadow=$(get_xdd_dir)
-[[ -z "$shadow" ]] && exit 2
+xdd_dir=$(get_xdd_dir)
+[[ -z "$xdd_dir" ]] && exit 2
 
 # plan 文件应在 docs/xdd/plan/<feature>.md
 plan_dir="docs/xdd/plan"

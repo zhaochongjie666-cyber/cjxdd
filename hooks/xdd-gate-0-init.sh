@@ -10,8 +10,8 @@ source "$SCRIPT_DIR/xdd-gate-lib.sh"
 # Meta 旁路
 is_meta_project && exit 0
 
-shadow=$(get_xdd_dir)
-if [[ -z "$shadow" ]]; then
+xdd_dir=$(get_xdd_dir)
+if [[ -z "$xdd_dir" ]]; then
     echo "[xdd] ⚠️  Phase 0 INIT: 项目无 .xdd/ 目录"
     echo "[xdd]    建议: 跑 xdd-init skill 生成骨架"
     echo "[xdd]      bash ~/.claude/skills/xdd-init/scripts/init.sh"
@@ -20,7 +20,7 @@ if [[ -z "$shadow" ]]; then
 fi
 
 # 校验 scale.md 字段
-scale_md="$shadow/scale.md"
+scale_md="$xdd_dir/scale.md"
 if [[ ! -f "$scale_md" ]]; then
     echo "[xdd] ⚠️  Phase 0: scale.md 缺失"
     echo "[xdd]    期望: .xdd/scale.md (含 strict_mode 字段)"
