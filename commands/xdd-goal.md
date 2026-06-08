@@ -1,0 +1,66 @@
+---
+description: Start an autonomous goal-pursuit loop. Provide the goal as $ARGUMENTS.
+argument-hint: <目标描述>
+---
+
+# /xdd-goal — 启动自主目标循环 (Claude Code 端)
+
+用户在 Claude Code 中调用了 `/xdd-goal {目标}` (`$ARGUMENTS` 是目标文字). 这是 OpenCode `/xdd-goal` 的 Claude Code 端等价 slash command, 行为对齐但**实现简化** (Claude Code 没有 TUI plugin SDK, 用 prompt-based workflow).
+
+## 跟 OpenCode 端的差异
+
+| 维度 | OpenCode `/xdd-goal` | Claude Code `/xdd-goal` |
+|------|-------------------|----------------------|
+| 命令注册 | TUI plugin `command.register` | `commands/xdd-goal.md` slash command |
+| 目标输入 | inline `/xdd-goal {text}` (OpenCode 弹窗补全) | `/xdd-goal {text}` 命令参数 (`$ARGUMENTS`) |
+| 子命令 | `/xdd-goal done` / `/xdd-goal stop` / `/xdd-goal status` 主动收尾 | `/xdd-goal done` / `/xdd-goal stop` / `/xdd-goal status` |
+| 评估循环 | 自动: `session.idle` → 主 session 启发式 eval → COMPLETE/CONTINUE (10 轮 cap) | **手动**: 用户完成时再调一次 `/xdd-goal done` 或写 `final.md` |
+| 隐式完成 | 用户短答 `完成` / `done` / `ok` / `好了` 之类 (≤15 chars, 不带问号) 触发 COMPLETE | — (Claude Code 端靠显式 slash command) |
+| Toast 通知 | TUI toast (`client.tui.showToast`) | 无 (Claude Code 无 TUI 弹窗 API) |
+| Diag 日志 | `.xdd/goal-runs/{sessionID}/diag.log` JSON 行 | 无 (Claude Code hooks 可补, 见 § 进阶) |
+
+## 行为 (当前 prompt 调 Claude 走)
+
+1. **写目标到磁盘**:
+   ```bash
+   RUN_ID="xdd-goal-$(date -u +%Y%m%dT%H%M%S)-$(head -c 4 /dev/urandom | xxd -p)"
+   mkdir -p ".xdd/goal-runs/$RUN_ID"
+   cat > ".xdd/goal-runs/$RUN_ID/goal.md" <<EOF
+   # Goal
+
+   $ARGUMENTS
+
+   _created: $(date -u +%Y-%m-%dT%H:%M:%SZ)_
+   EOF
+   cat > ".xdd/goal-runs/current-goal.json" <<EOF
+   { "runId": "$RUN_ID", "goal": "$ARGUMENTS", "startedAt": $(date +%s) }
+   EOF
+   ```
+
+2. **告知用户**: runId 在哪, goal.md 写完.
+
+3. **引导 walker / 当前 session 推进**:
+   - 加载 `xdd-walker` subagent (或当前 agent)
+   - 把 goal 内容作为 context 注入
+   - 走标准 pipeline (skill / 工具调用) 推进目标
+   - 每完成一个里程碑更新 goal.md (追加 ## 进展 段)
+
+4. **完成判定** (用户触发):
+   - 用户认为目标已达成 → 调 `/xdd-goal done`, Claude 写 `.xdd/goal-runs/{runId}/final.md` (status: ✅ COMPLETE)
+   - 用户放弃 → 调 `/xdd-goal stop`, Claude 写 `final.md` (status: ❌ ABANDONED)
+   - 检查进度 → 调 `/xdd-goal status`, Claude 读 goal.md + final.md 汇报
+
+## 进阶 (可选, 提升到 OpenCode 端平齐)
+
+如果想给 Claude Code 端也加自动评估循环, 可以在 `hooks/xdd-gate-stop.sh` 末尾加:
+- 检测 `.xdd/goal-runs/current-goal.json` 存在
+- 调独立评估子 agent (`Task` 工具派 subagent) 判定 COMPLETE / CONTINUE
+- 最多 10 轮, 超限写 `final.md` ❌ FAILURE-CAP
+
+需要时调 `plugins/xdd-goal.tsx` 的 `evaluate()` 函数当参考实现.
+
+## 文件位置
+
+- Slash command: `commands/xdd-goal.md` (本文件)
+- 软链目标: `~/.claude/commands/xdd-goal.md` (由 `install-to-claude-code.sh` 装)
+- 目标产物: `.xdd/goal-runs/{runId}/goal.md` + `current-goal.json`
