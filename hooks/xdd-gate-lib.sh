@@ -1,12 +1,16 @@
 #!/bin/bash
-# lib.sh — Shared utilities for Shadow hook scripts.
-# Sourced by other hooks. Pure functions + cached lookups, no side effects on stdout.
+# xdd-gate-lib.sh — Shared utilities for xdd gate hook scripts.
+# Sourced by other xdd-gate-*.sh hooks. Pure functions + cached lookups, no side effects on stdout.
 #
+# IMPORTANT: functions always `return 0` on the "no result" path so
+# they are safe to call under `set -e` in parent scripts. Callers check the
+# output (empty = not found) rather than the exit code.
+
 # IMPORTANT: lib.sh functions always `return 0` on the "no result" path so
 # they are safe to call under `set -e` in parent scripts. Callers check the
 # output (empty = not found) rather than the exit code.
 
-# Resolve the project root (the directory containing .shadow/ or .git/).
+# Resolve the project root (the directory containing .xdd/ or .git/).
 # Walks up from $PWD. Returns empty if not found.
 find_project_root() {
     local dir="${PWD}"
@@ -27,8 +31,8 @@ find_project_root() {
 #   - 用户在 framework 仓库里通常是想直接改 skills/agents/hooks/plugins 源码,
 #     不是启动产品项目 pipeline.
 #
-# 判定: 项目根同时存在 agents/shadow-walker.md + skills/shadow-init/SKILL.md +
-#       hooks/lib.sh → framework 自身.
+# 判定: 项目根同时存在 agents/xdd-walker.md + skills/xdd-init/SKILL.md +
+#       hooks/xdd-gate-lib.sh → framework 自身.
 # Returns: 0 = 是 Meta 任务 (在改 framework 自身), 1 = 不是 Meta 任务.
 # 用法:
 #   if is_meta_project; then
@@ -39,15 +43,15 @@ is_meta_project() {
     local root
     root=$(find_project_root) || { return 1; }
     [[ -z "$root" ]] && return 1
-    if [[ -f "$root/agents/shadow-walker.md" \
-       && -f "$root/skills/shadow-init/SKILL.md" \
-       && -f "$root/hooks/lib.sh" ]]; then
+    if [[ -f "$root/agents/xdd-walker.md" \
+       && -f "$root/skills/xdd-init/SKILL.md" \
+       && -f "$root/hooks/xdd-gate-lib.sh" ]]; then
         return 0  # 是 Meta
     fi
     return 1  # 不是 Meta
 }
 
-# Returns the absolute path to .shadow/ in the project, or empty.
+# Returns the absolute path to .xdd/ in the project, or empty.
 get_shadow_dir() {
     local root
     root=$(find_project_root) || { echo ""; return 0; }
@@ -298,28 +302,28 @@ _resolve_schema_path() {
     repo_root="$(dirname "$(dirname "$self_real")")"
 
     # Phase 2-3 路径解析优先级:
-    #   1. $PWD/.shadow/shadow-schema.json (per-project, shadow-init 复制)
-    #   2. $repo_root/.shadow/shadow-schema.json (跨子目录项目)
-    #   3. $repo_root/.shadow/shadow-schema.json (Phase 1 兼容路径, 老项目)
+    #   1. $PWD/.xdd/shadow-schema.json (per-project, shadow-init 复制)
+    #   2. $repo_root/.xdd/shadow-schema.json (跨子目录项目)
+    #   3. $repo_root/.xdd/shadow-schema.json (Phase 1 兼容路径, 老项目)
     #   4. $repo_root/skills/shadow-init/templates/shadow-schema.json (framework template 兜底)
-    if [[ -f "$PWD/.shadow/shadow-schema.json" ]]; then
-        echo "$PWD/.shadow/shadow-schema.json"
+    if [[ -f "$PWD/.xdd/shadow-schema.json" ]]; then
+        echo "$PWD/.xdd/shadow-schema.json"
         return
     fi
-    if [[ -f "$repo_root/.shadow/shadow-schema.json" ]]; then
-        echo "$repo_root/.shadow/shadow-schema.json"
+    if [[ -f "$repo_root/.xdd/shadow-schema.json" ]]; then
+        echo "$repo_root/.xdd/shadow-schema.json"
         return
     fi
-    if [[ -f "$repo_root/.shadow/shadow-schema.json" ]]; then
-        echo "$repo_root/.shadow/shadow-schema.json"
+    if [[ -f "$repo_root/.xdd/shadow-schema.json" ]]; then
+        echo "$repo_root/.xdd/shadow-schema.json"
         return
     fi
     if [[ -f "$repo_root/skills/shadow-init/templates/shadow-schema.json" ]]; then
         echo "$repo_root/skills/shadow-init/templates/shadow-schema.json"
         return
     fi
-    # 全部找不到, 输出 .shadow/ 路径让 load_shadow_schema 报错
-    echo "$PWD/.shadow/shadow-schema.json"
+    # 全部找不到, 输出 .xdd/ 路径让 load_shadow_schema 报错
+    echo "$PWD/.xdd/shadow-schema.json"
 }
 
 # Load the schema. Idempotent. Returns 0 on success, 1 if schema not found.
@@ -640,7 +644,7 @@ lifecycle_paths_by_role() {
     done
 }
 
-# 统计 .shadow/ 下某角色实际存在的文件数 (session-start 角色分布用).
+# 统计 .xdd/ 下某角色实际存在的文件数 (session-start 角色分布用).
 # Args: $1 = role
 # Returns: 整数 (count)
 count_lifecycle_role_files() {
@@ -660,12 +664,12 @@ count_lifecycle_role_files() {
         case "$path" in
             skills/*) continue ;;
         esac
-        # 把 .shadow/ 前缀去掉, 因为 shadow 已是绝对
+        # 把 .xdd/ 前缀去掉, 因为 shadow 已是绝对
         local rel="${path#./}"
-        rel="${rel#.shadow/}"
+        rel="${rel#.xdd/}"
         # 简单 glob 化 + 通配符处理
         local abs_pat
-        if [[ "$rel" == .shadow/* ]]; then
+        if [[ "$rel" == .xdd/* ]]; then
             abs_pat="$root/$rel"
         else
             abs_pat="$root/$rel"
@@ -797,7 +801,7 @@ REMINDER_EOF
 [shadow]
 [shadow]  🐢  提醒: 慢慢来, 不要跳步
 [shadow]
-[shadow]    Walker 3 步硬底线 (写死在 agents/shadow-walker.md):
+[shadow]    Walker 3 步硬底线 (写死在 agents/xdd-walker.md):
 [shadow]      1. 不写存根    — pass / TODO / NotImplementedError 都不行
 [shadow]      2. 不用假实现  — InMemoryRepository / mock DB / 硬编码 current_user 都不行
 [shadow]      3. 说了完成就是真完成 — 功能必须跑过 + 有运行证据

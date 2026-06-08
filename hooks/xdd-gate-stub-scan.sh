@@ -23,7 +23,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
-load_shadow_schema || echo "[shadow] ⚠️  .shadow/shadow-schema.json not found — stage auto-update disabled" >&2
+load_shadow_schema || echo "[shadow] ⚠️  .xdd/shadow-schema.json not found — stage auto-update disabled" >&2
 
 MIN_SIZE="${SHADOW_MIN_FILE_SIZE:-300}"
 CAP="${SHADOW_STUB_CAP:-10}"
@@ -89,7 +89,7 @@ fi
 # === P0-5/6 第一轮: R3 evidence_archive 写阻断(渐进保护) ===
 # 文档说 "post-write 写入时触发 → chmod 444 阻断",但旧版只在 stop-gate 跑;
 # 现在在 post-write 真实生效。第一轮: 仅警告 + 渐进 chmod (count >= 3 触发),
-# 第二轮打磨: 加 .shadow/.r3_warn_count 持久文件 + 硬阻断 + init.sh 新文件例外.
+# 第二轮打磨: 加 .xdd/.r3_warn_count 持久文件 + 硬阻断 + init.sh 新文件例外.
 # 触发场景: AI 写 wander-evidence/01.png / chaos-drill-evidence/ / issues.json
 # 注意: 必须在 "无 stub 早退" 之前, 让 clean evidence 文件也走 R3 检查
 root=$(find_project_root) || root=""
@@ -135,7 +135,7 @@ fi
 # === P0-5/6 第一轮: R3 evidence_archive 写阻断(渐进保护) ===
 # 文档说 "post-write 写入时触发 → chmod 444 阻断",但旧版只在 stop-gate 跑;
 # 现在在 post-write 真实生效。第一轮: 仅警告 + 渐进 chmod (count >= 3 触发),
-# 第二轮打磨: 加 .shadow/.r3_warn_count 持久文件 + 硬阻断 + init.sh 新文件例外.
+# 第二轮打磨: 加 .xdd/.r3_warn_count 持久文件 + 硬阻断 + init.sh 新文件例外.
 # 触发场景: AI 写 wander-evidence/01.png / chaos-drill-evidence/ / issues.json
 # 注意: 必须在 "无 stub 早退" 之前, 让 clean evidence 文件也走 R3 检查
 role=$(lifecycle_role_of "${file_path#$root/}")

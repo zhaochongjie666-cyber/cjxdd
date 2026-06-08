@@ -15,14 +15,14 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
-load_shadow_schema || echo "[shadow] ⚠️  .shadow/shadow-schema.json not found — stage context degraded" >&2
+load_shadow_schema || echo "[shadow] ⚠️  .xdd/shadow-schema.json not found — stage context degraded" >&2
 
 shadow=$(get_shadow_dir)
 if [[ -z "$shadow" ]]; then
-    echo "[shadow] No .shadow/ found above $PWD. Walker not initialized for this project."
+    echo "[shadow] No .xdd/ found above $PWD. Walker not initialized for this project."
     echo "[shadow] To start: run shadow-init to scaffold."
-    echo "[shadow]   bash ~/.claude/skills/shadow-init/scripts/init.sh"
-    echo "[shadow]   # or from repo root: ./skills/shadow-init/scripts/init.sh"
+    echo "[shadow]   bash ~/.claude/skills/xdd-init/scripts/init.sh"
+    echo "[shadow]   # or from repo root: ./skills/xdd-init/scripts/init.sh"
     echo "[shadow] Then load shadow-walker subagent to walk L0→L6."
     exit 0
 fi
@@ -32,7 +32,7 @@ echo "[shadow] project_root = $(find_project_root)"
 echo "[shadow] shadow_dir   = $shadow"
 
 if [[ -z "$iter" ]]; then
-    echo "[shadow] No active iteration (.shadow/current-iteration missing). Walker is idle."
+    echo "[shadow] No active iteration (.xdd/current-iteration missing). Walker is idle."
     exit 0
 fi
 echo "[shadow] active_iter  = $iter"
@@ -55,12 +55,12 @@ wo_total=$(echo "$wo_counts" | grep -oE 'total=[0-9]+' | cut -d= -f2)
 if [[ "${wo_total:-0}" -gt 0 ]]; then
     echo ""
     echo "[shadow] work_orders: $wo_counts"
-    echo "[shadow] (reports in .shadow/iterations/iter-N/work-orders/<WO>/report.md)"
+    echo "[shadow] (reports in .xdd/iterations/iter-N/work-orders/<WO>/report.md)"
 fi
 
 # Phase 1: 工件生命周期 — 角色分布 (按 design_baseline / process_output / evidence_archive / control_marker 5 类, 模板类不计)
 echo ""
-echo "[shadow] lifecycle (artifact role distribution, 5 classes from .shadow/shadow-schema.json):"
+echo "[shadow] lifecycle (artifact role distribution, 5 classes from .xdd/shadow-schema.json):"
 for role in design_baseline process_output evidence_archive control_marker; do
     count=$(count_lifecycle_role_files "$role" 2>/dev/null || echo 0)
     case "$role" in

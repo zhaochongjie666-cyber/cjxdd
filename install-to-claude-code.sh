@@ -2,7 +2,7 @@
 # install-to-claude-code.sh - Symlink agents and skills to ~/.claude/
 # Usage: ./install-to-claude-code.sh
 #
-# 装到用户级 ~/.claude/，让 shadow-walker agent 和所有 skill
+# 装到用户级 ~/.claude/，让 xdd-walker agent 和所有 skill
 # 在 Claude Code 任何项目里都可用。
 # OpenCode 用户请继续用 install-to-opencode.sh。
 
@@ -58,7 +58,7 @@ if [[ -d "$SCRIPT_DIR/skills" ]]; then
     echo "   🔗 skills: $SKILL_COUNT → $CLAUDE_DIR/skills/"
 fi
 
-# === Commands (Claude Code slash commands, 如 /cjgoal) ===
+# === Commands (Claude Code slash commands, 如 /xdd-goal) ===
 # commands/*.md 会被 Claude Code 识别为 /<name> slash command.
 # OpenCode 端等价功能在 plugins/goal-mode.tsx (TUI plugin).
 CMD_COUNT=0
@@ -105,15 +105,15 @@ echo "✅ Claude Code 安装完成！修改自动同步（软链）。"
 echo ""
 echo "💡 用法："
 echo "   • 调出 walker：在 Claude Code 中对 Claude 说"
-echo "       '使用 shadow-walker subagent 给我做一个 XX 系统'"
-echo "   • 直接调某个 skill：输入 /shadow-l1-research 等 slash 命令"
+echo "       '使用 xdd-walker subagent 给我做一个 XX 系统'"
+echo "   • 直接调某个 skill：输入 /xdd-bdd 等 slash 命令"
 echo "   • Walker 内部自动按需 Skill 加载工具，无需手动调用"
 echo "   • Hooks 自动门禁：SessionStart 输出流水线上下文，PreToolUse(Skill)"
 echo "     强制 5 步节奏 + 阻止跳阶段，Stop 扫存根 + 查 status 完成度"
 echo ""
 echo "🔁 卸载："
-echo "   rm $CLAUDE_DIR/agents/shadow-walker.md"
-echo "   rm $CLAUDE_DIR/skills/shadow-*"
-echo "   rm $CLAUDE_DIR/commands/*.md  # slash commands (如 cjgoal)"
+echo "   rm $CLAUDE_DIR/agents/xdd-walker.md"
+echo "   rm $CLAUDE_DIR/skills/xdd-*"
+echo "   rm $CLAUDE_DIR/commands/*.md  # slash commands (如 xdd-goal)"
 echo "   rm $CLAUDE_DIR/hooks   # 整个目录都是软链，删一个就行"
 echo "   rm $CLAUDE_DIR/settings.json"

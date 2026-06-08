@@ -111,8 +111,8 @@ if [[ -n "$md" && -f "$md" ]]; then
         product_exists=0
         for pat in $patterns; do
             # 把 pattern 转成目录: 去掉最后一段 (文件名) 和 * 通配
-            # ".shadow/L0-research/*.md" → ".shadow/L0-research"
-            # ".shadow/L1-business/{slug}/intent.md" → ".shadow/L1-business" (粗粒度, 也够用)
+            # ".xdd/L0-research/*.md" → ".xdd/L0-research"
+            # ".xdd/L1-business/{slug}/intent.md" → ".xdd/L1-business" (粗粒度, 也够用)
             # "Dockerfile" → "." (项目根)
             check_dir=$(echo "$pat" | sed -E 's|/[^/]*\*?[^/]*$||' | sed 's|{slug}||g')
             [[ -z "$check_dir" ]] && check_dir="."
@@ -145,7 +145,7 @@ echo "[shadow] === End Stop Gate ==="
 
 # --- Check 3: artifact lifecycle drift (Phase 2 升级) ---
 # 5 条软警告 + 1 条 R5 硬阻断 — 漂移 ≥ 1 时 exit 1.
-# 详见 .shadow/shadow-schema.json:lifecycle_artifacts[] + CLAUDE.md § 7 + skills/shadow-artifact-lifecycle/.
+# 详见 .xdd/shadow-schema.json:lifecycle_artifacts[] + CLAUDE.md § 7 + skills/shadow-artifact-lifecycle/.
 echo ""
 echo "[shadow] === Lifecycle Drift (Phase 2: 软警告 + R5 硬门禁) ==="
 lifecycle_drift=0
@@ -155,7 +155,7 @@ skel_files=$(find "$shadow" -name "*.skel" 2>/dev/null | head -10)
 if [[ -n "$skel_files" ]]; then
     echo "[shadow]   ⚠️  .skel files found (L3-skeleton 已废, 由 harness-plan 替代):"
     echo "$skel_files" | sed 's/^/      /'
-    echo "[shadow]     → 归档到 .shadow/legacy/ (Phase 3 处理)"
+    echo "[shadow]     → 归档到 .xdd/legacy/ (Phase 3 处理)"
     lifecycle_drift=1
 fi
 
@@ -175,24 +175,24 @@ fi
 
 # 3.3 deployment-report.md vs deploy-report.md
 if [[ -f "$shadow/L6-deploy/deploy-report.md" ]]; then
-    echo "[shadow]   ⚠️  Found .shadow/L6-deploy/deploy-report.md (alias). Canonical = deployment-report.md"
+    echo "[shadow]   ⚠️  Found .xdd/L6-deploy/deploy-report.md (alias). Canonical = deployment-report.md"
     lifecycle_drift=1
 fi
 # 老的 schema reviewer 路径
 if [[ -d "$shadow/reviewer" ]]; then
-    echo "[shadow]   ⚠️  Found .shadow/reviewer/ (schema-老路径). Canonical = .shadow/iterations/{iter}/reviews/"
+    echo "[shadow]   ⚠️  Found .xdd/reviewer/ (schema-老路径). Canonical = .xdd/iterations/{iter}/reviews/"
     lifecycle_drift=1
 fi
 
 # 3.4 feature-status 位置漂移 (3 派位置, 统一认迭代作用域)
 if [[ -d "$shadow/feature-status" ]]; then
-    echo "[shadow]   ⚠️  Found .shadow/feature-status/ (top-level). Canonical = .shadow/iterations/{iter}/feature-status/{slug}/"
+    echo "[shadow]   ⚠️  Found .xdd/feature-status/ (top-level). Canonical = .xdd/iterations/{iter}/feature-status/{slug}/"
     lifecycle_drift=1
 fi
 if [[ -d "$shadow/L5-plan" ]]; then
     fs_in_l5=$(find "$shadow/L5-plan" -type d -name "feature-status" 2>/dev/null | head -3)
     if [[ -n "$fs_in_l5" ]]; then
-        echo "[shadow]   ⚠️  Found L5-plan/{slug}/feature-status/. Canonical = .shadow/iterations/{iter}/feature-status/{slug}/"
+        echo "[shadow]   ⚠️  Found L5-plan/{slug}/feature-status/. Canonical = .xdd/iterations/{iter}/feature-status/{slug}/"
         echo "$fs_in_l5" | sed 's/^/      /'
         lifecycle_drift=1
     fi
@@ -200,7 +200,7 @@ fi
 
 # 3.5 L1 wire 老 schema 路径
 if [[ -d "$shadow/L1-business/wireframes" ]]; then
-    echo "[shadow]   ⚠️  Found .shadow/L1-business/wireframes/. Canonical = .shadow/L1-business/wire.svg (项目级单张)"
+    echo "[shadow]   ⚠️  Found .xdd/L1-business/wireframes/. Canonical = .xdd/L1-business/wire.svg (项目级单张)"
     lifecycle_drift=1
 fi
 
@@ -209,7 +209,7 @@ if [[ $lifecycle_drift -eq 0 ]]; then
 else
     echo ""
     echo "[shadow]   发现 $lifecycle_drift 处 Phase 1 漂移 (软警告: 仅提示, 不阻断)"
-    echo "[shadow]   详细角色定义见: .shadow/shadow-schema.json:lifecycle_artifacts.roles + CLAUDE.md § 7"
+    echo "[shadow]   详细角色定义见: .xdd/shadow-schema.json:lifecycle_artifacts.roles + CLAUDE.md § 7"
     echo "[shadow]   处置指引见: skills/shadow-artifact-lifecycle/references/drift-examples.md"
 fi
 

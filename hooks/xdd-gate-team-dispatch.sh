@@ -16,11 +16,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 
 # 从 prompt 文本里抽 work order 路径.
-# 形如 ".shadow/iterations/iter-1/work-orders/WO-007-something.md"
+# 形如 ".xdd/iterations/iter-1/work-orders/WO-007-something.md"
 extract_wo_path() {
     local prompt="$1"
     local path
-    path=$(echo "$prompt" | grep -oE '\.shadow/iterations/iter-[0-9]+/work-orders/WO-[0-9]+[^[:space:]]*\.md' 2>/dev/null | head -1)
+    path=$(echo "$prompt" | grep -oE '\.xdd/iterations/iter-[0-9]+/work-orders/WO-[0-9]+[^[:space:]]*\.md' 2>/dev/null | head -1)
     if [[ -z "$path" ]]; then
         path=$(echo "$prompt" | grep -oE '[^[:space:]]*WO-[0-9]+[^[:space:]]*\.md' 2>/dev/null | head -1)
     fi
@@ -60,9 +60,9 @@ wo_path=$(extract_wo_path "$prompt")
 # 1. 派了 worker 但 prompt 里没提 WO-XXX
 if [[ -z "$wo_id" && -z "$wo_path" ]]; then
     echo "[shadow] ⚠️  Walker 派了 shadow-worker 但 prompt 里没找到 WO-NNN 引用。" >&2
-    echo "[shadow]    建议: 先写 work order 到 .shadow/iterations/iter-N/work-orders/WO-NNN-slug.md" >&2
+    echo "[shadow]    建议: 先写 work order 到 .xdd/iterations/iter-N/work-orders/WO-NNN-slug.md" >&2
     echo "[shadow]    模板: docs/work-order-template.md" >&2
-    echo "[shadow]    契约: agents/shadow-worker.md" >&2
+    echo "[shadow]    契约: agents/xdd-worker.md" >&2
     exit 0
 fi
 

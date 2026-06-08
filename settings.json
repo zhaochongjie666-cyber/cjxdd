@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash $HOME/.claude/hooks/session-start.sh"
+            "command": "bash $HOME/.claude/hooks/xdd-gate-session-start.sh"
           }
         ]
       }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash $HOME/.claude/hooks/user-prompt-submit.sh"
+            "command": "bash $HOME/.claude/hooks/xdd-gate-user-prompt-submit.sh"
           }
         ]
       }
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash $HOME/.claude/hooks/pre-skill.sh"
+            "command": "bash $HOME/.claude/hooks/xdd-gate-pre-skill.sh"
           }
         ]
       },
@@ -37,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash $HOME/.claude/hooks/worker-dispatch-hint.sh"
+            "command": "bash $HOME/.claude/hooks/xdd-gate-team-dispatch.sh"
           }
         ]
       }
@@ -48,7 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash $HOME/.claude/hooks/post-write-stub-scan.sh"
+            "command": "bash $HOME/.claude/hooks/xdd-gate-stub-scan.sh"
           }
         ]
       }
@@ -59,12 +59,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash $HOME/.claude/hooks/stop-gate.sh"
+            "command": "bash $HOME/.claude/hooks/xdd-gate-stop.sh"
           }
         ]
       }
     ]
   },
-  "_comment": "Shadow Walker — Claude Code hook configuration. Auto-loaded by Claude Code when CWD is inside this project. Hook scripts live in ./hooks/ (repo root) and are symlinked to ~/.claude/hooks/ by install-to-claude-code.sh.",
+  "_comment": "xdd — Claude Code hook configuration. Auto-loaded when CWD is inside this project. Hook scripts live in ./hooks/ (repo root) and are symlinked to ~/.claude/hooks/ by install-to-claude-code.sh. All hook names use xdd-gate-* prefix (no shadow-* legacy).",
   "skipDangerousModePermissionPrompt": true
 }

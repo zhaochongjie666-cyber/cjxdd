@@ -2,7 +2,7 @@
 # pre-skill.sh — Enforce Walker's 5-step rhythm.
 # Triggered by: PreToolUse hook, matcher: "Skill".
 #
-# Walker discipline (from agents/shadow-walker.md):
+# Walker discipline (from agents/xdd-walker.md):
 #   1. 装工具（Skill 加载）
 #   2. 写 checklist 到 status.md  ← this hook enforces this
 #   3. 按工具流程干
@@ -44,7 +44,7 @@ check_pressure_signals "$tool_input_text $skill_name"
 
 # Load schema (needed for stage_order lookups). No-op if already loaded.
 load_shadow_schema || {
-    echo "[shadow] ⚠️  .shadow/shadow-schema.json not found (also tried framework/ + framework template) — stage gating disabled this run." >&2
+    echo "[shadow] ⚠️  .xdd/shadow-schema.json not found (also tried framework/ + framework template) — stage gating disabled this run." >&2
     exit 0
 }
 
@@ -113,7 +113,7 @@ fi
 
 # === P0-Y Round 1: L0 调研重做门禁 (每轮 iter 软警告) ===
 # 问题: 每轮 iter 启动时, L0 调研常被跳过 — 但新需求可能涉及新方案/新竞品/新约束
-# 检测: 扫 .shadow/iterations/iter-N/L0-research/ 是否存在, 且 mtime ≤ 14 天
+# 检测: 扫 .xdd/iterations/iter-N/L0-research/ 是否存在, 且 mtime ≤ 14 天
 # Round 1: 软警告 (不阻断); Round 2: 硬阻断
 # 适用: iter-1 也算"项目首轮开发", 必须重做 (不是项目级例外)
 shadow=$(get_shadow_dir)
