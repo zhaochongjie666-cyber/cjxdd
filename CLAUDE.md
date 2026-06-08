@@ -139,6 +139,62 @@ Agent 正文里的工具名一律按 Claude Code 风格 TitleCase 引用（`Read
 
 ## 修改 framework 时常用命令
 
+### 端到端测试 xdd 流程 (Tmux 监督 m2cc)
+
+测 xdd 6 Phase 实际跑通, 走真实 Claude Code 会话, 通过 tmux 监督:
+
+```bash
+# 0. 选一个 demo 项目 (S scale 快速验证, L scale 严格)
+DEMO=/tmp/test-xdd-product-s   # 或 /tmp/test-xdd-product-l
+# 验证 demo 存在
+ls $DEMO/.xdd/iterations/iter-1/pipeline/status.md
+
+# 1. 装 xdd 到 Claude Code (软链 hooks/skills/agents/settings)
+./install-to-claude-code.sh
+
+# 2. 开 tmux 会话 (命名 "xdd-test" 方便 attach)
+tmux new-session -d -s xdd-test -c $DEMO
+tmux send-keys -t xdd-test "claude" Enter          # 启 m2cc (Claude Code CLI)
+sleep 8                                           # 等 m2cc 启动 + SessionStart hook 跑
+
+# 3. 监督: 跑 xdd 6 Phase 完整流程
+# Phase 0 INIT: .xdd/ 已存在, 直接确认
+tmux send-keys -t xdd-test "请用 xdd-walker 给我做一个登录系统" Enter
+sleep 5
+
+# Phase 1 RESEARCH: walker 装 xdd-l0 skill, 写 9 笔记本
+# Phase 2 DESIGN: walker 装 xdd-bdd / flow / add / wire / arch
+# 阶段出口由 11 个 xdd-gate hook 自动检查 (status.md ⏳ → ✅)
+
+# 4. 监督交互: 在另一个 shell attach 看 m2cc 实时跑
+tmux attach -t xdd-test      # 或另开窗口: tmux capture-pane -p -t xdd-test
+
+# 5. 检查产出
+cat $DEMO/.xdd/iterations/iter-1/pipeline/status.md   # 看各 Phase 状态
+ls $DEMO/.xdd/L0-research/ 2>/dev/null              # Phase 1 笔记本
+ls $DEMO/.xdd/bdd/ 2>/dev/null                      # Phase 2 BDD
+ls $DEMO/.xdd/L1.5-architecture/ 2>/dev/null         # Phase 2.5 Arch
+ls $DEMO/.xdd/L3-resilience/ 2>/dev/null            # Phase 3 L3 韧性
+
+# 6. 跑 smoke 验证
+bash skills/smoke-xdd-e2e.sh
+bash skills/smoke-xdd-scaffold-docker.sh
+
+# 7. 退出 tmux
+tmux kill-session -t xdd-test
+```
+
+**关键监督点**:
+- 11 个 xdd-gate hook 实时弹警告 / 阻断, 监督要看 status.md 是否被 walker 正确更新
+- Phase 1 笔记本 mtime < 14 天 (L0 重做门禁)
+- Phase 2.5 Arch 是否触发 (L scale 必做, S scale 跳过)
+- Phase 3 L3 韧性 9 维 + 12 模式 + 8 字段 (l3_extended_mode=true)
+- Phase 4 plan 17 项自检
+- Phase 5 execute BDD 覆盖追踪表全 `[x]`
+- Phase 6 verify 4 维 L5 consistency 审计
+
+详见 `skills/xdd-test-in-tmux/SKILL.md` (通用 tmux 测 CLI 工具).
+
 ### Smoke 测试 (改完即跑, 跑通即 PASS)
 
 ```bash
