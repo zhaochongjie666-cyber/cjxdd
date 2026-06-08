@@ -50,17 +50,19 @@ def session():
     """每个测试用独立 SQLite session, 跑完清空."""
     db_path = f"/tmp/{uuid.uuid4().hex}.db"
     os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
-    # 清 settings 缓存 + 强制 import 所有 model
     from vla_common.config import get_settings
 
     get_settings.cache_clear()
     import vla_common.audit  # noqa: F401
     import vla.pipe.models  # noqa: F401
     import vla.sim.models  # noqa: F401
+    import vla.sim.domain  # noqa: F401
     from vla_db.session import get_engine, get_session_factory
     from vla_db.base import Base
 
     engine = get_engine()
+    # drop_all + create_all 保证干净状态
+    Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     factory = get_session_factory()
     s = factory()

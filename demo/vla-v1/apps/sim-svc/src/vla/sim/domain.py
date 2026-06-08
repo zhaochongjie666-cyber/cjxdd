@@ -89,11 +89,32 @@ class SceneAsset(Base):
     copyright_owner: Mapped[str | None] = mapped_column(String(255), nullable=True)  # B01-R12
 
 
+# === Project (多租户根实体) ===
+class Project(Base):
+    """多租户根实体 — scaffold 简化为 SQLite/PG 通用."""
+
+    __tablename__ = "projects"
+    __table_args__ = {"extend_existing": True}
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    owner_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
 # === SimJob (扩展) ===
 class SimJob(Base):
     """B01 聚合根 1 — 仿真任务 (扩展 SimJob 域)."""
 
     __tablename__ = "sim_jobs"
+    __table_args__ = {"extend_existing": True}
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     project_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
