@@ -2,11 +2,10 @@
 name: shadow-l0-research
 alias: Shadow·L0-Research
 description: |
-  Shadow L0 发散笔记本 — 自由发散调研阶段。什么都往里扔，不评判、不精简、不怕重复。
-  产出 .shadow/L0-research/ 目录下的自由格式笔记文件。
-  下游（L1 Research）不消费这些笔记，只消费从笔记中收敛出的结论。
-  无门禁检查。不设品味约束。
-  触发：发散、笔记本、笔记、调研笔记、brainstorm、发散调研、L0。
+  Shadow L0 发散笔记本 (v2 — brainstorm + L1 消费 + web search 5 方向).
+  9 份笔记: 00-l1-recap / industry / competitor / personas / journeys / tech / events / references / brainstorm.
+  自由格式, 不评判不精简. iter-2+ 必读 L1 增量不重发明. 无门禁无品味约束.
+  触发: 发散、笔记本、笔记、调研笔记、brainstorm、发散调研、L0.
 version: "1.0.0"
 ---
 

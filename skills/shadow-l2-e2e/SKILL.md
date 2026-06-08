@@ -3,15 +3,11 @@ name: shadow-l2-e2e
 alias: Shadow·L2-E2E
 methodology: BDD + Coverage Matrix — Behavior-Driven Development with exhaustive scenario coverage matrix
 description: |
-  Shadow L2 端到端验收场景 — 穷尽覆盖策略。
-  使用此 skill 当用户提到：验收、e2e、BDD、场景设计、覆盖矩阵、穷尽测试、
-  UAT、用户验收、真实场景、测试覆盖、场景穷举、端到端测试、验收标准。
-  即使是轻量任务，只要涉及"怎么验证功能是对的"也适用本 skill。
-  
-  产出 e2e.md + 覆盖矩阵 + uat-script.md。
-  核心工具：14 维覆盖矩阵（S/M/L 项目可缩放）+ 6 维用户画像发散 + 5 层旅程穷举 + 交叉矩阵。
-  四层覆盖完整性：业务线 + 页面 + 交互点 + API 端点，目标 100%。
-  三面手：设计（场景设计）+ 实现（Step 绑定骨架 → L5-impl 填实）+ 跟踪（覆盖率追踪 + flaky 检测）。
+  Shadow L2 端到端验收场景 — 穷尽覆盖 (BDD+CM 思维, v9.2 Design-Conformance Gherkin).
+  产出 e2e.md + 覆盖矩阵 + uat-script.md + 8 BXX Gherkin.
+  工具: 14 维覆盖矩阵 (S/M/L 可缩放) + 6 维画像 + 5 层旅程 + 交叉矩阵. 目标 100% 覆盖.
+  即使轻量任务, 涉及"怎么验证功能对"也适用.
+  触发: 验收、e2e、BDD、场景设计、覆盖矩阵、穷尽测试、UAT、用户验收、真实场景、测试覆盖、场景穷举、端到端、验收标准.
 version: "9.1.0"
 ---
 

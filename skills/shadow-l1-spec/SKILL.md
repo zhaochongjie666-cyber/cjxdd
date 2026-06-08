@@ -8,10 +8,10 @@ methodology: |
   ➕ 按特征迭代交付 (L5 Impl，BXX-NYY 节点粒度) 
   ℹ️ FDD 的 Plan-by-Feature 由 L1.5 Architecture 承接，Design-by-Feature 由 L5 Harness 计划承接
 description: |
-  Shadow L1 业务规格（FDD 特性思维）。产出 spec.md，帮你想清楚"要交付哪些特性"。
-  每条规则 = 一个可交付特性，按聚合分组形成 Feature Set。
-  规则编号（RXX）是后续 L1.5 API 端点清单的追溯源。
-  触发：规格、spec、特性、feature、业务规则。
+  Shadow L1 业务规格 (FDD 特性思维). 产出 spec.md, 帮你想清楚"要交付哪些特性".
+  每条规则 = 一个可交付特性, 按聚合分组形成 Feature Set.
+  规则编号 (RXX) 是 L1.5 API 端点清单的追溯源.
+  触发: 规格、spec、特性、feature、业务规则.
 version: "4.2.0"
 ---
 

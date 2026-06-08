@@ -2,9 +2,9 @@
 name: shadow-reviewer
 alias: Shadow·Reviewer
 description: |
-  Shadow 统一审查 Agent — 整合质量审查、UX 审查、全链路审计、项目审计和调研审查。
-  只读式审查 31-36 产出物，输出 PASS/FAI3/WARN 报告，
-  检测传导断层、UX 断点、系统性缺陷。不修改文件，只指出问题。
+  Shadow 统一审查 Agent — 整合质量/UX/全链路/项目/调研审查.
+  只读式审查 31-36 产出物, 输出 PASS/FAI3/WARN 报告.
+  检测传导断层、UX 断点、系统性缺陷. 不修改文件, 只指出问题.
 version: "2.0.0"
 ---
 

@@ -1,11 +1,10 @@
 ---
 name: gherkin-writer
 description: |
-  将需求描述转化为标准 Gherkin (Given-When-Then) 验收场景。
-  当用户说"写 Gherkin"、"转成 Gherkin"、"生成 BDD 场景"、"需求转场景"、
-  "Given When Then"、"验收场景"、"写 feature 文件"、"BDD 场景"时触发。
-  适用于：把自然语言需求、用户故事、产品 PRD、口头描述快速转化为可执行的 Gherkin .feature 文件。
-  可独立使用（非 Shadow 管线），也可嵌入 Shadow L2 产出。
+  需求描述 → 标准 Gherkin (Given-When-Then) 验收场景.
+  适用: 自然语言需求/用户故事/产品 PRD/口头描述 → 可执行 .feature 文件.
+  可独立用, 也可嵌入 Shadow L2 产出.
+  触发: 写 Gherkin、转成 Gherkin、生成 BDD 场景、需求转场景、Given When Then、验收场景、写 feature 文件.
 version: "1.0.0"
 ---
 

@@ -3,14 +3,10 @@ name: shadow-l1-research
 alias: Shadow·L1-Research
 methodology: DDD — Domain-Driven Design + EDD — Event-Driven Development + IDDD — Intention-Driven Development
 description: |
-  Shadow L1 业务调研（DDD + EDD + IDDD 思维引导）。帮你想清楚"为什么做"、"业务领域是什么"和"事件如何驱动系统"。
-  产出 intent.md（意图定义）+ business-landscape.md（业务全景）+ 各业务线 research.md（统一语言、事件风暴、限界上下文、方案选型）。
-  IDDD：在最开始定义项目意图、成功标准、变更追溯基准。
-  EDD 决策（进程内事件 vs 消息队列）在事件风暴阶段显式做出，传导到 L1.5 Architecture。
-  业务全景是架构师掌握全局的入口，业务线是 L1 的子线。
-  必须进行外部调研：搜索行业最佳实践、开源项目、社区推荐，不闭门造车。
-  必须进行深度用户理解：用户画像发散（6维度）+ 用户旅程穷举（5层次），不闭门造车。
-  触发：业务调研、research、DDD、事件风暴、Event Storming、统一语言、限界上下文、EDD、业务全景、意图、intent。
+  Shadow L1 业务调研 (DDD+EDD+IDDD 思维). 想清楚"为什么做" / "业务领域" / "事件如何驱动系统".
+  产出 intent.md (意图) + business-landscape.md (业务全景) + 各 BXX research.md (统一语言/事件/限界/选型).
+  必做: 外部调研 (行业/竞品/技术) + 深度用户理解 (画像 6 维 + 旅程 5 层).
+  触发: 业务调研、research、DDD、事件风暴、Event Storming、统一语言、限界上下文、EDD、业务全景、意图、intent.
 version: "7.0.0"
 ---
 

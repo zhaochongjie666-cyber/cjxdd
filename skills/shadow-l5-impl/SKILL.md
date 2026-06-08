@@ -2,10 +2,10 @@
 name: shadow-l5-impl
 alias: Shadow·L5-Impl
 description: |
-  Shadow L5 代码实现 — 基于 Harness 计划的机械执行。
-  AI coder 只读 Harness 计划，不需要任何上游文档，按 Batch 逐文件实现。
-  生产实现必须满足真正可用契约：真实持久化、真实认证、跨服务数据流。
-  触发：L5、实现、代码、TDD、Harness。
+  Shadow L5 代码实现 — 基于 Harness 计划的机械执行 (v5.2 Pre-write Signoff).
+  coder 写每个 method 前必填 sign-off block (读了 / 理解 / 假设) + @upstream 跳读上游.
+  v5.1 plan-iter-check 防过期 plan. 生产实现必须满足真用契约: 真实持久化/认证/跨服务.
+  触发: L5、实现、代码、TDD、Harness、Pre-write Signoff.
 version: "5.0.0"
 ---
 

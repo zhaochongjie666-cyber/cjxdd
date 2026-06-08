@@ -2,12 +2,11 @@
 name: shadow-l1-wire
 alias: Shadow·L1-Wire
 description: |
-  Shadow L1 线框图设计（SVG 设计思维）。产出 wire.svg（SVG UI/UX 契约图），强调完整界面设计而非标签堆砌。
-  设计核心驱动力是 research.md 的用户画像和旅程穷举——先枚举"谁在用"和"怎么用"，再推导页面、交互和状态。
-  SVG 强制模型思考布局、尺寸、位置、视觉层次，而非 HTML 的堆砌行为。
-  每个交互区域用 data-node/data-rule/data-action/data-target 标注，关联 flow 节点、spec 规则、用户动作和跳转目标。
-  架构师和实现者通过 SVG 一眼看到所有页面、所有状态、所有可交互点以及代码实现传导边界。
-  触发：线框、wire、UI、原型、SVG。
+  Shadow L1 线框图设计 (SVG 设计思维). 产出 wire.svg (UI/UX 契约图), 强调完整界面设计.
+  核心驱动: research.md 画像 + 旅程穷举 → 推导页面/交互/状态.
+  SVG 强制布局/尺寸/位置/视觉层次思维. 交互区域用 data-page/data-rule/data-action/data-target 标注.
+  架构师 + 实现者通过 SVG 一眼看到所有页面/状态/可交互点/代码传导边界.
+  触发: 线框、wire、UI、原型、SVG.
 version: "4.4.0"
 ---
 

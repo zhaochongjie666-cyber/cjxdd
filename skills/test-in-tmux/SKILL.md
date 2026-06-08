@@ -1,13 +1,10 @@
 ---
 name: test-in-tmux
 description: |
-  通用 Tmux 自动化测试技能 — 通过 tmux 隔离环境启动任意 CLI 程序，端到端测试交互行为、工具调用、插件触发等。
-  支持的程序包括：OpenCode、Pi Coding Agent、Cloud Code、Codex CLI 及其他可交互的命令行工具。
-  当用户说"测试"、"test"、"tmux 测试"、"测试 CLI"、"测试 agent"、"测试 opencode"、"测试 pi coding agent"、
-  "测试 cloud code"、"测试 codex"、"e2e 测试"、"端到端测试"、"验证程序"、"测试 skill"、"测试 plugin"、"测试工具"、
-  "test in tmux"、"test agent"、"test cli tool"时触发此技能。
-  适用于验证 CLI 程序的启动、交互、工具调用、插件加载、agent 切换等自动化测试场景。
-  即使没有明确提到 tmux，只要需要测试 CLI 程序的交互行为，都应触发此技能。
+  通用 Tmux 自动化测试 — 通过 tmux 隔离环境启动任意 CLI, 端到端测交互/工具调用/插件触发.
+  支持: OpenCode / Pi Coding Agent / Cloud Code / Codex CLI / 其他可交互命令行工具.
+  适用: 验证 CLI 启动 / 交互 / 工具调用 / 插件加载 / agent 切换.
+  触发: 测试、test、tmux 测试、测试 CLI、测试 agent、测试 opencode、测试 pi、测试 cloud code、测试 codex、e2e 测试、端到端、验证程序、测试 skill、测试 plugin、test in tmux.
 version: "2.2.0"
 ---
 

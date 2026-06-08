@@ -1,13 +1,10 @@
 ---
 name: docker-helper
 description: >
-  Docker 中国区助手 — 解决中国境内的 Docker Registry 访问问题。
-  配置中国镜像源（阿里云、腾讯云、中科大、网易云等），通过镜像代理拉取 Docker Hub 镜像，
-  基于 Ubuntu 官方镜像构建带中国 apt 源的 Dockerfile，提供常用基础镜像的快速拉取方案。
-  当用户提到 "Docker 镜像"、"拉取镜像"、"docker pull"、"镜像源"、"registry mirror"、
-  "中国 Docker"、"dockerfile"、"构建镜像"、"apt 源"、"Ubuntu 镜像"、"基础镜像"、
-  "docker mirror"、"docker 代理"、"拉不到镜像"、"镜像加速" 时触发。
-  也在用户需要拉取 PostgreSQL、Redis、Nginx、Go、Node、Python、MySQL、MongoDB 等常用镜像时触发。
+  Docker 中国区助手 — 配置中国镜像源 (阿里云/腾讯云/中科大/网易云), 通过镜像代理拉 Docker Hub 镜像,
+  基于 Ubuntu 官方镜像构建带中国 apt 源的 Dockerfile, 提供常用基础镜像的快速拉取方案.
+  触发: Docker 镜像、拉取镜像、docker pull、镜像源、registry mirror、中国 Docker、dockerfile、构建镜像、apt 源、Ubuntu 镜像、基础镜像、docker mirror、docker 代理、拉不到镜像、镜像加速.
+  也覆盖拉 PostgreSQL/Redis/Nginx/Go/Node/Python/MySQL/MongoDB 等常用镜像.
 ---
 
 # Docker Helper — 中国区 Docker 镜像助手

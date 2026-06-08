@@ -4,11 +4,10 @@ alias: Shadow·L5-Plan
 methodology: |
   Harness 计划生成器 — 把 L1+L1.5+L2+L3 决策压缩成 AI coder 可直接执行的精密执行计划。
 description: |
-  Shadow L5 Harness 计划生成器。消费 L1+L1.5+L2+L3 的全部上游产物，产出一份 AI coder 可直接消费的精密执行计划。
-  Harness 计划完全替代了独立的契约层和测试层：每个文件包含完整的类签名、逐方法实现指令、测试断言。
-  AI coder 看到 Harness 计划后不需要任何上游文档就能写出正确代码。
-  三面手：设计（Harness 计划）+ 实现（自动生成代码骨架）+ 跟踪（Plan-Impl Diff 审计）。
-  触发：Harness 计划、执行计划、L5 Plan、harness、coder 计划、代码骨架、Plan-Impl Diff。
+  Shadow L5 Harness 计划生成器 (v5 — plan 是入口+索引, @upstream 引用矩阵).
+  消费 L1+L1.5+L2+L3 全上游, 产出 coder 可直接执行的精密计划 (类签名 + 逐方法指令 + 测试断言).
+  Plan 顶部 @iter 标记 + @upstream-changed-since-iter-N-1 列表 (v5.1 iter 冲突保留正向).
+  触发: Harness 计划、执行计划、L5 Plan、harness、coder 计划、代码骨架、Plan-Impl Diff.
 version: "2.0.0"
 ---
 

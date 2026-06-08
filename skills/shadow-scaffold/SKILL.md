@@ -2,10 +2,10 @@
 name: shadow-scaffold
 alias: Shadow·Scaffold
 description: |
-  Shadow 项目脚手架 — 在 L1.5 之后、L2/L5 之前搭建本地 Docker 开发环境。
-  7 步走：目录骨架 → 开发依赖 → 测试框架配置 → 服务依赖启动（Docker） → 数据库迁移 → Hello API → Smoke Test。
-  产出可 TDD 的本地 Docker 环境 + 一个通过验证的全链路 Hello API。
-  触发：脚手架、scaffold、初始化、项目骨架、开发环境、项目初始化、TDD 环境。
+  Shadow 项目脚手架 — L1.5 之后、L2/L5 之前搭本地 Docker 开发环境.
+  7 步: 目录骨架 → 开发依赖 → 测试框架 → 服务依赖 (Docker) → DB 迁移 → Hello API → Smoke Test.
+  产出: 可 TDD 的 Docker 环境 + 全链路 Hello API.
+  触发: 脚手架、scaffold、初始化、项目骨架、开发环境、项目初始化、TDD 环境.
 version: "1.0.0"
 ---
 

@@ -2,8 +2,8 @@
 name: shadow-reverse
 alias: Shadow·Reverse
 description: |
-  [Internal] Shadow Reverse — 逆向工程，从代码反推设计（L5 back to L1）。
-  触发：逆向工程、反推、从代码生成设计文档、遗留项目分析、建立影子仓库基线。
+  [Internal] Shadow Reverse — 逆向工程, 从代码反推设计 (L5 back to L1).
+  触发: 逆向工程、反推、从代码生成设计文档、遗留项目分析、建立影子仓库基线.
 version: "1.0.0"
 ---
 

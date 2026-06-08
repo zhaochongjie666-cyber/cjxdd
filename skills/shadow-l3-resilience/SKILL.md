@@ -3,13 +3,11 @@ name: shadow-l3-resilience
 alias: Shadow·L3-Resilience
 methodology: RDA — Resilience-Driven Architecture (FMEA + Chaos Engineering + Resilience Engineering)
 description: |
-  Shadow L3 韧性设计 — 在 L1.5 ADD+SDD+PDD（架构骨架）和 L2 BDD+CM（行为骨架）之上做"灾难发散"。
-  标准模式 (S/M 规模): 8 维度失败模式 + 10 兜底模式 + 5 字段 FMEA。
-  扩展模式 (L 规模, scale.l3_extended_mode=true): 9 维度 (+跨地域/多活) + 12 模式 (+业务对账/业务幂等) + 8 字段 FMEA (+Owner/SLO 关联/回滚时长)。
-  产出 5 份文档：failure-modes.md / failsafe-design.md / chaos-scenarios.md / resilience-test-plan.md / recovery-runbook.md。
-  与 L1/L1.5/L2 互补不重复：L1.5 SDD 只覆盖 STRIDE 6 类安全威胁，L1.5 PDD 只覆盖性能正常态，L2 BDD 只覆盖行为级并发/会话/误用，本层覆盖"系统性失败的可控实验"。
-  软门禁：缺文件不阻塞流水线，只警告。`.shadow/scale.l3_required: true` 时所有规模强制使用；L 规模时 `.shadow/scale.l3_extended_mode: true` 自动启用 9 维 + 12 模式 + 8 字段。
-  触发：韧性、resilience、混沌、chaos、失败模式、failure mode、兜底、fallback、熔断、circuit breaker、容错、fault tolerance、降级、degradation、补偿、compensation、极端条件、extreme conditions、RDA、业务对账、reconciliation、业务幂等、business idempotency、跨地域、multi-region。
+  Shadow L3 韧性设计 — 在 L1.5 架构 + L2 BDD 之上做"灾难发散" (RDA 思维).
+  S/M: 8 维失败模式 + 10 兜底 + 5 字段 FMEA. L (l3_extended_mode): 9 维 + 12 模式 + 8 字段.
+  产出 failure-modes / failsafe-design / chaos-scenarios / resilience-test-plan / runbook.
+  软门禁: 缺文件不阻塞, 只警告. l3_required: true 时所有规模强制.
+  触发: 韧性、resilience、混沌、chaos、失败模式、failure mode、兜底、fallback、熔断、circuit breaker、容错、fault tolerance、降级、degradation、补偿、compensation、极端条件、extreme conditions、RDA、业务对账、reconciliation、业务幂等、business idempotency、跨地域、multi-region.
 version: "1.1.0"
 ---
 

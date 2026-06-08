@@ -2,8 +2,8 @@
 name: shadow-trace-init
 alias: Shadow·TraceInit
 description: |
-  [Internal] Shadow Trace Init — 追溯初始化，建立 L1-L5 双向追溯。
-  触发：追溯初始化、建立双向追溯、补全 @implements、生成 INDEX、已有项目接入 Shadow。
+  [Internal] Shadow Trace Init — 追溯初始化, 建立 L1-L5 双向追溯.
+  触发: 追溯初始化、建立双向追溯、补全 @implements、生成 INDEX、已有项目接入 Shadow.
 version: "1.0.0"
 ---
 

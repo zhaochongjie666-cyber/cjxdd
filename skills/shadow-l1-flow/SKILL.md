@@ -3,11 +3,10 @@ name: shadow-l1-flow
 alias: Shadow·L1-Flow
 methodology: MDD — Model-Driven Development: project.flow.mermaid 是平台无关模型 (PIM)
 description: |
-  Shadow L1 流程总图设计 + L1 门禁检查（MDD 模型思维）。产出项目级唯一 project.flow.mermaid，帮你想清楚"全项目业务流如何协同"。
-  每个节点 = 一个不可再拆的业务动作。支持领域/聚合泳道、跨域事件和系统级入口出口。
-  流程节点编号（BXX-NYY）是后续 L1 Spec 和 L1.5 API 端点清单的追溯源。
-  内含 L1 门禁：轻量检查文件存在、flow 可渲染、术语一致，产出 l1.{slug}.passed 标记。
-  触发：流程图、flow、mermaid、L1流程、L1 门禁、L1 gate。
+  Shadow L1 流程总图设计 + L1 门禁 (MDD 模型思维). 产出项目级唯一 project.flow.mermaid.
+  每个节点 = 一个不可再拆的业务动作. 支持领域/聚合泳道 + 跨域事件 + 系统级入口出口.
+  流程节点编号 (BXX-NYY) 是 L1 Spec 和 L1.5 API 端点清单的追溯源.
+  触发: 流程图、flow、mermaid、L1流程、L1 门禁、L1 gate.
 version: "4.1.0"
 ---
 

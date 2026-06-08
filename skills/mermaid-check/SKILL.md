@@ -1,9 +1,9 @@
 ---
 name: mermaid-check
 description: |
-  Mermaid 图表渲染验证技能。使用 mermaid-cli (mmdc) 验证项目级 project.flow.mermaid 文件能否正确渲染为 SVG。
-  当用户说"检查 mermaid"、"验证流程图"、"mermaid 检查"、"mmdc 验证"、"mermaid渲染检查"、"flow渲染验证"时触发。
-  Shadow L1 的 AI-Flow 门禁（步骤 3）必须通过此技能验证。也适用于任何需要验证 Mermaid 语法的场景。
+  Mermaid 图表渲染验证 — 用 mermaid-cli (mmdc) 验证 project.flow.mermaid 能否正确渲染为 SVG.
+  Shadow L1 AI-Flow 门禁 (步骤 3) 必通过此技能. 适用任何 Mermaid 语法验证场景.
+  触发: 检查 mermaid、验证流程图、mermaid 检查、mmdc 验证、mermaid 渲染检查、flow 渲染验证.
 version: "1.1.0"
 ---
 

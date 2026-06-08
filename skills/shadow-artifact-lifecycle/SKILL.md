@@ -6,12 +6,10 @@ methodology: |
   单一源真理: .shadow/shadow-schema.json:lifecycle_artifacts[]
   配套门禁: scripts/gate-check-lifecycle.sh (5 角色 × canonical_path 一致性)
 description: |
-  Shadow 工件生命周期元 skill — 替代/补充旧的"跨迭代 vs 迭代作用域"位置二分法,
-  回答"工件用多久 + 谁消费 + 改后会怎样"。
-  Phase 1 (零破坏) 在 .shadow/shadow-schema.json 登记 58 工件在 5 角色下。
-  Phase 2 (本 skill) 升级为可被 Walker 装卸的元 skill,提供 5 条硬门禁规则。
-  触发: 工件分类、lifecycle、artifact role、design_baseline、process_output、
-  evidence_archive、control_marker、template_instance、drift、漂移、归档。
+  Shadow 工件生命周期元 skill — 替代"跨迭代 vs 迭代作用域"二分法, 回答"工件用多久 + 谁消费 + 改后会怎样".
+  5 角色: design_baseline / process_output / evidence_archive / control_marker / template_instance.
+  单一源真理: .shadow/shadow-schema.json:lifecycle_artifacts[]. 配 scripts/gate-check-lifecycle.sh.
+  触发: 工件分类、lifecycle、artifact role、design_baseline、drift、漂移、归档.
 version: "1.0.0"
 ---
 

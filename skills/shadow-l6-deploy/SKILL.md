@@ -2,12 +2,11 @@
 name: shadow-l6-deploy
 alias: Shadow·36-Deploy
 description: |
-  Shadow 36 部署验证 — 穷尽式诊断验证应用可部署、可启动、可测试（后端 + 前端）。
-  禁止偷懒归因（"网络问题""环境问题"必须有证据链）。
-  每个失败必须穷举至少3种假设并逐个验证。
-  最终结论必须满足 Real Usability Contract：真实持久化、真实认证、跨服务链路、重启后数据保留和 P0 UAT 证据。
-  最终验收必须满足 Production Acceptance Contract：真实用户愿意在真实工作中依赖它。
-  触发：部署、36、启动、验证。
+  Shadow L6 部署验证 — 穷尽式诊断应用可部署/可启动/可测试 (后端+前端).
+  禁偷懒归因 (网络/环境问题必须有证据链). 失败必穷举 ≥3 假设并逐个验证.
+  最终必须满足 Real Usability Contract (真实持久化/认证/跨服务链路/重启数据保留/P0 UAT 证据)
+  + Production Acceptance Contract (真实用户愿在真实工作中依赖).
+  触发: 部署、36、启动、验证.
 version: "7.4.0"
 ---
 

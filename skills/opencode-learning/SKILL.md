@@ -1,10 +1,9 @@
 ---
 name: opencode-learning
 description: |
-  OpenCode 源码学习技能。当用户想了解 OpenCode 的架构、模块实现、API 设计、配置机制、工作流程或任何源码相关问题时，使用此技能遍历代码仓库并解答。
-  适用于：理解项目架构、查找核心模块、学习特定功能的实现原理、阅读源码、了解构建系统、贡献代码等场景。
-  当用户说"学习 opencode"、"了解 opencode"、"opencode 源码"、"opencode 架构"、"opencode 怎么实现的"、"opencode 插件开发"、"opencode API"时触发此技能。
-  即使问题表述模糊，只要涉及 OpenCode 项目内部实现，都应触发此技能。
+  OpenCode 源码学习 — 遍历代码仓库解答架构/模块/API/配置/工作流等任何源码问题.
+  适用: 理解架构、查找核心模块、学习功能实现、阅读源码、构建系统、贡献代码.
+  触发: 学习 opencode、了解 opencode、opencode 源码、opencode 架构、opencode 怎么实现的、opencode 插件开发、opencode API.
 version: "1.1.0"
 ---
 
