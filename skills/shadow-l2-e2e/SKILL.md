@@ -56,6 +56,82 @@ version: "9.1.0"
 - HTTP 200/201 只是连通性证据，不能单独作为业务成功断言。
 - 禁止 mock DB、InMemoryRepository、假登录出现在 P0 验收路径。
 
+### v9.2 Design-Conformance Gherkin (设计一致 Gherkin 模式)
+
+**问题**: 旧 Gherkin 只测"功能对不对" (When X → Then Y), 不测"代码真的按 RXX 业务约束实现" (e.g. 1 个标注就 approve 是错, 必须 2 个). 写代码的人**没读 spec.md 业务背景**, 测试还是能过.
+
+**Solution**: Gherkin step 加 "Design-Conformance" 段, 把 spec.md 的业务约束**翻译成可测试的 Given/When/Then step**, 让"按 RXX 业务约束实现"成为**可断言的 Gherkin 步骤**:
+
+```gherkin
+Feature: 审核员批准标注 (B01 resource-pool)
+
+  @pool-R03
+  Scenario: 审核员在只有 1 个标注时尝试 approve → 业务约束拒绝
+    # === Design-Conformance (v9.2 新增, 翻译 spec.md §R03 业务约束) ===
+    Given spec.md §R03 line 67 业务约束: "审核员必须看到 >=2 标注才能 approve"
+    And 当前任务 task-1 只有 1 个 annotation
+
+    When 审核员 alice 调用 POST /api/v1/reviews with { task_id: "task-1", action: "APPROVE" }
+
+    # === 验证代码真的按 R03 业务约束拒绝 ===
+    Then 返 422
+    And 响应体 error_code = "INSUFFICIENT_ANNOTATIONS"
+    And 响应体 message 含 "至少需要 2 个标注"
+    And 数据库 task-1.status 仍是 PENDING (没被错误地切到 APPROVED)
+
+  @pool-R03
+  Scenario: 审核员在有 2 个标注时 approve → 业务约束通过
+    Given 当前任务 task-1 已有 2 个 annotation (ann-1, ann-2)
+
+    When 审核员 alice 调用 POST /api/v1/reviews with { task_id: "task-1", action: "APPROVE" }
+
+    Then 返 200
+    And 数据库 task-1.status = APPROVED
+    And 数据库 task-1.reviewed_by = alice.id
+    And 数据库 task-1.reviewed_at 非空
+```
+
+**关键设计**:
+- **Given 段明确引用 spec.md §RXX line YY**: 让读者一眼知道 "这条 Gherkin 翻译自哪段 spec.md 业务约束". L5-impl coder 写代码时, 跳到 spec.md 读 line 67 → 知道">=2 标注才能 approve" → 写 `if len(annotation_ids) < 2: raise 422 INSUFFICIENT_ANNOTATIONS`
+- **Then 段测的是"业务约束实现"**: 不只测 200/422 状态码, 还测"数据库状态没被错切" (防止"返 422 但 status 已切到 APPROVED" 这种半成品 bug)
+- **反向场景 + 正向场景必须都写**: 1 标注拒绝 (业务约束失败) + 2 标注通过 (业务约束满足), 缺一不可
+
+**对应 L5-impl 测试断言**:
+- L5-impl 写测试时, 测试断言从 Gherkin step 派生, **已经包含"业务约束"维度**
+- 不止验"参数对不对", 还验"业务约束对不对" (e.g. `len(annotations) < 2` → 422)
+- coder 写代码跳过业务约束 → 1 标注 approve 测试会失败 → L5 reviewer 抓
+
+**L5 reviewer 配套 audit (v9.2)**:
+- 扫所有 @implements method, 找对应的 Gherkin scenario
+- scenario 缺 Design-Conformance Given 段 (没引用 spec.md §RXX line) → ⛔ warning
+- scenario 缺反向场景 (只有正向, 没测业务约束失败) → ⛔ warning
+
+**多业务约束叠加** (复杂 RXX):
+```gherkin
+@pool-R10
+Scenario: 资源分配在容量不足时拒绝
+  # spec.md §R10 line 89-110 含 3 个业务约束:
+  #   (a) 节点 ONLINE 才可被分配
+  #   (b) 容量足够 (vCPU + 内存 + GPU 多维度匹配)
+  #   (c) 多租户隔离 (请求 tenant_id 必须匹配节点 tenant_id)
+
+  Given 节点 node-7 status = OFFLINE
+  And 节点 node-8 capacity = 0 (无可用 GPU)
+  And 节点 node-9 tenant_id = tenant-B (跟当前请求 tenant-A 跨租户)
+
+  When tenant-A 调用 POST /api/v1/allocations
+
+  Then 返 422
+  And error_code = "NO_AVAILABLE_NODE"  (复合错误, 三个约束全失败)
+  And 数据库 allocations 表无新行
+```
+
+**纪律**:
+- 每条 RXX 业务约束**必须**翻译成至少 1 个 Gherkin Design-Conformance scenario
+- 反向场景 (约束失败) + 正向场景 (约束满足) 都要写
+- Gherkin Given 段**必含 spec.md §RXX line YY 引用** — L5 reviewer 扫 "spec.md §RXX line" 字符串出现次数, 0 次 → warning
+- L2 e2e 走完, coverage-matrix 14 维 (规则维度) 必含 "Design-Conformance 覆盖" 子维度
+
 ## 三面手（设计 + 实现 + 跟踪）
 
 L2 不只写 Gherkin 文档，还要让场景真能跑、追踪真实覆盖率。

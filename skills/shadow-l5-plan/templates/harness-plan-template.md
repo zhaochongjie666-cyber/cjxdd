@@ -145,6 +145,21 @@
   ```
   ✅ `穷举: 测试 N / 校验 M + 正常 P ≥ N` (从 e2e.feature Gherkin 步骤派生, 不止 plan)
 
+### Sign-off: {method_name}  (v5.2 必填, L5 reviewer hard error 抓)
+
+**读了** (至少 3 个上游):
+- spec.md §{RXX} line {Y-Z} (业务: {一句话})
+- architecture.md §{API.X} line {Y} (端点: req/resp schema)
+- {e2e.feature:scenario-{RXX}} (Gherkin: {Given → When → Then})
+
+**理解** (至少 2 句, 业务背景翻译):
+- {业务背景, 不止 plan 内联技术细节}
+- {状态机 / 错误码 / 跨 BXX 影响, spec.md 写但 plan 没内联的}
+
+**假设** (至少 2 句, 业务约束 → 代码校验):
+- {业务约束 (e.g. >=2 标注) → 代码校验 (e.g. if len(annotations) < 2: raise 422)}
+- {并发 / 异常路径 / 兜底触发, 跟 FMEA 段对齐}
+
 ---
 
 {重复每个文件}

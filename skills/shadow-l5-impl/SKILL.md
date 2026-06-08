@@ -153,6 +153,61 @@ L5-Plan: .shadow/L5-plan/user-service/harness-plan.md
 
 **纪律保证**: §13 L5 Consistency Audit 在 4 维脱节 (spec↔code, wire↔code, arch↔code, l3↔code) 时会读 @upstream 引用反查. coder 没读就硬写会被审计抓.
 
+## v5.2 Pre-write Signoff (写每个 method 前的 sign-off 块)
+
+5 必读 + iter delta 跳读后, coder **写每个 method 前** 在 plan @upstream 段**追加** Sign-off Block. 这是 v5.2 新增的"机制", 不是"软鼓励":
+
+```markdown
+### Sign-off: {method_name}
+
+@reviewed-by: coder-{id / session}
+@reviewed-at: {ISO ts}
+
+**读了**:
+- spec.md §R03 line 45-78 (业务: 审核员看到 >=2 标注才能 approve, 状态机 PENDING→APPROVED/REWORK)
+- architecture.md §API.POST /reviews line 145 (端点: req { annotation_ids: [UUID] }, 返 200/422/INVALID_STATE)
+- e2e.feature:scenario-R03-approve (Gherkin: 2 标注 → approve, 1 标注 → 422)
+- failure-modes.md §F08 (RPN=15: 审核员并发点 approve 同一任务)
+
+**理解**:
+- R03 业务: 审核员必须看到 >=2 标注才能 approve (前置业务条件, 不是技术校验)
+- 状态机: PENDING→APPROVED/REWORK (PENDING 不可直接 APPROVED, 必须先审核)
+- 错误码: 422 INVALID_STATE (业务前置不满足, 不是 500)
+
+**假设**:
+- 我假设 PostReview 必须先 count >= 2 (annotation_ids) 否则 422 INVALID_STATE
+- 我假设 approval 不发事件 (e2e 没断言事件, 业务也只关心状态)
+- 我假设并发: 用 SELECT FOR UPDATE 锁任务行 (避免 race condition)
+```
+
+**L5 reviewer audit 强制 (hard error)**:
+- 扫所有 @implements method
+- 找没 sign-off block 的 → ⛔ hard error, 列出 missing methods
+- 找 sign-off 但 **"读了" 段少于 3 个上游引用** → ⛔ (凑数)
+- 找 sign-off 但 **"假设" 段没写明业务约束翻译** (e.g. 假设只写"按 plan 实现" 而没写">=2 才 approve") → ⛔ (没真理解)
+
+**为什么这机制 work**:
+- 5 必读是"读不读你说了算", sign-off 是"**写下你读了什么 + 你怎么理解**"
+- 写下来 ≠ 真正读了, 但 L5 reviewer 可以**问"如果 spec.md 改 R03 阈值从 2 到 3, 你代码会怎么改"**, coder 答不上来 = 假 sign-off
+- 配合 §13 L5 Consistency Audit (4 维脱节) + L6 chaos (真实场景), 3 重门禁
+
+**对应 harness plan 模板字段** (L5-plan/templates/harness-plan-template.md 同步加):
+```markdown
+#### {method_name}({params}) -> {return_type}
+- 上游: spec.md §R03 / arch.md §API.X / event-contract.md §EventName
+- 校验: {具体条件}
+- 状态: {状态变更}
+- 事件: {发布的事件}
+- 错误: {错误码 + 消息}
+- 测试: {断言}
+- ✅ 穷举: 测试 N / 校验 M + 正常 P ≥ N
+
+### Sign-off: {method_name}  (v5.2 必填, L5 reviewer 抓)
+**读了**: {上游文件:段 至少 3 个}
+**理解**: {业务背景翻译, 至少 2 句}
+**假设**: {业务约束 → 代码校验的映射, 至少 2 句}
+```
+
 ## 产出
 
 项目目录下的实现代码文件(后端 + 前端)+ 测试代码文件。
