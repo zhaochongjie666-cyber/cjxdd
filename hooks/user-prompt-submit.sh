@@ -132,9 +132,16 @@ if [[ "$is_shadow" == "yes" ]]; then
             echo "[shadow] → If 'rewrite from scratch': start a new iter — 'shadow walker, start iter-2'."
             ;;
         zh-continue)
-            echo "[shadow] Detected continue/extend intent. Walker is active (iter=$iter)."
-            echo "[shadow] → Continue from current status.md stage; load next skill if needed."
+            # 跟"无 .shadow/"分支一致, 也静默.
+            # "继续" / "接着" 是用户跟 AI 工作的常用词, 误触 zh-continue 触发 hint 输出
+            # → OpenCode 1.16.2 server 把 hook 输出当 synthetic user part 注入, schema
+            # 缺 id/sessionID/messageID 字段 → server 拒收整个 user message → 中文输入
+            # "能显示但提交失败" 现象根因.
+            # 修法: 任何模糊词 (zh-continue) 在 shadow 项目里也不输出 hint, 让 user message
+            # 干净进 server, 不污染 schema 校验.
+            # 显式 "下一步" / "重构" 等明确扩展意图仍由 L5 L1 L1.5 skill 自己捕获.
             ;;
+
     esac
 else
     # No .shadow/ — suggest initializing via Walker.
