@@ -14,7 +14,7 @@ cd "$REPO_ROOT"
 
 PASS=0
 FAIL=0
-TOTAL=32
+TOTAL=36
 
 # count dirs/files, no recursion (use -d for dirs, -maxdepth 1 for files)
 count_existing() {
@@ -196,6 +196,23 @@ check "31. xdd-wire 引用 L1-L4 4 层审查" "$?"
 # 32. settings.json 注册 xdd-gate-ux-check hook
 grep -q 'xdd-gate-ux-check' settings.json
 check "32. settings.json 注册 xdd-gate-ux-check hook" "$?"
+
+# 33. docs/LOOP-DESIGN.md (4 层 7 种回环架构)
+[[ -f docs/LOOP-DESIGN.md ]]
+check "33. docs/LOOP-DESIGN.md 回环设计文档存在" "$?"
+
+# 34. LOOP-DESIGN 含 4 层 + 7 种回环
+grep -q 'L1 Task\|L2 Phase\|L3 流水线\|L4 跨周期' docs/LOOP-DESIGN.md && \
+grep -qE '回环 [1-7].*:' docs/LOOP-DESIGN.md
+check "34. LOOP-DESIGN 含 4 层 + 7 种回环" "$?"
+
+# 35. loop-until-pass 脚本 (回环 3 实施-验证)
+[[ -x skills/xdd-execute/scripts/loop-until-pass.sh ]]
+check "35. skills/xdd-execute/scripts/loop-until-pass.sh 存在且可执行" "$?"
+
+# 36. xdd-execute 含 Loop-Until-Pass 段
+grep -q 'Loop-Until-Pass' skills/xdd-execute/SKILL.md
+check "36. xdd-execute 含 Loop-Until-Pass 段" "$?"
 
 echo ""
 echo "=== 结果 ==="

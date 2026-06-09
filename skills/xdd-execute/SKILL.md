@@ -366,3 +366,95 @@ bash hooks/xdd-gate-coverage-check.sh
 - ❌ 不得在 95% 闸门失败时声称"基本完成"
 
 **失败时**: orchestrator 看到 exit 2 → 让 phase-executor 修, 3 试未过 → 写 `.xdd-halt.json` 问用户.
+
+## Loop-Until-Pass: 实施-验证回环 (回环 3, 见 docs/LOOP-DESIGN.md)
+
+**核心**: 写 1 个方法 → 跑 6 闸门 → 不过修 → 再跑 → 全过才进下一方法. 失败必 retry, 不允许"基本通过".
+
+**完整 loop 模板** (写到 `scripts/loop-until-pass.sh`):
+
+```bash
+#!/bin/bash
+# 回环 3: 实施-验证 loop until pass
+# 6 闸门全过才退出, 任一失败自动 retry
+
+set -e
+ITER=0
+MAX_ITER=3
+REPORT=".xdd/reports/exec-loop-$(date +%Y%m%d-%H%M%S).log"
+mkdir -p .xdd/reports
+
+while [[ $ITER -lt $MAX_ITER ]]; do
+    ITER=$((ITER + 1))
+    echo "" | tee -a "$REPORT"
+    echo "=== iter $ITER / $MAX_ITER (回环 3 实施-验证) ===" | tee -a "$REPORT"
+
+    # 闸门 1-5: 5 维覆盖率
+    bash hooks/xdd-gate-coverage-check.sh 2>&1 | tee -a "$REPORT"
+    coverage_rc=${PIPESTATUS[0]}
+
+    # 闸门 6: 0 stub
+    bash hooks/xdd-gate-stub-scan.sh 2>&1 | tee -a "$REPORT"
+    stub_rc=${PIPESTATUS[0]}
+
+    # 全过 (0+0) 才出 loop
+    if [[ $coverage_rc -eq 0 && $stub_rc -eq 0 ]]; then
+        echo "✓ 回环 3 实施-验证通过 (iter $ITER)" | tee -a "$REPORT"
+        exit 0
+    fi
+
+    # 找失败维度
+    echo "--- 失败分析 (iter $ITER) ---" | tee -a "$REPORT"
+    bash hooks/xdd-gate-coverage-check.sh 2>&1 | grep '❌' | tee -a "$REPORT"
+    [[ $stub_rc -ne 0 ]] && echo "❌ stub 闸门失败" | tee -a "$REPORT"
+
+    echo "--- 修代码 (iter $ITER) ---" | tee -a "$REPORT"
+    # phase-executor 修: 补端点 / 写 e2e / 替换 mock / 删 stub
+    # 修完自动进 iter $((ITER+1))
+done
+
+# 3 试未过 → HALT
+echo "" | tee -a "$REPORT"
+echo "❌ 回环 3 失败: 3 试未过, 写 .xdd-halt.json" | tee -a "$REPORT"
+
+cat > .xdd-halt.json <<EOF
+{
+  "phase": "5",
+  "stage": "EXECUTE",
+  "loop": "3-impl-verify",
+  "attempts": 3,
+  "reason": "6 闸门 3 试未过",
+  "last_log": "$REPORT",
+  "suggested_retreat": "回 Phase 4 plan 重新规划 (RXX 映射错 / 端点清单漏)"
+}
+EOF
+
+exit 1
+```
+
+**调用方式** (每个 Task 完成后 + Phase 5 收尾):
+
+```bash
+bash skills/xdd-execute/scripts/loop-until-pass.sh
+# 退出码 0 = 6 闸门全过, 1 = HALT 升级
+```
+
+**与 TDD 红绿重构的关系** (回环 1, 内层小回环):
+
+```
+回环 1 (Task 内 TDD, 1 分钟级):
+  红 → 绿 → 重构 → commit
+  失败 → 修代码 → 再跑 (不计数)
+
+回环 3 (Phase 内实施-验证, 1 小时级):
+  闸门 1-5 覆盖率 + 闸门 6 stub 0
+  失败 → 修代码 → 再跑 (3 试 HALT)
+```
+
+**回环 1 跑通是必要条件**, 但不够 — 必须再跑回环 3 才算"Phase 5 完成".
+
+**与 HALT 机制配合**:
+
+- 任一闸门失败 → loop retry
+- 3 试全失败 → 写 `.xdd-halt.json`, 退出回环
+- orchestrator 读 `.xdd-halt.json` → 问用户"是否回退到 Phase 4 重新规划?"
