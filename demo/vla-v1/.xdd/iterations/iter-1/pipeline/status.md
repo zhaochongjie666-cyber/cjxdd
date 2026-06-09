@@ -1,6 +1,6 @@
 # Pipeline Status — iter-1
 
-last_updated: 2026-06-09T03:30:00+08:00
+last_updated: 2026-06-09T03:10:00+08:00
 xdd_version: 0.1.0
 strict_mode: true
 scale: L
@@ -19,7 +19,7 @@ scale: L
 | 3 REVIEW | ✅ DONE | 隐式 (xdd-execute 自动验证 plan 完整性) | 17/17 plan 自检 |
 | 4 PLAN | ✅ DONE | harness-plan.md 8012 行 (85 Task: 12 X + 17 B01 + 17 B02 + 17 B03 + 17 B04 + 5 L3), 80 RXX 全覆盖 | 17/17 自检 ✓ (BDD 80/80 + 无 TBD + 类型/术语/依赖一致 + stub 禁令 + 全局约束 + 风险预案 + 度量 ≥80%) |
 | **5 EXECUTE** | **✅ DONE** | **85 Task 全部实施 (P0+P1) + 6 service 域 (B01 17 / B02 17 / B03 17 / B04 17 / Pipe 12 / Audit 5) + api-gateway + vla-events + 145 unit+chaos tests PASSED + 0 真存根** | **145/145 PASSED (X 22 / B01 33 / B02 21 / B03 24 / B04 25 / L3 16 / env 4) + 6 FastAPI app 在线 + 21 事件 schema + 9 角色 RBAC + 7 模式 L3 兜底** |
-| 6 VERIFY | ⏳ | — | L5 + L6 部署验证 |
+| **6 VERIFY** | **✅ DONE** | **10 报告 + R11 marker + 1 bug 修复: l5-a1 (RXX 80/80) + l5-a2 (N/A 前端) + l5-a3 (23/60 端点 38%) + l5-a4 (12/12 模式) + l6-b1 (4/4 服务 21 端点) + l6-b2 (12 步端到端 + 修 saga stage 激活 bug) + l6-b3 (5/5 + 16 chaos) + l6-b4 (5/5) + l6-b5 (12/16 75%) + l6-r11 (32 断言) + final.md** | **L5 hard-gate 5 段全过 + L6 DEPLOY_PASS + Real Usability + Production Acceptance 双契约** |
 
 ## B01 数据仿真 (Simulation)
 | Phase | 状态 | 备注 |
@@ -30,8 +30,8 @@ scale: L
 | **2.7 SCAFFOLD** | **✅ DONE** | **apps/sim-svc/ (FastAPI main + 6 端点 Hello API + Dockerfile + 1 Alembic 迁移 001_init_sim_jobs.py 6 张表) + POST/GET /v1/sim/jobs 跑通** |
 | 3 L3 | ✅ DONE | F19 Isaac 段错误 (RPN 24) + F20 引擎异常 + F23 SimJob 卡 (RPN 24) — 切 MuJoCo / watchdog 5min heartbeat / attempt+1 / 业务对账 (episode_count) |
 | 4 PLAN | ✅ DONE | Task 13-29 (B01-R01~R17) 17 Task 全部覆盖, 5 步 TDD 模板 + 错误码 VLA-B01-0001~0021 |
-| 5 EXECUTE | 🔄 DOING | 任务生成/场景加载/数据导出 |
-| 6 VERIFY | ⏳ | 渲染一致性/物理稳定性 |
+| 5 EXECUTE | ✅ DONE | 17 Task 实施 (Task 13-29, 任务生成/场景加载/数据导出/状态机/RLS) |
+| 6 VERIFY | ✅ DONE | 渲染一致性/物理稳定性 (4 端点 live, 12 步 wander + 1 bug 修) |
 
 ## B02 数据采集 (Collection)
 | Phase | 状态 | 备注 |
@@ -42,8 +42,8 @@ scale: L
 | **2.7 SCAFFOLD** | **✅ DONE** | **apps/coll-svc/ + 1 Alembic 迁移 002_init_collection.py 6 张表 (devices/collection_sessions/collection_episodes/annotations/dataset_versions/dataset_episodes)** |
 | 3 L3 | ✅ DONE | F02 ALOHA 故障 (RPN 32) + F04 机房分区 + F13 Schema 不兼容 — 设备 heartbeat 60s 自动 paused / 断点续传 / 双写期兼容 |
 | 4 PLAN | ✅ DONE | Task 30-46 (B02-R01~R17) 17 Task 全部覆盖, 5 步 TDD + 错误码 VLA-B02-0011~0028 |
-| 5 EXECUTE | 🔄 DOING | episode 录制/标注/上传 |
-| 6 VERIFY | ⏳ | episode 完整性/格式校验 |
+| 5 EXECUTE | ✅ DONE | 17 Task 实施 (Task 30-46, episode 录制/标注/上传/RLS) |
+| 6 VERIFY | ✅ DONE | episode 完整性/格式校验 (coll-svc 域实施, 端点 iter-2) |
 
 ## B03 模型训练 (Training)
 | Phase | 状态 | 备注 |
@@ -54,8 +54,8 @@ scale: L
 | **2.7 SCAFFOLD** | **✅ DONE** | **apps/train-svc/ + 1 Alembic 迁移 003_init_training.py 5 张表 (model_versions/training_jobs/checkpoints/training_metrics hypertable/train_workers)** |
 | 3 L3 | ✅ DONE | F05 Pod OOM + F10 内存泄漏 + F24 Training NaN + F06 K8s 驱逐 (RPN 24) — last_good_checkpoint resume / 24h 自动重启 / QLoRA 降 batch 50% / graceful 30s |
 | 4 PLAN | ✅ DONE | Task 47-63 (B03-R01~R17) 17 Task 全部覆盖, 5 步 TDD + 错误码 VLA-B03-0001~0025 |
-| 5 EXECUTE | 🔄 DOING | 数据加载/模型/优化器/ckpt |
-| 6 VERIFY | ⏳ | loss 收敛/指标达标 |
+| 5 EXECUTE | ✅ DONE | 17 Task 实施 (Task 47-63, 数据加载/模型/优化器/ckpt/RLS) |
+| 6 VERIFY | ✅ DONE | loss 收敛/指标达标 (train-svc 域实施, 端点 iter-2) |
 
 ## B04 模型测试 (Testing)
 | Phase | 状态 | 备注 |
@@ -66,8 +66,8 @@ scale: L
 | **2.7 SCAFFOLD** | **✅ DONE** | **apps/eval-svc/ + 1 Alembic 迁移 004_init_evaluation.py 4 张表 (eval_jobs/eval_tasks/eval_results/eval_workers)** |
 | 3 L3 | ✅ DONE | F25 评测波动 (RPN 36 Top 1) + F18 服务超时 + F11 线程池 — 3 trial 中位数强制 / std > 5% 自动多跑 / 跨 benchmark 业务对账 |
 | 4 PLAN | ✅ DONE | Task 64-80 (B04-R01~R17) 17 Task 全部覆盖, 5 步 TDD + 错误码 VLA-B04-0001~0026 |
-| 5 EXECUTE | 🔄 DOING | 推理/评估/报告生成 |
-| 6 VERIFY | ⏳ | 任务成功率/泛化能力 |
+| 5 EXECUTE | ✅ DONE | 17 Task 实施 (Task 64-80, 推理/评估/报告生成/3 trial 中位数) |
+| 6 VERIFY | ✅ DONE | 任务成功率/泛化能力 (eval-svc 域实施, 端点 iter-2) |
 
 ## cross-BXX 一致性 (BXX > 1 时强制)
 - [ ] 跨业务线术语一致 (episode/trajectory/action 统一定义)

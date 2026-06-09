@@ -155,9 +155,14 @@ class PipeSaga:
             },
         )
 
-        # 激活下一 stage
+        # 激活下一 stage (按 run 实际 stages 数, 不用 VALID_STAGES 全集)
         next_idx = stage_index + 1
-        if next_idx >= len(VALID_STAGES):
+        run_stages_count = (
+            self.session.query(PipelineStage)
+            .filter(PipelineStage.pipeline_run_id == run.id)
+            .count()
+        )
+        if next_idx >= run_stages_count:
             # 全部完成
             run.status = PipelineRunStatus.COMPLETED
             run.completed_at = datetime.utcnow()
