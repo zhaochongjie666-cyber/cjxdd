@@ -14,7 +14,7 @@ cd "$REPO_ROOT"
 
 PASS=0
 FAIL=0
-TOTAL=28
+TOTAL=32
 
 # count dirs/files, no recursion (use -d for dirs, -maxdepth 1 for files)
 count_existing() {
@@ -180,6 +180,22 @@ check "27. P2 skill xdd-coverage-monitor 存在" "$?"
 # 28. 用户提供: xdd-ux-design (UX 设计思维 + 审查框架, Anthony Conta 6 步法)
 [[ -f skills/xdd-ux-design/SKILL.md ]]
 check "28. 用户提供 xdd-ux-design 存在" "$?"
+
+# 29. UX 4 层审查 hook 存在
+[[ -x hooks/xdd-gate-ux-check.sh ]]
+check "29. hooks/xdd-gate-ux-check.sh 存在且可执行" "$?"
+
+# 30. xdd-wire 含 loop until pass (12 门禁 + 4 层 UX 双闸门)
+grep -q 'xdd-gate-ux-check' skills/xdd-wire/SKILL.md && grep -q 'loop until pass\|Loop-Until-Pass' skills/xdd-wire/SKILL.md
+check "30. xdd-wire 含 loop until pass 双闸门" "$?"
+
+# 31. xdd-wire 含 4 层 UX 审查 (L1-L4)
+grep -q 'L1 功能性\|L1.*功能性' skills/xdd-wire/SKILL.md && grep -q 'L4 质感\|L4.*质感' skills/xdd-wire/SKILL.md
+check "31. xdd-wire 引用 L1-L4 4 层审查" "$?"
+
+# 32. settings.json 注册 xdd-gate-ux-check hook
+grep -q 'xdd-gate-ux-check' settings.json
+check "32. settings.json 注册 xdd-gate-ux-check hook" "$?"
 
 echo ""
 echo "=== 结果 ==="

@@ -40,10 +40,60 @@ bash hooks/xdd-gate-wire-validate.sh
 
 **写完即跑, 不要攒到 Phase 末尾**. 一旦 12 门禁过, 才标记 Phase 2 DESIGN ✅.
 
+## Loop-Until-Pass: 12 门禁 + 4 层 UX 审查回环
+
+**12 门禁只覆盖技术层 (em-dash/data-page/viewBox 等), 不覆盖 UX 层**. 加 `xdd-ux-design` 4 层审查 (L1 功能性 / L2 可用性 / L3 a11y / L4 质感) 形成**双闸门回环**.
+
+```bash
+# 写完 SVG 后, 进入回环
+while true; do
+    # 闸门 1: 12 门禁 (技术层)
+    bash hooks/xdd-gate-wire-validate.sh
+    wire_rc=$?
+
+    # 闸门 2: 4 层 UX 审查 (设计层)
+    bash hooks/xdd-gate-ux-check.sh
+    ux_rc=$?
+
+    # 全过 (0+0) 才出 loop
+    if [[ $wire_rc -eq 0 && $ux_rc -eq 0 ]]; then
+        echo "[xdd] ✓ 双闸门全过 (12 门禁 + 4 层 UX)"
+        break
+    fi
+
+    # 修 SVG
+    echo "[xdd] 修 SVG: wire_rc=$wire_rc, ux_rc=$ux_rc"
+    # 改完再跑 (loop)
+done
+```
+
+| 闸门 | 失败退出码 | 失败维度 | 修法 |
+|------|----------|---------|------|
+| **xdd-gate-wire-validate** | 2 | 12 门禁 (技术) | 改 SVG 标签 / data-page / 字体 / viewBox |
+| **xdd-gate-ux-check** | 1 (L1 硬) / 2 (L2-L4 软) | 4 层 UX (设计) | 改 SVG 元素 / 加 aria / 改文案 / 加 hover |
+
+**L1 硬阻断 (CTA / 错误反馈 / 状态可见 / 防破坏 / 键盘可达) 任一失败 → exit 1, 必须修**.
+
+### 4 层 UX 审查 (合并 xdd-ux-design 自动卡)
+
+| 层 | 主题 | 项数 | 失败信号 | 修法 |
+|---|------|------|---------|------|
+| 🔴 **L1** | 功能性 | 5 | CTA 不显 / 无错误反馈 / 状态不可见 / 删无确认 / 键盘不可达 | 加 fill, .error, loading/success/error, confirm, tabindex |
+| 🟡 **L2** | 可用性 | 6 | 无统一 .btn / 无大字 / 元素 > 80 / 缺移动 / 长 text | 统一 class, h1, 分组, mobile SVG, 拆段 |
+| 🟢 **L3** | a11y | 6 | 无 aria / 无对比度 / 无 :focus / 表单无 label | 加 aria-label, #fff/#000 配对, outline, label for |
+| 🔵 **L4** | 质感 | 3 | 无 :hover / 无空状态 | 加 transition, empty 引导 |
+
+**L1 任一失败 = 硬阻断 (exit 1)**. L2-L4 软警告 (exit 2 但不阻断, 建议修).
+
+### 完整 Phase 2 出口
+
+**只有 12 门禁 + 4 层 UX 审查双闸门全过, 才标记 Phase 2 DESIGN ✅**. orchestrator 看到任一 exit ≠ 0, 派 phase-designer 修, 3 试未过 HALT.
+
 ## workflow
 设计svg()
-# 写完跑 12 门禁, 失败重做 (不要进实现阶段)
-bash hooks/xdd-gate-wire-validate.sh  # 必须 0 退出
+# 写完跑双闸门, 任一失败重做 (loop until pass, 见上段)
+bash hooks/xdd-gate-wire-validate.sh && bash hooks/xdd-gate-ux-check.sh
+# 必须 0 + 0 才进实现阶段
 
 do 实现前端()
   # 跑 Playwright CLI 截图验证 — 默认 headed 模式 (有头), 方便观察测试过程
