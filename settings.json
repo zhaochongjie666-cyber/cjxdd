@@ -29,6 +29,10 @@
           {
             "type": "command",
             "command": "bash $HOME/.claude/hooks/xdd-gate-pre-skill.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/xdd-gate-coverage-check.sh"
           }
         ]
       },
@@ -49,6 +53,10 @@
           {
             "type": "command",
             "command": "bash $HOME/.claude/hooks/xdd-gate-stub-scan.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/xdd-gate-wire-validate.sh"
           }
         ]
       }

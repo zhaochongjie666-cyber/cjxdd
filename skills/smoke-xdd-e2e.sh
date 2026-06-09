@@ -14,7 +14,7 @@ cd "$REPO_ROOT"
 
 PASS=0
 FAIL=0
-TOTAL=16
+TOTAL=24
 
 # count dirs/files, no recursion (use -d for dirs, -maxdepth 1 for files)
 count_existing() {
@@ -71,6 +71,15 @@ n=$(count_existing agents/shadow-walker.md agents/shadow-walker-pi.md agents/sha
 [[ $n -eq 0 ]]
 check "7. 无 shadow agent 残留" "$?"
 
+# 7a. xdd-orchestrator 主调度 agent 存在 (多 agent 编排入口)
+[[ -f agents/xdd-orchestrator.md ]]
+check "7a. xdd-orchestrator 主调度 agent 存在" "$?"
+
+# 7b. 8 个 phase-subagent 存在 (phase-researcher/designer/architect/scaffolder/resilience-designer/planner/executor/verifier)
+n=$(count_existing agents/phase-researcher.md agents/phase-designer.md agents/phase-architect.md agents/phase-scaffolder.md agents/phase-resilience-designer.md agents/phase-planner.md agents/phase-executor.md agents/phase-verifier.md)
+[[ $n -eq 8 ]]
+check "7b. 8 个 phase-subagent 存在" "$?"
+
 # 8. 11 个 xdd-gate hook 存在 (实际 14 个: lib + meta + pre-skill + stub-scan + session-start + stop + user-prompt-submit + team-dispatch + pressure + 6 phase-gate)
 n=$(count_existing hooks/xdd-gate-lib.sh hooks/xdd-gate-meta.sh hooks/xdd-gate-pre-skill.sh hooks/xdd-gate-stub-scan.sh hooks/xdd-gate-session-start.sh hooks/xdd-gate-stop.sh hooks/xdd-gate-user-prompt-submit.sh hooks/xdd-gate-team-dispatch.sh hooks/xdd-gate-pressure.sh hooks/xdd-gate-0-init.sh hooks/xdd-gate-1-research.sh hooks/xdd-gate-2-design.sh hooks/xdd-gate-3-review.sh hooks/xdd-gate-4-plan.sh hooks/xdd-gate-5-execute.sh hooks/xdd-gate-6-verify.sh)
 [[ $n -ge 11 ]]
@@ -123,6 +132,38 @@ check "15. xdd 文档齐全 (5 个核心)" "$?"
 lines=$(wc -l < skills/xdd-bdd/SKILL.md)
 [[ $lines -lt 500 ]]
 check "16. xdd-bdd/SKILL.md < 500 行 (quickstart 原则)" "$?"
+
+# 17. 多 agent 编排文档存在
+[[ -f docs/MULTI-AGENT-ORCHESTRATION.md ]]
+check "17. docs/MULTI-AGENT-ORCHESTRATION.md 编排文档存在" "$?"
+
+# 18. wire 12 门禁 hook 存在
+[[ -x hooks/xdd-gate-wire-validate.sh ]]
+check "18. hooks/xdd-gate-wire-validate.sh 存在且可执行" "$?"
+
+# 19. coverage 95% 闸门 hook 存在
+[[ -x hooks/xdd-gate-coverage-check.sh ]]
+check "19. hooks/xdd-gate-coverage-check.sh 存在且可执行" "$?"
+
+# 20. R5 lifecycle hard-gate 脚本存在
+[[ -x skills/xdd-artifact-lifecycle/scripts/gate-check-lifecycle.sh ]]
+check "20. skills/xdd-artifact-lifecycle/scripts/gate-check-lifecycle.sh 存在" "$?"
+
+# 21. coverage 闸门阈值默认 0.95 (用户偏好)
+grep -q 'XDD_COVERAGE_THRESHOLD:-0.95' hooks/xdd-gate-coverage-check.sh
+check "21. coverage hook 阈值默认 0.95" "$?"
+
+# 22. lifecycle 闸门阈值默认 0.95
+grep -q 'XDD_LIFECYCLE_THRESHOLD:-0.95' skills/xdd-artifact-lifecycle/scripts/gate-check-lifecycle.sh
+check "22. lifecycle gate 阈值默认 0.95" "$?"
+
+# 23. settings.json 注册 coverage + wire 2 个新 hook
+grep -q 'xdd-gate-coverage-check' settings.json && grep -q 'xdd-gate-wire-validate' settings.json
+check "23. settings.json 注册 2 个新 hook (coverage + wire)" "$?"
+
+# 24. orchestrator 文档引用 8 subagent dispatch
+grep -q 'phase-researcher' agents/xdd-orchestrator.md && grep -q 'phase-executor' agents/xdd-orchestrator.md
+check "24. orchestrator 引用 8 subagent dispatch" "$?"
 
 echo ""
 echo "=== 结果 ==="
