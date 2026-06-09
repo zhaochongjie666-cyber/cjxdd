@@ -1,10 +1,15 @@
 ---
 name: xdd-flow
-description: 系统架构设计时需要，包含架构图，行为图，业务图，数据图，接口图，部署图等,通过组件分解（Decomposition）来体现系统非功能性设计（高性能、高可用、可扩展性），拒绝纯业务画图
+description: |
+  系统架构设计时需要，包含架构图，行为图，业务图，数据图，接口图，部署图等, 通过组件分解（Decomposition）来体现系统非功能性设计（高性能、高可用、可扩展性），拒绝纯业务画图.
+  v2.0 (6→4 目录合并): 输出从 baseline/flow/ 迁入 baseline/arch/{slug}/flow.mermaid, 跟 architecture.md 同目录 colocation, 不再独立目录.
+version: "2.0.0"
+changelog:
+  - "2.0.0 (2026-06-09): 输出 path baseline/flow/{slug}.mermaid → baseline/arch/{slug}/flow.mermaid (6→4 目录合并)."
 ---
 
 # xdd-flow
-Depict the system architecture using a unified flow diagram that integrates architectural views, behavioral views, and business line exploration. Ensure the granularity is sufficiently detailed yet non-redundant, with fine-grained nodes. Regularly update the diagram to maintain consistency with the actual system architecture design. The diagram should be saved in `./.xdd/project.flow.mermaid`.
+Depict the system architecture using a unified flow diagram that integrates architectural views, behavioral views, and business line exploration. Ensure the granularity is sufficiently detailed yet non-redundant, with fine-grained nodes. Regularly update the diagram to maintain consistency with the actual system architecture design. The diagram should be saved in `./.xdd/baseline/arch/{slug}/flow.mermaid` (v2.0 colocation 跟 architecture.md).
 
 通过组件分解（Decomposition）来体现系统非功能性设计（高性能、高可用、可扩展性），拒绝纯业务画图
 

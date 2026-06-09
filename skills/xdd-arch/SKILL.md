@@ -5,14 +5,16 @@ methodology: ADD — Attribute-Driven Design + SDD — Security-Driven Design + 
 description: |
   xdd L1.5 架构设计 + L1.5 门禁检查 (ADD 思维: 质量属性 + SDD 安全 + PDD 性能 + ODD 运维视图 驱动决策)。
   产出 architecture.md (质量属性 + 限界上下文 + 上下文映射 + 技术栈 + 分层架构 + 规则传导矩阵 + API 端点清单 + 安全设计 + 性能设计 + 运维视图 [启动/关闭/状态机/排障锚点] + 文件清单 + 质量规划)
-  + aggregate-landscape.md (聚合全景)
-  + event-contract.md (EDD 独立契约)。
+  + aggregate-landscape.md (聚合全景, 全局)
+  + event-contract.md (EDD 独立契约, 全局)
+  + (v8.0.0 colocation) flow.mermaid (xdd-flow) + resilience/*.md (xdd-l3 5 文档) 同业务线目录, 即 baseline/arch/{slug}/ 内含全部架构相关产物.
   xdd 6 Phase 阶段 2.5: Arch 在 BDD 之后, Plan 之前.
   scale ≥ M 时强制, strict-mode=true 时全规模强制.
-  触发: 架构、ADD、质量属性、技术栈、分层、聚合、安全、SDD、性能、PDD、事件契约、event-contract、L1.5 门禁、PoC、技术验证、架构审计、启动序列、关闭序列、状态机、排障锚点、运维视图、ODD。
-version: "7.0.0"
+  触发: 架构、ADD、质量属性、技术栈、分层、聚合、安全、SDD、性能、PDD、事件契约、event-contract、L1.5 门禁、PoC、技术验证、架构审计、启动序列、关闭序列、状态机、排障锚点、运维视图、ODD、colocation。
+version: "8.0.0"
 changelog:
-  - "7.0.0 (2026-06-09): 合并 xdd-add → arch (运维视图段, 见 § 12). 旧 xdd-add 工件 (./.xdd/baseline/add/) 删除. path 改为 ./.xdd/baseline/arch/{slug}/."
+  - "8.0.0 (2026-06-09): 6→4 目录合并 — arch/{slug}/ 内含 flow.mermaid (xdd-flow) + resilience/ (xdd-l3 5 文档) colocation. baseline/flow/ + baseline/resilience/ 不再独立目录."
+  - "7.0.0: 合并 xdd-add → arch (运维视图段, 见 § 12)."
   - "6.0.0: 加 SDD 安全 + PDD 性能."
 ---
 
@@ -292,6 +294,41 @@ stateDiagram-v2
 | 排障 | 状态字段/日志锚点 | 安全日志 | trace/profile |
 
 ODD ↔ L3 关系: ODD § 12.4 失败模型是 L3 失败模式的 **种子清单**, L3 再做穷举发散 (8/9 维 + 10/12 模式 + 5/8 字段 FMEA).
+
+### 13. 业务线目录 colocation (v8.0.0)
+
+> v8.0.0 (6→4 目录合并): `baseline/arch/{slug}/` 不只放 architecture.md, 而是**整个业务线的架构相关产物全在一起**, 跨 skill (arch / flow / l3) 产出 colocation 到同业务线目录.
+
+**单一业务线完整结构** (B01-auth 为例):
+
+```
+.xdd/baseline/arch/
+├── aggregate-landscape.md          # 全局聚合全景 (跨业务线)
+├── event-contract.md               # 全局 EDD 事件契约 (跨业务线)
+└── B01-auth/                       # 业务线目录 — 一站式架构资料夹
+    ├── architecture.md             # xdd-arch v8.0.0 (含 § 12 运维视图)
+    ├── flow.mermaid                # xdd-flow v2.0 (流程图, 旧 baseline/flow/)
+    ├── docker-compose.yml          # xdd-arch (生产配置)
+    ├── docker-compose.test.yml     # xdd-arch (测试配置)
+    └── resilience/                 # xdd-l3 v2.0 (5 韧性文档, 旧 baseline/resilience/)
+        ├── failure-modes.md
+        ├── failsafe-design.md
+        ├── chaos-scenarios.md
+        ├── resilience-test-plan.md
+        └── recovery-runbook.md
+```
+
+**为什么 colocation 不分目录**:
+
+| 老结构 (跨 4 目录跳) | 新结构 (单目录一站式) |
+|---------------------|---------------------|
+| `baseline/flow/B01-auth.mermaid` | `baseline/arch/B01-auth/flow.mermaid` |
+| `baseline/arch/B01-auth/architecture.md` | (同上) |
+| `baseline/resilience/B01-auth/failure-modes.md` | `baseline/arch/B01-auth/resilience/failure-modes.md` |
+
+读 B01 的架构 → 之前要跳 `flow/` + `arch/` + `resilience/` 三目录. v8.0.0 后 `cd baseline/arch/B01-auth/ && ls` 一眼看全.
+
+**Phase 隔离不变**: 工件物理 colocation 不破坏 Phase 时序 — Phase 2 (flow) → Phase 2.5 (architecture + docker) → Phase 3 (resilience/), status.md 仍按 Phase 行更新, hooks 仍按 stage 校验.
 
 ## 产出
 

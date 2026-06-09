@@ -84,7 +84,7 @@ cjxdd/                          # xdd framework 仓库自身
 │   ├── xdd-init/               # Phase 0 INIT
 │   ├── xdd-l0/                 # Phase 1 发散
 │   ├── xdd-bdd/                # Phase 2 BDD + 业务线 landscape (v2.0 9→6 吸收 business)
-│   ├── xdd-flow/               # Phase 2 Flow
+│   ├── xdd-flow/               # Phase 2 Flow (v2.0 输出 colocation 入 baseline/arch/{slug}/flow.mermaid)
 │   ├── xdd-wire/               # Phase 2 Wire
 │   ├── xdd-arch/               # Phase 2.5 Architecture (v7.0.0 含 § 12 运维视图, 合并自旧 xdd-add)
 │   ├── xdd-scaffold/           # Phase 2.7 Scaffold

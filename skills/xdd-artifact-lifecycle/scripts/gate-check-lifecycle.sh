@@ -12,9 +12,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # 阈值
 THRESHOLD="${XDD_LIFECYCLE_THRESHOLD:-0.95}"
 
-# 5 角色 + 期望工件 (v2 6 目录扁平 — 新路径 baseline/research/00-intent + bdd/_landscape, 兼容老路径)
+# 5 角色 + 期望工件 (v3 4 目录扁平 — flow + resilience colocation 到 arch/{slug}/, 不再独立目录)
 declare -A expected_artifacts=(
-    ["design_baseline"]="baseline/research/00-intent.md baseline/bdd baseline/arch baseline/wire baseline/resilience"
+    ["design_baseline"]="baseline/research/00-intent.md baseline/bdd baseline/arch baseline/wire"
     ["process_output"]="iterations/iter-1/pipeline/status.md iterations/iter-1/plan iterations/iter-1/verify"
     ["evidence_archive"]="iterations/iter-1/verify iterations/iter-1/gate-logs iterations/iter-1/reports"
     ["control_marker"]="gates/scale.md gates/current-iteration gates/xdd-version"

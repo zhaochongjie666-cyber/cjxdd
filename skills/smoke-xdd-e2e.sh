@@ -246,15 +246,16 @@ check "31i. xdd-schema.json 含 bdd/_landscape + bdd/{slug}/business.md 必填�
   grep -q 'baseline/bdd/${slug}/business.md' skills/xdd-init/scripts/init.sh
 check "31j. init.sh 强制生成 baseline/bdd/_landscape + bdd/{slug}/business.md (v2.0 9→6)" "$?"
 
-# 31k. v2 6 子目录扁平 (baseline/ 内 6 子目录, 不再有 intent/add/business)
-grep -q 'mkdir -p .xdd/baseline/{research,bdd,flow,arch,resilience,wire}' skills/xdd-init/scripts/init.sh
-check "31k. init.sh 创建 6 子目录 (research/bdd/flow/arch/resilience/wire — v2.0 9→6)" "$?"
+# 31k. v3 4 子目录扁平 (baseline/ 内 4 子目录, v3.0 6→4 合并: 删 flow/resilience)
+grep -q 'mkdir -p .xdd/baseline/{research,bdd,arch,wire}' skills/xdd-init/scripts/init.sh
+check "31k. init.sh 创建 4 子目录 (research/bdd/arch/wire — v3.0 9→4)" "$?"
 
-# 31l. xdd-arch SKILL v7.0.0 含 § 12 运维视图段 (吃掉 xdd-add)
-grep -q 'version: "7.0.0"' skills/xdd-arch/SKILL.md && \
+# 31l. xdd-arch SKILL v8.0.0 含 § 12 运维视图段 + § 13 colocation (吃掉 xdd-add + flow + resilience)
+grep -q 'version: "8.0.0"' skills/xdd-arch/SKILL.md && \
   grep -q '运维视图' skills/xdd-arch/SKILL.md && \
-  grep -q 'ODD' skills/xdd-arch/SKILL.md
-check "31l. xdd-arch v7.0.0 含 § 12 运维视图 (ODD, 合并自旧 xdd-add)" "$?"
+  grep -q 'ODD' skills/xdd-arch/SKILL.md && \
+  grep -q 'colocation' skills/xdd-arch/SKILL.md
+check "31l. xdd-arch v8.0.0 含 § 12 运维视图 (ODD) + § 13 colocation (合并自旧 xdd-add/flow/resilience)" "$?"
 
 # 31m. xdd-bdd SKILL v2.0 含业务线 landscape 说明 (吃掉 xdd-business)
 grep -q 'version: "2.0.0"' skills/xdd-bdd/SKILL.md && \
@@ -266,6 +267,20 @@ check "31m. xdd-bdd v2.0 含 _landscape.md + {slug}/business.md 输出说明 (�
 grep -q 'version: "2.1.0"' skills/xdd-l0/SKILL.md && \
   grep -q '00-intent.md' skills/xdd-l0/SKILL.md
 check "31n. xdd-l0 v2.1 含 00-intent.md 说明 (合并自旧 baseline/intent/)" "$?"
+
+# 31o. xdd-flow SKILL v2.0 输出 path 迁入 arch/{slug}/ (v3.0 6→4 colocation)
+grep -q 'version: "2.0.0"' skills/xdd-flow/SKILL.md && \
+  grep -q 'baseline/arch/{slug}/flow.mermaid' skills/xdd-flow/SKILL.md
+check "31o. xdd-flow v2.0 输出 colocation 入 arch/{slug}/flow.mermaid (v3.0 6→4)" "$?"
+
+# 31p. xdd-l3 SKILL v2.0 输出 path 迁入 arch/{slug}/resilience/ (v3.0 6→4 colocation)
+grep -q 'version: "2.0.0"' skills/xdd-l3/SKILL.md && \
+  grep -q 'baseline/arch/{slug}/resilience' skills/xdd-l3/SKILL.md
+check "31p. xdd-l3 v2.0 输出 colocation 入 arch/{slug}/resilience/ (v3.0 6→4)" "$?"
+
+# 31q. schema 不再含 baseline/flow 或 baseline/resilience 顶级路径
+! grep -qE 'baseline/(flow|resilience)/' skills/xdd-init/templates/xdd-schema.json
+check "31q. schema 不再含 baseline/flow/ 或 baseline/resilience/ 顶级路径 (v3.0 6→4)" "$?"
 
 # 32. settings.json 注册 xdd-gate-ux-check hook
 grep -q 'xdd-gate-ux-check' settings.json

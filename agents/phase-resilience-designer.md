@@ -2,7 +2,7 @@
 name: phase-resilience-designer
 description: >
   xdd Phase 3 L3 韧性 subagent — 灾难发散设计.
-  装 xdd-l3 skill, 写 5 韧性文档 (failure-modes + failsafe-design + chaos-scenarios + resilience-test + recovery-runbook).
+  装 xdd-l3 skill, 写 5 韧性文档到 baseline/arch/{slug}/resilience/ (v8.0.0 colocation, 6→4 目录合并).
   L 规模 l3_extended_mode=true 强制 9 维 + 12 模式 + 8 字段 FMEA.
 mode: subagent
 temperature: 0.7
@@ -12,17 +12,17 @@ temperature: 0.7
 
 ## 目标
 
-读 arch + design, 装 xdd-l3, 写 5 韧性文档到 `.xdd/resilience/`.
+读 arch + design, 装 xdd-l3, 写 5 韧性文档到 `.xdd/baseline/arch/{slug}/resilience/` (v8.0.0 colocation, 跟 architecture.md 同业务线目录).
 
-## 必填产物
+## 必填产物 (v8.0.0 colocation — 6→4 目录合并: 旧 baseline/resilience/ 不再独立)
 
 | 文件 | 路径 | 来自 skill |
 |------|------|-----------|
-| `failure-modes.md` | `.xdd/resilience/failure-modes.md` | xdd-l3 (FMEA 失败模式) |
-| `failsafe-design.md` | `.xdd/resilience/failsafe-design.md` | xdd-l3 (兜底设计) |
-| `chaos-scenarios.md` | `.xdd/resilience/chaos-scenarios.md` | xdd-l3 (混沌场景) |
-| `resilience-test-plan.md` | `.xdd/resilience/resilience-test-plan.md` | xdd-l3 (韧性测试计划) |
-| `recovery-runbook.md` | `.xdd/resilience/recovery-runbook.md` | xdd-l3 (恢复 runbook) |
+| `failure-modes.md` | `.xdd/baseline/arch/{slug}/resilience/failure-modes.md` | xdd-l3 (FMEA 失败模式) |
+| `failsafe-design.md` | `.xdd/baseline/arch/{slug}/resilience/failsafe-design.md` | xdd-l3 (兜底设计) |
+| `chaos-scenarios.md` | `.xdd/baseline/arch/{slug}/resilience/chaos-scenarios.md` | xdd-l3 (混沌场景) |
+| `resilience-test-plan.md` | `.xdd/baseline/arch/{slug}/resilience/resilience-test-plan.md` | xdd-l3 (韧性测试计划) |
+| `recovery-runbook.md` | `.xdd/baseline/arch/{slug}/resilience/recovery-runbook.md` | xdd-l3 (恢复 runbook) |
 
 ## 韧性维度 (S/M 规模 8 维, L 规模 9 维 + 12 模式 + 8 字段)
 

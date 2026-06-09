@@ -176,7 +176,7 @@ cat $DEMO/.xdd/iterations/iter-1/pipeline/status.md   # 看各 Phase 状态
 ls $DEMO/.xdd/research/ 2>/dev/null              # Phase 1 笔记本
 ls $DEMO/.xdd/bdd/ 2>/dev/null                      # Phase 2 BDD
 ls $DEMO/.xdd/arch/ 2>/dev/null         # Phase 2.5 Arch
-ls $DEMO/.xdd/resilience/ 2>/dev/null            # Phase 3 L3 韧性
+ls $DEMO/.xdd/baseline/arch/*/resilience/ 2>/dev/null  # Phase 3 L3 韧性 (v8.0.0 colocation)
 
 # 6. 跑 smoke 验证
 bash skills/smoke-xdd-e2e.sh
@@ -280,7 +280,7 @@ The Walker is **not a dispatcher** — it does the work itself, reading files, w
 
 ### 目录与流水线 (详情见 README.md)
 
-- **完整目录树** + skill 列表 (22 个含 13 核心 + 9 utility, v2.0 9→6 后) → `README.md` § 目录结构
+- **完整目录树** + skill 列表 (22 个含 13 核心 + 9 utility, v3.0 9→4 后) → `README.md` § 目录结构
 - **流水线** 0→1→2→2.5→2.7→3→4→5→6 → `docs/WORKFLOW.md`
 - **统一架构图** (Mermaid) → `docs/architecture.mmd`
 - **2 个 agent 变体**:
@@ -289,21 +289,21 @@ The Walker is **not a dispatcher** — it does the work itself, reading files, w
 
 **核心 skill 清单** (13, v2.0 9→6 合并: xdd-add 已并入 xdd-arch § 12 运维视图): `xdd-core` / `xdd-bdd` / `xdd-flow` / `xdd-wire` / `xdd-arch` / `xdd-scaffold` / `xdd-l0` / `xdd-l3` / `xdd-l6` / `xdd-plan` / `xdd-execute` / `xdd-init` / `xdd-artifact-lifecycle`
 
-**.xdd/baseline 6 子目录** (v2.0 9→6, 详见 `skills/xdd-init/SKILL.md`):
+**.xdd/baseline 4 子目录** (v3.0 9→4, 详见 `skills/xdd-init/SKILL.md`):
 - `research/` — L0 笔记本 (10 份: 00-intent + 00-l1-recap + 01-08, v2.1 加 00-intent 吸收旧 intent/)
 - `bdd/` — 业务线 landscape + spec.md + *.feature (v2.0 吸收旧 business/)
-- `flow/` — project.flow.mermaid
-- `arch/` — architecture.md (含 § 12 运维视图) + aggregate-landscape + event-contract (v7.0.0 吸收旧 add/)
+- `arch/{slug}/` — 业务线一站式架构资料夹 (v8.0.0 colocation): architecture.md (含 § 12 运维视图, 吸收旧 add/) + flow.mermaid (吸收旧 flow/) + docker-compose + resilience/ (吸收旧 resilience/)
 - `wire/` — 前端线框图 SVG/HTML
-- `resilience/` — L3 韧性 5 文档
 
-**3 个被合并的旧目录** (legacy, hooks 会在 stop gate 警告; 老 demo 兼容路径仍可读):
+**5 个被合并的旧目录** (legacy, hooks 在 stop gate 警告; 老 demo 兼容路径仍可读):
 | 旧目录 | 新位置 | 合并版本 |
 |--------|--------|---------|
 | `baseline/intent/intent.md` | `baseline/research/00-intent.md` | xdd-l0 v2.1 |
 | `baseline/business/business-landscape.md` | `baseline/bdd/_landscape.md` | xdd-bdd v2.0 |
 | `baseline/business/{slug}.md` | `baseline/bdd/{slug}/business.md` | xdd-bdd v2.0 |
 | `baseline/add/{slug}/add.md` | `baseline/arch/{slug}/architecture.md § 12 运维视图` | xdd-arch v7.0.0 |
+| `baseline/flow/{slug}.mermaid` | `baseline/arch/{slug}/flow.mermaid` (colocation) | xdd-flow v2.0 / xdd-arch v8.0.0 |
+| `baseline/resilience/{slug}/*.md` | `baseline/arch/{slug}/resilience/*.md` (colocation) | xdd-l3 v2.0 / xdd-arch v8.0.0 |
 
 **utility skill** (9): `xdd-reverse` / `xdd-taste` / `xdd-trace-init` / `xdd-skill-creator` / `xdd-mermaid-check` / `xdd-docker-helper` / `xdd-test-in-tmux` / `xdd-gherkin-writer` / `xdd-opencode-learning`
 

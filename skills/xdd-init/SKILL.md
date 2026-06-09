@@ -53,7 +53,7 @@ bash ~/.claude/skills/xdd-init/scripts/init.sh
 ├── xdd-version                       # 单行：schema 里的 xdd_version
 ├── current-iteration                 # 单行：当前 iter 名（默认 "iter-1"）
 ├── scale.md                          # 默认值（带 strict-default 字段），下游 5 个 skill 读
-├── baseline/                         # 跨 iter design_baseline (6 子目录扁平, v2 9→6 合并: 删 intent/add/business)
+├── baseline/                         # 跨 iter design_baseline (4 子目录扁平, v3.0 9→4 合并: 删 intent/add/business/flow/resilience)
 │   ├── research/
 │   │   ├── 00-intent.md             # Phase 0 写: 项目意图 / 成功标准 (v2.1, 旧 baseline/intent/intent.md 迁入)
 │   │   └── .gitkeep                  # xdd-l0 后填 01-08
@@ -61,12 +61,20 @@ bash ~/.claude/skills/xdd-init/scripts/init.sh
 │   │   ├── _landscape.md            # 业务线全景 (v2.0, 旧 baseline/business/business-landscape.md 迁入)
 │   │   ├── {BXX-slug}/business.md   # 每个业务线分组 (v2.0, 旧 baseline/business/{slug}.md 迁入)
 │   │   └── .gitkeep                  # xdd-bdd 后填 spec.md + *.feature
-│   ├── flow/
-│   │   └── .gitkeep                  # xdd-flow 后填
-│   ├── arch/
-│   │   └── .gitkeep                  # xdd-arch 后填 (含 § 12 运维视图, v7.0.0 合并 xdd-add)
-│   ├── resilience/
-│   │   └── .gitkeep                  # xdd-l3 后填
+│   ├── arch/                         # 业务线一站式架构资料夹 (v8.0.0 colocation)
+│   │   ├── aggregate-landscape.md   # 全局聚合全景 (xdd-arch)
+│   │   ├── event-contract.md         # 全局 EDD 契约 (xdd-arch)
+│   │   ├── {BXX-slug}/
+│   │   │   ├── architecture.md       # xdd-arch (含 § 12 运维视图, v7.0.0 合并自 xdd-add)
+│   │   │   ├── flow.mermaid          # xdd-flow v2.0 (旧 baseline/flow/{slug}.mermaid 迁入)
+│   │   │   ├── docker-compose.yml + docker-compose.test.yml
+│   │   │   └── resilience/           # xdd-l3 v2.0 (5 韧性文档, 旧 baseline/resilience/{slug}/ 迁入)
+│   │   │       ├── failure-modes.md
+│   │   │       ├── failsafe-design.md
+│   │   │       ├── chaos-scenarios.md
+│   │   │       ├── resilience-test-plan.md
+│   │   │       └── recovery-runbook.md
+│   │   └── .gitkeep                  # xdd-arch / xdd-flow / xdd-l3 后填
 │   └── wire/
 │       └── .gitkeep                  # xdd-wire 后填
 ├── gates/                            # 项目级 control_marker

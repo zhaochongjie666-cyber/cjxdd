@@ -41,8 +41,8 @@ if [[ -d ".xdd" && "$FORCE" != "true" ]]; then
     exit 1
 fi
 
-# 6 子目录创建 (老 9 子目录: 删 intent/add/business 三个, 加 00-intent 进 research/, business 工件入 bdd/)
-mkdir -p .xdd/baseline/{research,bdd,flow,arch,resilience,wire}
+# 4 子目录创建 (v3 6→4 合并: flow + resilience 并入 arch/{slug}/ colocation)
+mkdir -p .xdd/baseline/{research,bdd,arch,wire}
 mkdir -p .xdd/gates
 mkdir -p .xdd/iterations/iter-$ITER/{pipeline,plan,design,verify,execute,chaos,wire-reviews,gate-logs,reports,research}
 
@@ -183,18 +183,20 @@ EOF
 ## 关联
 
 - RXX 规则: (从 ${slug}/spec.md 引用)
-- Arch 设计 (含运维视图): baseline/arch/${slug}/architecture.md
-- Resilience: baseline/resilience/${slug}/failure-modes.md
+- Arch 设计 (含运维视图 + flow + resilience colocation, v8.0.0): baseline/arch/${slug}/
+  - architecture.md (含 § 12 运维视图)
+  - flow.mermaid
+  - docker-compose.yml + docker-compose.test.yml
+  - resilience/{failure-modes,failsafe-design,chaos-scenarios,resilience-test-plan,recovery-runbook}.md
 - 前端线框: baseline/wire/${slug}/
-- 流程图: baseline/flow/${slug}.mermaid
 EOF
     done
 
     echo "✓ baseline/bdd/: $(echo "$BIZLINES" | tr ',' '\n' | wc -l) BXX 占位 + _landscape.md 已生成 (v2 9→6 合并自 business/)"
 fi
 
-# 6 子目录 .gitkeep (老 9 目录中 intent/add/business 已删, 不再生成)
-for d in research bdd flow arch resilience wire; do
+# 4 子目录 .gitkeep (v3 6→4 合并: flow + resilience 已并入 arch/, 不再独立)
+for d in research bdd arch wire; do
     touch .xdd/baseline/$d/.gitkeep
 done
 

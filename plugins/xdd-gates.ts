@@ -1136,13 +1136,21 @@ function checkLifecycleDrift(xddDir: string | null): string {
       for (const p of fsInL5) lines.push(`  ${p}`)
     }
   }
-  // wire 老路径 + v2.0 9→6 legacy baseline 目录
+  // wire 老路径 + v2.0/v3.0 9→6→4 legacy baseline 目录
   if (existsSync(join(xddDir, "business", "wireframes"))) {
     lines.push(`Found .xdd/business/wireframes/. Canonical = .xdd/baseline/wire/{page}.svg (v2.0 9→6, per-page)`)
   }
-  for (const legacy of ["intent", "add", "business"]) {
+  for (const legacy of ["intent", "add", "business", "flow", "resilience"]) {
     if (existsSync(join(xddDir, "baseline", legacy))) {
-      lines.push(`Found legacy .xdd/baseline/${legacy}/. v2.0 (9→6) 已合并 → research/00-intent | arch §12 | bdd/_landscape + bdd/{slug}/business.md`)
+      let hint = ""
+      switch (legacy) {
+        case "intent":     hint = "research/00-intent.md (v2.1)" ; break
+        case "add":        hint = "arch/{slug}/architecture.md § 12 (v7.0.0)" ; break
+        case "business":   hint = "bdd/_landscape.md + bdd/{slug}/business.md (v2.0)" ; break
+        case "flow":       hint = "arch/{slug}/flow.mermaid (v8.0.0 colocation)" ; break
+        case "resilience": hint = "arch/{slug}/resilience/*.md (v8.0.0 colocation)" ; break
+      }
+      lines.push(`Found legacy .xdd/baseline/${legacy}/. 已合并 → ${hint}`)
     }
   }
   return lines.join("\n")
@@ -2134,13 +2142,26 @@ function findArchFiles(xddDir: string): string[] {
 
 function findFailureModesFiles(xddDir: string): string[] {
   const out: string[] = []
+  // v3.0 6→4 合并: resilience 5 文档 colocation 到 baseline/arch/{slug}/resilience/
+  const newArchDir = join(xddDir, "baseline", "arch")
+  if (existsSync(newArchDir)) {
+    try {
+      for (const e of readdirSync(newArchDir, { withFileTypes: true })) {
+        if (e.isDirectory()) {
+          const f = join(newArchDir, e.name, "resilience", "failure-modes.md")
+          if (existsSync(f)) out.push(f)
+        }
+      }
+    } catch {}
+  }
+  // 老路径: .xdd/resilience/{slug}/failure-modes.md (兼容老 demo)
   const l3Dir = join(xddDir, "resilience")
   if (!existsSync(l3Dir)) return out
   try {
     for (const e of readdirSync(l3Dir, { withFileTypes: true })) {
       if (e.isDirectory()) {
         const f = join(l3Dir, e.name, "failure-modes.md")
-        if (existsSync(f)) out.push(f)
+        if (existsSync(f) && !out.includes(f)) out.push(f)
       }
     }
   } catch {}

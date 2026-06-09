@@ -6,11 +6,14 @@ description: |
   xdd L3 韧性设计 — 在 L1.5 ADD+SDD+PDD（架构骨架）和 L1-bdd（行为骨架）之上做"灾难发散"。
   标准模式 (S/M 规模): 8 维度失败模式 + 10 兜底模式 + 5 字段 FMEA。
   扩展模式 (L 规模, scale.l3_extended_mode=true): 9 维度 (+跨地域/多活) + 12 模式 (+业务对账/业务幂等) + 8 字段 FMEA (+Owner/SLO 关联/回滚时长)。
-  产出 5 份文档：failure-modes.md / failsafe-design.md / chaos-scenarios.md / resilience-test-plan.md / recovery-runbook.md。
+  产出 5 份文档（v2.0 6→4 合并: 全部 colocation 到 baseline/arch/{slug}/resilience/）：failure-modes.md / failsafe-design.md / chaos-scenarios.md / resilience-test-plan.md / recovery-runbook.md。
   与 L1.5/L1-bdd 互补不重复。
   l3_required: true 时所有规模强制使用；L 规模时 l3_extended_mode=true 自动启用 9 维 + 12 模式 + 8 字段。
   触发：韧性、resilience、混沌、chaos、失败模式、failure mode、兜底、fallback、熔断、circuit breaker、容错、fault tolerance、降级、degradation、补偿、compensation、极端条件、extreme conditions、RDA、业务对账、reconciliation、业务幂等、business idempotency、跨地域、multi-region。
-version: "1.1.0"
+version: "2.0.0"
+changelog:
+  - "2.0.0 (2026-06-09): 输出 path baseline/resilience/{slug}/*.md → baseline/arch/{slug}/resilience/*.md (6→4 目录合并 colocation, 跟 architecture.md 同业务线目录)."
+  - "1.1.0: L 规模扩展 9 维 + 12 模式 + 8 字段 FMEA."
 ---
 
 # xdd·RDA — 韧性驱动架构
@@ -192,17 +195,23 @@ Scenario: 网络分区下标注提交降级
 
 > **生命周期角色**：`design_baseline` 设计基线。`failure-modes.md` / `failsafe-design.md` / `chaos-scenarios.md` / `resilience-test-plan.md` / `recovery-runbook.md` 5 份文档均跨迭代复用。
 
-5 份文档，路径规范：
+5 份文档，路径规范（v2.0 6→4 合并: colocation 到 arch/{slug}/resilience/）：
 
 ```
-.xdd/resilience/
-└── BXX-{slug}/
-    ├── failure-modes.md           # 失败模式目录 (FMEA 8 维度 × 5 字段)
-    ├── failsafe-design.md         # 兜底设计 (10 模式 × 实现位置)
-    ├── chaos-scenarios.md         # 混沌场景 (@chaos Gherkin)
-    ├── resilience-test-plan.md    # 韧性测试计划 (测试矩阵)
-    └── recovery-runbook.md        # 恢复剧本 (运维值班用)
+.xdd/baseline/arch/
+└── {BXX-slug}/                       # 跟 architecture.md 同一业务线目录
+    ├── architecture.md               # xdd-arch 产出 (含 § 12 运维视图)
+    ├── flow.mermaid                  # xdd-flow 产出 (v2.0 合并)
+    ├── docker-compose.yml
+    └── resilience/                   # v2.0 韧性 5 文档 colocation
+        ├── failure-modes.md          # 失败模式目录 (FMEA 8 维度 × 5 字段)
+        ├── failsafe-design.md        # 兜底设计 (10 模式 × 实现位置)
+        ├── chaos-scenarios.md        # 混沌场景 (@chaos Gherkin)
+        ├── resilience-test-plan.md   # 韧性测试计划 (测试矩阵)
+        └── recovery-runbook.md       # 恢复剧本 (运维值班用)
 ```
+
+> **为什么 colocation**: 韧性是架构的延伸 — 失败模式建立在 ADD 战术之上, 跨业务线对比时 (e.g. 比 B01 vs B02 的 chaos scenarios) 在 arch/{slug}/ 下直接看完整业务线 (architecture + flow + resilience), 不用跨 4 个目录跳查.
 
 ## 约束
 

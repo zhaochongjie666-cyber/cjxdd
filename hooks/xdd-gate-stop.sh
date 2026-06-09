@@ -203,10 +203,17 @@ if [[ -d "$xdd_dir/business/wireframes" ]]; then
     echo "[xdd]   ⚠️  Found .xdd/business/wireframes/. Canonical = .xdd/baseline/wire/{page}.svg (v2.0 9→6, per-page)"
     lifecycle_drift=1
 fi
-# v2.0 9→6: 老 baseline/intent/add/business 目录, 提示迁移
-for legacy in intent add business; do
+# v2.0 9→6 + v3.0 6→4: 老 baseline/{intent,add,business,flow,resilience} 目录, 提示迁移
+for legacy in intent add business flow resilience; do
     if [[ -d "$xdd_dir/baseline/$legacy" ]]; then
-        echo "[xdd]   ⚠️  Found legacy .xdd/baseline/$legacy/. v2.0 (9→6) 已合并 → research/00-intent | arch §12 | bdd/_landscape + bdd/{slug}/business.md"
+        case "$legacy" in
+            intent)     hint="research/00-intent.md (v2.1)" ;;
+            add)        hint="arch/{slug}/architecture.md § 12 运维视图 (v7.0.0)" ;;
+            business)   hint="bdd/_landscape.md + bdd/{slug}/business.md (v2.0)" ;;
+            flow)       hint="arch/{slug}/flow.mermaid (v8.0.0 colocation)" ;;
+            resilience) hint="arch/{slug}/resilience/*.md (v8.0.0 colocation)" ;;
+        esac
+        echo "[xdd]   ⚠️  Found legacy .xdd/baseline/$legacy/. 已合并 → $hint"
         lifecycle_drift=1
     fi
 done

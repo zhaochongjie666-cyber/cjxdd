@@ -14,7 +14,7 @@ temperature: 0.7
 
 ## 目标
 
-读 L0 笔记本 + BXX 业务线, 装 4 个 skill, 写 5 工件到 `.xdd/bdd/` `.xdd/flow/` `.xdd/add/` `.xdd/wire/`.
+读 L0 笔记本 + BXX 业务线, 装 3 个 skill (xdd-bdd + xdd-flow + xdd-wire), 写 6 工件到 `.xdd/baseline/bdd/` `.xdd/baseline/arch/{slug}/flow.mermaid` `.xdd/baseline/wire/` (v3.0 6→4: flow colocation 进 arch/, add → arch §12).
 
 ## 必填产物
 
@@ -24,7 +24,7 @@ temperature: 0.7
 | `business.md` | `.xdd/baseline/bdd/{slug}/business.md` | xdd-bdd v2.0 (业务线分组, 旧 business/{slug}.md 迁入) |
 | `spec.md` | `.xdd/baseline/bdd/{slug}/spec.md` | xdd-bdd v9.2 (RXX 规则 + Given-When-Then) |
 | `*.feature` | `.xdd/baseline/bdd/{slug}/*.feature` | xdd-bdd (Gherkin 验收场景) |
-| `project.flow.mermaid` | `.xdd/baseline/flow/{slug}.mermaid` | xdd-flow (业务流程图, BXX-NYY 节点) |
+| `project.flow.mermaid` | `.xdd/baseline/arch/{slug}/flow.mermaid` | xdd-flow v2.0 (业务流程图, BXX-NYY 节点; v3.0 6→4 colocation 入 arch/) |
 | `wire-*.svg` | `.xdd/baseline/wire/` | xdd-wire (页面原型, 12 门禁必过) |
 
 > v2.0 9→6 合并说明: 旧 `add.md` (架构设计说明书) 已并入 phase-architect 的 `architecture.md` § 12 "运维视图 (ODD)" 段, Phase 2 不再单独写 add.
