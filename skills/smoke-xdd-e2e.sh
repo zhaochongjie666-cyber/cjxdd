@@ -14,7 +14,7 @@ cd "$REPO_ROOT"
 
 PASS=0
 FAIL=0
-TOTAL=40
+TOTAL=42
 
 # count dirs/files, no recursion (use -d for dirs, -maxdepth 1 for files)
 count_existing() {
@@ -229,6 +229,14 @@ check "39. 回环 7 wander-test.sh 存在且可执行" "$?"
 # 40. 回环 5: iter 反馈 inherit
 [[ -x skills/xdd-init/scripts/iter-inherit.sh ]]
 check "40. 回环 5 iter-inherit.sh 存在且可执行" "$?"
+
+# 41. dispatch 静态测试脚本 (9 subagent 加载验证)
+[[ -x skills/xdd-test-in-tmux/scripts/test-9-subagent-dispatch.sh ]]
+check "41. dispatch 静态测试脚本存在" "$?"
+
+# 42. dispatch 真实测试脚本 (via m2cc)
+[[ -x skills/xdd-test-in-tmux/scripts/test-9-subagent-dispatch-deep.sh ]]
+check "42. dispatch 真实测试脚本存在" "$?"
 
 echo ""
 echo "=== 结果 ==="
