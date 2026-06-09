@@ -14,7 +14,7 @@ cd "$REPO_ROOT"
 
 PASS=0
 FAIL=0
-TOTAL=46
+TOTAL=49
 
 # count dirs/files, no recursion (use -d for dirs, -maxdepth 1 for files)
 count_existing() {
@@ -211,6 +211,24 @@ check "31d. wire-validate hook 扫 HTML" "$?"
 [[ -f docs/ARTIFACT-LIFECYCLE-LOCATION.md ]] && \
   grep -q 'design_baseline\|evidence_archive\|process_output' docs/ARTIFACT-LIFECYCLE-LOCATION.md
 check "31e. ARTIFACT-LIFECYCLE-LOCATION.md 含 5 类 lifecycle" "$?"
+
+# 31f. 6 目录扁平结构 (baseline/ + gates/ + iterations/)
+grep -q 'baseline/' skills/xdd-init/templates/xdd-schema.json && \
+  grep -q 'gates/' skills/xdd-init/templates/xdd-schema.json && \
+  grep -q 'iterations/iter-1/' skills/xdd-init/templates/xdd-schema.json
+check "31f. xdd-schema.json 含 baseline/ + gates/ + iterations/ 6 目录" "$?"
+
+# 31g. 11 旧目录 (core/ arch/ bdd/ add/ plan/ research/ resilience/ wire/ business 散落根) 不应再出现
+# 允许 lifecycle_artifacts 还引用 .xdd/baseline/bdd/... (合并后), 但 .xdd/根 不应有 core/ arch/ add/ plan/ research/ resilience/ wire/ business
+if grep -qE '"\./\.xdd/(core|add|plan|research|resilience|wire|business|arch|architecture|bdd)/' skills/xdd-init/templates/xdd-schema.json; then
+    check "31g. xdd-schema.json 不再含旧 11 目录根路径 (合并到 baseline/)" 1
+else
+    check "31g. xdd-schema.json 不再含旧 11 目录根路径 (合并到 baseline/)" 0
+fi
+
+# 31h. plan 进 iter-N (不在 baseline/)
+grep -q 'iterations/iter-1/plan/harness-plan.md' skills/xdd-init/templates/xdd-schema.json
+check "31h. plan 路径在 iterations/iter-1/plan/ (per-iter)" "$?"
 
 # 32. settings.json 注册 xdd-gate-ux-check hook
 grep -q 'xdd-gate-ux-check' settings.json

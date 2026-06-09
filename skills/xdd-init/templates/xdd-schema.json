@@ -1,5 +1,16 @@
 {
   "xdd_version": "0.1.0",
+  "directory_layout": {
+    "comment": "6 目录扁平结构 — .xdd/ 根 11 目录合并为 2 (baseline + gates), iter-N/ 包所有 per-iter",
+    "root": {
+      "baseline/": "design_baseline 全部 (intent/bdd/arch/add/research/resilience/wire/business + spec.md)",
+      "gates/": "control_marker 全部 (scale.md / current-iteration / xdd-version / .xdd-halt.json / .l5-unresolved.json)"
+    },
+    "iter": {
+      "comment": "per-iter 全部, 收尾后 frozen, iter-N+1/.inherited/ 收 halt/unresolved",
+      "iterations/iter-N/": "全部 per-iter 工件 (pipeline / plan / research / verify / execute / chaos / wire-reviews / gate-logs / reports / bdd-trace / design)"
+    }
+  },
   "stages": [
     {
       "id": "0_INIT",
@@ -9,9 +20,11 @@
       "aliases": ["0", "init", "0 init"],
       "output_patterns": [
         "./.xdd/",
-        "./.xdd/scale.md",
-        "./.xdd/iterations/{iter}/pipeline/status.md",
-        "./.xdd/core/intent.md"
+        "./.xdd/gates/scale.md",
+        "./.xdd/gates/current-iteration",
+        "./.xdd/gates/xdd-version",
+        "./.xdd/baseline/intent/intent.md",
+        "./.xdd/iterations/iter-1/pipeline/status.md"
       ]
     },
     {
@@ -21,8 +34,7 @@
       "skill": "xdd-l0",
       "aliases": ["1", "research", "1 research"],
       "output_patterns": [
-        "./.xdd/iterations/{iter}/research/*.md",
-        "./.xdd/research/*.md"
+        "./.xdd/baseline/research/{00-l1-recap,01-customer,02-product,03-tech,04-business-model,05-data,06-risk,07-competitor,08-brainstorm}.md"
       ]
     },
     {
@@ -32,10 +44,12 @@
       "skill": "xdd-bdd",
       "aliases": ["2", "design", "2 design"],
       "output_patterns": [
-        "./.xdd/bdd/{slug}/*.feature",
-        "./.xdd/project.flow.mermaid",
-        "./.xdd/add/{slug}/*.md",
-        "./.xdd/wire/{page}/*.svg"
+        "./.xdd/baseline/bdd/{slug}/spec.md",
+        "./.xdd/baseline/bdd/{slug}/*.feature",
+        "./.xdd/baseline/flow/{slug}.mermaid",
+        "./.xdd/baseline/add/{slug}/add.md",
+        "./.xdd/baseline/wire/{page}/index.html",
+        "./.xdd/baseline/wire/{page}/index.mobile.html"
       ]
     },
     {
@@ -45,10 +59,11 @@
       "skill": "xdd-arch",
       "aliases": ["2.5", "arch", "2.5 arch"],
       "output_patterns": [
-        "./.xdd/arch/{slug}/architecture.md",
-        "./.xdd/arch/aggregate-landscape.md",
-        "./.xdd/arch/event-contract.md",
-        "./.xdd/arch/{slug}/docker-compose.yml"
+        "./.xdd/baseline/arch/{slug}/architecture.md",
+        "./.xdd/baseline/arch/aggregate-landscape.md",
+        "./.xdd/baseline/arch/event-contract.md",
+        "./.xdd/baseline/arch/{slug}/docker-compose.yml",
+        "./.xdd/baseline/arch/{slug}/docker-compose.test.yml"
       ]
     },
     {
@@ -71,11 +86,11 @@
       "skill": "xdd-l3",
       "aliases": ["3", "l3", "3 l3"],
       "output_patterns": [
-        "./.xdd/resilience/{slug}/failure-modes.md",
-        "./.xdd/resilience/{slug}/failsafe-design.md",
-        "./.xdd/resilience/{slug}/chaos-scenarios.md",
-        "./.xdd/resilience/{slug}/resilience-test-plan.md",
-        "./.xdd/resilience/{slug}/recovery-runbook.md"
+        "./.xdd/baseline/resilience/{slug}/failure-modes.md",
+        "./.xdd/baseline/resilience/{slug}/failsafe-design.md",
+        "./.xdd/baseline/resilience/{slug}/chaos-scenarios.md",
+        "./.xdd/baseline/resilience/{slug}/resilience-test-plan.md",
+        "./.xdd/baseline/resilience/{slug}/recovery-runbook.md"
       ]
     },
     {
@@ -93,7 +108,8 @@
       "skill": "xdd-plan",
       "aliases": ["4", "plan", "4 plan"],
       "output_patterns": [
-        "./docs/xdd/plan/{feature}.md"
+        "./.xdd/iterations/iter-1/plan/harness-plan.md",
+        "./.xdd/iterations/iter-1/plan/{feature}.md"
       ]
     },
     {
@@ -103,7 +119,7 @@
       "skill": "xdd-execute",
       "aliases": ["5", "execute", "5 execute"],
       "output_patterns": [
-        "./{src,backend,frontend}/**/*.{ts,tsx,js,jsx,py,go,java,kt,rs}",
+        "./{src,backend,frontend,lib,internal}/**/*.{ts,tsx,js,jsx,py,go,java,kt,rs}",
         "./tests/**/*.test.*",
         "./tests/**/test_*.py"
       ]
@@ -115,8 +131,9 @@
       "skill": "xdd-l6",
       "aliases": ["6", "verify", "l6", "6 verify"],
       "output_patterns": [
-        "./.xdd/iterations/{iter}/verify/{slug}/deployment-report.md",
-        "./.xdd/iterations/{iter}/verify/{slug}/smoke-test-passed"
+        "./.xdd/iterations/iter-1/verify/{slug}/deployment-report.md",
+        "./.xdd/iterations/iter-1/verify/{slug}/smoke-test-passed",
+        "./.xdd/iterations/iter-1/verify/{slug}/l5-{correctness,security,performance,maintainability}.md"
       ]
     }
   ],
@@ -172,10 +189,10 @@
   },
   "xdd_init": {
     "required_files": [
-      "xdd-version",
-      "current-iteration",
+      "gates/xdd-version",
+      "gates/current-iteration",
       "iterations/iter-1/pipeline/status.md",
-      "scale.md"
+      "gates/scale.md"
     ],
     "default_bizlines": [],
     "status_md_template_header": [
@@ -202,44 +219,57 @@
   },
   "lifecycle_artifacts": {
     "roles": {
-      "design_baseline": "设计基线 — 跨迭代累积, 原位修改",
+      "design_baseline": "设计基线 — 跨迭代累积, 原位修改, 改后必触发 L3/L5/L6 重跑",
       "process_output": "过程产物 — 一次性消费, iter 冻结",
       "evidence_archive": "证据存档 — 只读不可变, 加 .archived 锁",
       "control_marker": "控制标记 — 空文件/单行, 跟生命周期绑定",
       "template_instance": "模板与实例 — 模板跟 skill, 实例跟项目"
     },
     "artifacts": [
-      { "id": "intent", "stage": "0_INIT", "role": "design_baseline", "canonical_path": "./.xdd/core/intent.md" },
-      { "id": "scale", "stage": "0_INIT", "role": "control_marker", "canonical_path": "./.xdd/scale.md" },
-      { "id": "xdd-version", "stage": "0_INIT", "role": "control_marker", "canonical_path": "./.xdd/xdd-version" },
-      { "id": "current-iteration", "stage": "0_INIT", "role": "control_marker", "canonical_path": "./.xdd/current-iteration" },
-      { "id": "status-md", "stage": "0_INIT", "role": "process_output", "canonical_path": "./.xdd/iterations/{iter}/pipeline/status.md" },
-      { "id": "l0-notebooks", "stage": "1_RESEARCH", "role": "process_output", "canonical_path": "./.xdd/iterations/{iter}/research/*.md" },
-      { "id": "business-landscape", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/business/business-landscape.md" },
-      { "id": "research", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/business/{slug}/research.md" },
-      { "id": "spec", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/business/{slug}/spec.md" },
-      { "id": "flow-mermaid", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/project.flow.mermaid" },
-      { "id": "wire-svg", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/wire/{page}.svg" },
-      { "id": "add", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/add/{slug}/*.md" },
-      { "id": "architecture", "stage": "2.5_ARCH", "role": "design_baseline", "canonical_path": "./.xdd/arch/{slug}/architecture.md" },
-      { "id": "aggregate-landscape", "stage": "2.5_ARCH", "role": "design_baseline", "canonical_path": "./.xdd/arch/aggregate-landscape.md" },
-      { "id": "event-contract", "stage": "2.5_ARCH", "role": "design_baseline", "canonical_path": "./.xdd/arch/event-contract.md" },
-      { "id": "docker-compose", "stage": "2.5_ARCH", "role": "design_baseline", "canonical_path": "./.xdd/arch/{slug}/docker-compose.yml" },
-      { "id": "docker-compose-test", "stage": "2.5_ARCH", "role": "design_baseline", "canonical_path": "./.xdd/arch/{slug}/docker-compose.test.yml" },
-      { "id": "failure-modes", "stage": "3_L3", "role": "design_baseline", "canonical_path": "./.xdd/resilience/{slug}/failure-modes.md" },
-      { "id": "failsafe-design", "stage": "3_L3", "role": "design_baseline", "canonical_path": "./.xdd/resilience/{slug}/failsafe-design.md" },
-      { "id": "chaos-scenarios", "stage": "3_L3", "role": "design_baseline", "canonical_path": "./.xdd/resilience/{slug}/chaos-scenarios.md" },
-      { "id": "resilience-test-plan", "stage": "3_L3", "role": "design_baseline", "canonical_path": "./.xdd/resilience/{slug}/resilience-test-plan.md" },
-      { "id": "recovery-runbook", "stage": "3_L3", "role": "design_baseline", "canonical_path": "./.xdd/resilience/{slug}/recovery-runbook.md" },
-      { "id": "plan", "stage": "4_PLAN", "role": "design_baseline", "canonical_path": "./.xdd/iterations/{iter}/plan/{slug}/plan.md" },
+      { "id": "intent", "stage": "0_INIT", "role": "design_baseline", "canonical_path": "./.xdd/baseline/intent/intent.md" },
+      { "id": "scale", "stage": "0_INIT", "role": "control_marker", "canonical_path": "./.xdd/gates/scale.md" },
+      { "id": "xdd-version", "stage": "0_INIT", "role": "control_marker", "canonical_path": "./.xdd/gates/xdd-version" },
+      { "id": "current-iteration", "stage": "0_INIT", "role": "control_marker", "canonical_path": "./.xdd/gates/current-iteration" },
+      { "id": "xdd-halt", "stage": "ANY", "role": "control_marker", "canonical_path": "./.xdd/gates/.xdd-halt.json" },
+      { "id": "l5-unresolved", "stage": "6_VERIFY", "role": "control_marker", "canonical_path": "./.xdd/gates/.l5-unresolved.json" },
+      { "id": "status-md", "stage": "0_INIT", "role": "process_output", "canonical_path": "./.xdd/iterations/iter-1/pipeline/status.md" },
+      { "id": "l0-notebooks", "stage": "1_RESEARCH", "role": "design_baseline", "canonical_path": "./.xdd/baseline/research/{00-l1-recap,01-customer,02-product,03-tech,04-business-model,05-data,06-risk,07-competitor,08-brainstorm}.md" },
+      { "id": "research-snapshot", "stage": "1_RESEARCH", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/iter-1/research/{00-l1-recap,01-customer,02-product,03-tech,04-business-model,05-data,06-risk,07-competitor,08-brainstorm}.md" },
+      { "id": "business-landscape", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/baseline/business/business-landscape.md" },
+      { "id": "business-slug", "stage": "2_DESIGN", "role": "template_instance", "canonical_path": "./.xdd/baseline/business/{slug}.md" },
+      { "id": "spec", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/baseline/bdd/{slug}/spec.md" },
+      { "id": "bdd-feature", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/baseline/bdd/{slug}/*.feature" },
+      { "id": "flow-mermaid", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/baseline/flow/{slug}.mermaid" },
+      { "id": "wire-html", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/baseline/wire/{page}/{index.html,index.mobile.html,error.html,loading.html,success.html,review.md}" },
+      { "id": "wire-svg", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/baseline/wire/{page}.svg" },
+      { "id": "add", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/baseline/add/{slug}/add.md" },
+      { "id": "architecture", "stage": "2.5_ARCH", "role": "design_baseline", "canonical_path": "./.xdd/baseline/arch/{slug}/architecture.md" },
+      { "id": "aggregate-landscape", "stage": "2.5_ARCH", "role": "design_baseline", "canonical_path": "./.xdd/baseline/arch/aggregate-landscape.md" },
+      { "id": "event-contract", "stage": "2.5_ARCH", "role": "design_baseline", "canonical_path": "./.xdd/baseline/arch/event-contract.md" },
+      { "id": "docker-compose", "stage": "2.5_ARCH", "role": "design_baseline", "canonical_path": "./.xdd/baseline/arch/{slug}/docker-compose.yml" },
+      { "id": "docker-compose-test", "stage": "2.5_ARCH", "role": "design_baseline", "canonical_path": "./.xdd/baseline/arch/{slug}/docker-compose.test.yml" },
+      { "id": "failure-modes", "stage": "3_L3", "role": "design_baseline", "canonical_path": "./.xdd/baseline/resilience/{slug}/failure-modes.md" },
+      { "id": "failsafe-design", "stage": "3_L3", "role": "design_baseline", "canonical_path": "./.xdd/baseline/resilience/{slug}/failsafe-design.md" },
+      { "id": "chaos-scenarios", "stage": "3_L3", "role": "design_baseline", "canonical_path": "./.xdd/baseline/resilience/{slug}/chaos-scenarios.md" },
+      { "id": "resilience-test-plan", "stage": "3_L3", "role": "design_baseline", "canonical_path": "./.xdd/baseline/resilience/{slug}/resilience-test-plan.md" },
+      { "id": "recovery-runbook", "stage": "3_L3", "role": "design_baseline", "canonical_path": "./.xdd/baseline/resilience/{slug}/recovery-runbook.md" },
+      { "id": "plan", "stage": "4_PLAN", "role": "process_output", "canonical_path": "./.xdd/iterations/iter-1/plan/harness-plan.md" },
+      { "id": "plan-feature", "stage": "4_PLAN", "role": "process_output", "canonical_path": "./.xdd/iterations/iter-1/plan/{feature}.md" },
       { "id": "code", "stage": "5_EXECUTE", "role": "design_baseline", "canonical_path": "./{src,backend,frontend,lib,internal}/**/*.{ts,tsx,js,jsx,py,go,java,kt,rs}" },
       { "id": "tests", "stage": "5_EXECUTE", "role": "design_baseline", "canonical_path": "./{tests,test,__tests__}/**/*.{test,spec}.{ts,tsx,js,jsx,py,go,java,kt,rs}" },
-      { "id": "deployment-report", "stage": "6_VERIFY", "role": "process_output", "canonical_path": "./.xdd/iterations/{iter}/verify/{slug}/deployment-report.md" },
-      { "id": "wander-evidence", "stage": "6_VERIFY", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/{iter}/verify/{slug}/wander-evidence/**/*" },
-      { "id": "chaos-drill-evidence", "stage": "6_VERIFY", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/{iter}/verify/{slug}/chaos-drill-evidence/**/*" },
-      { "id": "issues-json", "stage": "6_VERIFY", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/{iter}/verify/{slug}/issues.json" },
-      { "id": "smoke-test-passed", "stage": "6_VERIFY", "role": "control_marker", "canonical_path": "./.xdd/iterations/{iter}/verify/{slug}/smoke-test-passed" },
-      { "id": "l6-gate-passed", "stage": "6_VERIFY", "role": "control_marker", "canonical_path": "./.xdd/iterations/{iter}/gate/l6.{slug}.passed" },
+      { "id": "verify-l5", "stage": "6_VERIFY", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/iter-1/verify/l5-{correctness,security,performance,maintainability}.md" },
+      { "id": "verify-health", "stage": "6_VERIFY", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/iter-1/verify/health-check.md" },
+      { "id": "verify-wander", "stage": "6_VERIFY", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/iter-1/verify/wander-test.md" },
+      { "id": "verify-dual-contract", "stage": "6_VERIFY", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/iter-1/verify/dual-contract-verification.md" },
+      { "id": "verify-r11", "stage": "6_VERIFY", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/iter-1/verify/r11-production-contract.md" },
+      { "id": "deployment-report", "stage": "6_VERIFY", "role": "process_output", "canonical_path": "./.xdd/iterations/iter-1/verify/deployment-report.md" },
+      { "id": "final-report", "stage": "6_VERIFY", "role": "process_output", "canonical_path": "./.xdd/iterations/iter-1/verify/final-report.md" },
+      { "id": "smoke-test-passed", "stage": "6_VERIFY", "role": "control_marker", "canonical_path": "./.xdd/iterations/iter-1/verify/smoke-test-passed" },
+      { "id": "wire-review", "stage": "2_DESIGN", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/iter-1/wire-reviews/{page}/review.md" },
+      { "id": "exec-loop-log", "stage": "5_EXECUTE", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/iter-1/execute/exec-loop-*.log" },
+      { "id": "chaos-log", "stage": "3_L3", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/iter-1/chaos/chaos-loop-*.log" },
+      { "id": "gate-log", "stage": "ANY", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/iter-1/gate-logs/{wire-validate,ux-check,coverage-check,stub-scan,lifecycle-gate}.log" },
+      { "id": "session-report", "stage": "ANY", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/iter-1/reports/{bug-report,design-review,coverage-snapshot}-{id,date,ts}.md" },
       { "id": "skill-templates", "stage": "0_INIT", "role": "template_instance", "canonical_path": "skills/{name}/templates/*.md" }
     ]
   }
