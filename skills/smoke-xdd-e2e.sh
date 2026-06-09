@@ -14,7 +14,7 @@ cd "$REPO_ROOT"
 
 PASS=0
 FAIL=0
-TOTAL=27
+TOTAL=28
 
 # count dirs/files, no recursion (use -d for dirs, -maxdepth 1 for files)
 count_existing() {
@@ -176,6 +176,10 @@ check "26. P2 skill xdd-design-review 存在" "$?"
 # 27. P2 skill: xdd-coverage-monitor (实时覆盖率监控)
 [[ -f skills/xdd-coverage-monitor/SKILL.md ]]
 check "27. P2 skill xdd-coverage-monitor 存在" "$?"
+
+# 28. 用户提供: xdd-ux-design (UX 设计思维 + 审查框架, Anthony Conta 6 步法)
+[[ -f skills/xdd-ux-design/SKILL.md ]]
+check "28. 用户提供 xdd-ux-design 存在" "$?"
 
 echo ""
 echo "=== 结果 ==="
