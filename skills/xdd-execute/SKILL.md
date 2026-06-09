@@ -315,3 +315,54 @@ description: xdd-plan 的执行者。加载实践计划，按 Task 逐步实现�
 - BDD 覆盖追踪表是否与实际一致？
 - Step 1 审查是否一次性上报了所有结构性问题？
 - 测试结果异常是否先分析原因再上报？
+
+## 100% 完成度 6 闸门 (95% 阈值, exit 2 = 阻断)
+
+**session c3692b46 教训**: 60 端点 23 实施 (38%) / 2 stub / 0 e2e / DEPLOY_PASS 蒙混. 这次 hook 强制 95% 闸门, 1 闸门不过 = exit 2, orchestrator 派 subagent 修, 3 试未过 HALT.
+
+**必跑** (每个 Task 完成后 + Phase 5 收尾):
+
+```bash
+# 闸门 1+2: API 端点 + BDD 覆盖率 (Phase 5 入口)
+bash hooks/xdd-gate-coverage-check.sh --api --bdd
+
+# 闸门 3+4+5: e2e + 真实持久化 + 跨服务 (Phase 5 中段)
+bash hooks/xdd-gate-coverage-check.sh --persistence --cross-biz
+bash hooks/xdd-gate-stub-scan.sh  # 0 stub 闸门, 绝对 0
+
+# 闸门 6: R5 lifecycle hard-gate
+bash skills/xdd-artifact-lifecycle/scripts/gate-check-lifecycle.sh
+
+# 一键跑全部
+bash hooks/xdd-gate-coverage-check.sh
+```
+
+| # | 闸门 | 阈值 | hook | 失败时 |
+|---|------|------|------|--------|
+| 1 | BDD 覆盖率 | 95% | `coverage-check --bdd` | 重做缺 RXX 的 feature |
+| 2 | API 端点覆盖率 | 95% | `coverage-check --api` | 实施缺端点 (从 arch.md 表格读) |
+| 3 | e2e 测试 | 95% RXX | `coverage-check --all` | 补 e2e (1 per RXX) |
+| 4 | 真实持久化 | 95% | `coverage-check --persistence` | 替换 mock → 真 DB |
+| 5 | 跨服务 BXX | 95% | `coverage-check --cross-biz` | 补 BXX cross-biz e2e |
+| 6 | 0 stub | 100% (绝对 0) | `stub-scan` | 替换 stub → 真实现 |
+
+**TDD 循环 + 闸门 (每 Task 重复)**:
+
+```
+1. 红: 写失败测试
+2. 绿: 写最小代码让测试过
+3. 重构: 清理
+4. 跑相关闸门 (e.g. --api --bdd)
+5. commit (含闸门输出)
+6. 全测试 PASS + 闸门 ≥ 95% 才进下一 Task
+```
+
+**禁止行为** (用户偏好 no-advisory-policy):
+
+- ❌ 不得跳过闸门跑下一步
+- ❌ 不得用 mock 假装真实持久化
+- ❌ 不得写 stub (pass / TODO / NotImplementedError / InMemoryRepository)
+- ❌ 不得"先 commit 后修" — 闸门失败 = 立即修
+- ❌ 不得在 95% 闸门失败时声称"基本完成"
+
+**失败时**: orchestrator 看到 exit 2 → 让 phase-executor 修, 3 试未过 → 写 `.xdd-halt.json` 问用户.

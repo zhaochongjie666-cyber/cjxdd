@@ -117,6 +117,8 @@ ADD+SDD+PDD 核心理念：**质量属性（性能、可用性、安全性、可
 
 ### 7. API 端点清单（前后端数据契约）
 
+**100% 完整, 不得省略端点**. session c3692b46 教训: 60 端点只实施 23 (38%) — 这次 hook `xdd-gate-coverage-check.sh` 用本表行数 vs 代码 @app.get/post 实际数算覆盖率, 95% 闸门强制.
+
 每个端点定义：
 - 触发的流程节点（BXX-NYY 编号）
 - 覆盖的 spec 规则（RXX 编号）
@@ -126,6 +128,26 @@ ADD+SDD+PDD 核心理念：**质量属性（性能、可用性、安全性、可
 - 权限要求
 
 **端点汇总表** + **端点详细契约**（每个端点含 @flow / @rules / @auth / @request / @response / @errors）。
+
+**强制格式** (hook 用 `\| `/api/[^`]+`` grep 解析, 不要换行内代码块):
+
+```markdown
+## API 端点清单
+
+| 端点 | 方法 | BXX 业务线 | RXX 规则 | 认证 | 限流 |
+|------|------|-----------|---------|------|------|
+| `/api/v1/auth/login` | POST | B01 | R01 | JWT | 100/min |
+| `/api/v1/users` | GET | B01 | R02 | JWT | 200/min |
+| ... 完整列表, 不得省略 (后续 execute 95% 闸门比照)
+```
+
+**端点清单行数 = 100% 覆盖率目标**. orchestrator 跑 `bash hooks/xdd-gate-coverage-check.sh --api` 时:
+
+```
+arch 设计端点数 = 本表行数
+execute 实施端点数 = grep '@app.get|post|...' apps/*/src 命中数
+覆盖率 = 实施 / 设计 ≥ 0.95
+```
 
 ### 8. 事件契约（EDD 独立产出）
 
