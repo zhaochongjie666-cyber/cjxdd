@@ -14,7 +14,7 @@ cd "$REPO_ROOT"
 
 PASS=0
 FAIL=0
-TOTAL=42
+TOTAL=45
 
 # count dirs/files, no recursion (use -d for dirs, -maxdepth 1 for files)
 count_existing() {
@@ -186,12 +186,26 @@ check "28. 用户提供 xdd-ux-design 存在" "$?"
 check "29. hooks/xdd-gate-ux-check.sh 存在且可执行" "$?"
 
 # 30. xdd-wire 含 loop until pass (12 门禁 + 4 层 UX 双闸门)
-grep -q 'xdd-gate-ux-check' skills/xdd-wire/SKILL.md && grep -q 'loop until pass\|Loop-Until-Pass' skills/xdd-wire/SKILL.md
-check "30. xdd-wire 含 loop until pass 双闸门" "$?"
+grep -q 'exit 2' hooks/xdd-gate-wire-validate.sh
+check "30a. wire-validate hook 失败 exit 2 (硬阻断)" "$?"
+grep -q 'Loop-Until-Pass\|loop until pass' docs/LOOP-DESIGN.md
+check "30b. LOOP-DESIGN 含 Loop-Until-Pass 段" "$?"
 
-# 31. xdd-wire 含 4 层 UX 审查 (L1-L4)
-grep -q 'L1 功能性\|L1.*功能性' skills/xdd-wire/SKILL.md && grep -q 'L4 质感\|L4.*质感' skills/xdd-wire/SKILL.md
-check "31. xdd-wire 引用 L1-L4 4 层审查" "$?"
+# 31. xdd-wire HTML 格式: 含 6 操作态 (空/加载/错误/成功/确认/边界)
+grep -q '空状态\|加载态\|错误态\|成功态\|确认态\|边界态' skills/xdd-wire/SKILL.md
+check "31. xdd-wire 含 6 操作态" "$?"
+
+# 31b. xdd-wire 含混淆元素清单 (A 视觉 / B 语义 / C 交互 / D 内容)
+grep -q '视觉混淆\|语义混淆\|交互混淆\|内容混淆' skills/xdd-wire/SKILL.md
+check "31b. xdd-wire 含 4 类混淆清单" "$?"
+
+# 31c. xdd-wire 含设计 token + 设计旋钮
+grep -q '\-\-accent' skills/xdd-wire/SKILL.md && grep -q 'VARIANCE\|MOTION' skills/xdd-wire/SKILL.md
+check "31c. xdd-wire 含 CSS 变量 + 设计旋钮" "$?"
+
+# 31d. xdd-wire 12 门禁 hook 扫 HTML (扫 .html 不是 .svg)
+grep -q '\*\.html' hooks/xdd-gate-wire-validate.sh
+check "31d. wire-validate hook 扫 HTML" "$?"
 
 # 32. settings.json 注册 xdd-gate-ux-check hook
 grep -q 'xdd-gate-ux-check' settings.json

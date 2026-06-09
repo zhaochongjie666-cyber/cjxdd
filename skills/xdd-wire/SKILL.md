@@ -1,111 +1,288 @@
 ---
 name: xdd-wire
-description: xdd-wire，高质量前端的设计图师：svg wireframe。 一般的前端开发流程： xdd-wire -> xdd-plan -> xdd-execute
+description: >-
+  xdd 前端设计 skill。根据规格文件生成主页面，发散操作态，攻击式 self-review。
+  触发场景：画页面、做 UI 设计、前端实现前的设计稿、review 已有页面。
+  三步走：① 解析规格出页面清单 → ② 绘制主页面+操作态 → ③ 攻击式 review。
+  核心原则：渲染出来的每个元素必须有存在的意义，无混淆。
+  输出格式：静态 HTML（可浏览器直接打开）+ 独立页面分组文件。
 ---
 
-# xdd-wire
-通过先svg设计好(`./.xdd/wire`)，然后再进行前端实现关注页面设计
+# xdd-wire — 前端设计 skill
 
-## def 设计svg
-1. 读取 `.xdd/bdd/` 中的 Feature/Scenario，提取页面
+## 使用场景
 
-## def 实现前端
-1. 根据设计的 svg，使用前端技术栈实现页面
-2. 每个页面组件都要有对应的测试用例，确保实现符合设计
+用户说"画个页面"、"设计一下 XXX 的前端"、"review 这个 UI"、"帮我看看这个页面有没有问题"时触发。
 
-## Pre-flight 12 门禁 (写完 SVG 必跑, 写不进 status.md 也会被 hook 拦)
+本 skill 负责设计交付物，不负责实现代码。
 
-**session c3692b46 教训**: walker 自评"wire 设计完成"实则 12 门禁 11 失败. 这次硬约束:
+## 三步流程
 
-```bash
-# 写完 wire SVG 后必跑 (Phase 2 出口闸门)
-bash hooks/xdd-gate-wire-validate.sh
-# 退出码 0 = 12/12 全过, 2 = 至少 1 门禁失败 (exit 2 触发 orchestrator 修)
+### Step 1 · 解析规格，产出页面清单
+
+**目标**：搞清楚要画什么页面。
+
+**输入优先级**（按顺序读取）：
+
+1. `.xdd/bdd/` — Feature / Scenario 中的页面名、交互描述、角色
+2. `.xdd/core/intent.md` — 业务目标与关键问题
+3. `docs/requirements.md` — 自然语言需求
+4. 用户直接说的一句话需求
+5. `.xdd/wire/` — 历史 wire（如有，识别可复用组件）
+
+**规格格式自动识别**：
+
+| 格式 | 识别方式 | 提取什么 |
+|------|---------|---------|
+| Gherkin (.feature) | 文件含 `Feature:` `Scenario:` | 页面名、交互、断言 |
+| ADD (.xdd/add/) | 状态机、时序图 | 操作态、数据字段 |
+| 自然语言 | 无结构关键词 | 关键词提取、角色识别 |
+| 一句话 | 纯描述无结构 | 拆解动词+名词 |
+
+**输出：页面清单**
+
+```markdown
+## 页面清单
+
+| # | 页面名 | 核心交互 | 角色 | 来源规格 |
+|---|--------|---------|------|---------|
+| 1 | 任务列表页 | 展示/筛选/创建任务 | 普通用户 | bdd/task-list.feature |
+| 2 | 任务详情页 | 查看/编辑/删除 | 普通用户 | bdd/task-list.feature |
+| 3 | 登录页 | 账号密码登录 | 游客 | requirements.md |
 ```
 
-| # | 门禁 | 阈值 | 速查 |
-|---|------|------|------|
-| 1 | em-dash 字符 | 0 命中 (—) | `grep -c "—" wire/*.svg` |
-| 2 | data-page 标注 | ≥ 8 个组件 | `grep -cE 'data-page' wire/*.svg` |
-| 3 | data-state 标注 | ≥ 4 个状态 | `grep -cE 'data-state' wire/*.svg` |
-| 4 | accent color | 4 种 (blue/red/green/yellow) | 检查 4 种 hex 都有 |
-| 5 | 字体 | system-ui sans-serif | CSS 含 `system-ui` |
-| 6 | mobile SVG | 1 份 ≤ 375px 宽 | viewBox / width 检查 |
-| 7 | desktop SVG | 1 份 ≥ 1024px 宽 | 同上 |
-| 8 | viewBox | 必有 | `grep -c viewBox` |
-| 9 | aria-label | 所有交互元素 | `grep aria-label` |
-| 10 | 焦点态 | :focus 样式可见 | CSS 含 `:focus` |
-| 11 | 错误态 | .error 状态明确 | class 含 error |
-| 12 | loading 态 | .loading 状态明确 | class 含 loading |
+**自检（Step 1 出口）**：
 
-**写完即跑, 不要攒到 Phase 末尾**. 一旦 12 门禁过, 才标记 Phase 2 DESIGN ✅.
+- [ ] 所有页面都有对应的规格来源
+- [ ] 无页面是没有来源凭空出现的
+- [ ] 多角色页面已标注角色差异
 
-## Loop-Until-Pass: 12 门禁 + 4 层 UX 审查回环
+---
 
-**12 门禁只覆盖技术层 (em-dash/data-page/viewBox 等), 不覆盖 UX 层**. 加 `xdd-ux-design` 4 层审查 (L1 功能性 / L2 可用性 / L3 a11y / L4 质感) 形成**双闸门回环**.
+### Step 2 · 绘制主页面 + 操作态
 
-```bash
-# 写完 SVG 后, 进入回环
-while true; do
-    # 闸门 1: 12 门禁 (技术层)
-    bash hooks/xdd-gate-wire-validate.sh
-    wire_rc=$?
+**目标**：把每个页面用 HTML 画出来，每个状态独立文件。
 
-    # 闸门 2: 4 层 UX 审查 (设计层)
-    bash hooks/xdd-gate-ux-check.sh
-    ux_rc=$?
+#### 2.1 文件结构（每个页面独立目录）
 
-    # 全过 (0+0) 才出 loop
-    if [[ $wire_rc -eq 0 && $ux_rc -eq 0 ]]; then
-        echo "[xdd] ✓ 双闸门全过 (12 门禁 + 4 层 UX)"
-        break
-    fi
-
-    # 修 SVG
-    echo "[xdd] 修 SVG: wire_rc=$wire_rc, ux_rc=$ux_rc"
-    # 改完再跑 (loop)
-done
+```
+.xdd/wire/
+├── task-list/
+│   ├── index.html              # 主页面（desktop）
+│   ├── index.mobile.html       # 主页面（mobile）
+│   ├── empty.html              # 空状态
+│   ├── loading.html            # 加载态
+│   ├── error.html              # 错误态
+│   ├── success.html            # 成功态
+│   ├── confirm-delete.html     # 确认态（示例）
+│   └── review.md               # 攻击式 review 报告
+├── login/
+│   ├── index.html
+│   ├── index.mobile.html
+│   ├── error.html              # 登录失败
+│   ├── success.html            # 登录成功
+│   └── review.md
+└── ...
 ```
 
-| 闸门 | 失败退出码 | 失败维度 | 修法 |
-|------|----------|---------|------|
-| **xdd-gate-wire-validate** | 2 | 12 门禁 (技术) | 改 SVG 标签 / data-page / 字体 / viewBox |
-| **xdd-gate-ux-check** | 1 (L1 硬) / 2 (L2-L4 软) | 4 层 UX (设计) | 改 SVG 元素 / 加 aria / 改文案 / 加 hover |
+**每个 HTML 文件规范**：
 
-**L1 硬阻断 (CTA / 错误反馈 / 状态可见 / 防破坏 / 键盘可达) 任一失败 → exit 1, 必须修**.
+```html
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!--
+  标注：
+  页面：{页面名}
+  状态：{主页面/空状态/加载态/错误态/成功态/确认态/边界态}
+  旋钮：VARIANCE={n} MOTION={n} DENSITY={n}
+  角色：all / admin / user / guest
+-->
+<title>{页面名} — {状态}</title>
+<style>
+  /* 设计 token */
+  :root {
+    --accent: #3b82f6;
+    --surface: #ffffff;
+    --surface-elevated: #f9fafb;
+    --text-primary: #1a1a2e;
+    --text-secondary: #6b7280;
+    --border: #e5e7eb;
+    --radius: 12px;
+    --space-xs: 4px; --space-sm: 8px; --space-md: 16px;
+    --space-lg: 24px; --space-xl: 32px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Inter, system-ui, sans-serif; background: var(--surface); color: var(--text-primary); }
+</style>
+</head>
+<body>
+  <!-- 页面内容：按 below -->
+</body>
+</html>
+```
 
-### 4 层 UX 审查 (合并 xdd-ux-design 自动卡)
+#### 2.2 设计旋钮
 
-| 层 | 主题 | 项数 | 失败信号 | 修法 |
-|---|------|------|---------|------|
-| 🔴 **L1** | 功能性 | 5 | CTA 不显 / 无错误反馈 / 状态不可见 / 删无确认 / 键盘不可达 | 加 fill, .error, loading/success/error, confirm, tabindex |
-| 🟡 **L2** | 可用性 | 6 | 无统一 .btn / 无大字 / 元素 > 80 / 缺移动 / 长 text | 统一 class, h1, 分组, mobile SVG, 拆段 |
-| 🟢 **L3** | a11y | 6 | 无 aria / 无对比度 / 无 :focus / 表单无 label | 加 aria-label, #fff/#000 配对, outline, label for |
-| 🔵 **L4** | 质感 | 3 | 无 :hover / 无空状态 | 加 transition, empty 引导 |
+| 旋钮 | 默认值 | 说明 |
+|------|--------|------|
+| `DESIGN_VARIANCE` | 7/10 | 1=对称保守，10=非对称艺术 |
+| `MOTION_INTENSITY` | 6/10 | 1=静态，10=动效丰富 |
+| `VISUAL_DENSITY` | 4/10 | 1=美术馆留白，10=驾驶舱紧凑 |
 
-**L1 任一失败 = 硬阻断 (exit 1)**. L2-L4 软警告 (exit 2 但不阻断, 建议修).
+**旋钮预设**：
 
-### 完整 Phase 2 出口
+| 场景 | VARIANCE | MOTION | DENSITY |
+|------|---------:|-------:|--------:|
+| SaaS 工具 | 7 | 6 | 4 |
+| 运营后台 | 5 | 3 | 7 |
+| 内部管理系统 | 4 | 2 | 8 |
+| 用户面向产品 | 7 | 6 | 3 |
 
-**只有 12 门禁 + 4 层 UX 审查双闸门全过, 才标记 Phase 2 DESIGN ✅**. orchestrator 看到任一 exit ≠ 0, 派 phase-designer 修, 3 试未过 HALT.
+#### 2.3 发散 6 种操作态
 
-## workflow
-设计svg()
-# 写完跑双闸门, 任一失败重做 (loop until pass, 见上段)
-bash hooks/xdd-gate-wire-validate.sh && bash hooks/xdd-gate-ux-check.sh
-# 必须 0 + 0 才进实现阶段
+| 操作态 | 何时触发 | 核心元素 |
+|--------|---------|---------|
+| 空状态 | 无数据时 | 空态插图 + 引导文案 + 主 CTA |
+| 加载态 | 数据请求中 | 骨架屏（匹配最终布局） |
+| 错误态 | 网络/权限/业务错误 | 错误插图 + 错误信息 + 重试/联系支持 |
+| 成功态 | 操作完成反馈 | 成功动画 + 结果展示 + 下一步 |
+| 确认态 | 破坏性操作前 | 确认对话框（标题+描述+取消+确认） |
+| 边界态 | 字段超限/列表为空/文件超出 | 边界说明 + 可操作的处理入口 |
 
-do 实现前端()
-  # 跑 Playwright CLI 截图验证 — 默认 headed 模式 (有头), 方便观察测试过程
-  # 例: `playwright open --browser=chromium http://localhost:3000/login`
-  #     `playwright screenshot --browser=chromium http://localhost:3000/login /tmp/login.png`
-  # CI / 服务器环境无显示器时, 加 --no-headed 切到 headless
-  then playwright cli 截图 (headed 模式, 方便观察)
-  if 相同
-    then break
-  else
-    if svg 有误
-      then go to 设计svg()
-    else
-      then 继续调整实现，直到截图与 svg 相同
+**多角色态**：每种角色视角单独一个 HTML，顶部注释标注角色差异。
 
+---
+
+### Step 3 · 攻击式 review
+
+**目标**：自己打自己，找出设计中的隐患。
+
+每个页面目录输出一份 review 报告：
+
+```markdown
+## {页面名} Review 报告
+
+### 攻击式质疑
+
+#### Q1：这个按钮为什么要存在？
+
+**设计决策**：`{按钮名}` — 目的是让用户 {做某事}
+**攻击**：如果用户不知道这个功能存在呢？有没有更好的方式让这个操作更自然？
+**替代方案 A**：做成链接而非按钮
+**替代方案 B**：收进菜单三级，减少主界面噪音
+**结论**：[保留/修改/删除]
+
+#### Q2：这个数字/指标是什么范围的？
+
+**设计决策**：`{数字/指标名}` 展示在 {位置}
+**攻击**：用户看到这个数字，能判断是"今日/本周/本月/全部时间"的吗？
+**问题**：没有时间范围上下文，用户无法判断数字含义
+**修复**：在数字旁增加时间范围标注
+
+#### Q3：两个相似的元素行为是否一致？
+
+**元素 A** vs **元素 B**：外观几乎相同
+**攻击**：用户能分辨出哪个是 A 哪个是 B 吗？行为是否也一致？
+**结论**：[行为一致 / 行为不一致，需区分外观]
+
+#### Q4：如果我是第一次用这个产品的用户，我能看懂这个页面吗？
+
+**攻击**：页面有没有使用内部术语/缩写/行业黑话，用户第一次见会懵的？
+**术语清单**：{列出所有可能造成认知障碍的词}
+**翻译方案**：[对应的用户语言]
+
+#### Q5：这个页面有没有"一次性"的交互元素？
+
+**攻击**：有没有一个操作，用户只应该做一次，但页面没有明确告知的？
+**结论**：[有/无] — {说明}
+```
+
+---
+
+## Self-check · 混淆元素清单
+
+每个 HTML 交付前必须自检，以下全是"混淆元素"——有则必须消除：
+
+### A. 视觉混淆
+
+| #  | 混淆类型 | 例子 | 修复方向 |
+|----|---------|------|---------|
+| A1 | 只有 icon 没有 label 的按钮 | 一个 × 图标 | tooltip 标注 + 优先用 icon+文字组合 |
+| A2 | 两个外观几乎一样的元素但行为不同 | 两个蓝色按钮，一个新建一个删除 | 用颜色/形状/位置区分 |
+| A3 | 数字没有时间/范围上下文 | 展示"100"不知道是今日还是累计 | 标清楚"今日新增 100" |
+| A4 | 进度条没有说明是什么的进度 | 顶部一个条，不知道在干嘛 | 要么删，要么写清楚"部署进度" |
+
+### B. 语义混淆
+
+| #  | 混淆类型 | 例子 | 修复方向 |
+|----|---------|------|---------|
+| B1 | label 和实际输入不匹配 | label 写"ID"实际填的是"名称" | 改成和用户认知一致 |
+| B2 | 破坏性操作没有确认态 | 点"删除"直接删，没有确认 | 破坏性操作必须进确认态 |
+| B3 | 错误提示只有错误码，没有用户可理解说明 | "Error 500" | 错误码+用户语言说明 |
+| B4 | 状态标签和实际状态不一致 | 标签写"完成"实际是"处理中" | 标签和状态严格匹配 |
+
+### C. 交互混淆
+
+| #  | 混淆类型 | 例子 | 修复方向 |
+|----|---------|------|---------|
+| C1 | 点击区域不明确 | 列表某行整行可点但没有视觉提示 | 鼠标悬停有 hover 态，或明确可点击区域 |
+| C2 | 返回路径不清晰 | 用户点了进去但不知道从哪回去 | 左上角"返回"按钮必须有 |
+| C3 | 多步骤操作没有进度指示 | 三步表单不知道现在第几步 | 顶部加步骤条 "1/3" |
+| C4 | 表单提交后没有结果反馈 | 点提交没反应，不知道成功还是失败 | 必须有明确成功/失败反馈 |
+
+### D. 内容混淆
+
+| #  | 混淆类型 | 例子 | 修复方向 |
+|----|---------|------|---------|
+| D1 | 专业术语/缩写用户第一次见会懵 | "MTU"、"QPS"、"PID" | 加 tooltip 翻译成用户语言 |
+| D2 | 日期时间没有格式说明 | "2026-06-09" 国际国内混用 | 统一格式，最好有相对时间"3分钟前" |
+| D3 | 数字没有单位或货币符号 | 显示"100"不知道是 100 元还是 100 分 | 标清楚单位 |
+| D4 | 列表没有排序说明 | 用户以为按时间，实际按创建时间 | 加排序指示器 |
+
+---
+
+## 门禁（输出前自检）
+
+- [ ] Step 1：每个页面有规格来源，无凭空出现的页面
+- [ ] Step 2：每个页面有 `index.html` + `index.mobile.html`
+- [ ] Step 2：6 种操作态全部覆盖（空/加载/错误/成功/确认/边界）
+- [ ] Step 2：每个按钮有 label 或 tooltip
+- [ ] Step 3：每个页面目录有一份 `review.md`
+- [ ] Self-check：混淆元素清单全部扫描，A/B/C/D 四类零未处理项
+- [ ] HTML：设计 token 已抽取为 CSS 变量（`--accent` / `--surface` 等）
+- [ ] HTML：Viewport meta 已设置（移动端适配）
+- [ ] HTML：无 em-dash（—）出现在任何可见文字中
+- [ ] HTML：响应式（mobile 文件在窄屏下正常显示）
+
+---
+
+## 关于 references/ 目录
+
+`references/` 存放参考 wire 模板，agent 在设计新页面时可以从这里复用布局模式和组件组合。
+
+**当前已有**：
+
+- `aeb-regression_task_table.wire.html` — 回归任务表布局参考模板
+
+**文件命名规范**：
+
+```
+{project}-{page-name}.wire.html    # 布局+操作流程 wire
+```
+
+### HTML 能表达的（纯布局 wire）
+
+- 静态布局、组件结构、间距、颜色、状态
+- CSS 变量做设计 token，交付后可直接复制到项目
+- 响应式（viewport meta）
+
+### HTML 不能表达的（进入 `<!-- comment区 -->`）
+
+- 实时数据更新（轮询/WebSocket）
+- 交互逻辑（点击→弹窗→回调）
+- 动画细节（进度条实时更新、徽章闪烁）
+- 表单提交后的异步状态切换
+- 权限驱动的动态显示/隐藏
