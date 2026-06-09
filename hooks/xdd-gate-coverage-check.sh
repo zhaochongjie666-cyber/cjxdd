@@ -110,11 +110,16 @@ if [[ $total_repos -gt 0 ]]; then
     persistence_ratio=$(awk -v r="$real" -v t="$total_repos" 'BEGIN{printf "%.4f", r/t}')
 fi
 
-# 跨服务 BXX 业务线
+# 跨服务 BXX 业务线 (v2.0 9→6 合并: business → bdd/{slug}/business.md)
 bxx_count=0
 bxx_with_e2e=0
-if [[ -d "$xdd_dir/business" ]]; then
-    bxx_count=$(find "$xdd_dir/business" -name "B*.md" 2>/dev/null | wc -l)
+if [[ -d "$xdd_dir/baseline/bdd" ]]; then
+    # 新路径: baseline/bdd/B*/business.md
+    bxx_count=$(find "$xdd_dir/baseline/bdd" -maxdepth 2 -name "business.md" -path "*/B*" 2>/dev/null | wc -l)
+    # 兜底: 老路径 .xdd/business/B*.md (兼容老 demo)
+    if [[ $bxx_count -eq 0 && -d "$xdd_dir/business" ]]; then
+        bxx_count=$(find "$xdd_dir/business" -name "B*.md" 2>/dev/null | wc -l)
+    fi
     bxx_with_e2e=$(grep -lE "e2e.*B[0-9]{2}" tests/e2e/ -r 2>/dev/null | wc -l)
 fi
 cross_ratio=0

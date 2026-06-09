@@ -41,8 +41,8 @@ if [[ -d ".xdd" && "$FORCE" != "true" ]]; then
     exit 1
 fi
 
-# 6 目录创建
-mkdir -p .xdd/baseline/{intent,research,bdd,flow,add,arch,resilience,wire,business}
+# 6 子目录创建 (老 9 子目录: 删 intent/add/business 三个, 加 00-intent 进 research/, business 工件入 bdd/)
+mkdir -p .xdd/baseline/{research,bdd,flow,arch,resilience,wire}
 mkdir -p .xdd/gates
 mkdir -p .xdd/iterations/iter-$ITER/{pipeline,plan,design,verify,execute,chaos,wire-reviews,gate-logs,reports,research}
 
@@ -82,13 +82,47 @@ halt_after: 3
 EOF
 fi
 
-# business/ — 业务线占位 (强约束, BXX > 1 必填)
+# 00-intent.md (Phase 0 写, 旧 baseline/intent/intent.md 合并入 research/)
+cat > .xdd/baseline/research/00-intent.md <<EOF
+# 00 - 项目意图 (Phase 0)
+
+> 项目立项时填写. 一句话定位 + 成功标准 + 非目标. 跨迭代复用, 改后必触发 L1/L2 重审.
+> v2.1 (9→6 目录合并): 此文件位置由 baseline/intent/intent.md 迁入 baseline/research/00-intent.md.
+
+## 1 句话定位
+
+{这个项目解决什么问题, 不解决什么问题. 不超过 30 字.}
+
+## 成功标准
+
+- {可度量的成功指标 1}
+- {可度量的成功指标 2}
+- {可度量的成功指标 3}
+
+## 非目标 (out-of-scope)
+
+- {明确不做的事 1}
+- {明确不做的事 2}
+
+## 关键假设
+
+- {依赖假设 1}
+- {依赖假设 2}
+
+## 关联
+
+- 详细业务线 landscape: \`baseline/bdd/_landscape.md\`
+- 业务规则: \`baseline/bdd/{slug}/spec.md\`
+EOF
+
+# business/ → bdd/ 业务线占位 (v2 9→6 合并, BXX > 1 必填)
 if [[ -n "$BIZLINES" ]]; then
-    # business-landscape.md (跨业务线关系)
-    cat > .xdd/baseline/business/business-landscape.md <<EOF
+    # _landscape.md (跨业务线关系, 旧 baseline/business/business-landscape.md)
+    cat > .xdd/baseline/bdd/_landscape.md <<EOF
 # 业务线 Landscape
 
 > 跨业务线关系总图 — context map + 一致性约束 + 业务线上下游.
+> v2.0 (9→6 目录合并): 此文件位置由 baseline/business/business-landscape.md 迁入 baseline/bdd/_landscape.md.
 
 ## 业务线列表
 
@@ -99,12 +133,12 @@ EOF
     for bxx in "${BXX_ARR[@]}"; do
         bxx_id=$(echo "$bxx" | grep -oE 'B[0-9]+' || echo "$bxx")
         bxx_name=$(echo "$bxx" | sed "s/^${bxx_id}-//")
-        cat >> .xdd/baseline/business/business-landscape.md <<EOF
+        cat >> .xdd/baseline/bdd/_landscape.md <<EOF
 | ${bxx_id} | ${bxx_name} | (待填) | (待填) |
 EOF
     done
 
-    cat >> .xdd/baseline/business/business-landscape.md <<EOF
+    cat >> .xdd/baseline/bdd/_landscape.md <<EOF
 
 ## 跨业务线关系
 
@@ -120,14 +154,17 @@ EOF
 - [ ] multi-tenant 隔离一致
 EOF
 
-    # 每个 BXX 占位
+    # 每个 BXX 占位 → 迁入 bdd/{slug}/business.md
     for bxx in "${BXX_ARR[@]}"; do
         bxx_id=$(echo "$bxx" | grep -oE 'B[0-9]+' || echo "$bxx")
         bxx_name=$(echo "$bxx" | sed "s/^${bxx_id}-//")
-        cat > ".xdd/baseline/business/${bxx_id}-${bxx_name}.md" <<EOF
+        slug="${bxx_id}-${bxx_name}"
+        mkdir -p ".xdd/baseline/bdd/${slug}"
+        cat > ".xdd/baseline/bdd/${slug}/business.md" <<EOF
 # ${bxx_id} ${bxx_name}
 
 > 业务线说明 — 目标 + 关键问题 + 范围.
+> v2.0 (9→6 目录合并): 旧 baseline/business/${slug}.md 迁入 baseline/bdd/${slug}/business.md.
 
 ## 业务目标
 
@@ -145,18 +182,19 @@ EOF
 
 ## 关联
 
-- RXX 规则: (从 spec.md 引用)
-- ADD 战术: baseline/add/${bxx_id}-${bxx_name}/add.md
-- Arch 设计: baseline/arch/${bxx_id}-${bxx_name}/architecture.md
-- Resilience: baseline/resilience/${bxx_id}-${bxx_name}/failure-modes.md
+- RXX 规则: (从 ${slug}/spec.md 引用)
+- Arch 设计 (含运维视图): baseline/arch/${slug}/architecture.md
+- Resilience: baseline/resilience/${slug}/failure-modes.md
+- 前端线框: baseline/wire/${slug}/
+- 流程图: baseline/flow/${slug}.mermaid
 EOF
     done
 
-    echo "✓ baseline/business/: $(echo "$BIZLINES" | tr ',' '\n' | wc -l) BXX 占位 + business-landscape.md 已生成"
+    echo "✓ baseline/bdd/: $(echo "$BIZLINES" | tr ',' '\n' | wc -l) BXX 占位 + _landscape.md 已生成 (v2 9→6 合并自 business/)"
 fi
 
-# 9 子目录 .gitkeep (除 business/)
-for d in intent research bdd flow add arch resilience wire; do
+# 6 子目录 .gitkeep (老 9 目录中 intent/add/business 已删, 不再生成)
+for d in research bdd flow arch resilience wire; do
     touch .xdd/baseline/$d/.gitkeep
 done
 

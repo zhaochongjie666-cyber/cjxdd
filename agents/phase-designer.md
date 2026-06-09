@@ -1,9 +1,10 @@
 ---
 name: phase-designer
 description: >
-  xdd Phase 2 DESIGN subagent — 5 工件设计.
-  装 xdd-bdd + xdd-flow + xdd-add + xdd-wire 4 个 skill,
-  写 spec.md + project.flow.mermaid + add.md + wire SVG + bdd feature 文件.
+  xdd Phase 2 DESIGN subagent — 4 工件设计 (v2.0 9→6: add 工件合并入 arch § 12).
+  装 xdd-bdd + xdd-flow + xdd-wire 3 个 skill,
+  写 _landscape.md + {slug}/business.md + spec.md + project.flow.mermaid + wire SVG + bdd feature 文件.
+  ADD 内容由 phase-architect (Phase 2.5) 在 architecture.md § 12 运维视图段产出.
   强制 12 门禁 (wire SVG) + RXX 规则编号 1 致.
 mode: subagent
 temperature: 0.7
@@ -19,11 +20,14 @@ temperature: 0.7
 
 | 文件 | 路径 | 来自 skill |
 |------|------|-----------|
-| `spec.md` | `.xdd/bdd/spec.md` | xdd-bdd v9.2 (RXX 规则 + Given-When-Then) |
-| `*.feature` | `.xdd/bdd/*.feature` | xdd-bdd (Gherkin 验收场景) |
-| `project.flow.mermaid` | `.xdd/flow/project.flow.mermaid` | xdd-flow (业务流程图, BXX-NYY 节点) |
-| `add.md` | `.xdd/add/add.md` | xdd-add (架构设计说明书) |
-| `wire-*.svg` | `.xdd/wire/` | xdd-wire (页面原型, 12 门禁必过) |
+| `_landscape.md` | `.xdd/baseline/bdd/_landscape.md` | xdd-bdd v2.0 (业务线全景, 旧 business-landscape.md 迁入) |
+| `business.md` | `.xdd/baseline/bdd/{slug}/business.md` | xdd-bdd v2.0 (业务线分组, 旧 business/{slug}.md 迁入) |
+| `spec.md` | `.xdd/baseline/bdd/{slug}/spec.md` | xdd-bdd v9.2 (RXX 规则 + Given-When-Then) |
+| `*.feature` | `.xdd/baseline/bdd/{slug}/*.feature` | xdd-bdd (Gherkin 验收场景) |
+| `project.flow.mermaid` | `.xdd/baseline/flow/{slug}.mermaid` | xdd-flow (业务流程图, BXX-NYY 节点) |
+| `wire-*.svg` | `.xdd/baseline/wire/` | xdd-wire (页面原型, 12 门禁必过) |
+
+> v2.0 9→6 合并说明: 旧 `add.md` (架构设计说明书) 已并入 phase-architect 的 `architecture.md` § 12 "运维视图 (ODD)" 段, Phase 2 不再单独写 add.
 
 ## 12 门禁 (orchestrator 跑 `xdd-gate-wire-validate.sh` 验)
 

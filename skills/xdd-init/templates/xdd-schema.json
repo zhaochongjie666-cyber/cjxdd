@@ -1,9 +1,9 @@
 {
   "xdd_version": "0.1.0",
   "directory_layout": {
-    "comment": "6 目录扁平结构 — .xdd/ 根 11 目录合并为 2 (baseline + gates), iter-N/ 包所有 per-iter",
+    "comment": "6 目录扁平结构 (baseline 内 6 子目录) — 老结构 9 子目录合并为 6, 删 intent/add/business",
     "root": {
-      "baseline/": "design_baseline 全部 (intent/bdd/arch/add/research/resilience/wire/business + spec.md)",
+      "baseline/": "design_baseline 全部 (research/bdd/flow/arch/wire/resilience — 6 子目录)",
       "gates/": "control_marker 全部 (scale.md / current-iteration / xdd-version / .xdd-halt.json / .l5-unresolved.json)"
     },
     "iter": {
@@ -23,7 +23,7 @@
         "./.xdd/gates/scale.md",
         "./.xdd/gates/current-iteration",
         "./.xdd/gates/xdd-version",
-        "./.xdd/baseline/intent/intent.md",
+        "./.xdd/baseline/research/00-intent.md",
         "./.xdd/iterations/iter-1/pipeline/status.md"
       ]
     },
@@ -34,7 +34,7 @@
       "skill": "xdd-l0",
       "aliases": ["1", "research", "1 research"],
       "output_patterns": [
-        "./.xdd/baseline/research/{00-l1-recap,01-customer,02-product,03-tech,04-business-model,05-data,06-risk,07-competitor,08-brainstorm}.md"
+        "./.xdd/baseline/research/{00-intent,00-l1-recap,01-customer,02-product,03-tech,04-business-model,05-data,06-risk,07-competitor,08-brainstorm}.md"
       ]
     },
     {
@@ -44,10 +44,11 @@
       "skill": "xdd-bdd",
       "aliases": ["2", "design", "2 design"],
       "output_patterns": [
+        "./.xdd/baseline/bdd/_landscape.md",
+        "./.xdd/baseline/bdd/{slug}/business.md",
         "./.xdd/baseline/bdd/{slug}/spec.md",
         "./.xdd/baseline/bdd/{slug}/*.feature",
         "./.xdd/baseline/flow/{slug}.mermaid",
-        "./.xdd/baseline/add/{slug}/add.md",
         "./.xdd/baseline/wire/{page}/index.html",
         "./.xdd/baseline/wire/{page}/index.mobile.html"
       ]
@@ -195,10 +196,10 @@
       "gates/scale.md"
     ],
     "required_when_bxx": [
-      "baseline/business/business-landscape.md",
-      "baseline/business/{BXX-slug}.md (per BXX)"
+      "baseline/bdd/_landscape.md",
+      "baseline/bdd/{BXX-slug}/business.md (per BXX)"
     ],
-    "bizline_placeholder_template": "# {BXX_id} {BXX_name}\n\n> 业务线说明 — 目标 + 关键问题 + 范围.\n\n## 业务目标\n\n- {目标 1}\n- {目标 2}\n\n## 关键问题\n\n1. {问题 1}\n2. {问题 2}\n\n## 范围\n\n- in-scope: {范围内}\n- out-of-scope: {范围外}\n\n## 关联\n\n- RXX 规则: {R01, R02, ...}\n- ADD 战术: baseline/add/{slug}/add.md\n- Arch 设计: baseline/arch/{slug}/architecture.md\n- Resilience: baseline/resilience/{slug}/failure-modes.md\n",
+    "bizline_placeholder_template": "# {BXX_id} {BXX_name}\n\n> 业务线说明 — 目标 + 关键问题 + 范围.\n\n## 业务目标\n\n- {目标 1}\n- {目标 2}\n\n## 关键问题\n\n1. {问题 1}\n2. {问题 2}\n\n## 范围\n\n- in-scope: {范围内}\n- out-of-scope: {范围外}\n\n## 关联\n\n- RXX 规则: {R01, R02, ...}\n- Arch 设计 (含运维视图): baseline/arch/{slug}/architecture.md\n- Resilience: baseline/resilience/{slug}/failure-modes.md\n",
     "default_bizlines": [],
     "status_md_template_header": [
       "# Pipeline Status — iter-1",
@@ -231,23 +232,22 @@
       "template_instance": "模板与实例 — 模板跟 skill, 实例跟项目"
     },
     "artifacts": [
-      { "id": "intent", "stage": "0_INIT", "role": "design_baseline", "canonical_path": "./.xdd/baseline/intent/intent.md" },
+      { "id": "intent", "stage": "0_INIT", "role": "design_baseline", "canonical_path": "./.xdd/baseline/research/00-intent.md" },
       { "id": "scale", "stage": "0_INIT", "role": "control_marker", "canonical_path": "./.xdd/gates/scale.md" },
       { "id": "xdd-version", "stage": "0_INIT", "role": "control_marker", "canonical_path": "./.xdd/gates/xdd-version" },
       { "id": "current-iteration", "stage": "0_INIT", "role": "control_marker", "canonical_path": "./.xdd/gates/current-iteration" },
       { "id": "xdd-halt", "stage": "ANY", "role": "control_marker", "canonical_path": "./.xdd/gates/.xdd-halt.json" },
       { "id": "l5-unresolved", "stage": "6_VERIFY", "role": "control_marker", "canonical_path": "./.xdd/gates/.l5-unresolved.json" },
       { "id": "status-md", "stage": "0_INIT", "role": "process_output", "canonical_path": "./.xdd/iterations/iter-1/pipeline/status.md" },
-      { "id": "l0-notebooks", "stage": "1_RESEARCH", "role": "design_baseline", "canonical_path": "./.xdd/baseline/research/{00-l1-recap,01-customer,02-product,03-tech,04-business-model,05-data,06-risk,07-competitor,08-brainstorm}.md" },
-      { "id": "research-snapshot", "stage": "1_RESEARCH", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/iter-1/research/{00-l1-recap,01-customer,02-product,03-tech,04-business-model,05-data,06-risk,07-competitor,08-brainstorm}.md" },
-      { "id": "business-landscape", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/baseline/business/business-landscape.md" },
-      { "id": "business-slug", "stage": "2_DESIGN", "role": "template_instance", "canonical_path": "./.xdd/baseline/business/{slug}.md" },
+      { "id": "l0-notebooks", "stage": "1_RESEARCH", "role": "design_baseline", "canonical_path": "./.xdd/baseline/research/{00-intent,00-l1-recap,01-customer,02-product,03-tech,04-business-model,05-data,06-risk,07-competitor,08-brainstorm}.md" },
+      { "id": "research-snapshot", "stage": "1_RESEARCH", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/iter-1/research/{00-intent,00-l1-recap,01-customer,02-product,03-tech,04-business-model,05-data,06-risk,07-competitor,08-brainstorm}.md" },
+      { "id": "business-landscape", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/baseline/bdd/_landscape.md" },
+      { "id": "business-slug", "stage": "2_DESIGN", "role": "template_instance", "canonical_path": "./.xdd/baseline/bdd/{slug}/business.md" },
       { "id": "spec", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/baseline/bdd/{slug}/spec.md" },
       { "id": "bdd-feature", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/baseline/bdd/{slug}/*.feature" },
       { "id": "flow-mermaid", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/baseline/flow/{slug}.mermaid" },
       { "id": "wire-html", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/baseline/wire/{page}/{index.html,index.mobile.html,error.html,loading.html,success.html,review.md}" },
       { "id": "wire-svg", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/baseline/wire/{page}.svg" },
-      { "id": "add", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/baseline/add/{slug}/add.md" },
       { "id": "architecture", "stage": "2.5_ARCH", "role": "design_baseline", "canonical_path": "./.xdd/baseline/arch/{slug}/architecture.md" },
       { "id": "aggregate-landscape", "stage": "2.5_ARCH", "role": "design_baseline", "canonical_path": "./.xdd/baseline/arch/aggregate-landscape.md" },
       { "id": "event-contract", "stage": "2.5_ARCH", "role": "design_baseline", "canonical_path": "./.xdd/baseline/arch/event-contract.md" },

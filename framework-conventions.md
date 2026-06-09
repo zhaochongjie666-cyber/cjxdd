@@ -17,7 +17,7 @@
 ### 2.1 skill 命名
 - 全部带 `xdd-` 前缀
 - 不用 `shadow-` 命名（已废弃归档到 `archive/shadow-2026-06/`，90 天后删除）
-- 核心 14 个：`xdd-core` / `xdd-bdd` / `xdd-flow` / `xdd-add` / `xdd-wire` / `xdd-arch` / `xdd-scaffold` / `xdd-l0` / `xdd-l3` / `xdd-l6` / `xdd-plan` / `xdd-execute` / `xdd-init` / `xdd-artifact-lifecycle`
+- 核心 13 个 (v2.0 9→6 合并: xdd-add 已并入 xdd-arch § 12 运维视图)：`xdd-core` / `xdd-bdd` / `xdd-flow` / `xdd-wire` / `xdd-arch` / `xdd-scaffold` / `xdd-l0` / `xdd-l3` / `xdd-l6` / `xdd-plan` / `xdd-execute` / `xdd-init` / `xdd-artifact-lifecycle`
 - utility 也带前缀：`xdd-taste` / `xdd-mermaid-check` / `xdd-docker-helper` / `xdd-skill-creator` 等
 
 ### 2.2 agent 命名

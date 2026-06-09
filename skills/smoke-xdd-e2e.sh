@@ -43,10 +43,14 @@ check() {
 [[ ! -d .xdd ]]
 check "1. 框架仓库无 .xdd/ (Meta 任务边界)" "$?"
 
-# 2. 14 个 xdd 核心 skill 存在
-n=$(count_existing skills/xdd-core skills/xdd-bdd skills/xdd-flow skills/xdd-add skills/xdd-wire skills/xdd-plan skills/xdd-execute skills/xdd-init skills/xdd-l0 skills/xdd-arch skills/xdd-scaffold skills/xdd-l3 skills/xdd-l6 skills/xdd-artifact-lifecycle)
-[[ $n -ge 14 ]]
-check "2. 14 个 xdd 核心 skill 存在" "$?"
+# 2. 13 个 xdd 核心 skill 存在 (v2.0 9→6 合并: xdd-add 已并入 xdd-arch § 12)
+n=$(count_existing skills/xdd-core skills/xdd-bdd skills/xdd-flow skills/xdd-wire skills/xdd-plan skills/xdd-execute skills/xdd-init skills/xdd-l0 skills/xdd-arch skills/xdd-scaffold skills/xdd-l3 skills/xdd-l6 skills/xdd-artifact-lifecycle)
+[[ $n -ge 13 ]]
+check "2. 13 个 xdd 核心 skill 存在 (v2.0 9→6 合并)" "$?"
+
+# 2a. xdd-add 已不再独立 (合并入 xdd-arch § 12)
+[[ ! -d skills/xdd-add ]]
+check "2a. xdd-add 整目录已删 (合并入 xdd-arch § 12 运维视图)" "$?"
 
 # 3. 9 个 utility skill 全部 xdd- 前缀
 n=$(count_existing skills/xdd-taste skills/xdd-mermaid-check skills/xdd-docker-helper skills/xdd-skill-creator skills/xdd-test-in-tmux skills/xdd-gherkin-writer skills/xdd-opencode-learning skills/xdd-trace-init skills/xdd-reverse)
@@ -230,17 +234,38 @@ fi
 grep -q 'iterations/iter-1/plan/harness-plan.md' skills/xdd-init/templates/xdd-schema.json
 check "31h. plan 路径在 iterations/iter-1/plan/ (per-iter)" "$?"
 
-# 31i. baseline/business/ 业务线职责固化 (schema 含 required_when_bxx + 模板)
+# 31i. baseline/bdd/ 业务线职责固化 (v2.0 9→6 合并: business → bdd; schema 含 required_when_bxx + 模板)
 grep -q 'required_when_bxx' skills/xdd-init/templates/xdd-schema.json && \
-  grep -q 'business-landscape.md' skills/xdd-init/templates/xdd-schema.json && \
+  grep -q 'baseline/bdd/_landscape.md' skills/xdd-init/templates/xdd-schema.json && \
   grep -q 'bizline_placeholder_template' skills/xdd-init/templates/xdd-schema.json
-check "31i. xdd-schema.json 含 business/ 必填规则 (required_when_bxx)" "$?"
+check "31i. xdd-schema.json 含 bdd/_landscape + bdd/{slug}/business.md 必填规则 (v2.0 9→6)" "$?"
 
-# 31j. init.sh 存在 + 生成 baseline/business/ 占位 (BXX 启用时)
+# 31j. init.sh 存在 + 生成 baseline/bdd/_landscape + business.md (BXX 启用时)
 [[ -x skills/xdd-init/scripts/init.sh ]] && \
-  grep -q 'baseline/business' skills/xdd-init/scripts/init.sh && \
-  grep -q 'business-landscape.md' skills/xdd-init/scripts/init.sh
-check "31j. init.sh 强制生成 baseline/business/ (含 landscape + BXX 占位)" "$?"
+  grep -q 'baseline/bdd/_landscape.md' skills/xdd-init/scripts/init.sh && \
+  grep -q 'baseline/bdd/${slug}/business.md' skills/xdd-init/scripts/init.sh
+check "31j. init.sh 强制生成 baseline/bdd/_landscape + bdd/{slug}/business.md (v2.0 9→6)" "$?"
+
+# 31k. v2 6 子目录扁平 (baseline/ 内 6 子目录, 不再有 intent/add/business)
+grep -q 'mkdir -p .xdd/baseline/{research,bdd,flow,arch,resilience,wire}' skills/xdd-init/scripts/init.sh
+check "31k. init.sh 创建 6 子目录 (research/bdd/flow/arch/resilience/wire — v2.0 9→6)" "$?"
+
+# 31l. xdd-arch SKILL v7.0.0 含 § 12 运维视图段 (吃掉 xdd-add)
+grep -q 'version: "7.0.0"' skills/xdd-arch/SKILL.md && \
+  grep -q '运维视图' skills/xdd-arch/SKILL.md && \
+  grep -q 'ODD' skills/xdd-arch/SKILL.md
+check "31l. xdd-arch v7.0.0 含 § 12 运维视图 (ODD, 合并自旧 xdd-add)" "$?"
+
+# 31m. xdd-bdd SKILL v2.0 含业务线 landscape 说明 (吃掉 xdd-business)
+grep -q 'version: "2.0.0"' skills/xdd-bdd/SKILL.md && \
+  grep -q '_landscape.md' skills/xdd-bdd/SKILL.md && \
+  grep -q 'business.md' skills/xdd-bdd/SKILL.md
+check "31m. xdd-bdd v2.0 含 _landscape.md + {slug}/business.md 输出说明 (合并自旧 business 目录)" "$?"
+
+# 31n. xdd-l0 SKILL v2.1 含 00-intent 说明 (吃掉 baseline/intent/)
+grep -q 'version: "2.1.0"' skills/xdd-l0/SKILL.md && \
+  grep -q '00-intent.md' skills/xdd-l0/SKILL.md
+check "31n. xdd-l0 v2.1 含 00-intent.md 说明 (合并自旧 baseline/intent/)" "$?"
 
 # 32. settings.json 注册 xdd-gate-ux-check hook
 grep -q 'xdd-gate-ux-check' settings.json

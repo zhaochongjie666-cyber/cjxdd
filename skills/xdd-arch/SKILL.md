@@ -1,27 +1,30 @@
 ---
 name: xdd-arch
 alias: xdd·L1.5-Arch
-methodology: ADD — Attribute-Driven Design + SDD — Security-Driven Design + PDD — Performance-Driven Design
+methodology: ADD — Attribute-Driven Design + SDD — Security-Driven Design + PDD — Performance-Driven Design + ODD — Operations-Driven Design
 description: |
-  xdd L1.5 架构设计 + L1.5 门禁检查 (ADD 思维: 质量属性 + SDD 安全 + PDD 性能 驱动决策)。
-  产出 architecture.md (质量属性 + 限界上下文 + 上下文映射 + 技术栈 + 分层架构 + 规则传导矩阵 + API 端点清单 + 安全设计 + 性能设计 + 文件清单 + 质量规划)
+  xdd L1.5 架构设计 + L1.5 门禁检查 (ADD 思维: 质量属性 + SDD 安全 + PDD 性能 + ODD 运维视图 驱动决策)。
+  产出 architecture.md (质量属性 + 限界上下文 + 上下文映射 + 技术栈 + 分层架构 + 规则传导矩阵 + API 端点清单 + 安全设计 + 性能设计 + 运维视图 [启动/关闭/状态机/排障锚点] + 文件清单 + 质量规划)
   + aggregate-landscape.md (聚合全景)
   + event-contract.md (EDD 独立契约)。
-  xdd 6 Phase 阶段 2 之一: Arch 在 BDD 之前, Plan 之前.
+  xdd 6 Phase 阶段 2.5: Arch 在 BDD 之后, Plan 之前.
   scale ≥ M 时强制, strict-mode=true 时全规模强制.
-  触发: 架构、ADD、质量属性、技术栈、分层、聚合、安全、SDD、性能、PDD、事件契约、event-contract、L1.5 门禁、PoC、技术验证、架构审计。
-version: "6.0.0"
+  触发: 架构、ADD、质量属性、技术栈、分层、聚合、安全、SDD、性能、PDD、事件契约、event-contract、L1.5 门禁、PoC、技术验证、架构审计、启动序列、关闭序列、状态机、排障锚点、运维视图、ODD。
+version: "7.0.0"
+changelog:
+  - "7.0.0 (2026-06-09): 合并 xdd-add → arch (运维视图段, 见 § 12). 旧 xdd-add 工件 (./.xdd/baseline/add/) 删除. path 改为 ./.xdd/baseline/arch/{slug}/."
+  - "6.0.0: 加 SDD 安全 + PDD 性能."
 ---
 
 # xdd·ADD+SDD+PDD — 架构驱动 + 安全设计 + 性能设计
 
 ## 角色
 
-ADD+SDD+PDD 核心理念：**质量属性（性能、可用性、安全性、可修改性）+ 安全策略 + 性能基准驱动架构决策**。
+ADD+SDD+PDD+ODD 核心理念：**质量属性（性能、可用性、安全性、可修改性）+ 安全策略 + 性能基准 + 运维视图（启动/关闭/状态机/排障）驱动架构决策**。
 
-消费 L1 产出（research/spec/flow/wire/business-landscape/intent），产出：
+消费 L1 产出（research（含 00-intent + 00-l1-recap）/spec/flow/wire/_landscape），产出：
 
-- `architecture.md`：技术架构决策 + API 契约 + 安全设计 + 性能设计 + 文件清单 + 质量规划
+- `architecture.md`：技术架构决策 + API 契约 + 安全设计 + 性能设计 + **运维视图** + 文件清单 + 质量规划
 - `aggregate-landscape.md`：聚合全景
 - `event-contract.md`：EDD 事件契约
 
@@ -30,6 +33,7 @@ ADD+SDD+PDD 核心理念：**质量属性（性能、可用性、安全性、可
 **聚合全景是 L5 Harness 计划的前置输入**。
 **安全设计（SDD）独立引导**。
 **性能设计（PDD）独立引导**。
+**运维视图（ODD）独立引导**（旧 xdd-add 在 v7.0.0 合并进 arch, 见 § 12）。
 
 ## ADD 思维链
 
@@ -151,7 +155,7 @@ execute 实施端点数 = grep '@app.get|post|...' apps/*/src 命中数
 
 ### 8. 事件契约（EDD 独立产出）
 
-**产出**：`.xdd/arch/event-contract.md`
+**产出**：`.xdd/baseline/arch/event-contract.md`
 
 核心要素：
 - **事件清单汇总表**：事件 ID、事件名、来源聚合、传递方式、订阅方、流程节点
@@ -167,7 +171,7 @@ execute 实施端点数 = grep '@app.get|post|...' apps/*/src 命中数
 
 ### 10. 聚合全景
 
-**产出**：`.xdd/arch/aggregate-landscape.md`
+**产出**：`.xdd/baseline/arch/aggregate-landscape.md`
 
 核心要素：
 - **聚合清单**（按业务线分组）：聚合根、包含实体/值对象、一致性边界、发布事件
@@ -186,6 +190,109 @@ execute 实施端点数 = grep '@app.get|post|...' apps/*/src 命中数
 - 每个服务必有 healthcheck，`depends_on` 必须用 `condition: service_healthy`
 - 敏感信息通过 `.env` 注入
 
+### 12. 运维视图（ODD — Operations-Driven Design）
+
+> **v7.0.0 合并自 `xdd-add`**: ADD 的核心问题"系统怎么启动、关闭、恢复, 异常怎么自愈, 运维怎么排障"挪入本节, 跟 ADD/SDD/PDD 并列为 arch 第 4 大支柱.
+
+ODD 回答 5 个问题:
+
+- 系统如何启动、关闭、恢复？
+- 状态如何流转，谁有权推进状态？
+- 异常发生时如何自愈、重试、降级或停止推进？
+- 并发、资源、幂等、一致性如何保证？
+- 运维如何通过日志、指标、探针和状态字段排障？
+
+#### 12.1 输入对齐
+
+生成运维视图前, 必须对齐:
+
+1. `project.flow.mermaid`: 组件名、协议名、外部依赖、数据流向
+2. `.xdd/baseline/bdd/{slug}/spec.md`: 业务术语、用户动作、领域状态、触发条件
+3. `.xdd/baseline/bdd/{slug}/business.md`: 业务线上下文
+4. 当前代码或材料: 文件路径、服务入口、后台循环、数据模型、状态字段、错误码
+
+组件名、协议名、状态名、字段名 **必须与以上来源 1:1 一致**, 未知必须标 "待确认" 不得编造.
+
+#### 12.2 强制原则 (大白话 + 伪代码)
+
+| # | 原则 | 反例 → 正例 |
+|---|------|------------|
+| 1 | 禁止纯功能堆砌 | "用户点击" ❌ → "每 5s 扫描一次, 用 CAS 条件更新, 用 attempt_id 防旧写覆盖" ✅ |
+| 2 | 禁止抽象空话 | "高性能、高可用" ❌ → "P95 ≤ 500ms, SIGTERM 后 readiness 返回 503" ✅ |
+| 3 | 必须包含状态机 | Mermaid `stateDiagram-v2` + 状态含义 + 推进方 + 推进条件 + 终态 + 非法状态防御 |
+| 4 | 必须包含核心时序图 | Mermaid `sequenceDiagram` 覆盖主链路 (入口 → 终态) |
+| 5 | 必须包含启动与关闭序列 | 初始化顺序 / 后台循环启动 / readiness 何时开放 / SIGTERM 后阻断流量 / 事务完成 / 超时恢复 |
+| 6 | 必须包含排障锚点 | 状态字段 / runtime_ref / trace_id / attempt_id / 日志位置 / 外部依赖 / 自动 vs 人工恢复 |
+
+#### 12.3 模板段 (并入 architecture.md)
+
+```markdown
+## 12. 运维视图 (ODD)
+
+### 12.1 启动序列
+1. {初始化步骤 1, 例: 加载配置, 校验 env}
+2. {后台循环启动, 例: 起 reconciler goroutine, 5s 周期}
+3. {readiness 何时开放, 例: DB 连通后开 /healthz/ready}
+
+### 12.2 关闭序列 (优雅关闭)
+1. 收到 SIGTERM → readiness 返回 503
+2. {LB 摘流后等 N 秒}
+3. {完成 in-flight 事务, 最多 M 秒}
+4. {flush 日志/指标, exit 0}
+
+### 12.3 状态机
+\`\`\`mermaid
+stateDiagram-v2
+    [*] --> PENDING
+    PENDING --> RUNNING: claim(worker)
+    RUNNING --> SUCCESS: ack
+    RUNNING --> FAILED: timeout/error
+    FAILED --> PENDING: retry(< max_attempts)
+    FAILED --> DEAD: retry(>= max_attempts)
+\`\`\`
+
+| 状态 | 含义 | 推进方 | 推进条件 | 终态? |
+|------|------|--------|---------|------|
+| PENDING | 待领取 | scheduler | 入队 | 否 |
+| RUNNING | 执行中 | worker | claim 成功 | 否 |
+| SUCCESS | 完成 | worker | ack | 是 |
+| FAILED | 失败 | worker/reconciler | error/timeout | 否 |
+| DEAD | 死信 | reconciler | retry 用尽 | 是 (需人工) |
+
+### 12.4 失败模型与恢复策略
+- 外部依赖挂: {熔断 N 秒 + degrade 到本地缓存}
+- 进程重启: {从 DB checkpoint 恢复, attempt_id 防旧写覆盖}
+- 重复回调: {幂等键 = (request_id, attempt_id)}
+- 任务丢失: {reconciler 每 30s 扫 RUNNING 状态, > timeout 重置回 PENDING}
+- 日志延迟: {Kafka producer ack=1, 异步 flush}
+- 资源泄漏: {TTL lease, worker heartbeat 失败 N 次释放 claim}
+
+### 12.5 并发与一致性
+- 竞争点 1: {多 worker 争同一任务 → DB CAS 条件更新 (WHERE status='PENDING')}
+- 竞争点 2: {跨节点写入 → 乐观并发控制 + version 字段}
+- 幂等键: {(tenant_id, request_id) UNIQUE INDEX}
+- 锁: {分布式锁 = Redis SETNX + TTL, 仅用于 reconcile, 不在主路径}
+
+### 12.6 排障锚点
+- 查状态字段: `tasks.status` / `tasks.last_attempt_id` / `tasks.runtime_ref`
+- 查日志: `grep "trace_id=$TID" /var/log/app/*.log` (JSON 行)
+- 查指标: `task_state_count{status="RUNNING",bucket="> 5min"}` (异常告警)
+- 查外部依赖: `curl http://upstream/healthz` 200 + p95 < 100ms
+- 自动恢复: PENDING/RUNNING/FAILED (< max_attempts)
+- 人工介入: DEAD / 无 trace_id / DB 不可写
+```
+
+#### 12.4 ODD 与 SDD/PDD 的边界
+
+| 维度 | ODD 关心 | SDD 关心 | PDD 关心 |
+|------|---------|---------|---------|
+| 入口 | readiness/livenness | 鉴权/速率 | latency 预算 |
+| 故障 | 自愈/降级/重试 | 攻击防御 | 性能退化 |
+| 状态 | 状态机/幂等 | 权限/审计 | 缓存命中率 |
+| 排障 | 状态字段/日志锚点 | 安全日志 | trace/profile |
+
+ODD ↔ L3 关系: ODD § 12.4 失败模型是 L3 失败模式的 **种子清单**, L3 再做穷举发散 (8/9 维 + 10/12 模式 + 5/8 字段 FMEA).
+
 ## 产出
 
 > **生命周期角色**：`design_baseline` 设计基线。`architecture.md` / `event-contract.md` / `aggregate-landscape.md` / `docker-compose.yml` / `docker-compose.test.yml` 5 件套均跨迭代复用,改后必触发 L3 / L5 / L6 重跑。
@@ -194,7 +301,7 @@ execute 实施端点数 = grep '@app.get|post|...' apps/*/src 命中数
 
 ### 技术架构
 
-`.xdd/arch/BXX-{slug}/architecture.md`
+`.xdd/baseline/arch/{slug}/architecture.md`
 
 一份文档，包含：
 - 质量属性场景（3-5 个）
@@ -236,7 +343,7 @@ execute 实施端点数 = grep '@app.get|post|...' apps/*/src 命中数
 - 每个 API 端点必须标注流程节点（@flow）和规则（@rules）
 - API 端点清单是 Harness 计划后端/前端指令的共同引用源
 - 聚合全景必须与 L1 research.md 的限界上下文一致
-- 聚合全景必须与 L1 business-landscape.md 的业务线清单一致
+- 聚合全景必须与 L1 `_landscape.md` (旧 business-landscape) 的业务线清单一致
 - 跨聚合关系必须标注类型（ID 引用 / 事件驱动 / 共享内核）
 - 一致性边界必须明确标注（强一致 / 最终一致）
 - 事件契约必须独立产出（event-contract.md），不隐式散射

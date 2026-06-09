@@ -83,11 +83,10 @@ cjxdd/                          # xdd framework 仓库自身
 │   ├── xdd-core/               # 用户意图 (不可删)
 │   ├── xdd-init/               # Phase 0 INIT
 │   ├── xdd-l0/                 # Phase 1 发散
-│   ├── xdd-bdd/                # Phase 2.5 BDD
+│   ├── xdd-bdd/                # Phase 2 BDD + 业务线 landscape (v2.0 9→6 吸收 business)
 │   ├── xdd-flow/               # Phase 2 Flow
-│   ├── xdd-add/                # Phase 2 ADD
 │   ├── xdd-wire/               # Phase 2 Wire
-│   ├── xdd-arch/               # Phase 2.5 Architecture
+│   ├── xdd-arch/               # Phase 2.5 Architecture (v7.0.0 含 § 12 运维视图, 合并自旧 xdd-add)
 │   ├── xdd-scaffold/           # Phase 2.7 Scaffold
 │   ├── xdd-l3/                 # Phase 3 L3 韧性
 │   ├── xdd-plan/               # Phase 4 Plan

@@ -74,9 +74,8 @@ PROJECT_ROOT="${PWD}"
 | `xdd-l0` | 自由发散调研 (v2) | xdd-init 完成后 |
 | `xdd-bdd` | BDD 业务蓝图 | xdd-l0 完成后 |
 | `xdd-flow` | 画业务流程图 | xdd-bdd 后 |
-| `xdd-add` | 架构设计说明书 | xdd-bdd 后 |
 | `xdd-wire` | 画页面原型 | xdd-bdd 后 (纯后端跳过) |
-| `xdd-arch` | L1.5 架构设计 | xdd-bdd/add/wire 后 |
+| `xdd-arch` | L1.5 架构设计 (含 § 12 运维视图; v7.0.0 合并旧 xdd-add) | xdd-bdd/wire 后 |
 | `xdd-scaffold` | 搭项目脚手架 | xdd-arch 后 |
 | `xdd-l3` | 韧性设计 | xdd-scaffold 后 |
 | `xdd-plan` | 写 TDD 执行计划 | xdd-l3 后 |

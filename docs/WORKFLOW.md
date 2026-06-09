@@ -49,12 +49,11 @@
 └─────────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────────┐
-│ Phase 2 DESIGN        xdd-bdd / flow / add / wire / arch (串行)      │
-│   • xdd-bdd       BDD/Gherkin 验收场景                              │
+│ Phase 2 DESIGN        xdd-bdd / flow / wire / arch (串行; v2.0 9→6: 删 add)│
+│   • xdd-bdd       BDD/Gherkin 验收场景 + bdd/_landscape + business.md     │
 │   • xdd-flow      MDD → project.flow.mermaid (BXX-NYY)             │
-│   • xdd-add       架构设计说明书 (状态机/时序/排障)                │
 │   • xdd-wire      SVG 线框图 (data-page/data-action)                │
-│   • xdd-arch      L1.5 (ADD+SDD+PDD)                                │
+│   • xdd-arch      L1.5 (ADD+SDD+PDD+ODD) — § 12 运维视图含状态机/启动/排障 │
 └─────────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -100,7 +99,7 @@
 
 | 层 | 抽象 | 解决什么问题 | 关键产物 |
 |----|------|-------------|---------|
-| **Phase 2 业务** | **业务是什么** | 业务理解 / 统一语言 / 事件风暴 | intent.md / business-landscape / BXX research.md / project.flow.mermaid / spec.md (RXX) / wire.svg |
+| **Phase 2 业务** | **业务是什么** | 业务理解 / 统一语言 / 事件风暴 | research/00-intent.md / bdd/_landscape.md / bdd/{slug}/business.md / bdd/{slug}/spec.md (RXX) / bdd/{slug}/*.feature / flow/{slug}.mermaid / wire/{page}.svg (v2.0 9→6 合并) |
 | **Phase 2.5 架构** | **怎么实现** | 质量属性驱动决策 / 安全设计 / 性能设计 | architecture.md / aggregate-landscape.md / event-contract.md |
 | **Phase 2.5 BDD** | **行为对不对** | 14 维覆盖矩阵 / 6 维画像 / 5 层旅程 / Design-Conformance 业务约束 | e2e.md / coverage-matrix.md / uat-script.md |
 | **Phase 3 L3** | **失败怎么办** | 8/9 维失败模式 / 10/12 兜底机制 / 混沌场景 / 恢复剧本 | failure-modes.md / failsafe-design.md / chaos-scenarios.md / runbook |

@@ -64,8 +64,8 @@ PROJECT_ROOT="${PWD}"
 | Phase | Subagent | 装 Skill | 必填产物 (100% 强制) | 出口闸门 |
 |-------|----------|---------|---------------------|---------|
 | **0 INIT** | (orchestrator 自己) | xdd-init | 4 骨架 (status.md + scale.md + iter dir + xdd-schema.json) | xdd-gate-0-init |
-| **1 RESEARCH** | `phase-researcher` | xdd-l0 | 9 份 L0 笔记本 (00-l1-recap + 01-07 业务线 + 08-brainstorm) | xdd-gate-1-research + L0 freshness 14d |
-| **2 DESIGN** | `phase-designer` | xdd-bdd + xdd-flow + xdd-add + xdd-wire | 5 工件 (spec.md + flow + add + wire SVG + bdd) + 12 门禁过 | xdd-gate-2-design + xdd-gate-wire-validate |
+| **1 RESEARCH** | `phase-researcher` | xdd-l0 | 10 份 L0 笔记本 (00-intent + 00-l1-recap + 01-07 业务线 + 08-brainstorm; v2.1 9→10) | xdd-gate-1-research + L0 freshness 14d |
+| **2 DESIGN** | `phase-designer` | xdd-bdd + xdd-flow + xdd-wire | 5 工件 (bdd/_landscape + bdd/{slug}/business + spec + *.feature + flow + wire SVG) + 12 门禁过 (v2.0 9→6: add 工件挪到 arch § 12) | xdd-gate-2-design + xdd-gate-wire-validate |
 | **2.5 ARCH** | `phase-architect` | xdd-arch | 3 件 (architecture + aggregate-landscape + event-contract) + API 端点清单 100% | xdd-gate-2-design (arch 段) + xdd-gate-coverage-check (前瞻) |
 | **2.7 SCAFFOLD** | `phase-scaffolder` | xdd-scaffold + xdd-docker-helper | 7 步脚手架 + 13 smoke 断言全过 | scaffold/docker smoke |
 | **3 L3 韧性** | `phase-resilience-designer` | xdd-l3 | 5 韧性文档 (failure-modes + failsafe + chaos + recovery + resilience-test) | xdd-gate-3-review (韧性段) |

@@ -36,7 +36,7 @@ If a user gives Claude a task, the right move is usually to **load the `xdd-walk
 - ✅ **直接读** `agents/` / `skills/` / `hooks/` / `plugins/` / `commands/` 下的源码 — 跟改普通代码一样用 Read/Edit/Write
 - ✅ **改完跑 smoke 验证** — 详见 [§ 修改 framework 时常用命令](#-修改-framework-时常用命令)
 - ✅ **直接 commit** — Conventional Commits, 末尾加 `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`, 走 git 即可
-- ✅ **若想"用 framework 验证 framework"** — 在仓库外另起一个产品项目 (例如 `/tmp/test-product/`), 在那里 `cd` 后 `claude` + 调 walker, 用 xdd 跑端到端验证, 跟 framework 解耦
+- ✅ **若想"用 framework 验证 framework"** — 在 `./demo/<project-slug>/` 子目录下起一个产品项目 (例如 `./demo/3dgsvla/`), 在那里 `cd` 后 `claude` + 调 walker, 用 xdd 跑端到端验证. `demo/` 在根 `.gitignore` 里被 ignore, 跟 framework 解耦; 已 tracked 的 demo (vla-v1 等 108 文件) 用 `git add -f` 增量提交
 - ✅ **修改 hooks 时** — 改 `hooks/xdd-gate-lib.sh` 后通过 `bash hooks/xdd-gate-stop.sh` 跑真实场景, 跟修改前对比输出
 - ✅ **修改 plugin 时** — `plugins/xdd-gates.ts` / `plugins/xdd-goal.tsx` 改完后用 `bun plugins/<file>.ts` (Bun 加载) 跑 smoke, 跟 OpenCode 端行为对齐
 
@@ -145,9 +145,10 @@ Agent 正文里的工具名一律按 Claude Code 风格 TitleCase 引用（`Read
 
 ```bash
 # 0. 选一个 demo 项目 (S scale 快速验证, L scale 严格)
-DEMO=/tmp/test-xdd-product-s   # 或 /tmp/test-xdd-product-l
+# 约定: demo/ 在根 .gitignore 里被 ignore, 新 demo 直接 mkdir 即可
+DEMO=demo/3dgsvla                       # 新项目; 或 demo/vla-v1 (已存在)
 # 验证 demo 存在
-ls $DEMO/.xdd/iterations/iter-1/pipeline/status.md
+ls $DEMO/.xdd/iterations/iter-1/pipeline/status.md 2>/dev/null || echo "[xdd-test] 全新 demo, 走 xdd-init 创建"
 
 # 1. 装 xdd 到 Claude Code (软链 hooks/skills/agents/settings)
 ./install-to-claude-code.sh
@@ -204,7 +205,7 @@ bash skills/smoke-xdd-r11-round2.sh           # R11 Round 2 验证 (16 项断言
 bash skills/smoke-xdd-scaffold-docker.sh      # scaffold + docker 集成 (16 项断言)
 
 # 改 agents/ 后跑 (跟 CC/OpenCode 端 walker 行为对齐)
-# (暂无标准 smoke, 走真实 e2e: 仓库外 /tmp/test-product/ 起项目验证)
+# (暂无标准 smoke, 走真实 e2e: 在 demo/<project-slug>/ 起项目验证)
 ```
 
 ### 调试 hooks
@@ -279,14 +280,30 @@ The Walker is **not a dispatcher** — it does the work itself, reading files, w
 
 ### 目录与流水线 (详情见 README.md)
 
-- **完整目录树** + skill 列表 (23 个含 14 核心 + 9 utility) → `README.md` § 目录结构
+- **完整目录树** + skill 列表 (22 个含 13 核心 + 9 utility, v2.0 9→6 后) → `README.md` § 目录结构
 - **流水线** 0→1→2→2.5→2.7→3→4→5→6 → `docs/WORKFLOW.md`
 - **统一架构图** (Mermaid) → `docs/architecture.mmd`
 - **2 个 agent 变体**:
   - `agents/xdd-walker.md` (~500 行) — Claude Code / OpenCode 共用版
   - `agents/xdd-walker-pi.md` (~310 行) — pi 协议变体, frontmatter 适配 pi 协议
 
-**核心 skill 清单** (14): `xdd-core` / `xdd-bdd` / `xdd-flow` / `xdd-add` / `xdd-wire` / `xdd-arch` / `xdd-scaffold` / `xdd-l0` / `xdd-l3` / `xdd-l6` / `xdd-plan` / `xdd-execute` / `xdd-init` / `xdd-artifact-lifecycle`
+**核心 skill 清单** (13, v2.0 9→6 合并: xdd-add 已并入 xdd-arch § 12 运维视图): `xdd-core` / `xdd-bdd` / `xdd-flow` / `xdd-wire` / `xdd-arch` / `xdd-scaffold` / `xdd-l0` / `xdd-l3` / `xdd-l6` / `xdd-plan` / `xdd-execute` / `xdd-init` / `xdd-artifact-lifecycle`
+
+**.xdd/baseline 6 子目录** (v2.0 9→6, 详见 `skills/xdd-init/SKILL.md`):
+- `research/` — L0 笔记本 (10 份: 00-intent + 00-l1-recap + 01-08, v2.1 加 00-intent 吸收旧 intent/)
+- `bdd/` — 业务线 landscape + spec.md + *.feature (v2.0 吸收旧 business/)
+- `flow/` — project.flow.mermaid
+- `arch/` — architecture.md (含 § 12 运维视图) + aggregate-landscape + event-contract (v7.0.0 吸收旧 add/)
+- `wire/` — 前端线框图 SVG/HTML
+- `resilience/` — L3 韧性 5 文档
+
+**3 个被合并的旧目录** (legacy, hooks 会在 stop gate 警告; 老 demo 兼容路径仍可读):
+| 旧目录 | 新位置 | 合并版本 |
+|--------|--------|---------|
+| `baseline/intent/intent.md` | `baseline/research/00-intent.md` | xdd-l0 v2.1 |
+| `baseline/business/business-landscape.md` | `baseline/bdd/_landscape.md` | xdd-bdd v2.0 |
+| `baseline/business/{slug}.md` | `baseline/bdd/{slug}/business.md` | xdd-bdd v2.0 |
+| `baseline/add/{slug}/add.md` | `baseline/arch/{slug}/architecture.md § 12 运维视图` | xdd-arch v7.0.0 |
 
 **utility skill** (9): `xdd-reverse` / `xdd-taste` / `xdd-trace-init` / `xdd-skill-creator` / `xdd-mermaid-check` / `xdd-docker-helper` / `xdd-test-in-tmux` / `xdd-gherkin-writer` / `xdd-opencode-learning`
 

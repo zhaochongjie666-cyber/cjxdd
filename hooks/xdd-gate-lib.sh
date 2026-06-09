@@ -62,10 +62,13 @@ get_xdd_dir() {
 }
 
 # Returns the current iteration name (e.g. "iter-2"), or empty.
+# v2 (6 目录扁平): current-iteration 落在 .xdd/gates/, 但兼容老 .xdd/current-iteration
 get_current_iter() {
     local xdd_dir
     xdd_dir=$(get_xdd_dir)
-    if [[ -n "$xdd_dir" && -f "$xdd_dir/current-iteration" ]]; then
+    if [[ -n "$xdd_dir" && -f "$xdd_dir/gates/current-iteration" ]]; then
+        cat "$xdd_dir/gates/current-iteration"
+    elif [[ -n "$xdd_dir" && -f "$xdd_dir/current-iteration" ]]; then
         cat "$xdd_dir/current-iteration"
     fi
     echo ""

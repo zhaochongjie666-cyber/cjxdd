@@ -144,7 +144,9 @@ fi
 # AI 偷工减料时常说 "状态变体可简化" / "主路径 12-15 页", 把 state 简化掉
 # 检测: 扫 wire.svg 的 data-page (页数) 和 data-state (变体数), ratio < 3 → 软警告
 if [[ "$skill_name" == "xdd-wire" ]] && [[ -n "$xdd_dir" ]]; then
-    wire_svg="$xdd_dir/business/wire.svg"
+    # v2.0 9→6 合并: wire.svg 实际位置在 baseline/wire/{page}.svg (per-page), 老 demo 兼容 business/wire.svg
+    wire_svg="$xdd_dir/baseline/wire/wire.svg"
+    [[ ! -f "$wire_svg" ]] && wire_svg="$xdd_dir/business/wire.svg"
     if [[ -f "$wire_svg" ]]; then
         # unique data-page 数量
         page_count=$(grep -oE 'data-page="[^"]+"' "$wire_svg" 2>/dev/null | sort -u | wc -l)

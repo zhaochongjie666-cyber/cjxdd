@@ -12,13 +12,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # 阈值
 THRESHOLD="${XDD_LIFECYCLE_THRESHOLD:-0.95}"
 
-# 5 角色 + 期望工件
+# 5 角色 + 期望工件 (v2 6 目录扁平 — 新路径 baseline/research/00-intent + bdd/_landscape, 兼容老路径)
 declare -A expected_artifacts=(
-    ["design_baseline"]="intent.md spec.md architecture.md plan.md"
-    ["process_output"]="status.md scaffold.log deploy.log"
-    ["evidence_archive"]="verify/ test-results/ chaos-results/"
-    ["control_marker"]=".xdd-halt.json .l5-unresolved.json .xdd-iter.lock"
-    ["template_instance"]="scale.md BXX-*.md xdd-schema.json"
+    ["design_baseline"]="baseline/research/00-intent.md baseline/bdd baseline/arch baseline/wire baseline/resilience"
+    ["process_output"]="iterations/iter-1/pipeline/status.md iterations/iter-1/plan iterations/iter-1/verify"
+    ["evidence_archive"]="iterations/iter-1/verify iterations/iter-1/gate-logs iterations/iter-1/reports"
+    ["control_marker"]="gates/scale.md gates/current-iteration gates/xdd-version"
+    ["template_instance"]="gates/scale.md baseline/bdd/_landscape.md"
 )
 
 # 校验

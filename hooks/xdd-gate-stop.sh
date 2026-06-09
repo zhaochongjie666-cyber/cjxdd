@@ -112,7 +112,7 @@ if [[ -n "$md" && -f "$md" ]]; then
         for pat in $patterns; do
             # 把 pattern 转成目录: 去掉最后一段 (文件名) 和 * 通配
             # ".xdd/research/*.md" → ".xdd/research"
-            # ".xdd/business/{slug}/intent.md" → ".xdd/business" (粗粒度, 也够用)
+            # ".xdd/baseline/bdd/{slug}/spec.md" → ".xdd/baseline/bdd" (粗粒度, 也够用)
             # "Dockerfile" → "." (项目根)
             check_dir=$(echo "$pat" | sed -E 's|/[^/]*\*?[^/]*$||' | sed 's|{slug}||g')
             [[ -z "$check_dir" ]] && check_dir="."
@@ -198,11 +198,18 @@ if [[ -d "$xdd_dir/L5-plan" ]]; then
     fi
 fi
 
-# 3.5 L1 wire 老 schema 路径
+# 3.5 L1 wire 老 schema 路径 (v2.0 9→6 合并前的遗留物)
 if [[ -d "$xdd_dir/business/wireframes" ]]; then
-    echo "[xdd]   ⚠️  Found .xdd/business/wireframes/. Canonical = .xdd/business/wire.svg (项目级单张)"
+    echo "[xdd]   ⚠️  Found .xdd/business/wireframes/. Canonical = .xdd/baseline/wire/{page}.svg (v2.0 9→6, per-page)"
     lifecycle_drift=1
 fi
+# v2.0 9→6: 老 baseline/intent/add/business 目录, 提示迁移
+for legacy in intent add business; do
+    if [[ -d "$xdd_dir/baseline/$legacy" ]]; then
+        echo "[xdd]   ⚠️  Found legacy .xdd/baseline/$legacy/. v2.0 (9→6) 已合并 → research/00-intent | arch §12 | bdd/_landscape + bdd/{slug}/business.md"
+        lifecycle_drift=1
+    fi
+done
 
 if [[ $lifecycle_drift -eq 0 ]]; then
     echo "[xdd]   ✓ 无 lifecycle 漂移 (5 类角色, ${artifacts_count} 工件全部就位)"

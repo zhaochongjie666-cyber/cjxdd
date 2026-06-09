@@ -96,9 +96,8 @@ PROJECT_ROOT="${PWD}"
 | `xdd-l0` | 自由发散调研 (v2 — brainstorm + 5 方向 + L1 消费) | xdd-init 完成后 |
 | `xdd-bdd` | BDD 业务蓝图 / Gherkin 验收场景 | xdd-l0 完成后 |
 | `xdd-flow` | 画业务流程图 (MDD 模型驱动) | xdd-bdd 后可选 |
-| `xdd-add` | 架构设计说明书 (状态机/时序/排障) | xdd-bdd 之后 |
 | `xdd-wire` | 画页面原型 (SVG) | xdd-bdd 之后 (纯后端跳过) |
-| `xdd-arch` | L1.5 架构设计 (ADD+SDD+PDD) | xdd-bdd/add/wire 之后 |
+| `xdd-arch` | L1.5 架构设计 (ADD+SDD+PDD+ODD; v7.0.0 § 12 运维视图合并旧 xdd-add) | xdd-bdd/wire 之后 |
 | `xdd-scaffold` | 搭项目脚手架 (7 步 Docker) | xdd-arch 之后 |
 | `xdd-l3` | 韧性设计 (失败模式穷举 + 兜底 + 混沌) | xdd-scaffold 之后 |
 | `xdd-plan` | 写 TDD 执行计划 | xdd-l3 之后 |
@@ -220,7 +219,7 @@ Phase 6 VERIFY       ── 工具: xdd-l6 (含 L3 chaos 子阶段)
 
 ### Scale 判定
 
-**时机**：Phase 2 全部完成后（intent.md + business-landscape.md + 所有 research.md + project.flow.mermaid + 所有 spec.md + wire.svg）。
+**时机**：Phase 2 全部完成后（baseline/research/00-intent.md + baseline/bdd/_landscape.md + baseline/bdd/{slug}/business.md + baseline/bdd/{slug}/spec.md + baseline/bdd/{slug}/*.feature + baseline/flow/{slug}.mermaid + baseline/wire/{page}/）。v2.0 9→6 合并: intent → research/00-intent, business → bdd/_landscape + bdd/{slug}/business.md, add 工件已并入 arch § 12 (Phase 2.5).
 
 **判定标准**：
 

@@ -1,6 +1,13 @@
 ---
 name: xdd-bdd
-description: 基于 Gherkin 语法生成全栈业务蓝图（BDD）。与 ADD / project.flow.mermaid 互补，专注于业务意图、领域规则、产物状态、前后端可观察断言与异常路径，不描述内部架构战术。
+description: |
+  基于 Gherkin 语法生成全栈业务蓝图（BDD）+ 业务线 landscape (吃掉旧 xdd-business 目录, v2.0)。
+  与 ADD / project.flow.mermaid 互补, 专注于业务意图、领域规则、产物状态、前后端可观察断言与异常路径, 不描述内部架构战术。
+  产出 _landscape.md (业务线全景) + {slug}/business.md (业务线分组) + {slug}/spec.md (规则) + {slug}/*.feature (场景).
+  触发: bdd, Gherkin, feature, 验收, 业务规则, 业务线 landscape, business-landscape, BXX, 业务线分组.
+version: "2.0.0"
+changelog:
+  - "2.0.0 (2026-06-09): 吃掉 xdd-business 目录, business-landscape 工件迁入 bdd/_landscape.md, 每个业务线增加 bdd/{slug}/business.md."
 ---
 
 # xdd-bdd — Behavior Driven Development Skill
@@ -315,3 +322,78 @@ Then 前端应[展示用户可见结果]
 - 是否避免把 ADD 内容写进 BDD？
 - 状态名、产物名、角色名、错误原因是否与 `.xdd/bdd`、`project.flow.mermaid` 或代码枚举一致？
 - 未知内容是否标注为"待确认"，而不是编造？
+
+## 输出路径与产出物 (v2.0)
+
+> **v2.0.0 合并自 `xdd-business`**: 业务线 landscape 不再是独立目录, 全部住进 `bdd/`. 9→6 目录合并的一部分.
+
+### 目录结构
+
+```
+.xdd/baseline/bdd/
+├── _landscape.md           ← 业务线全景 (旧 business/business-landscape.md)
+└── {slug}/                 ← 每个业务线一个目录, slug 跟 BXX-id 对应
+    ├── business.md         ← 业务线分组 (旧 business/{slug}.md): 目标 / 关键问题 / 范围 / 关联
+    ├── spec.md             ← RXX 规则列表
+    ├── *.feature           ← Gherkin 验收场景, 一条 RXX 一个 feature 文件
+    └── ...
+```
+
+### `_landscape.md` 模板 (全局业务线索引)
+
+```markdown
+# 业务线 Landscape
+
+> 项目业务线全景 — 跨业务线主题 + 每条业务线 1 句话定位.
+
+## 业务线清单
+
+| BXX | slug | 名称 | 定位 (1 句话) | 关联文件 |
+|-----|------|------|--------------|---------|
+| B01 | auth | 鉴权 | 用户登录注册 + 鉴权 + 权限 | bdd/auth/ |
+| B02 | order | 订单 | 下单 / 支付 / 履约 | bdd/order/ |
+
+## 跨业务线主题 (可选)
+
+- 多租户隔离: 所有业务线必须按 tenant_id 隔离
+- 国际化: 所有 BXX 错误码必须支持 i18n
+```
+
+### `{slug}/business.md` 模板 (业务线分组)
+
+```markdown
+# B01 鉴权 (auth)
+
+> 业务线说明 — 目标 + 关键问题 + 范围.
+
+## 业务目标
+
+- 用户能注册 / 登录 / 退出
+- 鉴权策略 (JWT / 会话) 在所有受保护 API 生效
+
+## 关键问题
+
+1. 密码策略 (强度 / 重置)?
+2. 多端登录互踢?
+3. OAuth2 第三方集成?
+
+## 范围
+
+- in-scope: 邮箱密码登录、JWT 鉴权、密码重置邮件
+- out-of-scope: 短信验证、OAuth2 (留 iter-2)
+
+## 关联
+
+- RXX 规则: R01, R02, R03 (见 bdd/auth/spec.md)
+- Arch 设计 (含运维视图): baseline/arch/auth/architecture.md
+- Resilience: baseline/resilience/auth/failure-modes.md
+- 前端线框: baseline/wire/login/ + baseline/wire/register/
+- 流程图: baseline/flow/auth.mermaid
+```
+
+### 一致性约束 (跟 arch / wire / resilience 对齐)
+
+- `_landscape.md` 业务线清单 **必须等于** `arch/aggregate-landscape.md` 业务线分组 (聚合根按业务线归).
+- `{slug}/business.md` 的 RXX 列表 **必须等于** `{slug}/spec.md` 实际定义的规则编号.
+- 每条 RXX 至少有 1 个 `*.feature` 文件覆盖 (空规则 = 漏验收).
+- 不允许 business.md 提及未在 `_landscape.md` 中注册的业务线.

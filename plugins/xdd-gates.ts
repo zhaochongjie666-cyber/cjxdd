@@ -907,7 +907,9 @@ function checkL0RedoSoftWarn(xddDir: string | null, iter: string | null): string
 
 function checkWireSvgVariants(skillName: string, xddDir: string | null): string | null {
   if (skillName !== "xdd-wire" || !xddDir) return null
-  const wireSvg = join(xddDir, "business", "wire.svg")
+  // v2.0 9→6 合并: wire.svg 新位置 baseline/wire/, 老位置 business/wire.svg 兼容
+  let wireSvg = join(xddDir, "baseline", "wire", "wire.svg")
+  if (!existsSync(wireSvg)) wireSvg = join(xddDir, "business", "wire.svg")
   if (!existsSync(wireSvg)) return null
   const text = readFileSync(wireSvg, "utf-8")
   const pages = new Set<string>()
@@ -1134,9 +1136,14 @@ function checkLifecycleDrift(xddDir: string | null): string {
       for (const p of fsInL5) lines.push(`  ${p}`)
     }
   }
-  // wire 老路径
+  // wire 老路径 + v2.0 9→6 legacy baseline 目录
   if (existsSync(join(xddDir, "business", "wireframes"))) {
-    lines.push(`Found .xdd/business/wireframes/. Canonical = .xdd/business/wire.svg (项目级单张)`)
+    lines.push(`Found .xdd/business/wireframes/. Canonical = .xdd/baseline/wire/{page}.svg (v2.0 9→6, per-page)`)
+  }
+  for (const legacy of ["intent", "add", "business"]) {
+    if (existsSync(join(xddDir, "baseline", legacy))) {
+      lines.push(`Found legacy .xdd/baseline/${legacy}/. v2.0 (9→6) 已合并 → research/00-intent | arch §12 | bdd/_landscape + bdd/{slug}/business.md`)
+    }
   }
   return lines.join("\n")
 }
@@ -2073,22 +2080,34 @@ const IMPL_RE = /@implements\s+([A-Z]{1,3}\d{1,3}(?:\s*[,、]\s*[A-Z]{1,3}\d{1,3
 // 兜底机制代码痕迹: retry / circuitBreaker / circuit_breaker / fallback / degrade / timeout
 const FAILSAFE_RE = /\b(retry|circuitBreaker|circuit_breaker|fallback|degrade|timeout|backoff|bulkhead|rateLimit|throttle|hystrix|resilience4j)\b/i
 
-// 找所有 spec.md (L1)
+// 找所有 spec.md (L1) — v2.0 9→6 合并: baseline/bdd/{slug}/spec.md, 兼容老 business/{slug}/spec.md
 function findSpecFiles(xddDir: string): string[] {
   const out: string[] = []
-  // 1) per-BXX
+  // 1) 新路径: baseline/bdd/{slug}/spec.md (v2.0)
+  const newBddDir = join(xddDir, "baseline", "bdd")
+  if (existsSync(newBddDir)) {
+    try {
+      for (const e of readdirSync(newBddDir, { withFileTypes: true })) {
+        if (e.isDirectory() && !e.name.startsWith("_")) {
+          const spec = join(newBddDir, e.name, "spec.md")
+          if (existsSync(spec)) out.push(spec)
+        }
+      }
+    } catch {}
+  }
+  // 2) 老路径: business/{slug}/spec.md (兼容老 demo)
   const l1Dir = join(xddDir, "business")
   if (existsSync(l1Dir)) {
     try {
       for (const e of readdirSync(l1Dir, { withFileTypes: true })) {
         if (e.isDirectory()) {
           const spec = join(l1Dir, e.name, "spec.md")
-          if (existsSync(spec)) out.push(spec)
+          if (existsSync(spec) && !out.includes(spec)) out.push(spec)
         }
       }
     } catch {}
   }
-  // 2) 老路径: business 顶层 spec.md
+  // 3) 老路径: business 顶层 spec.md
   const topSpec = join(l1Dir, "spec.md")
   if (existsSync(topSpec) && !out.includes(topSpec)) out.push(topSpec)
   return out
@@ -2130,11 +2149,22 @@ function findFailureModesFiles(xddDir: string): string[] {
 
 function findWireFiles(xddDir: string): string[] {
   const out: string[] = []
+  // v2.0 9→6: 新路径 baseline/wire/{page}.svg, 兼容老 business/wire.svg
+  const newWireDir = join(xddDir, "baseline", "wire")
+  if (existsSync(newWireDir)) {
+    try {
+      for (const e of readdirSync(newWireDir)) {
+        if (e.endsWith(".svg")) {
+          out.push(join(newWireDir, e))
+        }
+      }
+    } catch {}
+  }
   const l1Dir = join(xddDir, "business")
   if (!existsSync(l1Dir)) return out
-  // 项目级 wire.svg
+  // 项目级 wire.svg (老路径)
   const top = join(l1Dir, "wire.svg")
-  if (existsSync(top)) out.push(top)
+  if (existsSync(top) && !out.includes(top)) out.push(top)
   // 老路径: wireframes/*.svg
   const wireframesDir = join(l1Dir, "wireframes")
   if (existsSync(wireframesDir)) {
@@ -2490,7 +2520,7 @@ function auditL5Consistency(
       implemented: 0,
       coverage: 1,
       missing: [],
-      note: "(无 .xdd/business/**/spec.md, 跳过)",
+      note: "(无 .xdd/baseline/bdd/**/spec.md or .xdd/business/**/spec.md, 跳过)",
     })
   }
 
