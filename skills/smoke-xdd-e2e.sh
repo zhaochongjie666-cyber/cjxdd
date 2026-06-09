@@ -14,7 +14,7 @@ cd "$REPO_ROOT"
 
 PASS=0
 FAIL=0
-TOTAL=36
+TOTAL=40
 
 # count dirs/files, no recursion (use -d for dirs, -maxdepth 1 for files)
 count_existing() {
@@ -213,6 +213,22 @@ check "35. skills/xdd-execute/scripts/loop-until-pass.sh 存在且可执行" "$?
 # 36. xdd-execute 含 Loop-Until-Pass 段
 grep -q 'Loop-Until-Pass' skills/xdd-execute/SKILL.md
 check "36. xdd-execute 含 Loop-Until-Pass 段" "$?"
+
+# 37. 回环 2: RXX 1 致 + BXX 覆盖检查
+[[ -x skills/xdd-design-review/scripts/check-rxx-consistency.sh ]]
+check "37. 回环 2 check-rxx-consistency.sh 存在且可执行" "$?"
+
+# 38. 回环 6: L3 chaos 韧性 runner
+[[ -x skills/xdd-l3/scripts/chaos-runner.sh ]]
+check "38. 回环 6 chaos-runner.sh 存在且可执行" "$?"
+
+# 39. 回环 7: L6 wander-test
+[[ -x skills/xdd-l6/scripts/wander-test.sh ]]
+check "39. 回环 7 wander-test.sh 存在且可执行" "$?"
+
+# 40. 回环 5: iter 反馈 inherit
+[[ -x skills/xdd-init/scripts/iter-inherit.sh ]]
+check "40. 回环 5 iter-inherit.sh 存在且可执行" "$?"
 
 echo ""
 echo "=== 结果 ==="
