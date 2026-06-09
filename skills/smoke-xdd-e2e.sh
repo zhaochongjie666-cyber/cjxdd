@@ -14,7 +14,7 @@ cd "$REPO_ROOT"
 
 PASS=0
 FAIL=0
-TOTAL=24
+TOTAL=27
 
 # count dirs/files, no recursion (use -d for dirs, -maxdepth 1 for files)
 count_existing() {
@@ -164,6 +164,18 @@ check "23. settings.json 注册 2 个新 hook (coverage + wire)" "$?"
 # 24. orchestrator 文档引用 8 subagent dispatch
 grep -q 'phase-researcher' agents/xdd-orchestrator.md && grep -q 'phase-executor' agents/xdd-orchestrator.md
 check "24. orchestrator 引用 8 subagent dispatch" "$?"
+
+# 25. P2 skill: xdd-flow-bug-report (session 复盘)
+[[ -f skills/xdd-flow-bug-report/SKILL.md ]]
+check "25. P2 skill xdd-flow-bug-report 存在" "$?"
+
+# 26. P2 skill: xdd-design-review (Phase 2 5 工件互审)
+[[ -f skills/xdd-design-review/SKILL.md ]]
+check "26. P2 skill xdd-design-review 存在" "$?"
+
+# 27. P2 skill: xdd-coverage-monitor (实时覆盖率监控)
+[[ -f skills/xdd-coverage-monitor/SKILL.md ]]
+check "27. P2 skill xdd-coverage-monitor 存在" "$?"
 
 echo ""
 echo "=== 结果 ==="
