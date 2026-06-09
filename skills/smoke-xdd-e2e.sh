@@ -14,7 +14,7 @@ cd "$REPO_ROOT"
 
 PASS=0
 FAIL=0
-TOTAL=45
+TOTAL=46
 
 # count dirs/files, no recursion (use -d for dirs, -maxdepth 1 for files)
 count_existing() {
@@ -206,6 +206,11 @@ check "31c. xdd-wire 含 CSS 变量 + 设计旋钮" "$?"
 # 31d. xdd-wire 12 门禁 hook 扫 HTML (扫 .html 不是 .svg)
 grep -q '\*\.html' hooks/xdd-gate-wire-validate.sh
 check "31d. wire-validate hook 扫 HTML" "$?"
+
+# 31e. ARTIFACT-LIFECYCLE-LOCATION 文档存在 + 5 类 lifecycle × 路径清晰
+[[ -f docs/ARTIFACT-LIFECYCLE-LOCATION.md ]] && \
+  grep -q 'design_baseline\|evidence_archive\|process_output' docs/ARTIFACT-LIFECYCLE-LOCATION.md
+check "31e. ARTIFACT-LIFECYCLE-LOCATION.md 含 5 类 lifecycle" "$?"
 
 # 32. settings.json 注册 xdd-gate-ux-check hook
 grep -q 'xdd-gate-ux-check' settings.json
