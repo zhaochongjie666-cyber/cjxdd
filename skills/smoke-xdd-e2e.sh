@@ -14,7 +14,7 @@ cd "$REPO_ROOT"
 
 PASS=0
 FAIL=0
-TOTAL=49
+TOTAL=54
 
 # count dirs/files, no recursion (use -d for dirs, -maxdepth 1 for files)
 count_existing() {
@@ -229,6 +229,18 @@ fi
 # 31h. plan 进 iter-N (不在 baseline/)
 grep -q 'iterations/iter-1/plan/harness-plan.md' skills/xdd-init/templates/xdd-schema.json
 check "31h. plan 路径在 iterations/iter-1/plan/ (per-iter)" "$?"
+
+# 31i. baseline/business/ 业务线职责固化 (schema 含 required_when_bxx + 模板)
+grep -q 'required_when_bxx' skills/xdd-init/templates/xdd-schema.json && \
+  grep -q 'business-landscape.md' skills/xdd-init/templates/xdd-schema.json && \
+  grep -q 'bizline_placeholder_template' skills/xdd-init/templates/xdd-schema.json
+check "31i. xdd-schema.json 含 business/ 必填规则 (required_when_bxx)" "$?"
+
+# 31j. init.sh 存在 + 生成 baseline/business/ 占位 (BXX 启用时)
+[[ -x skills/xdd-init/scripts/init.sh ]] && \
+  grep -q 'baseline/business' skills/xdd-init/scripts/init.sh && \
+  grep -q 'business-landscape.md' skills/xdd-init/scripts/init.sh
+check "31j. init.sh 强制生成 baseline/business/ (含 landscape + BXX 占位)" "$?"
 
 # 32. settings.json 注册 xdd-gate-ux-check hook
 grep -q 'xdd-gate-ux-check' settings.json

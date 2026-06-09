@@ -194,6 +194,11 @@
       "iterations/iter-1/pipeline/status.md",
       "gates/scale.md"
     ],
+    "required_when_bxx": [
+      "baseline/business/business-landscape.md",
+      "baseline/business/{BXX-slug}.md (per BXX)"
+    ],
+    "bizline_placeholder_template": "# {BXX_id} {BXX_name}\n\n> 业务线说明 — 目标 + 关键问题 + 范围.\n\n## 业务目标\n\n- {目标 1}\n- {目标 2}\n\n## 关键问题\n\n1. {问题 1}\n2. {问题 2}\n\n## 范围\n\n- in-scope: {范围内}\n- out-of-scope: {范围外}\n\n## 关联\n\n- RXX 规则: {R01, R02, ...}\n- ADD 战术: baseline/add/{slug}/add.md\n- Arch 设计: baseline/arch/{slug}/architecture.md\n- Resilience: baseline/resilience/{slug}/failure-modes.md\n",
     "default_bizlines": [],
     "status_md_template_header": [
       "# Pipeline Status — iter-1",

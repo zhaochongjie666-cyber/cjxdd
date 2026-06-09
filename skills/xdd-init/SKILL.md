@@ -53,12 +53,69 @@ bash ~/.claude/skills/xdd-init/scripts/init.sh
 ├── xdd-version                       # 单行：schema 里的 xdd_version
 ├── current-iteration                 # 单行：当前 iter 名（默认 "iter-1"）
 ├── scale.md                          # 默认值（带 strict-default 字段），下游 5 个 skill 读
-├── iterations/
-│   └── iter-1/
-│       └── pipeline/
-│           └── status.md             # 12 行阶段表，全部 ⏳
-└── research/
-    └── .gitkeep                      # 提示 walker 第一个阶段是发散调研
+├── baseline/                         # 跨 iter design_baseline (6 目录扁平)
+│   ├── intent/
+│   │   └── .gitkeep                  # xdd-core 后填
+│   ├── research/
+│   │   └── .gitkeep                  # xdd-l0 后填
+│   ├── bdd/
+│   │   └── .gitkeep                  # xdd-bdd 后填
+│   ├── flow/
+│   │   └── .gitkeep                  # xdd-flow 后填
+│   ├── add/
+│   │   └── .gitkeep                  # xdd-add 后填
+│   ├── arch/
+│   │   └── .gitkeep                  # xdd-arch 后填
+│   ├── resilience/
+│   │   └── .gitkeep                  # xdd-l3 后填
+│   ├── wire/
+│   │   └── .gitkeep                  # xdd-wire 后填
+│   └── business/                     # 业务线维度 (template_instance)
+│       ├── business-landscape.md     # 跨业务线关系 (BXX > 1 时必填)
+│       └── {BXX-slug}.md            # 每个 BXX 占位 (BXX > 1 时按 --bizlines 生成)
+├── gates/                            # 项目级 control_marker
+│   ├── scale.md                      # (alias of root scale.md, 6 目录后)
+│   ├── current-iteration
+│   └── xdd-version
+└── iterations/
+    └── iter-1/
+        └── pipeline/
+            └── status.md             # 12 行阶段表，全部 ⏳
+```
+
+### business/ 职责 (强约束, 实战验证)
+
+**`baseline/business/` = 业务线维度产出 (template_instance 角色)**. 即使 ADD/arch 包含 BXX 信息, business/ 也必须有对应 BXX 的占位/产出, 承担它的"业务线承载"职责.
+
+**强约束** (BXX > 1 时, 即 `--bizlines` 启用):
+- `baseline/business/business-landscape.md` **必填** (跨业务线关系图, 哪怕只有 1 BXX 也建议填)
+- `baseline/business/{BXX-slug}.md` **每个 BXX 必填** (业务线说明: 目标 + 关键问题 + 范围 + 关联 RXX/ADD/Arch/Resilience)
+
+**为什么强约束**: session c3692b46 + 实战 pricecompare 都发现, orchestrator 把 BXX 信息并入 ADD, baseline/business/ 留空, 跨 iter 找"业务线说明" 时无对应文件. baseline/business/ 是**业务线维度**的承载, 跟 ADD (架构战术) 是正交维度, 不能合并.
+
+**模板** (init 时按 `bizline_placeholder_template` 字段自动生成):
+```markdown
+# B01-customer
+
+> 业务线说明 — 目标 + 关键问题 + 范围.
+
+## 业务目标
+- 目标 1
+- 目标 2
+
+## 关键问题
+1. 问题 1
+2. 问题 2
+
+## 范围
+- in-scope: 范围内
+- out-of-scope: 范围外
+
+## 关联
+- RXX 规则: R01, R02, ...
+- ADD 战术: baseline/add/{slug}/add.md
+- Arch 设计: baseline/arch/{slug}/architecture.md
+- Resilience: baseline/resilience/{slug}/failure-modes.md
 ```
 
 ### status.md 模板（含 `last_updated` 字段，hook 用它检测过期；含 BXX 分组段）
