@@ -23,12 +23,23 @@ xdd_dir=$(get_xdd_dir)
 [[ -z "$xdd_dir" ]] && exit 2
 
 wire_dir="$xdd_dir/wire"
-if [[ ! -d "$wire_dir" ]]; then
-    echo "[xdd] (无 .xdd/wire/, 纯后端跳过 UX 4 层审查)"
+design_dir="$xdd_dir/design"
+
+# 实战发现: 之前只扫 .xdd/wire/, 漏 .xdd/design/*.svg
+if [[ ! -d "$wire_dir" && ! -d "$design_dir" ]]; then
+    echo "[xdd] (无 .xdd/wire/ 和 .xdd/design/, 纯后端跳过 UX 4 层审查)"
     exit 0
 fi
 
-svgs=$(find "$wire_dir" -name "*.svg" -type f 2>/dev/null)
+# 收齐所有 SVG
+svgs=""
+if [[ -d "$wire_dir" ]]; then
+    svgs="$svgs $(find "$wire_dir" -name "*.svg" -type f 2>/dev/null)"
+fi
+if [[ -d "$design_dir" ]]; then
+    svgs="$svgs $(find "$design_dir" -name "*.svg" -type f 2>/dev/null)"
+fi
+svgs=$(echo "$svgs" | xargs)
 [[ -z "$svgs" ]] && { echo "[xdd] (无 SVG, 跳过)"; exit 0; }
 
 declare -a L1_fail=()
