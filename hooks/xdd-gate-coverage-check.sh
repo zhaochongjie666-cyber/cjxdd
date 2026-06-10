@@ -18,8 +18,24 @@ source "$SCRIPT_DIR/xdd-gate-lib.sh"
 
 is_meta_project && exit 0
 
+# 实施 #24: 装 xdd-init / xdd-l0 / xdd-plan / xdd-execute / xdd-l6 等"非 Phase 5 入口" skill 时
+# coverage-check 跳过 (6 闸门是 Phase 5 才跑的, 装 init 时 .xdd/ 都还没建)
+# PreToolUse:Skill 拿到的 skill_name 通过 stdin JSON 传过来
+input=$(cat)
+skill_name=$(echo "$input" | jq -r '.tool_input.skill // .tool_input.name // empty' 2>/dev/null)
+case "$skill_name" in
+    xdd-init|xdd-l0|xdd-l3|xdd-plan|xdd-core|xdd-trace-init|xdd-reverse|xdd-skill-creator|xdd-scaffold|xdd-bdd|xdd-flow|xdd-wire|xdd-arch|xdd-taste|xdd-gherkin-writer|xdd-opencode-learning|xdd-test-in-tmux|xdd-ux-design|xdd-docker-helper|xdd-mermaid-check|xdd-coverage-monitor|xdd-flow-bug-report|xdd-design-review|xdd-halt|xdd-status|xdd-goal|xdd-claude-md-sync|xdd-target-milestone|xdd-write-doc|xdd-deepen-research|xdd-worktree-init|xdd-xissue-tracker|xdd-xref-trace|xdd-xquality-checklist)
+        # 入口/utility/research 类 skill 跳过 coverage-check (它只跟 Phase 5 强相关)
+        exit 0
+        ;;
+esac
+
 xdd_dir=$(get_xdd_dir)
-[[ -z "$xdd_dir" ]] && exit 2
+# 修 "No stderr output" bug: .xdd/ 不存在时 exit 2 必带 stderr 反馈 (Claude Code 协议)
+if [[ -z "$xdd_dir" ]]; then
+    echo "[xdd] ❌ Coverage check: .xdd/ 不存在, 无法跑 6 闸门 (Phase 5 入口才需要). 修法: 先跑 xdd-init 建 .xdd/" >&2
+    exit 2
+fi
 
 # 阈值 (可被 env 覆盖, 默认 0.95)
 THRESHOLD="${XDD_COVERAGE_THRESHOLD:-0.95}"
