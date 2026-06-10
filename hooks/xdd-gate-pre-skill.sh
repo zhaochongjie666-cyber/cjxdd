@@ -48,6 +48,20 @@ load_xdd_schema || {
     exit 0
 }
 
+# === 实施 #23: 项目级 CLAUDE.md / AGENTS.md 注入兜底 ===
+# 装 xdd skill 时, idempotent sync 用户项目根的 CLAUDE.md + AGENTS.md (5-10 行 pointer)
+# 跟 .xdd/WORKFLOW.md (xdd-owned payload) 联动
+# 老 demo (无 .xdd/LIFECYCLE.md) grandfather, 跳过
+xdd_dir=$(get_xdd_dir 2>/dev/null || echo "")
+if [[ -n "$xdd_dir" ]] && [[ -f "$xdd_dir/LIFECYCLE.md" ]]; then
+    if declare -f inject_claude_md_pointer >/dev/null 2>&1; then
+        # 读 xdd-version
+        xdd_ver=""
+        [[ -f "$xdd_dir/gates/xdd-version" ]] && xdd_ver=$(head -1 "$xdd_dir/gates/xdd-version" 2>/dev/null | tr -d '[:space:]')
+        inject_claude_md_pointer "$(dirname "$xdd_dir")" "$xdd_ver" || true
+    fi
+fi
+
 echo "[xdd] Skill loading: $skill_name"
 
 # Skill 名 → stage num (来自 schema 的 STAGE_SKILL_NUM)

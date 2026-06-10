@@ -490,6 +490,78 @@ load_xdd_schema() {
     return 0
 }
 
+# === 实施 #23: 项目级 CLAUDE.md / AGENTS.md 注入 (指针 + WORKFLOW.md) ===
+# 用户 CLAUDE.md 是 sacred 的 — xdd 只加 5-10 行 wrapped in <!-- xdd:start --> ... <!-- xdd:end -->
+# 详细 workflow 内容写到 .xdd/WORKFLOW.md (xdd-owned, 可整体重写)
+# Idempotent: 找到 marker 块就 replace, 没 marker 就 append
+# Args: $1 = 项目根 (默认 PWD), $2 = xdd framework 版本 (默认读 .xdd/gates/xdd-version 或 fallback)
+# Returns: 0 成功, 1 失败 (权限 / 找不到 template)
+inject_claude_md_pointer() {
+    local project_root="${1:-$PWD}"
+    local xdd_version="${2:-}"
+
+    # 读 xdd 版本
+    if [[ -z "$xdd_version" ]]; then
+        if [[ -f "$project_root/.xdd/gates/xdd-version" ]]; then
+            xdd_version=$(head -1 "$project_root/.xdd/gates/xdd-version" 2>/dev/null | tr -d '[:space:]')
+        fi
+        [[ -z "$xdd_version" ]] && xdd_version="0.1.0"
+    fi
+
+    # 找模板 (从 framework 自身)
+    local template_dir
+    template_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/skills/xdd-init/templates"
+    if [[ ! -f "$template_dir/CLAUDE.md.snippet.md" ]]; then
+        echo "[xdd] ⚠️ inject_claude_md_pointer: 模板不在 $template_dir (Meta 项目? 跳过)" >&2
+        return 0  # Meta 项目, 跳过非阻断
+    fi
+
+    local pointer
+    pointer=$(cat "$template_dir/CLAUDE.md.snippet.md")
+
+    # 老 demo grandfather: 无 .xdd/LIFECYCLE.md 表示项目不是通过 xdd-init 创建 (老 demo 兼容)
+    if [[ ! -f "$project_root/.xdd/LIFECYCLE.md" ]]; then
+        echo "[xdd] inject_claude_md_pointer: 老 demo (无 LIFECYCLE.md), 跳过" >&2
+        return 0
+    fi
+
+    # 写 .xdd/WORKFLOW.md (idempotent 整体重写 — xdd-owned)
+    if [[ -d "$project_root/.xdd" ]]; then
+        if [[ -f "$template_dir/WORKFLOW.md" ]]; then
+            cp "$template_dir/WORKFLOW.md" "$project_root/.xdd/WORKFLOW.md"
+        fi
+    fi
+
+    # 注入指针到 CLAUDE.md + AGENTS.md (idempotent marker 包裹)
+    # 用 awk 多行替换 (稳, 不依赖 python, 避免 bash else 跟 heredoc 冲突)
+    for target in "CLAUDE.md" "AGENTS.md"; do
+        local file="$project_root/$target"
+        [[ ! -f "$file" ]] && continue  # 不创建新文件 (避免污染无 AI 指引的项目)
+
+        local text
+        text=$(cat "$file")
+
+        # 1) 已有 xdd:start marker → 替换 (idempotent)
+        if grep -qF "<!-- xdd:start -->" <<< "$text"; then
+            # 用 awk 多行替换 marker 块 (跟 python re.sub 行为对齐)
+            # 状态机: in_marker=0 → 遇到 xdd:start 设 1 → 跳输出; 遇到 xdd:end 设 0 → 重新开始输出
+            # 注: pointer 块只有 1 行, 直接写 pointer (无 marker wrap) 然后 awk 跳过中间
+            local tmp
+            tmp=$(mktemp)
+            awk -v pointer="$pointer" '
+                /<!-- xdd:start -->/ { in_marker=1; print pointer; next }
+                /<!-- xdd:end -->/ { in_marker=0; next }
+                !in_marker { print }
+            ' "$file" > "$tmp" && mv "$tmp" "$file"
+        else
+            # 2) 没 marker → append (含前导 newline)
+            printf '\n%s\n' "$pointer" >> "$file"
+        fi
+    done
+
+    return 0
+}
+
 # alias 标准化: "L1 Research" / "L1_Research" / "l1 research" → "L1_Research"
 # Args: $1 = display name from status.md
 # Returns: internal ID (e.g. "L1_Research") or empty

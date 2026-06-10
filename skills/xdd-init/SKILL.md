@@ -249,6 +249,37 @@ halt_after: 3              # 3 试未过升级 HALT
 #    (或 OpenCode 同等 hook) 自动改成 ✅, 并提示加载 xdd-bdd
 ```
 
+## 5.5 项目级 AI 指引注入 (新, 实施 #23)
+
+**意图**: 让 xdd workflow 跟用户项目**整合**, 而不是孤立存在于 `.xdd/` 里. 用户 (跟 AI 助手对话时) 在项目根读 `CLAUDE.md` / `AGENTS.md` 时, 能看到 xdd 的存在跟入口.
+
+**机制** (3 个文件, 3 个角色):
+| 文件 | owner | 内容 | 何时被改 |
+|------|-------|------|---------|
+| `CLAUDE.md` (项目根) | **用户 99%** | 用户自己的 AI 指引 (项目背景 / 团队规范 / 风格偏好 等) | xdd 永不覆盖 marker 外内容 |
+| `<!-- xdd:start -->` ... `<!-- xdd:end -->` (CLAUDE.md 内的 marker 块) | **xdd 5-10 行** | 1 句 pointer 指向 `.xdd/WORKFLOW.md` | xdd 写 1 次, 后续 idempotent re-sync |
+| `.xdd/WORKFLOW.md` (项目 .xdd/ 内) | **xdd-owned 80+ 行** | 完整 workflow 指南 (5-step / 6-phase / HARD-GATE / 风格) | xdd 整体重写, re-sync 时自动更新 |
+
+**为什么是"指针 + WORKFLOW.md" 而不是 "50 行直接注入 CLAUDE.md"**:
+- 用户 CLAUDE.md 是 sacred 的 — 99% 用户拥有, xdd 不该占 50 行
+- re-sync 零风险 — 只覆盖 `.xdd/WORKFLOW.md` (xdd-owned), 用户 CLAUDE.md 不动
+- 用户 opt-out 简单 — 删 5-10 行 marker 块就完了
+- multi-harness 一致 — Claude Code 读 `CLAUDE.md` / OpenCode + Cursor 读 `AGENTS.md`, 都指同一 `.xdd/WORKFLOW.md`
+
+**5 步节奏** (init 注入时):
+1. 检测 `.xdd/` 是否已存在 → 注入 idempotent (重 init 不会重复 append)
+2. 写 `.xdd/WORKFLOW.md` (cp 模板, 整体重写 OK)
+3. 检测 `CLAUDE.md` / `AGENTS.md` 是否存在 (用户文件, 不创建新的)
+4. 存在 → 注入 5-10 行 pointer wrapped in `<!-- xdd:start -->` ... `<!-- xdd:end -->`
+5. 已在 marker → idempotent replace (同版本跳过, 旧版本升级)
+
+**re-sync 兜底**: `hooks/xdd-gate-pre-skill.sh` 装 xdd skill 前调 `inject_claude_md_pointer`, 缺 marker 就 re-add, 旧版本 marker 就升级. 老 demo (无 .xdd/LIFECYCLE.md) grandfather 跳过.
+
+**详见**:
+- 模板: `skills/xdd-init/templates/WORKFLOW.md` (xdd-owned payload) + `skills/xdd-init/templates/CLAUDE.md.snippet.md` (5-10 行 pointer)
+- Helper: `hooks/xdd-gate-lib.sh:inject_claude_md_pointer()`
+- 设计指针: `CLAUDE.md § 设计规范指针 #23`
+
 ## 故障排查
 
 | 现象 | 原因 | 修法 |

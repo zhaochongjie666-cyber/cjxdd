@@ -382,6 +382,80 @@ function isSourceFile(filePath: string, schema: xddSchema): boolean {
   return schema.stub_patterns.ext_globs.some((g) => filePath.endsWith(g.replace("*", "")))
 }
 
+// === 实施 #23: 项目级 CLAUDE.md / AGENTS.md 注入 (OpenCode 端对齐 bash helper) ===
+// Idempotent: 找到 marker 块就 replace, 没 marker 就 append
+// 用户 CLAUDE.md 99% 用户拥有, xdd 只占 5-10 行 wrapped in <!-- xdd:start -->/<!-- xdd:end -->
+// 详细 workflow 内容写到 .xdd/WORKFLOW.md (xdd-owned, 整体重写)
+function injectClaudeMdPointer(xddDir: string, xddVersion: string, diag: (e: Record<string, unknown>) => void): void {
+  // 老 demo (无 .xdd/LIFECYCLE.md) grandfather
+  if (!existsSync(join(xddDir, "LIFECYCLE.md"))) return
+
+  // 找模板 (从 framework 自身, 跟 bash helper 同一路径)
+  // 通过 xddDir → project_root → framework 根的相对路径找
+  // OpenCode plugin 路径: ~/.config/opencode/plugins/xdd-gates.ts
+  // framework 根: 取决于 install 方式. 简化: 假设 WORKFLOW.md 跟 CLAUDE.md.snippet.md 跟 xdd-gates.ts 同 framework 根
+  let templateDir: string
+  try {
+    // import.meta.url 走 .ts (开发) 或 .js (build). 我们用相对 plugin 位置推 framework 根
+    // framework 结构: framework_root/plugins/xdd-gates.ts, 找 framework_root/skills/xdd-init/templates
+    const pluginPath = typeof __dirname !== "undefined" ? __dirname : process.cwd()
+    templateDir = join(pluginPath, "..", "skills", "xdd-init", "templates")
+  } catch {
+    diag({ ev: "claude-md-inject-no-template-dir" })
+    return
+  }
+
+  const snippetPath = join(templateDir, "CLAUDE.md.snippet.md")
+  const workflowPath = join(templateDir, "WORKFLOW.md")
+  if (!existsSync(snippetPath)) {
+    diag({ ev: "claude-md-inject-template-missing", path: snippetPath })
+    return
+  }
+
+  // 读 xdd 版本
+  if (!xddVersion) {
+    const vPath = join(xddDir, "gates", "xdd-version")
+    xddVersion = existsSync(vPath)
+      ? readFileSync(vPath, "utf-8").trim() || "0.1.0"
+      : "0.1.0"
+  }
+
+  const projectRoot = dirname(xddDir)
+  const pointer = readFileSync(snippetPath, "utf-8").trim()
+
+  // 1) 写 .xdd/WORKFLOW.md (xdd-owned, 整体重写)
+  if (existsSync(workflowPath) && existsSync(join(xddDir))) {
+    try {
+      const workflowContent = readFileSync(workflowPath, "utf-8")
+      writeFileSync(join(xddDir, "WORKFLOW.md"), workflowContent)
+    } catch (err) {
+      diag({ ev: "claude-md-inject-workflow-fail", err: String(err).slice(0, 200) })
+    }
+  }
+
+  // 2) 注入指针到 CLAUDE.md + AGENTS.md (idempotent marker 包裹)
+  for (const target of ["CLAUDE.md", "AGENTS.md"]) {
+    const file = join(projectRoot, target)
+    if (!existsSync(file)) continue  // 不创建新文件
+    try {
+      const text = readFileSync(file, "utf-8")
+      const startMarker = "<!-- xdd:start -->"
+      const endMarker = "<!-- xdd:end -->"
+      if (text.includes(startMarker)) {
+        // 替换 marker 块
+        const re = /<!-- xdd:start -->[\s\S]*?<!-- xdd:end -->/g
+        const newText = text.replace(re, pointer)
+        writeFileSync(file, newText)
+      } else {
+        // append
+        writeFileSync(file, text + "\n\n" + pointer + "\n")
+      }
+    } catch (err) {
+      diag({ ev: "claude-md-inject-fail", file, err: String(err).slice(0, 200) })
+    }
+  }
+}
+
 function scanStubsInFile(
   filePath: string,
   schema: xddSchema,
@@ -1891,6 +1965,17 @@ export const xddHooksPlugin: Plugin = async (input) => {
       const args = (output as any).args ?? {}
       const skillName = args.name ?? ""
       log(`loading skill: ${skillName}`)
+
+      // 实施 #23: 项目级 CLAUDE.md / AGENTS.md 注入兜底 (OpenCode 对齐 bash pre-skill.sh)
+      try {
+        const xddVer = existsSync(join(xddDir, "gates", "xdd-version"))
+          ? readFileSync(join(xddDir, "gates", "xdd-version"), "utf-8").trim() || "0.1.0"
+          : "0.1.0"
+        injectClaudeMdPointer(xddDir, xddVer, log)
+      } catch (err) {
+        log({ ev: "claude-md-inject-pre-skill-fail", err: String(err).slice(0, 200) })
+      }
+
       const iter = readCurrentIter(xddDir)
       const status = iter ? readStatusMd(xddDir, iter) : null
 

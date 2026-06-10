@@ -6,6 +6,12 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
+# Source xdd-gate-lib.sh for inject_claude_md_pointer (实施 #23)
+HOOK_LIB="$REPO_ROOT/hooks/xdd-gate-lib.sh"
+if [[ -f "$HOOK_LIB" ]]; then
+    source "$HOOK_LIB"
+fi
+
 ITER=1
 FORCE=false
 NO_SCALE=false
@@ -239,3 +245,23 @@ ls .xdd/gates/
 echo ""
 echo "=== iterations/iter-$ITER/ ($(ls .xdd/iterations/iter-$ITER | wc -l) 子目录) ==="
 ls .xdd/iterations/iter-$ITER/
+
+# === 实施 #23: 项目级 AI 指引注入 (指针 + WORKFLOW.md) ===
+# 写 .xdd/WORKFLOW.md (xdd-owned payload, ~80 行) + 注入 5-10 行 pointer 到 CLAUDE.md / AGENTS.md
+# idempotent, 用户 CLAUDE.md 99% 由用户拥有, xdd 只占 5-10 行 wrapped in <!-- xdd:start -->/<!-- xdd:end -->
+if declare -f inject_claude_md_pointer >/dev/null 2>&1; then
+    inject_claude_md_pointer "$PWD" "$XDD_VERSION"
+    echo ""
+    echo "=== 项目级 AI 指引 ==="
+    echo "  → .xdd/WORKFLOW.md (xdd-owned, re-sync 时整体重写)"
+    if [[ -f "$PWD/CLAUDE.md" ]]; then
+        if grep -qF "<!-- xdd:start -->" "$PWD/CLAUDE.md"; then
+            echo "  → CLAUDE.md (用户文件, 5-10 行 xdd pointer wrapped in marker)"
+        fi
+    fi
+    if [[ -f "$PWD/AGENTS.md" ]]; then
+        if grep -qF "<!-- xdd:start -->" "$PWD/AGENTS.md"; then
+            echo "  → AGENTS.md (用户文件, 5-10 行 xdd pointer wrapped in marker)"
+        fi
+    fi
+fi
