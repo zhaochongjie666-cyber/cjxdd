@@ -2839,6 +2839,33 @@ function runStopGate(opts: {
     const msg = `Lifecycle 漂移:\n${lifecycle.split("\n").map((l) => `  ${l}`).join("\n")}`
     errors.push(msg)
     tracked.push({ section: "lifecycle-drift", content: msg, level: "error" })
+  }
+
+  // 4.5) L0 design gate 漂移 (实施 #22): 跑 L1+ skill 但 design.md 缺 / .l0-review-block 残留
+  // 验: 1) .xdd/baseline/design/ 存在 + ≥ 1 .md, 2) .xdd/gates/.l0-review-block.md 不存在 (老 demo grandfather)
+  if (xddDir) {
+    const isLegacy = !existsSync(join(xddDir, "LIFECYCLE.md"))
+    if (!isLegacy) {
+      const designDir = join(xddDir, "baseline", "design")
+      const blockFile = join(xddDir, "gates", ".l0-review-block.md")
+      const hasDesign = existsSync(designDir) && (() => {
+        try {
+          const files = readdirSync(designDir) as string[]
+          return files.some((f) => f.endsWith(".md"))
+        } catch { return false }
+      })()
+      if (!hasDesign) {
+        const msg = `L0 design gate 缺失: .xdd/baseline/design/ 需 ≥ 1 个 .md (写 design.md 走 §7 HARD-GATE)`
+        errors.push(msg)
+        tracked.push({ section: "l0-design-gate", content: msg, level: "error" })
+      } else if (existsSync(blockFile)) {
+        const msg = `L0 design 待用户审: .xdd/gates/.l0-review-block.md 存在, 用户删后才能进 L1+ skill`
+        errors.push(msg)
+        tracked.push({ section: "l0-design-gate", content: msg, level: "error" })
+      } else {
+        sections.push(`✓ L0 design gate: design.md 存在 + .l0-review-block.md 已删`)
+      }
+    }
   } else sections.push(`✓ Lifecycle 漂移: 无`)
 
   // 5) R5 硬门禁 — 实施 #16 (no-advisory): R5 跳过也升 hard

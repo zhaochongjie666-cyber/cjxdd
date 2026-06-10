@@ -139,6 +139,32 @@ if [[ -n "$iter" ]] && [[ "$iter" =~ ^iter-([1-9]|[1-9][0-9]+)$ ]] && [[ -n "$xd
     fi
 fi
 
+# === 实施 #22 (xdd-l0 增强): L0 design gate 硬阻断 ===
+# 装 xdd-bdd / xdd-flow / xdd-wire / xdd-arch 前, 验:
+# 1) .xdd/baseline/design/ 存在 + ≥ 1 个 .md (走 L0 §7 HARD-GATE 写的)
+# 2) .xdd/gates/.l0-review-block.md 不存在 (用户已审过)
+# 老 demo (无 .xdd/LIFECYCLE.md) grandfather, 不阻断
+if [[ "$skill_name" == "xdd-bdd" || "$skill_name" == "xdd-flow" || "$skill_name" == "xdd-wire" || "$skill_name" == "xdd-arch" ]]; then
+    if [[ -n "$xdd_dir" ]] && [[ -f "$xdd_dir/LIFECYCLE.md" ]]; then
+        design_dir="$xdd_dir/baseline/design"
+        block_file="$xdd_dir/gates/.l0-review-block.md"
+        if [[ ! -d "$design_dir" ]] || [[ -z "$(find "$design_dir" -name "*.md" -print -quit 2>/dev/null)" ]]; then
+            echo "" >&2
+            echo "[xdd] ❌ HARD BLOCK: L0 design.md 缺失" >&2
+            echo "[xdd]    必须先跑 xdd-l0 §7 HARD-GATE, 写 design.md 到 $design_dir" >&2
+            echo "[xdd]    模板: skills/xdd-l0/templates/design.md (5 段: Selected / Alternatives / Assumptions / Out of Scope / Open Questions)" >&2
+            echo "[xdd]    详见: skills/xdd-l0/SKILL.md §7" >&2
+            exit 2
+        fi
+        if [[ -f "$block_file" ]]; then
+            echo "" >&2
+            echo "[xdd] ❌ HARD BLOCK: L0 design 待用户审 ($block_file 存在)" >&2
+            echo "[xdd]    用户审 design.md 后**删除** $block_file 才能进 $skill_name" >&2
+            exit 2
+        fi
+    fi
+fi
+
 # === P0-Z Round 1: wire.svg 产物形态门禁 (state 变体偷工减料检测) ===
 # SKILL 要求: 每个 page 至少 4 个状态变体 (normal/loading/empty/error)
 # AI 偷工减料时常说 "状态变体可简化" / "主路径 12-15 页", 把 state 简化掉

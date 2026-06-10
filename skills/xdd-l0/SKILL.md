@@ -2,19 +2,20 @@
 name: xdd-l0
 alias: xdd·L0-Research
 description: |
-  xdd L0 发散笔记本 — 自由发散调研阶段 (v2.1 — 10 笔记本: 加 00-intent, 9→6 目录合并)。
-  什么都往里扔，不评判、不精简、不怕重复。
-  产出 .xdd/baseline/research/ 目录下的自由格式笔记文件 + 00-intent.md (项目意图/成功标准, Phase 0 写) + 00-l1-recap.md (L1 消费摘要) + 01-07 各维度 + 08-brainstorm.md (5-10 引导问答案)。
-  下游（xdd-bdd）不消费这些笔记，只消费从笔记中收敛出的结论。
-  无门禁检查。不设品味约束。
-  触发：发散、笔记本、笔记、调研笔记、brainstorm、发散调研、L0、intent、项目意图。
-version: "2.1.0"
+  xdd L0 发散笔记本 + HARD-GATE design.md 收敛 (v3.0.0 — 跟 superpowers brainstorm 1:1 对齐)。
+  10 笔记本自由发散 (00-intent + 00-l1-recap + 01-07 + 08-brainstorm), 然后**必**收敛成 1 份 design.md (Selected / Alternatives / Assumptions / Out of Scope / Open Questions 5 段), 跑 spec-reviewer 5 维度审, 用户审过后才可调 xdd-bdd。
+  产出 .xdd/baseline/research/ 自由笔记 + .xdd/baseline/design/YYYY-MM-DD-<topic>-design.md。
+  下游（xdd-bdd）不直接消费 L0 笔记, 只消费 design.md。
+  HARD-GATE: design.md 缺 或 .l0-review-block.md 存在 → 装 xdd-bdd/flow/wire/arch 被 pre-skill 硬阻断。
+  触发：发散、笔记本、笔记、调研笔记、brainstorm、发散调研、L0、intent、项目意图、design、design.md。
+version: "3.0.0"
 changelog:
+  - "3.0.0 (2026-06-10): 参考 superpowers brainstorm 加 6 修 — HARD-GATE (design.md 必出) + YAGNI + autonomous + spec review loop + block.md user review gate + anti-pattern 段. 实施 #22."
   - "2.1.0 (2026-06-09): 加 00-intent.md (Phase 0 写, 吃掉旧 .xdd/baseline/intent/ 目录). 9→10 笔记本. 路径迁 baseline/research/."
   - "2.0.0: brainstorm + L1 消费 + web search 5 方向."
 ---
 
-# xdd·L0 — 发散笔记本
+# xdd·L0 — 发散笔记本 + Design 收敛
 
 ## 角色
 
@@ -264,6 +265,75 @@ L0 跑前**先**跟用户 brainstorm, **再**发散写 9 笔记本. Brainstorm �
 | 探索旅程 | 无目的浏览/首次使用/输入非法数据 |
 
 **注意**：这里的画像和旅程是发散过程——可以重复、可以矛盾、可以粗糙。xdd-bdd 会从中收敛出精简版本。
+
+## Anti-Pattern: "This Is Too Simple To Need A Design" (新, 实施 #22 / superpowers 1:1)
+
+**Every project needs design, even simple ones.** "简单"项目最危险 (没审视的假设 = 浪费最多工作). L0 笔记本可短:
+
+- **简单项目** (S 规模, 单 BXX, MVP): 3-5 段 (`00-intent.md` + `00-l1-recap.md` + `08-brainstorm.md` + 1-2 调研) + **必出 1 份 design.md**
+- **复杂项目** (M/L 规模, 5 BXX): 10 笔记本全 + **1 份 design.md**
+- **无论多简**, design.md 必出, 用户必批. design.md 可短 (3-5 句) 但必走
+
+**不要替用户做决定** — 复杂功能 / 砍功能 / 选方案 必 user 审 (写到 design.md §Open Questions). 简单默认值 (e.g. "数据库用 PostgreSQL") walker 可自主决策, 但要写到 §Assumptions.
+
+## 7. (新) **HARD-GATE: 收敛成 design.md** (P0, 实施 #22)
+
+10 笔记本写完**必走**:
+
+1. 收敛 10 笔记本 → 1 份 `design.md`
+2. 写到 `.xdd/baseline/design/YYYY-MM-DD-<topic>-design.md` (跟 superpowers 一致, 但路径在 .xdd/ 内)
+3. **模板**: `skills/xdd-l0/templates/design.md` (5 段: Selected / Alternatives / Assumptions / Out of Scope / Open Questions)
+4. **未写 design.md 前不可调 xdd-bdd / xdd-flow / xdd-wire / xdd-arch** — pre-skill 硬阻断 (exit 2)
+5. 例外: 老 demo (无 `.xdd/LIFECYCLE.md`) 跳过此 gate (grandfather)
+
+**为什么 HARD-GATE**: 没 design.md → xdd-bdd 不知道收敛目标, 容易 60 端点只实施 23 (38%) 跟 3dgsvla iter-1 一样. design.md 是"收敛契约", 写完 = 跟用户对齐目标, 后续按 design 实施.
+
+## 8. (新) **YAGNI 收敛** (P1, 实施 #22)
+
+收敛 10 笔记本 → design.md 时, **YAGNI ruthlessly** (跟 superpowers "YAGNI ruthlessly" 原则一致):
+
+- 砍所有 "未来可能需要" / "扩展性" 类需求
+- 砍所有 "如果用户提到 X 也支持" 类需求
+- 砍所有 "看起来酷" / "高级工程师炫技" 类需求
+- 每砍一个, 在 design.md §Out of Scope 写: "{砍项} + 为什么本轮不做"
+- **例外 (不可砍)**: 合规 / 安全 / 性能 SLO / 关键用户旅程
+
+**例**: "本轮 MVP 不含多语言, iter-N+1 再加" / "YAGNI: 没用户提, 砍掉" / "性能 SLO ≤ 200ms, 不到 X 流量不需要加缓存"
+
+## 9. (新) **Autonomous Decision** (P1, 实施 #22)
+
+L0 跑时, walker 对模糊处**自主决策** (不每件事问用户, 跟 superpowers "Autonomous decision-making" 原则一致):
+
+- **简单默认值** (e.g. 数据库用 PostgreSQL / API 风格 REST / 错误码 `GS-BXX-NNNN`) → walker 自主, 写到 design.md §Assumptions
+- **关键决策** (e.g. 选 monorepo 还是 polyrepo / 选 SQL 还是 NoSQL / 选 server-side 还是 client-side 渲染) → 写到 design.md §Open Questions, **必 user 审**
+- 决策标准: 跟现有 L1 一致 / 行业最佳实践 / 用户已有偏好 / walker 推断
+- **反对**: walker 自作主张删用户需求 (YAGNI 过激) — 用户明确说"要做 X" → 必含, 不可砍
+
+## 10. (新) **Spec Review Loop** (P2, 实施 #22)
+
+design.md 写完, 调 **spec-reviewer subagent** 跑 5 维度审 (跟 superpowers spec-document-reviewer 一致):
+
+- **5 维度**: Completeness / Rationale / Alternatives / Assumptions / YAGNI
+- **reviewer prompt**: `skills/xdd-l0/references/spec-reviewer-prompt.md`
+- **轮数**: 1 轮通常 APPROVED; 2-3 轮 fix + re-dispatch; **5 轮 cap** 超就升级 HALT (跟 iter halt_after 走, 写 `.l5-unresolved.json`)
+- **APPROVED 后** → 进入 §11 Block.md review gate
+
+## 11. (新) **User Review Gate** (P2, 实施 #22)
+
+spec review APPROVED 后, walker 写 `.xdd/gates/.l0-review-block.md` 暂停:
+
+```markdown
+# L0 Design 待用户审
+
+design.md 路径: {.xdd/baseline/design/YYYY-MM-DD-<topic>-design.md}
+spec review: APPROVED ({N} 轮)
+
+请审 design.md, 需修改请告知. 审核通过后**删除本文件** (.l0-review-block.md) 以进 xdd-bdd.
+```
+
+workflow 暂停. **用户删 block.md 后** 才可调 xdd-bdd / xdd-flow / xdd-wire / xdd-arch (pre-skill 验 block.md 不存在). 用户反馈修改 → 改 design.md + 重新 spec review.
+
+**路径统一**: `.xdd/gates/.l0-review-block.md` 跟 `.xdd-halt.json` (实施 #17) 同根, 都是 control_marker 角色. 跟 `lifecycle_role_of` 集成.
 
 ## 产出
 

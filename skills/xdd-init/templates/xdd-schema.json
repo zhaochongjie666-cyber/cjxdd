@@ -242,6 +242,8 @@
       { "id": "status-md", "stage": "0_INIT", "role": "process_output", "canonical_path": "./.xdd/iterations/iter-1/pipeline/status.md" },
       { "id": "l0-notebooks", "stage": "1_RESEARCH", "role": "design_baseline", "canonical_path": "./.xdd/baseline/research/{00-intent,00-l1-recap,01-customer,02-product,03-tech,04-business-model,05-data,06-risk,07-competitor,08-brainstorm}.md" },
       { "id": "research-snapshot", "stage": "1_RESEARCH", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/iter-1/research/{00-intent,00-l1-recap,01-customer,02-product,03-tech,04-business-model,05-data,06-risk,07-competitor,08-brainstorm}.md" },
+      { "id": "l0-design-doc", "stage": "1_RESEARCH", "role": "design_baseline", "canonical_path": "./.xdd/baseline/design/{YYYY-MM-DD-<topic>}.md", "must_contain": ["Selected Approach", "Alternatives Considered", "Assumptions", "Out of Scope"] },
+      { "id": "l0-review-block", "stage": "1_RESEARCH", "role": "control_marker", "canonical_path": "./.xdd/gates/.l0-review-block.md" },
       { "id": "business-landscape", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/baseline/bdd/_landscape.md" },
       { "id": "business-slug", "stage": "2_DESIGN", "role": "template_instance", "canonical_path": "./.xdd/baseline/bdd/{slug}/business.md" },
       { "id": "spec", "stage": "2_DESIGN", "role": "design_baseline", "canonical_path": "./.xdd/baseline/bdd/{slug}/spec.md" },
