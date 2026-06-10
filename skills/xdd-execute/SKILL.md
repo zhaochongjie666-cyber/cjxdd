@@ -327,7 +327,9 @@ description: xdd-plan 的执行者。加载实践计划，按 Task 逐步实现�
 bash hooks/xdd-gate-coverage-check.sh --api --bdd
 
 # 闸门 3+4+5: e2e + 真实持久化 + 跨服务 (Phase 5 中段)
-bash hooks/xdd-gate-coverage-check.sh --persistence --cross-biz
+bash hooks/xdd-gate-coverage-check.sh --persistence
+# 闸门 4 跨服务 BXX 真链路 (实施 #17, 放水 1 修: 真跑 producer→queue→consumer→DB)
+bash hooks/xdd-gate-coverage-check.sh --cross-service-real-path
 bash hooks/xdd-gate-stub-scan.sh  # 0 stub 闸门, 绝对 0
 
 # 闸门 6: R5 lifecycle hard-gate
@@ -343,7 +345,7 @@ bash hooks/xdd-gate-coverage-check.sh
 | 2 | API 端点覆盖率 | 95% | `coverage-check --api` | 实施缺端点 (从 arch.md 表格读) |
 | 3 | e2e 测试 | 95% RXX | `coverage-check --all` | 补 e2e (1 per RXX) |
 | 4 | 真实持久化 | 95% | `coverage-check --persistence` | 替换 mock → 真 DB |
-| 5 | 跨服务 BXX | 95% | `coverage-check --cross-biz` | 补 BXX cross-biz e2e |
+| 5 | 跨服务真链路 | 95% (≥ 5 paths L, ≥ 2 S/M) | `coverage-check --cross-service-real-path` | 修 producer/queue/consumer/DB 任一断链, 加 @cross-service-e2e 块 |
 | 6 | 0 stub | 100% (绝对 0) | `stub-scan` | 替换 stub → 真实现 |
 
 **TDD 循环 + 闸门 (每 Task 重复)**:

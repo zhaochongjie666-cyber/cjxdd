@@ -221,7 +221,7 @@ function updateStageStatus(statusPath: string, stageDisplay: string, newMark: st
     const line = lines[i]
     if (!line.match(/^\|/) || !line.includes("|")) continue
     if (!line.includes(stageDisplay)) continue
-    const cellRe = /\s*[⏳🔄✅❌][^|]*\s*/
+    const cellRe = /\s*[⏳🔄✅❌🚧][^|]*\s*/
     const newLine = line.replace(cellRe, ` ${newMark} `)
     if (newLine !== line) {
       lines[i] = newLine
@@ -2088,6 +2088,25 @@ const IMPL_RE = /@implements\s+([A-Z]{1,3}\d{1,3}(?:\s*[,、]\s*[A-Z]{1,3}\d{1,3
 // 兜底机制代码痕迹: retry / circuitBreaker / circuit_breaker / fallback / degrade / timeout
 const FAILSAFE_RE = /\b(retry|circuitBreaker|circuit_breaker|fallback|degrade|timeout|backoff|bulkhead|rateLimit|throttle|hystrix|resilience4j)\b/i
 
+// 实施 #20 (放水 4 修): FMEA 9 维 + 12 模式 + 8 字段 (l3_extended_mode=true 时强制)
+// 9 维 (失败模式分类): 调度/网络/状态/资源/数据/事件/依赖/流量/跨地域
+const FMEA_DIMENSIONS = ["调度", "网络", "状态", "资源", "数据", "事件", "依赖", "流量", "跨地域"]
+// 12 兜底模式: 熔断/降级/补偿/重试/限流/背压/隔离/幂等/超时/健康检查/业务对账/业务幂等
+const FAILSAFE_PATTERNS = ["熔断", "降级", "补偿", "重试", "限流", "背压", "隔离", "幂等", "超时", "健康检查", "业务对账", "业务幂等"]
+// 8 字段 FMEA (标准 5 + 扩展 3): 失败模式/影响/SLO/Owner/检测/兜底/回滚时长/验证
+const FMEA_FIELDS = ["失败模式", "影响", "SLO", "Owner", "检测", "兜底", "回滚时长", "验证"]
+
+// 验 FMEA 完整性 (l3_extended_mode=true 时必跑)
+// Args: failureModesText (failure-modes.md 内容), failsafesText (failsafe-design.md 内容)
+// Returns: { dim: 9 维命中率, pattern: 12 模式命中率, field: 8 字段命中率 }
+function validateFmeaCompleteness(failureModesText: string, failsafesText: string): { dim: number; pattern: number; field: number; total: number } {
+  const dimHit = FMEA_DIMENSIONS.filter((d) => new RegExp(d, "i").test(failureModesText)).length
+  const patHit = FAILSAFE_PATTERNS.filter((p) => new RegExp(p, "i").test(failsafesText)).length
+  const fieldHit = FMEA_FIELDS.filter((f) => new RegExp(f, "i").test(failureModesText)).length
+  const total = FMEA_DIMENSIONS.length + FAILSAFE_PATTERNS.length + FMEA_FIELDS.length
+  return { dim: dimHit, pattern: patHit, field: fieldHit, total: total + (dimHit + patHit + fieldHit) }
+}
+
 // 找所有 spec.md (L1) — v2.0 9→6 合并: baseline/bdd/{slug}/spec.md, 兼容老 business/{slug}/spec.md
 function findSpecFiles(xddDir: string): string[] {
   const out: string[] = []
@@ -2633,26 +2652,69 @@ function auditL5Consistency(
   }
 
   // 4) l3 ↔ code (failure-modes 跟兜底机制对应)
+  // 实施 #20 (放水 4 修): l3_extended_mode=true 时, FMEA 9 维+12 模式+8 字段 validate
   const fmeaFiles = findFailureModesFiles(xddDir)
   if (fmeaFiles.length > 0) {
     const designedSet = new Set<string>()
+    let fmeaText = ""
+    let failsafeText = ""
     for (const f of fmeaFiles) {
       try {
-        for (const id of extractFmeaIds(readFileSync(f, "utf-8"))) designedSet.add(id)
+        const text = readFileSync(f, "utf-8")
+        fmeaText += text + "\n"
+        for (const id of extractFmeaIds(text)) designedSet.add(id)
       } catch {}
     }
+    // 读 failsafe-design.md 抓兜底模式
+    try {
+      const failsafeFiles = findArchFiles(xddDir).map((f) => f).filter((f) => f.includes("resilience/failsafe-design"))
+      for (const f of failsafeFiles) {
+        try { failsafeText += readFileSync(f, "utf-8") + "\n" } catch {}
+      }
+      // 兜底: 老路径 baseline/arch/{slug}/resilience/failsafe-design.md
+      const resilienceDir = join(xddDir, "baseline", "arch")
+      if (existsSync(resilienceDir)) {
+        for (const slug of readdirSync(resilienceDir, { withFileTypes: true })) {
+          if (slug.isDirectory()) {
+            const f = join(resilienceDir, slug.name, "resilience", "failsafe-design.md")
+            if (existsSync(f)) { try { failsafeText += readFileSync(f, "utf-8") + "\n" } catch {} }
+          }
+        }
+      }
+    } catch {}
     const designed = designedSet.size
     // 兜底机制实现估算: 4 种机制总行数 (粗略)
-    // 经验值: 1 个失败模式至少 1 个兜底机制, 所以阈值 = designed
     const implemented = failsafes.total
-    const coverage = designed > 0 ? Math.min(1, implemented / designed) : 1
+    let coverage = designed > 0 ? Math.min(1, implemented / designed) : 1
+
+    // FMEA 9 维 + 12 模式 + 8 字段 (l3_extended_mode 强制, 默认 strict-mode 启)
+    const fmeaCheck = validateFmeaCompleteness(fmeaText, failsafeText)
+    const fmeaTotalExpected = FMEA_DIMENSIONS.length + FAILSAFE_PATTERNS.length + FMEA_FIELDS.length
+    const fmeaActual = fmeaCheck.dim + fmeaCheck.pattern + fmeaCheck.field
+    // strict-mode 期望全过 (29 项: 9+12+8)
+    const fmeaRatio = fmeaTotalExpected > 0 ? fmeaActual / fmeaTotalExpected : 1
+    // 取 l3 兜底 coverage 跟 FMEA 完整性 中较低者
+    coverage = Math.min(coverage, fmeaRatio)
+    const fmeaMissing: string[] = []
+    if (fmeaCheck.dim < FMEA_DIMENSIONS.length) {
+      const missing = FMEA_DIMENSIONS.filter((d) => !new RegExp(d, "i").test(fmeaText))
+      fmeaMissing.push(`FMEA 缺 ${FMEA_DIMENSIONS.length - fmeaCheck.dim}/9 维: ${missing.join(", ")}`)
+    }
+    if (fmeaCheck.pattern < FAILSAFE_PATTERNS.length) {
+      const missing = FAILSAFE_PATTERNS.filter((p) => !new RegExp(p, "i").test(failsafeText))
+      fmeaMissing.push(`兜底缺 ${FAILSAFE_PATTERNS.length - fmeaCheck.pattern}/12 模式: ${missing.join(", ")}`)
+    }
+    if (fmeaCheck.field < FMEA_FIELDS.length) {
+      const missing = FMEA_FIELDS.filter((f) => !new RegExp(f, "i").test(fmeaText))
+      fmeaMissing.push(`FMEA 缺 ${FMEA_FIELDS.length - fmeaCheck.field}/8 字段: ${missing.join(", ")}`)
+    }
     rows.push({
       dimension: "l3",
       designed,
       implemented,
       coverage,
-      missing: designed > implemented ? [`${designed - implemented} 个失败模式缺兜底机制 (retry=${failsafes.retry}, cb=${failsafes.circuitBreaker}, fallback=${failsafes.fallback}, timeout=${failsafes.timeout})`] : [],
-      note: `${fmeaFiles.length} failure-modes.md, ${designed} 失败模式, 兜底机制行数=${failsafes.total} (retry=${failsafes.retry}, cb=${failsafes.circuitBreaker}, fallback=${failsafes.fallback}, timeout=${failsafes.timeout})`,
+      missing: designed > implemented ? [`${designed - implemented} 个失败模式缺兜底机制`] : fmeaMissing,
+      note: `${fmeaFiles.length} failure-modes.md, ${designed} 失败模式, 兜底机制行数=${failsafes.total}, FMEA 完整性 ${fmeaActual}/${fmeaTotalExpected} (9维=${fmeaCheck.dim}/9, 12模式=${fmeaCheck.pattern}/12, 8字段=${fmeaCheck.field}/8)`,
     })
   } else {
     rows.push({
@@ -2811,19 +2873,25 @@ function runStopGate(opts: {
   // 段 5 (R5) 委托给 shell 跑 R1/R3/R5/R6/R10/R11 全集, 但用户看不到 R11 专项.
   // 这里把 R11 inline 化: 直接读 .l5-unresolved.json-style 找 marker, 4 层验证.
   // 跟 skills/xdd-artifact-lifecycle/scripts/gate-check-lifecycle.sh:307-412 逻辑对齐.
+  // 实施 #18 (放水 5 修): R11 L4 fail → back-prop 5 Execute 标 ❌ late-fail
   if (xddDir) {
     const r11 = checkL6SmokePassed(xddDir)
+    let r11Failed = false
+    let r11FailReason = ""
     if (r11.total === 0 && r11.isNewProject) {
       // 新项目无 marker — 必 hard fail
-      const msg = `L6 smoke-test-passed 硬门禁失败 (R11, 新项目): 无 verify marker — 必须跑 xdd-l6 Phase 5.8 写 marker\n  xddDir: ${xddDir}\n  修复: bash skills/xdd-l6/scripts/run-production-scenarios.sh {slug} (slug = deployment slug)`
+      r11Failed = true
+      r11FailReason = "L6 smoke-test-passed 硬门禁失败 (R11, 新项目): 无 verify marker"
+      const msg = `${r11FailReason} — 必须跑 xdd-l6 Phase 5.8 写 marker\n  xddDir: ${xddDir}\n  修复: bash skills/xdd-l6/scripts/run-production-scenarios.sh {slug} (slug = deployment slug)`
       errors.push(msg)
       tracked.push({ section: "l6-smoke-test", content: msg, level: "error" })
     } else if (r11.round2Fail > 0) {
       // 4 层验证有失败
-      const baseMsg = r11.isNewProject
-        ? `L6 smoke-test-passed 4 层验证失败 (R11 Round 2, 新项目)`
-        : `L6 smoke-test-passed mtime 失败 (R11 Round 1, 老项目)`
-      const msg = `${baseMsg}: ${r11.round2Fail} 个 marker 失败, ${r11.pass} 通过\n  失败层: ${r11.layerFail.trim() || "(无)"}\n  xddDir: ${xddDir}\n  修复: 重跑对应 verify slug, 或检查 prod-evidence/ 完整性`
+      r11Failed = true
+      r11FailReason = r11.isNewProject
+        ? `L6 R11 Round 2 4 层验证失败: ${r11.round2Fail} marker fail`
+        : `L6 R11 Round 1 mtime 失败: ${r11.round2Fail} marker fail`
+      const msg = `${r11FailReason}, ${r11.pass} 通过\n  失败层: ${r11.layerFail.trim() || "(无)"}\n  xddDir: ${xddDir}\n  修复: 重跑对应 verify slug, 或检查 prod-evidence/ 完整性`
       errors.push(msg)
       tracked.push({ section: "l6-smoke-test", content: msg, level: "error" })
     } else if (r11.total > 0) {
@@ -2831,12 +2899,21 @@ function runStopGate(opts: {
     } else {
       sections.push(`(L6 smoke-test-passed: 老项目无 LIFECYCLE.md, 跳过)`)
     }
+    // 实施 #18 (放水 5 修): R11 L4 fail → back-prop 5 Execute
+    if (r11Failed && iter) {
+      const statusPath = join(xddDir, "iterations", iter, "pipeline", "status.md")
+      const updated = updateStageStatus(statusPath, "5 Execute", "❌ late-fail (R11 Phase 6 back-prop)")
+      if (updated) {
+        diag({ ev: "back-prop-phase5-r11", stage: "5 Execute", mark: "❌ late-fail", reason: r11FailReason })
+      }
+    }
   }
 
   // 5.5) L5 Consistency Audit (跟上游设计一致) — 实施 #14
   // 4 维: spec↔code (RXX→@implements) / wire↔code (data-page→component) /
   //       arch↔code (endpoint→route) / l3↔code (FMEA→兜底机制)
   // 阈值: 任一维 coverage < 0.9 → hard error (L5-impl 偷工)
+  // 实施 #18 (放水 5 修): L5 audit fail → back-prop 5 Execute 标 ❌ late-fail
   if (sourceDirs.length > 0) {
     const audit = auditL5Consistency(projectRoot, xddDir, sourceDirs, 0.9)
     const auditedRows = audit.rows.filter((r) => r.designed > 0)
@@ -2862,6 +2939,14 @@ function runStopGate(opts: {
         const msg = `L5 Consistency Audit 失败 (overall ${overallPct}%, threshold ${audit.threshold * 100}%):\n${detail}\n\nL5-impl 跟上游设计不一致, 必须补齐后才能标 iter 完成.\n修复指引:\n${failing.map((r) => `  - ${r.dimension}: 加 @implements 标记 / data-page 组件 / route 注册 / retry-cb-fallback 机制`).join("\n")}`
         errors.push(msg)
         tracked.push({ section: "l5-consistency-audit", content: msg, level: "error" })
+        // 实施 #18 (放水 5 修): Phase 6 挖 P0 → 回退 Phase 5 状态机
+        if (iter) {
+          const statusPath = join(xddDir, "iterations", iter, "pipeline", "status.md")
+          const updated = updateStageStatus(statusPath, "5 Execute", "❌ late-fail (L5 audit Phase 6 back-prop)")
+          if (updated) {
+            diag({ ev: "back-prop-phase5-l5-audit", stage: "5 Execute", mark: "❌ late-fail", failing: failing.map((r) => r.dimension) })
+          }
+        }
       } else {
         sections.push(`✓ L5 Consistency Audit: ${auditedRows.length} 维全过 (overall ${overallPct}%)`)
       }
@@ -2920,8 +3005,19 @@ function runStopGate(opts: {
   }
 
   // 实施 #6: 跨轮保活 — 把当前 run 的 tracked warnings/errors 跟盘上 unresolved merge
-  // 实施 #16 (no-advisory): 3 试 halt — 任何 unresolved 项 count > 3 升级为 halt, 注入 L1 system 提示 AI 停下
-  const HALT_THRESHOLD = 3
+  // 实施 #16 (no-advisory): 3 试 halt — 任何 unresolved 项 count > halt_after 升级为 halt, 注入 L1 system 提示 AI 停下
+  // 实施 #17 (放水 3 修): halt_after 从 .xdd/scale.md 读 (破 hardcode 3), 路径统一 .xdd/gates/.xdd-halt.json (跟 schema line 239 一致)
+  const HALT_THRESHOLD = (() => {
+    try {
+      const scalePath = join(xddDir, "scale.md")
+      if (existsSync(scalePath)) {
+        const text = readFileSync(scalePath, "utf-8")
+        const m = text.match(/^\s*halt_after\s*[|:]\s*(\d+)/m)
+        if (m) return parseInt(m[1], 10)
+      }
+    } catch {}
+    return 3  // fallback
+  })()
   let unresolvedCount = 0
   let haltItems: L5Item[] = []
   if (iter) {
@@ -2929,8 +3025,8 @@ function runStopGate(opts: {
     unresolvedCount = merged.length
     haltItems = merged.filter((it) => it.count > HALT_THRESHOLD)
     if (haltItems.length > 0) {
-      // 写 halt 标记文件 (control_marker), 供 L1 system transform 读
-      const haltPath = join(xddDir, "iterations", iter, ".l5-halt.json")
+      // 写 halt 标记文件 (control_marker, 路径跟 schema line 239 一致)
+      const haltPath = join(xddDir, "gates", ".xdd-halt.json")
       try {
         writeFileSync(haltPath, JSON.stringify({
           iter,
@@ -2948,6 +3044,14 @@ function runStopGate(opts: {
         }, null, 2))
       } catch (err) {
         diag({ ev: "halt-write-err", err: String(err).slice(0, 200) })
+      }
+      // 实施 #17 (放水 3 修): halt 时把 5 Execute 标 🚧 halted, 替代"✅⚠️ done with gaps"弱标签
+      try {
+        const statusPath = join(xddDir, "iterations", iter, "pipeline", "status.md")
+        updateStageStatus(statusPath, "5 EXECUTE", "🚧 halted")
+        diag({ ev: "halt-mark-stage5", stage: "5 EXECUTE", mark: "🚧 halted" })
+      } catch (err) {
+        diag({ ev: "halt-mark-err", err: String(err).slice(0, 200) })
       }
     }
   }

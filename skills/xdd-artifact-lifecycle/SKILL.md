@@ -111,6 +111,25 @@ bash skills/xdd-artifact-lifecycle/scripts/gate-check-lifecycle.sh
 | `L6 deployment-report.md` 文件 vs 证据段 | 标 `process_output`;note 说明"内部 evidence 段是 evidence_archive" | 同上 § 6 |
 | `e2e/{feature}.binding.yaml` 未填实 vs 填实 | 标 `process_output`;note 说明"填实后转 design_baseline" | 同上 § 7 |
 
+### 3.5 FINAL-DELIVERY 拆分规范 (实施 #21, 放水 6 修)
+
+`iter-N/FINAL-DELIVERY.md` **必须**分两段, 不允许混算:
+
+#### ✅ 原计划交付
+Phase 5 EXECUTE self-report 时已通过的内容. 仅列闸门 + 数字 (LOC / 测试 / 6 闸门) + 不带 "late fix" 标签的代码/工件. **对应 status.md 5 Execute ✅ 的承诺**.
+
+#### ⚠️ Late Fix (Phase 6 挖出后补的)
+Phase 6 VERIFY 独立审定挖出 P0/P1 后, 修复的内容. 标注 "late fix" + 触发原因 (e.g. "tenant isolation P0 在 Phase 6 audit-l5-arch-code 挖出"). **对应 status.md 5 Execute ❌ late-fail (Phase 6 back-prop) 的修复**.
+
+**禁止**:
+- ❌ 把 late fix 算进 ✅ 通过, 必须分两段
+- ❌ 缺 Late Fix 段但 status.md 5 Execute 是 ❌ late-fail (矛盾)
+- ❌ Late Fix 段存在但 status.md 5 Execute 是 ✅ (说明 back-prop 漏触发)
+
+**验证 hook**: `xdd-gate-stop.sh` 段 4 (Lifecycle drift) 检测 FINAL-DELIVERY.md 缺 Late Fix 段时, 报 warning. L 规模/strict_mode=true → hard fail (缺段即报, 强制补段).
+
+**为什么**: 实施 #18 (放水 5 修) 加了 Phase 6 → 5 状态机回退, 但没要求 FINAL-DELIVERY 配套拆分, walker 容易把自报 + late fix 混算"全过". 这次分两段让"自报" vs "挖 P0 后修"清晰可见, 用户一眼能看 Phase 5 漏了什么.
+
 ## 5 条硬门禁规则
 
 | ID | 规则 | 触发器 | 行为 |

@@ -85,12 +85,51 @@ echo "[xdd] 5 角色: $passed_categories/$total_categories 过"
 
 if [[ ${#failed_categories[@]} -eq 0 ]]; then
     echo "[xdd] ✓ R5 lifecycle 5 角色全过 (≥ 95%)"
-    exit 0
 else
     echo "[xdd] ❌ R5 lifecycle 失败角色:" >&2
     for f in "${failed_categories[@]}"; do
         echo "[xdd]    - $f" >&2
     done
     echo "[xdd]    修法: 加载 xdd-artifact-lifecycle skill, 补齐缺失工件" >&2
+fi
+
+# === 实施 #21 (放水 6 修): FINAL-DELIVERY 拆分检查 ===
+# 当 status.md 5 Execute 是 ❌ late-fail (Phase 6 back-prop) 时, FINAL-DELIVERY.md 必须有 Late Fix 段
+# 当 status.md 5 Execute 是 ✅ 时, FINAL-DELIVERY.md 不应有 Late Fix 段 (矛盾)
+final_delivery_path="$xdd_dir/iterations/iter-1/FINAL-DELIVERY.md"
+if [[ -f "$final_delivery_path" ]]; then
+    fd_has_orig=$(grep -E "原计划交付" "$final_delivery_path" 2>/dev/null | wc -l)
+    fd_has_late=$(grep -E "Late Fix" "$final_delivery_path" 2>/dev/null | wc -l)
+    status_5=$(grep -E "^\| *5 Execute" "$xdd_dir/iterations/iter-1/pipeline/status.md" 2>/dev/null | head -1)
+    if [[ -n "$status_5" ]]; then
+        if echo "$status_5" | grep -qE "❌.*late-fail"; then
+            # status.md 5 Execute 是 late-fail → FINAL-DELIVERY 必须有 Late Fix
+            if [[ "$fd_has_late" -eq 0 ]]; then
+                echo "[xdd] ❌ FINAL-DELIVERY 缺 'Late Fix' 段 (status.md 5 Execute 是 ❌ late-fail, 矛盾)" >&2
+                echo "[xdd]    修法: 在 $final_delivery_path 补 '## ⚠️ Late Fix' 段, 描述 P0/P1 修复" >&2
+                failed_categories+=("final-delivery-missing-late-fix")
+            else
+                echo "[xdd] ✓ FINAL-DELIVERY 含 Late Fix 段 (跟 status.md ❌ late-fail 一致)"
+            fi
+        elif echo "$status_5" | grep -qE "✅"; then
+            # status.md 5 Execute 是 ✅ → FINAL-DELIVERY 不应有 Late Fix (矛盾)
+            if [[ "$fd_has_late" -gt 0 ]]; then
+                echo "[xdd] ⚠️ FINAL-DELIVERY 有 Late Fix 段但 status.md 5 Execute 是 ✅ (矛盾 — back-prop 漏触发?)" >&2
+                failed_categories+=("final-delivery-late-fix-status-5-ok-contradiction")
+            else
+                echo "[xdd] ✓ FINAL-DELIVERY 无 Late Fix 段 (跟 status.md ✅ 一致)"
+            fi
+        fi
+    fi
+    if [[ "$fd_has_orig" -eq 0 ]]; then
+        echo "[xdd] ⚠️ FINAL-DELIVERY 缺 '原计划交付' 段 (实施 #21 要求 2 段: 原计划 + Late Fix)" >&2
+        failed_categories+=("final-delivery-missing-orig-section")
+    fi
+fi
+
+if [[ ${#failed_categories[@]} -eq 0 ]]; then
+    echo "[xdd] ✓ R5 lifecycle 5 角色全过 + FINAL-DELIVERY 拆分合规"
+    exit 0
+else
     exit 2
 fi

@@ -7,6 +7,7 @@
 #  2. BDD 规则: spec.md RXX vs 代码 @implements RXX (≥ 0.95)
 #  3. 真实持久化: InMemoryRepository / mock 比例 (≤ 0.05)
 #  4. 跨服务 BXX 业务线: 每个 BXX 至少 1 个 e2e (≥ 0.95)
+#  5. 跨服务真链路: 真跑 producer→queue→consumer→DB (实施 #17, 放水 1 修)
 #
 # 阈值: 0.95 (用户调整, 80% → 95%)
 
@@ -24,7 +25,64 @@ xdd_dir=$(get_xdd_dir)
 THRESHOLD="${XDD_COVERAGE_THRESHOLD:-0.95}"
 
 # 模式: --api / --bdd / --persistence / --cross-biz / --all
+# 新增: --cross-service-real-path (实施 #17, 放水 1 修: 真跑 producer→queue→consumer→DB)
 MODE="${1:-all}"
+
+# === 实施 #17: 跨服务真链路模式 (放水 1 修) ===
+if [[ "$MODE" == "--cross-service-real-path" ]]; then
+    # scale-driven: L 规模 ≥ 5 路径, S/M ≥ 2 路径 (跟 strict_mode 读)
+    # 用跟 read_scale_field 一致的 grep+sed 模式 (scale.md 是 `key: value` YAML 格式)
+    scale_label=$(grep -E "^\s*scale\s*[|:]" .xdd/scale.md 2>/dev/null | head -1 | sed -E 's/.*scale\s*[|:]\s*([A-Za-z]+).*/\1/' | tr -d '[:space:]')
+    scale_label="${scale_label:-L}"
+    strict_mode=$(grep -E "^\s*strict_mode\s*[|:]" .xdd/scale.md 2>/dev/null | head -1 | sed -E 's/.*strict_mode\s*[|:]\s*([a-zA-Z]+).*/\1/' | tr -d '[:space:]')
+    strict_mode="${strict_mode:-true}"
+    if [[ "$scale_label" == "L" || "$strict_mode" == "true" ]]; then
+        min_paths=5
+    else
+        min_paths=2
+    fi
+    echo "[xdd]   scale=$scale_label strict_mode=$strict_mode → min_paths=$min_paths"
+
+    # 收集 @cross-service-e2e 块
+    scenarios_raw=$(collect_real_path_scenarios 2>/dev/null)
+    if [[ -z "$scenarios_raw" ]]; then
+        echo "[xdd] ❌ 闸门 4 跨服务真链路: 无 @cross-service-e2e scenario (在 .xdd/baseline/arch/*/event-contract.md 写触发+期望块)" >&2
+        echo "[xdd]    示例:"
+        echo "[xdd]    \`\`\`"
+        echo "[xdd]    @cross-service-e2e B03-train-model"
+        echo "[xdd]    trigger: POST http://localhost:38080/api/v1/training-jobs {\"project_id\":\"...\"}"
+        echo "[xdd]    wait: 5"
+        echo "[xdd]    expect: queue|asynq:training:job|nonzero"
+        echo "[xdd]    \`\`\`"
+        exit 2
+    fi
+
+    passed=0; failed=0; total=0
+    while IFS='|' read -r name method url body wait ekind etarget evalue; do
+        [[ -z "$name" ]] && continue
+        total=$((total + 1))
+        # body 里的换行/多余空格清掉
+        body=$(echo "$body" | tr -d '\n' | sed 's/  */ /g')
+        if execute_real_path_scenario "$name" "$method" "$url" "$body" "$wait" "$ekind" "$etarget" "$evalue"; then
+            passed=$((passed + 1))
+        else
+            failed=$((failed + 1))
+        fi
+    done <<< "$scenarios_raw"
+
+    echo "[xdd] 闸门 4 跨服务真链路: $passed/$total PASS (min_paths=$min_paths)"
+    if [[ $total -lt $min_paths ]]; then
+        echo "[xdd] ❌ scenario 总数 $total < $min_paths (L 规模/strict 需 ≥ 5, S/M 需 ≥ 2)" >&2
+        exit 2
+    fi
+    # 任一失败 → exit 2
+    if [[ $failed -gt 0 ]]; then
+        echo "[xdd] ❌ 闸门 4 跨服务真链路: $failed 失败 (exit 2, orchestrator 派 subagent 修)" >&2
+        exit 2
+    fi
+    echo "[xdd] ✓ 闸门 4 跨服务真链路: 全过"
+    exit 0
+fi
 
 # 收集 arch 设计的端点清单
 arch_endpoints=()

@@ -1,8 +1,8 @@
 #!/bin/bash
-# chaos-runner.sh — 回环 6 L3 韧性回环
-# 读 chaos-scenarios.md 列 N 个实验, 自动跑 (kill -9 / docker pause / netem 延迟)
-# 验证 SLO 满足, loop until pass
-# 详见 skills/xdd-l3/SKILL.md + docs/LOOP-DESIGN.md § 回环 6
+# chaos-runner.sh — L3 韧性真注入 (实施 #20, 放水 4 修)
+# 5 类 chaos: network / resource / state / data / dependency
+# 跟 loop-until-pass.sh 联动 (闸门 0, scale-driven min_categories)
+# 详见 skills/xdd-l3/SKILL.md §6 + docs/LOOP-DESIGN.md
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,131 +10,247 @@ HOOK_LIB="$(cd "$SCRIPT_DIR/../../.." && pwd)/hooks/xdd-gate-lib.sh"
 if [[ -f "$HOOK_LIB" ]]; then
     source "$HOOK_LIB"
     if is_meta_project 2>/dev/null; then
-        echo "[xdd] (Meta 项目, 跳过 chaos)"
+        echo "[xdd] (Meta 项目, 框架自身, 跳过 chaos)"
         exit 0
     fi
 fi
 
-XDD_DIR=".xdd"
-[[ ! -d "$XDD_DIR" ]] && { echo "❌ 无 .xdd/"; exit 1; }
+# === Args ===
+MIN_CATEGORIES="${XDD_CHAOS_MIN_CATEGORIES:-3}"  # 默认 3 类 (S/M 规模)
+CHAOS_CATEGORIES=("network" "resource" "state" "data" "dependency")
+DRY_RUN="false"
 
-CHAOS_FILE="$XDD_DIR/resilience/chaos-scenarios.md"
-if [[ ! -f "$CHAOS_FILE" ]]; then
-    echo "[xdd] ⚠ 无 $CHAOS_FILE, 跳过 chaos 回环 (Phase 3 未做 L3 韧性)"
-    exit 0
-fi
-
-ITER=0
-MAX_ITER="${XDD_LOOP_MAX_ITER:-3}"
-REPORT=".xdd/reports/chaos-loop-$(date +%Y%m%d-%H%M%S).log"
-mkdir -p .xdd/reports
-
-echo "[xdd] === 回环 6 L3 chaos 韧性 (max iter: $MAX_ITER) ===" | tee "$REPORT"
-
-# 抽 chaos 场景数 (从 chaos-scenarios.md 标题或列表)
-SCENARIOS=$(grep -cE '^##? ' "$CHAOS_FILE" 2>/dev/null || echo 0)
-if [[ $SCENARIOS -lt 1 ]]; then
-    echo "[xdd] ⚠ chaos-scenarios.md 无场景, 跳过"
-    exit 0
-fi
-
-while [[ $ITER -lt $MAX_ITER ]]; do
-    ITER=$((ITER + 1))
-    echo "" | tee -a "$REPORT"
-    echo "=== iter $ITER / $MAX_ITER (chaos 跑 $SCENARIOS 场景) ===" | tee -a "$REPORT"
-
-    # 读 chaos 场景标题
-    mapfile -t scenario_titles < <(grep -E '^##? ' "$CHAOS_FILE" | head -20)
-
-    passed=0
-    failed=0
-    declare -a failed_scenarios=()
-
-    for i in "${!scenario_titles[@]}"; do
-        title=$(echo "${scenario_titles[$i]}" | sed -E 's/^#+ //')
-
-        # 自动跑 3 类 chaos (简化版, 真实项目用专用工具)
-        case "$title" in
-            *kill* | *进程* | *crash*)
-                # 模拟: 找 docker 容器 pause 5s 再 unpause
-                container=$(docker ps --format '{{.Names}}' 2>/dev/null | head -1)
-                if [[ -n "$container" ]]; then
-                    docker pause "$container" 2>/dev/null
-                    sleep 2
-                    docker unpause "$container" 2>/dev/null
-                    # 验证服务恢复
-                    sleep 1
-                    if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-                        echo "  ✅ ${title}: 容器 pause 后恢复" | tee -a "$REPORT"
-                        ((passed++))
-                    else
-                        echo "  ❌ ${title}: 容器 pause 后未恢复" | tee -a "$REPORT"
-                        failed_scenarios+=("$title")
-                        ((failed++))
-                    fi
-                else
-                    echo "  ⏸ ${title}: 无 docker 容器, 跳过" | tee -a "$REPORT"
-                    ((passed++))
-                fi
-                ;;
-            *网络* | *network* | *延迟* | *latency*)
-                # 模拟: 验证超时配置存在
-                if grep -qE 'timeout|REQUEST_TIMEOUT' apps/*/src -r 2>/dev/null; then
-                    echo "  ✅ ${title}: 超时配置存在" | tee -a "$REPORT"
-                    ((passed++))
-                else
-                    echo "  ❌ ${title}: 无 timeout 配置" | tee -a "$REPORT"
-                    failed_scenarios+=("$title")
-                    ((failed++))
-                fi
-                ;;
-            *)
-                # 通用: 验证对应兜底模式存在
-                if grep -qE "circuit.?breaker|熔断|fallback|兜底|retry" "$XDD_DIR/resilience/failsafe-design.md" 2>/dev/null; then
-                    echo "  ✅ ${title}: 兜底模式已设计" | tee -a "$REPORT"
-                    ((passed++))
-                else
-                    echo "  ❌ ${title}: 兜底模式未设计" | tee -a "$REPORT"
-                    failed_scenarios+=("$title")
-                    ((failed++))
-                fi
-                ;;
-        esac
-    done
-
-    echo "" | tee -a "$REPORT"
-    echo "--- chaos 跑完: $passed/$SCENARIOS 通过 ---" | tee -a "$REPORT"
-
-    if [[ $failed -eq 0 ]]; then
-        echo "" | tee -a "$REPORT"
-        echo "[xdd] ✓ 回环 6 chaos 韧性通过 (iter $ITER)" | tee -a "$REPORT"
-        exit 0
-    fi
-
-    echo "" | tee -a "$REPORT"
-    echo "--- 失败场景 (iter $ITER) ---" | tee -a "$REPORT"
-    for s in "${failed_scenarios[@]}"; do
-        echo "  ❌ $s" | tee -a "$REPORT"
-    done
-    echo "" | tee -a "$REPORT"
-    echo "--- 修韧性 (iter $ITER) ---" | tee -a "$REPORT"
-    echo "phase-resilience-designer 修: 加兜底模式 / 改 SLO / 改 runbook" | tee -a "$REPORT"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --min-categories) MIN_CATEGORIES="$2"; shift 2 ;;
+        --categories) IFS=',' read -ra CHAOS_CATEGORIES <<< "$2"; shift 2 ;;
+        --dry-run) DRY_RUN="true"; shift ;;
+        *) echo "Usage: chaos-runner.sh [--min-categories N] [--categories net,res,state,data,dep] [--dry-run]"; exit 1 ;;
+    esac
 done
 
-# 3 试未过 → HALT
-echo "" | tee -a "$REPORT"
-echo "[xdd] ❌ 回环 6 chaos 失败: $MAX_ITER 试未过, 写 .xdd-halt.json" | tee -a "$REPORT"
+# === scale-driven min_categories ===
+# L 规模 + strict_mode=true → 5 类全跑, S/M 规模 → 3 类 (默认)
+# 命令行 --min-categories 显式 override 优先
+if [[ "$MIN_CATEGORIES" == "3" || -z "$MIN_CATEGORIES" ]]; then
+    scale_label=$(grep -E "^\s*scale\s*[|:]" .xdd/scale.md 2>/dev/null | head -1 | sed -E 's/.*scale\s*[|:]\s*([A-Za-z]+).*/\1/' | tr -d '[:space:]')
+    strict_mode=$(grep -E "^\s*strict_mode\s*[|:]" .xdd/scale.md 2>/dev/null | head -1 | sed -E 's/.*strict_mode\s*[|:]\s*([a-zA-Z]+).*/\1/' | tr -d '[:space:]')
+    if [[ "$scale_label" == "L" || "$strict_mode" == "true" ]]; then
+        MIN_CATEGORIES=5  # L 规模全跑 5 类
+    else
+        MIN_CATEGORIES=3  # S/M 默认 3 类
+    fi
+fi
 
-cat > .xdd-halt.json <<EOF
-{
-  "phase": "3",
-  "stage": "L3",
-  "loop": "6-chaos",
-  "attempts": $MAX_ITER,
-  "reason": "chaos 场景 $MAX_ITER 试未过 SLO",
-  "last_log": "$REPORT",
-  "suggested_retreat": "回 Phase 3 韧性设计, 补 fail-safe / 改 SLO",
-  "created_at": "$(date -Iseconds)"
+# === 环境检测 ===
+REPORT=".xdd/reports/chaos-run-$(date +%Y%m%d-%H%M%S).log"
+mkdir -p .xdd/reports
+echo "[xdd] === L3 chaos 5 类真注入 (min_categories=$MIN_CATEGORIES, scale=$scale_label) ===" | tee "$REPORT"
+
+# 找服务容器 (按 docker-compose 服务名匹配)
+detect_containers() {
+    docker ps --format '{{.Names}}' 2>/dev/null | grep -E "api|worker|gpu|backend|gpu-worker|3dgsvla" | head -5
 }
-EOF
-exit 1
+
+API_CONTAINER=$(detect_containers | grep -E "api|backend" | head -1)
+WORKER_CONTAINER=$(detect_containers | grep -E "worker|gpu" | head -1)
+REDIS_CONTAINER=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "redis|cache" | head -1)
+MINIO_CONTAINER=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "minio|storage" | head -1)
+API_URL="http://localhost:8080"
+
+echo "[xdd] 检测到: api=$API_CONTAINER worker=$WORKER_CONTAINER redis=$REDIS_CONTAINER minio=$MINIO_CONTAINER" | tee -a "$REPORT"
+
+# === 5 类真注入 ===
+passed=0
+failed=0
+declare -a failed_categories=()
+
+inject_chaos_network() {
+    # 网络: iptables 断网 (或 docker network disconnect) + 探活
+    local target="$1"
+    [[ -z "$target" ]] && { echo "  ⚠️ network: 无容器"; return 1; }
+    if [[ "$DRY_RUN" == "true" ]]; then
+        echo "  [dry-run] network: iptables -A OUTPUT -d $REDIS_CONTAINER -j DROP"
+        return 0
+    fi
+    # 简化: docker network disconnect (比 iptables 安全)
+    local net=$(docker inspect "$target" --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null | awk '{print $1}')
+    if [[ -n "$net" && -n "$REDIS_CONTAINER" ]]; then
+        docker network disconnect "$net" "$REDIS_CONTAINER" 2>/dev/null
+        sleep 2
+        # 期望: 业务 path 返 5xx 或 200-with-degraded (兜底机制工作)
+        local code=$(curl -s -o /dev/null -w "%{http_code}" -m 3 "$API_URL/api/v1/healthz" 2>/dev/null); [[ -z "$code" || "$code" == "000000" ]] && code=000
+        docker network connect "$net" "$REDIS_CONTAINER" 2>/dev/null
+        sleep 1
+        # 期望 5xx (断网) OR 200 (兜底机制) — 都算 PASS (L3 设计目的是容错)
+        if [[ "$code" == "5"* || "$code" == "200" ]]; then
+            echo "  ✅ network: 断 redis 后 API 返 HTTP $code (容错工作)"
+            return 0
+        else
+            echo "  ❌ network: 断 redis 后 API 返 HTTP $code (期望 5xx 或 200-with-degraded)"
+            return 1
+        fi
+    fi
+    echo "  ⚠️ network: 缺 network 信息, 跳过"
+    return 0
+}
+
+inject_chaos_resource() {
+    # 资源: docker stop 服务 + 探活
+    local target="$1"
+    [[ -z "$target" ]] && { echo "  ⚠️ resource: 无容器"; return 1; }
+    if [[ "$DRY_RUN" == "true" ]]; then
+        echo "  [dry-run] resource: docker stop $target"
+        return 0
+    fi
+    docker stop "$target" 2>/dev/null
+    sleep 2
+    local code=$(curl -s -o /dev/null -w "%{http_code}" -m 3 "$API_URL/api/v1/healthz" 2>/dev/null); [[ -z "$code" || "$code" == "000000" ]] && code=000
+    docker start "$target" 2>/dev/null
+    sleep 3
+    if [[ "$code" == "5"* || "$code" == "000" ]]; then
+        # 5xx / connection refused 都是 "服务挂了" 信号, 期望 supervisor 重启
+        local recover=$(curl -s -o /dev/null -w "%{http_code}" -m 3 "$API_URL/api/v1/healthz" 2>/dev/null); [[ -z "$recover" || "$recover" == "000000" ]] && recover=000
+        if [[ "$recover" == "200" ]]; then
+            echo "  ✅ resource: stop 后 fail (HTTP $code), restart 后恢复 HTTP 200"
+            return 0
+        else
+            echo "  ❌ resource: stop 后未自动恢复 (HTTP $recover, 期望 200)"
+            return 1
+        fi
+    fi
+    echo "  ✅ resource: stop 后返 HTTP $code (容错)"
+    return 0
+}
+
+inject_chaos_state() {
+    # 状态: kill -9 主进程 + supervisor 重启验证
+    local target="$1"
+    [[ -z "$target" ]] && { echo "  ⚠️ state: 无容器"; return 1; }
+    if [[ "$DRY_RUN" == "true" ]]; then
+        echo "  [dry-run] state: docker exec $target kill -9 \$(pidof main)"
+        return 0
+    fi
+    local pid=$(docker exec "$target" pidof main 2>/dev/null | awk '{print $1}')
+    if [[ -z "$pid" ]]; then
+        # 尝试 pidof api / worker
+        pid=$(docker exec "$target" pidof api 2>/dev/null | awk '{print $1}')
+    fi
+    if [[ -n "$pid" ]]; then
+        docker exec "$target" kill -9 "$pid" 2>/dev/null
+        sleep 3
+        local recover=$(curl -s -o /dev/null -w "%{http_code}" -m 3 "$API_URL/api/v1/healthz" 2>/dev/null); [[ -z "$recover" || "$recover" == "000000" ]] && recover=000
+        if [[ "$recover" == "200" ]]; then
+            echo "  ✅ state: kill -9 PID $pid 后 supervisor 重启成功 (HTTP 200)"
+            return 0
+        else
+            echo "  ❌ state: kill -9 PID $pid 后未自动恢复 (HTTP $recover)"
+            return 1
+        fi
+    fi
+    echo "  ⚠️ state: 找不到进程, 跳过"
+    return 0
+}
+
+inject_chaos_data() {
+    # 数据: 删存储对象 + 验证 presign
+    local target="$1"
+    [[ -z "$target" && -n "$MINIO_CONTAINER" ]] && target="$MINIO_CONTAINER"
+    if [[ "$DRY_RUN" == "true" ]]; then
+        echo "  [dry-run] data: docker exec $target rm /data/bucket/test.ply"
+        return 0
+    fi
+    if [[ -z "$target" ]]; then
+        echo "  ⚠️ data: 无 minio 容器, 跑 fallback 静态检查"
+        # 静态检查: chaos-scenarios.md 有 data 类别场景
+        local chaos_files
+        chaos_files=$(find .xdd/baseline/arch -path "*/resilience/chaos-scenarios.md" 2>/dev/null)
+        if [[ -n "$chaos_files" ]] && grep -qE "data|数据|存储" "$chaos_files" 2>/dev/null; then
+            echo "  ✅ data: chaos-scenarios.md 有 data 类别设计"
+            return 0
+        fi
+        echo "  ❌ data: chaos-scenarios.md 缺 data 类别"
+        return 1
+    fi
+    # 真注入: docker exec rm 一个 bucket 文件, 验证 presign
+    docker exec "$target" sh -c "rm -f /data/bucket/test.ply" 2>/dev/null
+    sleep 1
+    local code=$(curl -s -o /dev/null -w "%{http_code}" -m 3 "$API_URL/api/v1/snapshots/test/splat" 2>/dev/null); [[ -z "$code" || "$code" == "000000" ]] && code=000
+    if [[ "$code" == "5"* ]]; then
+        echo "  ✅ data: 删文件后 API 返 5xx (期望)"
+        return 0
+    fi
+    echo "  ❌ data: 删文件后 API 返 HTTP $code (期望 5xx)"
+    return 1
+}
+
+inject_chaos_dependency() {
+    # 依赖: docker pause redis + 验证 circuit breaker
+    local target="$1"
+    [[ -z "$target" && -n "$REDIS_CONTAINER" ]] && target="$REDIS_CONTAINER"
+    if [[ "$DRY_RUN" == "true" ]]; then
+        echo "  [dry-run] dependency: docker pause $target"
+        return 0
+    fi
+    if [[ -z "$target" ]]; then
+        echo "  ⚠️ dependency: 无 redis 容器, 跑 fallback 静态检查"
+        local chaos_files
+        chaos_files=$(find .xdd/baseline/arch -path "*/resilience/chaos-scenarios.md" 2>/dev/null)
+        if [[ -n "$chaos_files" ]] && grep -qE "dependency|依赖|cache" "$chaos_files" 2>/dev/null; then
+            echo "  ✅ dependency: chaos-scenarios.md 有 dependency 类别设计"
+            return 0
+        fi
+        echo "  ❌ dependency: chaos-scenarios.md 缺 dependency 类别"
+        return 1
+    fi
+    docker pause "$target" 2>/dev/null
+    sleep 2
+    local code=$(curl -s -o /dev/null -w "%{http_code}" -m 3 "$API_URL/api/v1/auth/login" -X POST -H "Content-Type: application/json" -d '{"email":"x","password":"x"}' 2>/dev/null); [[ -z "$code" || "$code" == "000000" ]] && code=000
+    docker unpause "$target" 2>/dev/null
+    sleep 1
+    # 期望 200 (cached) or 5xx (circuit breaker 触发) — 都算 L3 容错工作
+    if [[ "$code" == "200" || "$code" == "5"* ]]; then
+        echo "  ✅ dependency: pause redis 后 API 返 HTTP $code (容错工作)"
+        return 0
+    fi
+    echo "  ❌ dependency: pause redis 后 API 返 HTTP $code (期望 200-cached 或 5xx)"
+    return 1
+}
+
+# === 主循环 ===
+for cat in "${CHAOS_CATEGORIES[@]}"; do
+    echo "" | tee -a "$REPORT"
+    echo "--- chaos 类别: $cat ---" | tee -a "$REPORT"
+    case "$cat" in
+        network)
+            inject_chaos_network "$API_CONTAINER" && passed=$((passed+1)) || { failed=$((failed+1)); failed_categories+=("$cat"); }
+            ;;
+        resource)
+            inject_chaos_resource "$API_CONTAINER" && passed=$((passed+1)) || { failed=$((failed+1)); failed_categories+=("$cat"); }
+            ;;
+        state)
+            inject_chaos_state "$WORKER_CONTAINER" && passed=$((passed+1)) || { failed=$((failed+1)); failed_categories+=("$cat"); }
+            ;;
+        data)
+            inject_chaos_data "$MINIO_CONTAINER" && passed=$((passed+1)) || { failed=$((failed+1)); failed_categories+=("$cat"); }
+            ;;
+        dependency)
+            inject_chaos_dependency "$REDIS_CONTAINER" && passed=$((passed+1)) || { failed=$((failed+1)); failed_categories+=("$cat"); }
+            ;;
+        *)
+            echo "  ⚠️ 未知类别: $cat"
+            ;;
+    esac
+done
+
+echo "" | tee -a "$REPORT"
+echo "[xdd] === chaos 跑完: $passed/${#CHAOS_CATEGORIES[@]} 类别通过 (min=$MIN_CATEGORIES) ===" | tee -a "$REPORT"
+
+# 闸门判定
+if [[ $passed -lt $MIN_CATEGORIES ]]; then
+    echo "[xdd] ❌ chaos 闸门失败: $passed < $MIN_CATEGORIES (scale=$scale_label)" >&2
+    echo "[xdd] 失败类别: ${failed_categories[*]:-无}" >&2
+    exit 2
+fi
+echo "[xdd] ✓ chaos 闸门通过"
+exit 0

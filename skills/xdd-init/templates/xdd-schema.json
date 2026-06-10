@@ -182,7 +182,8 @@
       "pending": "⏳",
       "doing": "🔄",
       "done": "✅",
-      "failed": "❌"
+      "failed": "❌",
+      "halted": "🚧"
     },
     "stage_row_regex": "^\\|\\s*\\d",
     "bxx_section_regex": "^##\\s+B\\d+",
@@ -270,6 +271,7 @@
       { "id": "deployment-report", "stage": "6_VERIFY", "role": "process_output", "canonical_path": "./.xdd/iterations/iter-1/verify/deployment-report.md" },
       { "id": "final-report", "stage": "6_VERIFY", "role": "process_output", "canonical_path": "./.xdd/iterations/iter-1/verify/final-report.md" },
       { "id": "smoke-test-passed", "stage": "6_VERIFY", "role": "control_marker", "canonical_path": "./.xdd/iterations/iter-1/verify/smoke-test-passed" },
+      { "id": "final-delivery", "stage": "6_VERIFY", "role": "process_output", "canonical_path": "./.xdd/iterations/iter-1/FINAL-DELIVERY.md", "must_contain": ["原计划交付", "Late Fix"] },
       { "id": "wire-review", "stage": "2_DESIGN", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/iter-1/wire-reviews/{page}/review.md" },
       { "id": "exec-loop-log", "stage": "5_EXECUTE", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/iter-1/execute/exec-loop-*.log" },
       { "id": "chaos-log", "stage": "3_L3", "role": "evidence_archive", "canonical_path": "./.xdd/iterations/iter-1/chaos/chaos-loop-*.log" },

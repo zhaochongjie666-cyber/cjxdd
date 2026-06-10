@@ -58,6 +58,66 @@ esac
 # Run the single-file scan.
 findings=$(scan_stub_in_file "$file_path" "$CAP")
 
+# === 实施 #19: 语义层 stub scan (放水 2 修) ===
+# 4 个语义层 scan (unmounted_router / unconsumed_queue / dockerfile_drift / unregistered_error_code)
+# 只在写源文件时跑 (handler / main / dockerfile / spec), advisory 不阻断
+# 跑全项目, 不是只刚写的文件 — 这些是 project-wide invariant
+# 用 file_path 推 project root (跟 hook cwd 解耦, 不会因 cwd 错配 miss)
+proj_root=""
+if [[ -n "$file_path" ]]; then
+    # 从 file_path 一级一级往上找 backend/ 或 frontend/ 这种 src tree 标识
+    _probe_dir="$(dirname "$file_path")"
+    while [[ "$_probe_dir" != "/" ]]; do
+        if [[ -d "$_probe_dir/backend" || -d "$_probe_dir/frontend" || -d "$_probe_dir/apps" ]]; then
+            proj_root="$_probe_dir"
+            break
+        fi
+        _probe_dir="$(dirname "$_probe_dir")"
+    done
+fi
+[[ -z "$proj_root" ]] && proj_root="$(find_project_root 2>/dev/null)"
+[[ -z "$proj_root" || "$proj_root" == "/" ]] && proj_root="."
+
+case "$file_path" in
+    */handler/*.go|*/cmd/*/main.go|*/Dockerfile*|*/bdd/*/spec.md|*/events/*.go)
+        sem_findings=""
+        # 1) unmounted router (Go chi) — 用 || true 防 set -e 退 (scan_* 返 1 找问题时)
+        if [[ -d "$proj_root/backend/internal/handler" && -f "$proj_root/backend/cmd/api/main.go" ]]; then
+            sem_r=$(scan_unmounted_routers "$proj_root/backend/internal/handler" "$proj_root/backend/cmd/api/main.go" 2>/dev/null) || true
+            [[ -n "$sem_r" ]] && sem_findings="${sem_findings}${sem_r}\n"
+        fi
+        # 2) unconsumed queue
+        if [[ -f "$proj_root/backend/internal/events/publisher.go" && -f "$proj_root/backend/cmd/worker/main.go" ]]; then
+            sem_q=$(scan_unconsumed_queues "$proj_root/backend/internal/events/publisher.go" "$proj_root/backend/cmd/worker/main.go" 2>/dev/null) || true
+            [[ -n "$sem_q" ]] && sem_findings="${sem_findings}${sem_q}\n"
+        fi
+        # 3) dockerfile drift
+        if [[ -f "$proj_root/backend/Dockerfile" ]]; then
+            sem_d=$(scan_dockerfile_drift "$proj_root/backend/Dockerfile" "$proj_root" 2>/dev/null) || true
+            [[ -n "$sem_d" ]] && sem_findings="${sem_findings}${sem_d}\n"
+        fi
+        # 4) unregistered error code
+        if [[ -d "$proj_root/backend/internal/handler" ]]; then
+            xdd_d="$(get_xdd_dir 2>/dev/null)"
+            if [[ -n "$xdd_d" ]]; then
+                sem_e=$(scan_unregistered_error_codes "$proj_root/backend/internal/handler" "$xdd_d" 2>/dev/null) || true
+                [[ -n "$sem_e" ]] && sem_findings="${sem_findings}${sem_e}\n"
+            fi
+        fi
+        if [[ -n "$sem_findings" ]]; then
+            echo ""
+            echo "[xdd] 🐢 实施 #19 语义层 stub scan (放水 2 修, project root: $proj_root):"
+            echo -e "$sem_findings" | sed 's/^/  /'
+            echo ""
+            echo "[xdd] 提示: 修这些语义层错 (跟字面 TODO/NotImplementedError 不同, 是真 stub)"
+            echo "[xdd]   - unmounted-router: 在 main.go 加 r.Method(\"GET\", \"/path\", h.HandlerName)"
+            echo "[xdd]   - unconsumed-queue: 在 worker/main.go 的 mux.HandleFunc(\"queue:type\", handler) 注册"
+            echo "[xdd]   - dockerfile-drift: 检查 src 路径, 改 COPY 或补文件"
+            echo "[xdd]   - unregistered-error-code: 在 .xdd/baseline/bdd/{slug}/spec.md 登记"
+        fi
+        ;;
+esac
+
 # === L4 增强: 写 stage 产物 → 自动标 DONE (在 stub 早退之前) ===
 stage_id=$(match_stage_by_output "$file_path")
 if [[ -n "$stage_id" ]]; then

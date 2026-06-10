@@ -265,6 +265,131 @@ scan_stub_in_file() {
         | head -n "$cap"
 }
 
+# === 实施 #19: 语义层 stub scan (放水 2 修) ===
+# 字面 grep 抓不到"代码字面真但运行时假" (未挂载 router / 未消费 queue / 镜像 stale / 野码).
+# 这 4 个函数补语义层, 跟字面 scan_stub_in_file 互补.
+
+# 1) 找 declared handler 但 main.go 没注册 (Go chi)
+# Args: $1 = handler dir, $2 = main file (e.g. backend/cmd/api/main.go)
+scan_unmounted_routers() {
+    local handler_dir="$1"
+    local main_file="$2"
+    [[ -z "$handler_dir" || ! -d "$handler_dir" ]] && return 0
+    [[ -z "$main_file" || ! -f "$main_file" ]] && return 0
+    # 找 handler 接收 http.ResponseWriter 的方法
+    local declared
+    declared=$(grep -rhE "^func \([^)]*\) ([A-Z][a-zA-Z]*)" "$handler_dir"/*.go 2>/dev/null \
+        | sed -E 's/^func \([^)]*\) ([A-Z][a-zA-Z]*).*/\1/' | sort -u)
+    # 找 main.go 里 mount 的 handler (r.Method("GET", "/path", h.X) 或 h.X 形式)
+    local mounted
+    mounted=$(grep -hoE "h\.[A-Z][a-zA-Z]+|[a-zA-Z]+\.[A-Z][a-zA-Z]+Handler" "$main_file" 2>/dev/null \
+        | sed -E 's/^h\.//;s/\.Handler$//' | sort -u)
+    # 简化: 取 declared 中出现在 main.go 任意位置的 handler 名
+    local unmounted=""
+    while IFS= read -r h; do
+        [[ -z "$h" ]] && continue
+        # 在 main_file 里 grep 一下, 找到了算 mount 了
+        if ! grep -q "$h" "$main_file" 2>/dev/null; then
+            unmounted="${unmounted}${h}\n"
+        fi
+    done <<< "$declared"
+    if [[ -n "$unmounted" ]]; then
+        echo -e "$unmounted" | while IFS= read -r h; do
+            [[ -z "$h" ]] && continue
+            echo "  unmounted-router: $h 在 $handler_dir 声明, $main_file 没引用"
+        done
+        return 1
+    fi
+    return 0
+}
+
+# 2) 找 asynq queue 声明/publish 但没消费
+# Args: $1 = publisher file (e.g. backend/internal/events/publisher.go), $2 = consumer file (e.g. backend/cmd/worker/main.go)
+scan_unconsumed_queues() {
+    local pub_file="$1"
+    local con_file="$2"
+    [[ ! -f "$pub_file" ]] && return 0
+    [[ ! -f "$con_file" ]] && return 0
+    # 抓 "queue:type" 形式字符串
+    local published
+    published=$(grep -hoE '"[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*"' "$pub_file" 2>/dev/null \
+        | tr -d '"' | sort -u)
+    local consumed
+    consumed=$(grep -hoE '"[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*"' "$con_file" 2>/dev/null \
+        | tr -d '"' | sort -u)
+    # diff: published not in consumed
+    local orphan
+    orphan=$(comm -23 <(echo "$published") <(echo "$consumed") 2>/dev/null)
+    if [[ -n "$orphan" ]]; then
+        while IFS= read -r q; do
+            [[ -z "$q" ]] && continue
+            echo "  unconsumed-queue: $q 在 $pub_file 发出, $con_file 没消费"
+        done <<< "$orphan"
+        return 1
+    fi
+    return 0
+}
+
+# 3) Dockerfile COPY 源路径 vs 实际 src tree drift
+# Args: $1 = dockerfile, $2 = repo root
+scan_dockerfile_drift() {
+    local dockerfile="$1"
+    local repo_root="$2"
+    [[ ! -f "$dockerfile" ]] && return 0
+    [[ -z "$repo_root" ]] && return 0
+    # 抓 COPY <src> 形式 (排除以 / 绝对路径, 排除 [ ... ] JSON 形式)
+    local declared
+    declared=$(grep -E "^COPY " "$dockerfile" 2>/dev/null | awk '{print $2}' \
+        | grep -vE '^\[|^/' | sort -u)
+    local drift=""
+    while IFS= read -r src; do
+        [[ -z "$src" ]] && continue
+        local full_path
+        # 处理 src 含通配符 (COPY app/*.py) — 至少验证父目录存在
+        if [[ "$src" == *"*"* ]]; then
+            local dir_part="${src%%/\**}"
+            full_path="$repo_root/$dir_part"
+        else
+            full_path="$repo_root/$src"
+        fi
+        if [[ ! -e "$full_path" ]]; then
+            drift="${drift}  dockerfile-drift: $dockerfile COPY $src 不存在 (build 会失败)\n"
+        fi
+    done <<< "$declared"
+    if [[ -n "$drift" ]]; then
+        echo -e "$drift"
+        return 1
+    fi
+    return 0
+}
+
+# 4) handler 写错误码 "GS-BXX-NNNN" 但没在 spec.md 登记 (野码)
+# Args: $1 = handler dir, $2 = xdd dir (.xdd)
+scan_unregistered_error_codes() {
+    local handler_dir="$1"
+    local xdd_dir="$2"
+    [[ ! -d "$handler_dir" ]] && return 0
+    [[ ! -d "$xdd_dir" ]] && return 0
+    # 抓 handler 里用的错误码
+    local used
+    used=$(grep -rhoE "GS-B[0-9]{2}-[0-9]{4}" "$handler_dir" 2>/dev/null | sort -u)
+    [[ -z "$used" ]] && return 0
+    # 抓 spec.md / *.feature 登记的错误码
+    local declared
+    declared=$(grep -rhoE "GS-B[0-9]{2}-[0-9]{4}" "$xdd_dir/baseline/bdd/" 2>/dev/null | sort -u)
+    [[ -z "$declared" ]] && declared=""
+    local wild
+    wild=$(comm -23 <(echo "$used") <(echo "$declared") 2>/dev/null)
+    if [[ -n "$wild" ]]; then
+        while IFS= read -r c; do
+            [[ -z "$c" ]] && continue
+            echo "  unregistered-error-code: $c 在 handler 用了, spec.md 没登记"
+        done <<< "$wild"
+        return 1
+    fi
+    return 0
+}
+
 # Find likely source directories under project root.
 # Excludes build/venv dirs. Echoes absolute paths, one per line.
 find_source_dirs() {
@@ -428,11 +553,18 @@ next_stage_after() {
 }
 
 # 把 status.md 中某个 stage 的 mark 改成新值
-# Args: $1=stage display name, $2=new mark (⏳ / 🔄 / ✅)
-# 用 sed 做原地修改, 写回原文件
+# Args: $1=stage display name, $2=new mark (⏳ / 🔄 / ✅ / ❌ / 🚧)
+# 5 marker hard, 不在集合内直接报错 (no advisory 灰色地带)
 update_stage_status() {
     local stage="$1"
     local new_mark="$2"
+    # marker 校验 (实施 #17 — 跟 plugins/xdd-gates.ts:updateStageStatus 对齐 5 marker)
+    # 允许复合 marker (e.g. "❌ late-fail (Phase 6 back-prop)"), 但必须以 5 marker emoji 之一开头
+    case "$new_mark" in
+        ⏳*|🔄*|✅*|❌*|🚧*) ;;
+        *) echo "[xdd] ❌ update_stage_status: invalid marker '$new_mark' (must start with ⏳/🔄/✅/❌/🚧)" >&2
+           return 1 ;;
+    esac
     local md
     md=$(get_status_md)
     [[ -z "$md" || ! -f "$md" ]] && return 1
@@ -450,6 +582,173 @@ update_stage_status() {
         { print }
     ' "$md" > "$tmp" && mv "$tmp" "$md"
     return 0
+}
+
+# 从 .xdd/scale.md 读字段值 (实施 #17 — halt_after 等字段 runtime 读取, 破 hardcode)
+# Args: $1=field name (e.g. "halt_after")
+# Returns: int 字段值, 失败返 1
+read_scale_field() {
+    local field="$1"
+    local scale_md=".xdd/scale.md"
+    [[ ! -f "$scale_md" ]] && { echo "1"; return 0; }
+    # 匹配: "halt_after: 3" 或 "| halt_after | 3 |" 两种格式
+    local val
+    val=$(grep -E "^\s*${field}\s*[|:]" "$scale_md" 2>/dev/null \
+          | head -1 \
+          | sed -E "s/.*${field}\s*[|:]\s*([0-9]+).*/\1/" \
+          | tr -d '[:space:]')
+    [[ -z "$val" || ! "$val" =~ ^[0-9]+$ ]] && val=1
+    echo "$val"
+}
+
+# halt 标记文件统一读 (实施 #17 — 路径统一 .xdd/gates/.xdd-halt.json 跟 schema line 239 一致)
+# Returns: 路径字符串, 不存在返空
+get_halt_path() {
+    local xdd_dir
+    xdd_dir=$(get_xdd_dir)
+    [[ -z "$xdd_dir" ]] && { echo ""; return 1; }
+    echo "${xdd_dir}/gates/.xdd-halt.json"
+}
+
+# 跑 1 个 @cross-service-e2e scenario, 验证 producer→queue→consumer→DB 真链路
+# (实施 #17 — 放水 1 修: cross-service 闸门从 grep 文字改成真跑)
+# Args (8):
+#   $1 = scenario name (e.g. "B03-train-model")
+#   $2 = trigger method (GET/POST/PUT/DELETE)
+#   $3 = trigger URL (full http://...)
+#   $4 = trigger body (JSON or empty)
+#   $5 = wait seconds (after trigger, before assert)
+#   $6 = expect kind: queue | db | http
+#   $7 = expect target (asynq:queue name / psql query / http URL)
+#   $8 = expect value (queue length > 0 / db status / http code)
+# Returns: 0 链路通, 1 链路断
+execute_real_path_scenario() {
+    local name="$1"
+    local method="$2"
+    local url="$3"
+    local body="$4"
+    local wait_sec="$5"
+    local expect_kind="$6"
+    local expect_target="$7"
+    local expect_value="$8"
+
+    # 1) Trigger (HTTP)
+    if [[ -n "$body" ]]; then
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X "$method" "$url" \
+            -H "Content-Type: application/json" \
+            -d "$body" 2>/dev/null || echo 000)
+    else
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X "$method" "$url" 2>/dev/null || echo 000)
+    fi
+    if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
+        echo "[xdd-cross] ❌ $name trigger $method $url → HTTP $http_code" >&2
+        return 1
+    fi
+    echo "[xdd-cross] ✓ $name trigger $method $url → HTTP $http_code"
+
+    # 2) Wait (consumer poll, queue dispatch, DB write)
+    sleep "${wait_sec:-3}"
+
+    # 3) Assert (queue depth / DB row state / http reachable)
+    case "$expect_kind" in
+        queue)
+            # 用 redis-cli LLEN 看队列深度 (> 0 即入队)
+            local depth
+            depth=$(redis-cli LLEN "$expect_target" 2>/dev/null || echo 0)
+            if [[ "$depth" -gt 0 ]]; then
+                echo "[xdd-cross] ✓ $name queue $expect_target depth=$depth > 0"
+                return 0
+            else
+                echo "[xdd-cross] ❌ $name queue $expect_target depth=0 (期望 > 0, 队列没消费)" >&2
+                return 1
+            fi
+            ;;
+        db)
+            # 用 psql 查 expect_target 行的 expect_value 字段, 必须匹配
+            # expect_target 格式: "table.column" 或 "SELECT status FROM training_jobs WHERE id=$1"
+            local cur
+            cur=$(psql -t -A -c "SELECT $expect_target" 2>/dev/null | xargs || echo "")
+            if [[ "$cur" == "$expect_value" ]]; then
+                echo "[xdd-cross] ✓ $name db $expect_target = '$cur'"
+                return 0
+            else
+                echo "[xdd-cross] ❌ $name db $expect_target = '$cur' (期望 '$expect_value')" >&2
+                return 1
+            fi
+            ;;
+        http)
+            # 探活 expect_target URL, 期望 expect_value 状态码
+            local code
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$expect_target" 2>/dev/null || echo 000)
+            if [[ "$code" == "$expect_value" ]]; then
+                echo "[xdd-cross] ✓ $name http $expect_target = $code"
+                return 0
+            else
+                echo "[xdd-cross] ❌ $name http $expect_target = $code (期望 $expect_value)" >&2
+                return 1
+            fi
+            ;;
+        *)
+            echo "[xdd-cross] ❌ $name unknown expect_kind '$expect_kind'" >&2
+            return 1
+            ;;
+    esac
+}
+
+# 从 .xdd/baseline/arch/*/event-contract.md 收集 @cross-service-e2e 块
+# (实施 #17 — 放水 1 修: scenario 来源)
+# 输出: 每行一个 scenario, 格式: name|method|url|body|wait_sec|expect_kind|expect_target|expect_value
+collect_real_path_scenarios() {
+    local xdd_dir
+    xdd_dir=$(get_xdd_dir)
+    [[ -z "$xdd_dir" ]] && return 1
+    local event_files
+    event_files=$(find "$xdd_dir/baseline/arch" -name "event-contract.md" 2>/dev/null)
+    [[ -z "$event_files" ]] && return 0
+    # 解析 @cross-service-e2e 块: ``` ... @cross-service-e2e <name> ... trigger: METHOD URL BODY ... expect: kind|target|value ... ```
+    # 简化: 用 awk 一行一行解析
+    echo "$event_files" | while read -r ef; do
+        [[ -z "$ef" || ! -f "$ef" ]] && continue
+        awk '
+            /^```/ { in_block = !in_block; next }
+            in_block && /@cross-service-e2e/ {
+                # 提取 name (跟在标记后)
+                name = $2
+                sub(/^@cross-service-e2e[[:space:]]*/, "", $0)
+                name = $0
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
+                cur_name = name
+                cur_method = ""; cur_url = ""; cur_body = ""; cur_wait = "3"
+                cur_ekind = ""; cur_etarget = ""; cur_evalue = ""
+            }
+            in_block && /trigger:/ {
+                line = $0; sub(/^[[:space:]]*trigger:[[:space:]]*/, "", line)
+                # 格式: METHOD URL [BODY]
+                n = split(line, parts, " ")
+                cur_method = parts[1]
+                cur_url = parts[2]
+                if (n >= 3) {
+                    cur_body = parts[3]
+                    for (i = 4; i <= n; i++) cur_body = cur_body " " parts[i]
+                }
+            }
+            in_block && /wait:/ {
+                line = $0; sub(/^[[:space:]]*wait:[[:space:]]*/, "", line)
+                cur_wait = line; gsub(/[[:space:]]/, "", cur_wait)
+            }
+            in_block && /expect:/ {
+                line = $0; sub(/^[[:space:]]*expect:[[:space:]]*/, "", line)
+                n = split(line, parts, "|")
+                cur_ekind = parts[1]; gsub(/[[:space:]]/, "", cur_ekind)
+                cur_etarget = parts[2]; gsub(/^[[:space:]]+|[[:space:]]+$/, "", cur_etarget)
+                cur_evalue = parts[3]; gsub(/^[[:space:]]+|[[:space:]]+$/, "", cur_evalue)
+                # 输出
+                print cur_name "|" cur_method "|" cur_url "|" cur_body "|" cur_wait "|" cur_ekind "|" cur_etarget "|" cur_evalue
+            }
+        ' "$ef"
+    done
 }
 
 # 根据文件路径反查它属于哪个 stage 的预期产物

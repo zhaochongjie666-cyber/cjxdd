@@ -82,7 +82,7 @@ If a user gives Claude a task, the right move is usually to **load the `xdd-walk
 | `xdd-gate-user-prompt-submit.sh` | `UserPromptSubmit` | 关键词检测"做一个 XX 系统" / "build me X" / "from scratch"；命中提示 Claude 加载 xdd-walker subagent (CWD 在 cjxdd 时旁路). **v3 fix: zh-continue 静默**, 避免误触拒收 user message (OpenCode 1.16.2 server schema 严格校验 synthetic part). |
 | `xdd-gate-session-start.sh` | `SessionStart` | 探测项目根，输出当前 iter、status.md 阶段汇总、**BXX 业务线维度分布**、CONTEXT-MAP 摘要 |
 | `xdd-gate-pre-skill.sh` | `PreToolUse` (matcher: `Skill`) | 装 skill 前打印 5 步节奏提醒；若 status.md 仍有更早的 ⏳ 阶段则**硬阻断**（exit 2） |
-| `xdd-gate-stub-scan.sh` | `PostToolUse` (matcher: `Write\|Edit`) | **每次**写完代码实时扫存根（pass/TODO/NotImplementedError/InMemoryRepository），只扫刚写的文件，命中即时告警让模型自纠 |
+| `xdd-gate-stub-scan.sh` | `PostToolUse` (matcher: `Write\|Edit`) | **每次**写完代码实时扫存根（pass/TODO/NotImplementedError/InMemoryRepository 字面层 + 实施 #19 语义层: unmounted_router / unconsumed_queue / dockerfile_drift / unregistered_error_code），只扫刚写的文件，命中即时告警让模型自纠 |
 | `xdd-gate-stop.sh` | `Stop` | 全项目扫存根兜底；**按 BXX 分组**列未完阶段；5 段 hard-gate 编排器 (stub / pending / drift / lifecycle / R5 + §13 L5 consistency) |
 | `xdd-gate-team-dispatch.sh` | `PreToolUse` (matcher: `Task`) | walker 通过 Task 派 work order 给 worker 时, 校验 WO 字段 (CLAUDE.md 路径穿透等), 漏字段给 hint |
 | `xdd-gate-meta.sh` | (独立调用 / 其他 gate 内部) | CWD 是 cjxdd 时输出警告, 提示直接改源码 |
@@ -387,6 +387,12 @@ Walker maintains a `pipeline/status.md` per iteration with a fixed skeleton: per
 | **L5 Consistency Audit** (4 维 spec↔code / wire↔code / arch↔code / l3↔code) | `plugins/xdd-gates.ts:§13` (auditL5Consistency 主入口) | 改 4 维阈值 / 加新维度 |
 | **L6 R11 真实烟雾测试门禁** (4 层验证, 新项目 hard / 老项目 advisory) | `plugins/xdd-gates.ts:§9` + `skills/xdd-artifact-lifecycle/scripts/gate-check-lifecycle.sh:307-412` + `skills/smoke-xdd-r11-round2.sh` | 改 L2 验收 / L6 部署 / production-scenarios 契约 |
 | **No-advisory + 3 试 HALT** | `plugins/xdd-gates.ts:§15` + `.l5-unresolved.json` / `.xdd-halt.json` | 改 halt 阈值 / 调 HALT 段 prompt |
+| **HALT 状态机 #17** (5 marker ⏳/🔄/✅/❌/🚧 + halt_after 从 scale.md 读 + 路径统一 `.xdd/gates/.xdd-halt.json`) | `skills/xdd-init/templates/xdd-schema.json:status_md.markers` + `plugins/xdd-gates.ts:updateStageStatus` + `hooks/xdd-gate-lib.sh:update_stage_status` + `loop-until-pass.sh` | 改状态机 / 加新 marker / 调 halt_after |
+| **Cross-service 真链路 #1** (`--cross-service-real-path` mode 真跑 producer→queue→consumer→DB, scale-driven min_paths) | `hooks/xdd-gate-coverage-check.sh --cross-service-real-path` + `xdd-gate-lib.sh:execute_real_path_scenario` + `collect_real_path_scenarios` + `skills/xdd-execute/SKILL.md:330-347` | 改闸门 / 加新 expect_kind / 调 min_paths |
+| **Phase 6 → 5 状态回退 #18** (L5 audit fail / R11 L4 fail → `updateStageStatus(5 Execute, ❌ late-fail)` 写盘) | `plugins/xdd-gates.ts:runStopGate 段 5.5/5.6` (auditL5Consistency + checkL6SmokePassed 调用处) | 改回退策略 / 加新 back-prop 触发条件 |
+| **Stub-scan 语义层 #19** (4 函数: unmounted_router / unconsumed_queue / dockerfile_drift / unregistered_error_code) | `hooks/xdd-gate-lib.sh:scan_unmounted_routers` 等 4 个 + `hooks/xdd-gate-stub-scan.sh` case 段 | 加新语义检查 / 改目标文件路径 |
+| **L3 chaos 5 类真注入 #20** (network/resource/state/data/dependency + scale-driven min_categories + FMEA 9/12/8 验证) | `skills/xdd-l3/scripts/chaos-runner.sh` (5 类 inject 函数) + `plugins/xdd-gates.ts:validateFmeaCompleteness` (FMEA 9 维+12 模式+8 字段) + `loop-until-pass.sh` 闸门 0 | 加新 chaos 类别 / 改 FMEA schema / 调 min_categories |
+| **FINAL-DELIVERY 拆分 #21** (2 段: ✅ 原计划交付 + ⚠️ Late Fix, 跟 status.md 5 Execute 一致性闸门) | `skills/xdd-artifact-lifecycle/SKILL.md:§3.5` + `gate-check-lifecycle.sh:FINAL-DELIVERY 拆分检查段` + `xdd-schema.json:lifecycle_artifacts.final-delivery.must_contain` | 改段名 / 加新一致性检查 |
 | **`/xdd-goal` v3** (整段文本全收 + user-driven continue) | `plugins/xdd-goal.tsx` (v3) | 改 PREFIX_RE 解析 / evaluate 启发式 / re-inject (已砍) |
 | **zh-continue 中文输入修** | `hooks/xdd-gate-user-prompt-submit.sh:134-144` | 改 zh-continue / en-new-build 等意图判定, 防误触 schema 拒收 |
 | **压力信号检测** (RUSH/TIME/SKIP/SIMPLIFY/WORKLOAD 5 类) | `hooks/xdd-gate-lib.sh:check_pressure_signals()` + `plugins/xdd-gates.ts` L2/L3 part | 调阈值 / 加新信号类 / 改 dedup 逻辑 |
