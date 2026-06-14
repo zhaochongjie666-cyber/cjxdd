@@ -20,23 +20,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# === scale-driven min_categories ===
-# L 规模 + strict_mode=true → 5 类全跑, S/M 规模 → 3 类 (默认)
-# 命令行 --min-categories 显式 override 优先
-if [[ "$MIN_CATEGORIES" == "3" || -z "$MIN_CATEGORIES" ]]; then
-    scale_label=$(grep -E "^\s*scale\s*[|:]" .xdd/scale.md 2>/dev/null | head -1 | sed -E 's/.*scale\s*[|:]\s*([A-Za-z]+).*/\1/' | tr -d '[:space:]')
-    strict_mode=$(grep -E "^\s*strict_mode\s*[|:]" .xdd/scale.md 2>/dev/null | head -1 | sed -E 's/.*strict_mode\s*[|:]\s*([a-zA-Z]+).*/\1/' | tr -d '[:space:]')
-    if [[ "$scale_label" == "L" || "$strict_mode" == "true" ]]; then
-        MIN_CATEGORIES=5  # L 规模全跑 5 类
-    else
-        MIN_CATEGORIES=3  # S/M 默认 3 类
-    fi
+# === min_categories ===
+# 深度重构后无 scale 降级，默认就做扎实（覆盖 ≥4 类）。
+# 命令行 --min-categories 显式 override 优先。
+if [[ -z "$MIN_CATEGORIES" || "$MIN_CATEGORIES" == "3" ]]; then
+    MIN_CATEGORIES=4  # 默认做扎实，不因规模降级
 fi
 
 # === 环境检测 ===
 REPORT=".xdd/reports/chaos-run-$(date +%Y%m%d-%H%M%S).log"
 mkdir -p .xdd/reports
-echo "[xdd] === L3 chaos 5 类真注入 (min_categories=$MIN_CATEGORIES, scale=$scale_label) ===" | tee "$REPORT"
+echo "[xdd] === chaos 5 类真注入 (min_categories=$MIN_CATEGORIES) ===" | tee "$REPORT"
 
 # 找服务容器 (按 docker-compose 服务名匹配)
 detect_containers() {

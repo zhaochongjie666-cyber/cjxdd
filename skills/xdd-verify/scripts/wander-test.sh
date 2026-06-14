@@ -121,20 +121,16 @@ while [[ $ITER -lt $MAX_ITER ]]; do
     echo "phase-verifier 修: 补 RXX 实施 / 修端点 / 起服务" | tee -a "$REPORT"
 done
 
-# 3 试未过 → HALT
+# 3 试未过 → 卡住回退（写 FAILURE-LOG，停下问用户）
 echo "" | tee -a "$REPORT"
-echo "[xdd] ❌ 回环 7 wander 失败: $MAX_ITER 试未过, 写 .xdd-halt.json" | tee -a "$REPORT"
+echo "[xdd] ❌ wander $MAX_ITER 试未过, 写 .xdd/FAILURE-LOG.md, 停下问用户" | tee -a "$REPORT"
 
-cat > .xdd-halt.json <<EOF
-{
-  "phase": "6",
-  "stage": "VERIFY",
-  "loop": "7-wander",
-  "attempts": $MAX_ITER,
-  "reason": "L5 4 维 + wander $MAX_ITER 试未过",
-  "last_log": "$REPORT",
-  "suggested_retreat": "回 Phase 5 EXECUTE 修缺 RXX / 缺端点",
-  "created_at": "$(date -Iseconds)"
-}
+cat > .xdd/FAILURE-LOG.md <<EOF
+# FAILURE-LOG — 卡在 代码·验证
+
+- 子 agent: phase-verify
+- 卡点: wander + 4 维一致性 $MAX_ITER 试未过
+- 试过: 详见 $REPORT
+- 建议回退: 回 xdd-execute 修缺 RXX / 缺端点 / 起服务；若根因在设计层，回 spec/architecture
 EOF
 exit 1
