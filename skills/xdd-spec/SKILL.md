@@ -1,0 +1,154 @@
+---
+name: xdd-spec
+description: |
+  xdd 设计层 —— 把 design.md 的意图翻译成可验收的业务规则（RXX）+ Gherkin 场景。
+  规则锚：每条 RXX 规则 = 一个 Feature，是 plan task 和代码 @implements RXX 回指的锚点。
+  与 xdd-architecture 互补：spec 写"业务该表现成什么样"，architecture 写"系统怎么实现"。
+  产出 .xdd/design/spec/_landscape.md（业务线全景）+ {slug}/business.md + {slug}/rules.md(RXX) + {slug}/*.feature。
+  触发：规格、spec、业务规则、RXX、验收、bdd、gherkin、feature、场景、验收标准、业务线、需求转场景。
+---
+
+# xdd-spec — 规则锚
+
+## 我锚定什么 / 上游 / 下游
+
+**我锚定的是「业务在什么上下文下应该表现成什么样」** —— 把模糊意图变成一条条带编号（RXX）的可验收规则。每条 RXX 就是一个验收契约，下游 plan 把它拆成 task，代码用 `@implements RXX` 回指，verify 按 Gherkin 场景验。
+
+| | |
+|---|---|
+| **上游** | `xdd-understand` 的 design.md（意图 + 决策） |
+| **我产出** | `spec/_landscape.md` + `{slug}/business.md` + `{slug}/rules.md`(RXX) + `{slug}/*.feature` |
+| **下游消费者** | `xdd-architecture`（每条规则映射到层/端点）、`xdd-plan`（规则拆 task）、`xdd-verify`（Gherkin 验收） |
+| **回溯锚** | RXX 规则编号 —— plan 的每个 task、代码的每处 `@implements RXX` 都指回这里 |
+
+## BDD vs 架构的边界（不串味）
+
+**BDD 写**（业务可观察）：用户目标、业务前置、领域状态变化、前端可见结果、后端可观察结果、数据是否存在、错误码/提示/拒绝原因、通知/权限/审计。
+
+**BDD 不写**（实现细节，归 architecture）：启动/关闭序列、线程池/协程/后台循环、分布式锁/CAS/lease/TTL、重试退避算法、健康检查、容器调度、DB 事务实现、内部类名/函数调用链。
+
+必须提后端行为时，只写**可观察结果**，不解释内部实现。
+
+## 输入对齐（生成前必读）
+
+所有状态名、产物名、角色名、错误原因必须与以下来源一致，未知标"待确认"，不编造：
+
+1. `.xdd/design/design.md` + `intent.md`（意图、术语、范围）
+2. `.xdd/design/architecture/{slug}/flow.mermaid`（组件名、外部系统、产物流向，若已有）
+3. 当前代码 / 用户材料（API 名、状态枚举、错误码、存储对象）
+
+## 核心编写规范
+
+1. **禁止程序式 UI 流水账** —— 不写"点击某按钮""输入某文本""勾选复选框"。改业务意图："用户选择对比任务""用户提交回灌任务"。
+
+2. **单个 Scenario 只验证一个业务规则** —— 不要一个 Scenario 同时验创建+调度+计算+下载+通知+权限。长链路按业务阶段或产物类型拆。
+
+3. **步骤数控制** —— 单 Scenario 建议 5-8 行。超 8 行优先拆成多个 Scenario 或 Scenario Outline。
+
+4. **多类型/多状态/多模型必须数据驱动** —— 平行路径用 `Scenario Outline + Examples`。
+
+5. **Then/And 必须是可观察断言** —— 禁止"系统应自动处理""系统正常运行"。
+   - 推荐：前端应展示[具体状态/字段]、后端应写入[对象]其[字段]为[值]、存储中应存在[产物]、系统应拒绝并返回[错误码]。
+
+6. **前后端边界明确** —— 全栈场景的 Then/And 区分：前端展示什么 / 后端保存什么 / 存储存在什么 / 通知发给谁 / 审计记什么。
+
+7. **必须覆盖异常路径** —— 每个 Feature 至少一个异常 Scenario（数据缺失/状态不允许/权限不足/类型不匹配/重复提交/部分失败/上游未完成）。
+
+8. **幂等与重复提交业务化表达** —— 不写 CAS/锁/事务。写"不应创建重复任务""应返回已存在任务""原状态不应被覆盖"。
+
+## 标准输出模板
+
+```gherkin
+Feature: [业务能力] — [核心价值]    @covers-R01
+
+  Background: [共享前置]
+    Given [角色/系统处于某业务上下文]
+      And [上游数据/产物/权限已满足]
+
+  Scenario: [单一业务规则]
+    Given [业务前置]
+    When [用户或外部系统发起业务意图]
+    Then 前端应[展示具体状态/字段/提示]
+      And 后端应[保存具体对象及字段状态]
+      And [存储/通知/审计]应[出现可验证结果]
+
+  Scenario Outline: [多类型规则] - <case_type>
+    Given 业务类型为 "<case_type>"
+    When [执行业务意图]
+    Then 前端应展示 "<expected_ui>"
+      And 后端应记录 "<expected_backend>"
+    Examples:
+      | case_type | expected_ui | expected_backend |
+
+  Scenario: [异常路径] - [不可执行原因]
+    Given [缺失/冲突/无权限/上游未完成的业务上下文]
+    When [用户发起业务意图]
+    Then 系统应拒绝该操作，并返回 "[错误原因]"
+      And 不应创建新的[任务/记录/产物]
+```
+
+## RXX 规则编号（锚的核心）
+
+**一条业务规则 = 一个 RXX = 一个 Feature 文件**。RXX 是贯穿 plan→code→verify 的追溯 ID。
+
+`rules.md` 是规则目录：
+
+```markdown
+# B01 鉴权 (auth) — 规则
+
+| RXX | 规则一句话 | 覆盖 Feature | 关联端点 |
+|-----|-----------|-------------|---------|
+| R01 | 用户用邮箱密码登录，成功返回 JWT | login.feature | POST /api/auth/login |
+| R02 | 密码连续错 5 次锁定账号 15 分钟 | lockout.feature | POST /api/auth/login |
+| R03 | 未登录访问受保护 API 返回 401 | auth-required.feature | (所有受保护端点) |
+```
+
+**约束**：
+- 每条 RXX 至少 1 个 `*.feature` 覆盖（空规则 = 漏验收）
+- RXX 编号全局唯一，跨业务线不重号（用 BXX 前缀分组：B01-R01）
+- 改一条 RXX → 通知 plan + code（改下游追溯链）
+
+## 业务线分组（多业务线项目）
+
+`_landscape.md` 是全局业务线全景：
+
+```markdown
+# 业务线 Landscape
+
+| BXX | slug | 名称 | 定位（1 句话） |
+|-----|------|------|--------------|
+| B01 | auth | 鉴权 | 登录注册+鉴权+权限 |
+| B02 | order | 订单 | 下单+支付+履约 |
+
+## 跨业务线主题
+- 多租户隔离: 所有业务线按 tenant_id 隔离
+```
+
+每个业务线 `{slug}/business.md` 写：业务目标 / 关键问题 / 范围（in/out）/ 关联（RXX 列表 + arch + resilience + wire 路径）。
+
+## 产出
+
+```
+.xdd/design/spec/
+├── _landscape.md          ← 业务线全景（全局索引）
+└── {slug}/                ← 每业务线一个目录
+    ├── business.md        ← 业务线分组：目标/关键问题/范围/关联
+    ├── rules.md           ← RXX 规则目录（一条规则一行 + 关联 Feature/端点）
+    └── *.feature          ← Gherkin 验收场景，一条 RXX 一个文件
+```
+
+## 自检（无平台 hook）
+
+```
+□ 没有 UI 点击流水账？
+□ 每个 Scenario 只验证一个业务规则？
+□ 每个 Scenario 5-8 行左右？
+□ Then/And 都是可观察断言（无"系统应自动处理"）？
+□ 每个 Feature 至少一个异常路径？
+□ 多类型/状态用 Scenario Outline + Examples？
+□ 前端展示 vs 后端可观察状态分清了？
+□ 没把架构细节（锁/事务/线程）写进 BDD？
+□ 每条 RXX 至少 1 个 Feature 覆盖？
+□ 状态名/角色名/错误码跟 design.md / flow.mermaid / 代码一致，未知标"待确认"？
+□ _landscape.md 业务线清单跟 architecture/aggregate-landscape.md 一致？
+```

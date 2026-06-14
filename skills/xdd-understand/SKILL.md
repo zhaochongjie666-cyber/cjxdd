@@ -1,0 +1,149 @@
+---
+name: xdd-understand
+description: |
+  xdd 设计层第一步 —— 理解用户意图，发散调研，收敛成 design.md（意图锚）。
+  整条「prompt → 设计 → 代码」链的起点：用户说的每一句话都在这里被固化成"我们要做什么、不做什么、为什么"。
+  下游 xdd-spec 只消费 design.md + intent.md，不读发散笔记。
+  产出 .xdd/design/intent.md（意图）+ .xdd/design/design.md（收敛决策 5 段）。
+  触发：理解需求、发散、调研、brainstorm、意图、intent、design、design.md、项目意图、需求分析、新项目、新功能。
+---
+
+# xdd-understand — 意图锚
+
+## 我锚定什么 / 上游 / 下游
+
+**我锚定的是「为什么做、做什么、不做什么」** —— 这是整条链的根。后面所有 spec 规则、架构决策、代码实现，最终都要能回溯到这里的一句话意图。意图错了，后面全错。
+
+| | |
+|---|---|
+| **上游** | 用户的原始 prompt（可能模糊） |
+| **我产出** | `.xdd/design/intent.md`（意图）+ `.xdd/design/design.md`（收敛决策） |
+| **下游消费者** | `xdd-spec`（把 design.md 翻译成 RXX 规则）、`xdd-architecture`（技术决策依据） |
+| **回溯锚** | 下游每条 RXX 规则、每个架构决策，都应能指向 design.md 的某一段 |
+
+## 怎么做
+
+### 1. 消费已有设计（iter-2+ 必读）
+
+不是"零起点发散"。第二轮起，先读现有设计避免重发明：
+
+```
+.xdd/design/intent.md              # 项目意图
+.xdd/design/design.md              # 收敛决策
+.xdd/design/spec/_landscape.md     # 业务线全景
+.xdd/design/spec/{slug}/rules.md   # 现有 RXX 规则
+.xdd/design/architecture/{slug}/architecture.md  # 架构决策
+```
+
+读完标 3 段到 `00-recap.md`（或笔记头部）：**已有什么 / 缺什么 / 本轮增量**。
+
+### 2. Brainstorm —— 跟用户对话探索方案
+
+用户需求模糊时（"想做个 XX"），先 brainstorm 再发散。这是"用户驱动 + AI 引导"的对话，不是 AI 单向发散。按需挑 5-10 问：
+
+| # | 引导问 | 目的 |
+|---|--------|------|
+| 1 | 想解决什么具体问题？痛点 / 现状 / 期望 | 锚定问题空间 |
+| 2 | 谁最痛？用现有方案遇到啥障碍 | 锁定核心用户 |
+| 3 | 想过哪些方案？各方案利弊？ | 探索方案空间 |
+| 4 | 有哪些硬约束（合规 / 性能 / 预算 / 集成）？ | 划清边界 |
+| 5 | 成功长啥样？哪些数字或事实能证明做对了 | 定义验收标准 |
+| 6 | 现在最担心失败的是啥？怎么算失败 | 暴露风险 |
+| 7 | 有现成组件 / 内部系统可复用吗 | 评估复用面 |
+| 8 | 时间预算 / 优先级 / MVP 边界？ | 划 MVP |
+| 9 | 谁会反对？顾虑是啥？怎么回 | 政治面 |
+| 10 | 下一个 iter 大概接啥？提前留啥接口 | 演进路径 |
+
+答案写到 `.xdd/design/notes/brainstorm.md`。
+
+### 3. 发散调研
+
+按 7 个方向自由记录（不限顺序、不限数量、内容格式自由）：
+
+| 方向 | 记录什么 |
+|------|---------|
+| 行业背景 | 行业怎么做这件事？公认模式？ |
+| 竞品分析 | 同类产品怎么做的？优缺点？ |
+| 用户理解 | 谁会用？怎么用？谁会误用？极端场景？ |
+| 技术方案 | 有哪些技术路线？开源参考？ |
+| 事件与流程 | 业务里发生了什么？谁触发？怎么流转？ |
+| 约束与风险 | 合规？性能？安全？已知陷阱？ |
+| 灵感与假设 | 如果这样做会怎样？这个方向可行吗？ |
+
+**外部调研至少搜 5 个方向**（产物写到 `notes/external-references.md`，带 URL）：
+1. 行业最佳实践（`{domain} best practices 2026`）
+2. 竞品分析（`{competitor} architecture`）
+3. 技术方案（`{tech} open source`）
+4. 安全事件 / 教训（`{domain} security incident postmortem`）
+5. 用户反馈（`{domain} user feedback complaints`）
+
+### 4. 用户理解（必须）
+
+**用户画像**（至少 6 维度）：
+
+| 维度 | 问题 |
+|------|------|
+| 官方角色 | 业务方定义了哪些角色？ |
+| 技能梯度 | 每个角色的新手 / 熟练 / 专家怎么操作？ |
+| 使用频率 | 高频 / 中频 / 低频 / 首次，路径有何不同？ |
+| 极端用户 | 谁会大规模批量操作？谁会频繁撤销？ |
+| 误用 / 滥用者 | 谁会越权？疯狂点击？输入垃圾数据？ |
+| 意外场景 | 手机误触？慢网络？公共电脑忘记退出？ |
+
+**用户旅程穷举**（5 层次）：主线 / 分支 / 迂回 / 意外 / 探索。
+
+### 5. 收敛成 design.md（必出）
+
+发散完**必走**这一步。把零散笔记收敛成 1 份决策文档，5 段：
+
+- **Selected**（选定方案）：本轮到底做什么，1-3 句话说清
+- **Alternatives**（被否方案）：考虑过但没选的，各列一句为什么不选
+- **Assumptions**（假设）：自己拍的默认值（e.g. 数据库用 PostgreSQL），写明
+- **Out of Scope**（明确不做）：YAGNI 砍掉的，每项写一句"本轮为什么不做"
+- **Open Questions**（待用户定）：关键决策（e.g. SQL vs NoSQL），必用户审
+
+**YAGNI 要狠**：砍掉所有"未来可能需要""看起来酷""高级工程师炫技"类需求。例外不可砍：合规 / 安全 / 性能 SLO / 关键用户旅程。
+
+**不替用户做决定**：复杂功能 / 砍功能 / 选方案必用户审（写到 Open Questions）。简单默认值（数据库选型、API 风格、错误码格式）可自主决策，写进 Assumptions。
+
+### 6. 自审 + 用户审
+
+**自审 5 维度**（对照 design.md）：
+- **Completeness**：该定的都定了吗？有没有"待定"其实该拍板的？
+- **Rationale**：每个选择有理由吗？
+- **Alternatives**：主要岔路都考虑过替代方案吗？
+- **Assumptions**：假设都写明了吗？有没有隐含假设？
+- **YAGNI**：scope 是不是最小可行？有没有塞进去的"顺便做"？
+
+**用户审**：design.md 写完，**停下来给用户看**。用户说改就改，用户说 OK 才进 `xdd-spec`。这一步是文字纪律（靠你自觉停），不是机器强制 —— 但它是整条链防偏的第一道闸，别跳。
+
+## Anti-pattern：「这太简单不用做设计」
+
+**每个项目都要设计，包括简单的。** "简单"项目最危险——没审视的假设浪费最多工作。简单项目 design.md 可以短（3-5 句），但**必出**。
+
+## 产出
+
+```
+.xdd/design/
+├── intent.md           ← 意图锚：项目要什么 / 成功标准 / 1 句话定位 / 非目标
+├── design.md           ← 收敛决策：Selected / Alternatives / Assumptions / Out of Scope / Open Questions
+└── notes/              ← 发散笔记（iter 内用，下游不直接读）
+    ├── recap.md        ← 已有设计消费摘要（iter-2+）
+    ├── brainstorm.md   ← 引导问答案
+    ├── external-references.md  ← 外部来源 URL 主索引
+    └── *.md            ← 行业 / 竞品 / 画像 / 旅程 / 技术 等，内容自由
+```
+
+模板见 `templates/intent.md` + `templates/design.md`。
+
+## 自检（无平台 hook，纯文字 + 可选 bash）
+
+```
+□ intent.md 写了：1 句话定位 + 成功标准 + 非目标
+□ design.md 5 段齐全：Selected / Alternatives / Assumptions / Out of Scope / Open Questions
+□ 每个 Open Question 是真关键决策（不是偷懒没想）
+□ Out of Scope 每项有"为什么本轮不做"
+□ 5 方向外部调研都有 URL
+□ 6 维度画像 + 5 层次旅程至少各列了要点
+□ design.md 给用户看了，用户确认 OK
+```
