@@ -3,3 +3,6 @@
 
 # Demo project (excluded from framework repo)
 demo/
+
+# 用户模型配置 (旧 install 软链反向写入, 非 framework 内容)
+settings.json
