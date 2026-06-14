@@ -118,8 +118,8 @@ X 分钟（用作 walker 的 effort baseline）
 - [ ] 上游 artifact 路径都给了
 - [ ] 下游消费者提了（如果有）
 - [ ] 约束（命名/技术栈）写了
-- [ ] work order 文件已写入 `.xdd/iterations/iter-N/work-orders/<task_id>.md`
-- [ ] 文件名规范：`WO-NNN-slug.md`（NNN 3 位数字，slug 小写连字符）
+- [ ] plan 已写入 `.xdd/runs/iter-N/plan/{slug}/plan.md`（task DAG + RXX 回指）
+- [ ] 每个 task 标 `**回指 RXX:**` + `**Feature:**`
 
 收活时 walker 自检：
 - [ ] report.md 存在且 status 不是 failed

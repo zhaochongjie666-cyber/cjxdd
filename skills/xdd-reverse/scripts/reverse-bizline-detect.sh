@@ -7,7 +7,7 @@
 set -euo pipefail
 
 PROJECT_DIR="${1:-.}"
-OUTPUT_FILE="${PROJECT_DIR}/.shadow/bizline-report.md"
+OUTPUT_FILE="${PROJECT_DIR}/.xdd/design/bizline-report.md"
 
 echo "=== 业务线自动识别 ==="
 echo "项目目录: $PROJECT_DIR"

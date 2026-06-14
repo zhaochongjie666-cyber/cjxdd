@@ -2,6 +2,10 @@
 
 > **本文件目的**: 解释多业务线项目 (BXX > 1) 的目录组织 + 编号规则 + 跨线一致性 checklist
 
+> ⚠️ **目录段曾基于旧的 `.shadow`/`core`/`arch`/`bdd`/`scale.md` 布局，现已与现状不符**。
+> 当前正确布局见 `README.md § 目录结构` + `skills/xdd-init/SKILL.md`（`design/spec/{slug}/` + `design/architecture/{slug}/`，无 scale.md）。
+> 下文 §3/§4 的目录树仅作历史参考；**BXX-NYY 编号规则（§1）和跨线一致性 checklist（§5）仍然有效**。
+
 ---
 
 ## 1. BXX-NYY 编号规则
@@ -17,15 +21,39 @@
 
 ## 2. 触发条件
 
-`.xdd/scale.md`:
-- `bizline_count > 1` → `bxx_enabled: true` (强制)
-- `bizline_count == 1` → `bxx_enabled: false` (单业务线)
-
-Walker 在 L1 完成后检测此字段, 自动调整目录结构.
+多业务线识别（现状）：`xdd-init --bizlines B01-auth,B02-order` 预生成 `design/spec/_landscape.md` + 每业务线 `spec/{slug}/` 占位。
+Walker 在 design 层据此组织目录结构（不再读 scale.md —— 该产物已移除）。
 
 ---
 
-## 3. 多业务线时目录组织
+## 3. 多业务线时目录组织（现状）
+
+```
+.xdd/design/
+├── intent.md                       # 用户意图 (跨业务线共享)
+├── spec/
+│   ├── _landscape.md               # 业务线全景（BXX → slug → 名称 → 定位）
+│   ├── B01-auth/
+│   │   ├── business.md
+│   │   ├── rules.md                # RXX 规则（B01-R01...）
+│   │   └── *.feature               # Gherkin
+│   ├── B02-order/
+│   │   └── ...
+│   └── cross-cutting/              # 跨业务线（如 auth）
+├── architecture/
+│   ├── aggregate-landscape.md      # 全局聚合全景
+│   ├── event-contract.md           # 全局事件契约
+│   ├── B01-auth/
+│   │   ├── architecture.md
+│   │   └── flow.mermaid            # 节点用 BXX-NYY 编号
+│   └── B02-order/
+│       └── ...
+└── runs/iter-N/                    # 单轮工作记录（plan/报告/审计）
+    └── status.md                   # 含 ## BXX 分段 + cross-BXX 一致性 checklist
+```
+
+<details>
+<summary>旧版目录组织（已废弃，仅留作历史参考）</summary>
 
 ```
 .xdd/
@@ -68,27 +96,13 @@ Walker 在 L1 完成后检测此字段, 自动调整目录结构.
     - [ ] 跨业务线 multi-tenant 隔离一致
 ```
 
+</details>
+
 ---
 
-## 4. 单业务线时 (bxx_enabled=false)
+## 4. 单业务线时
 
-```
-.xdd/
-├── scale.md                       # bxx_enabled: false
-├── core/
-├── project.flow.mermaid           # 节点直接 N01/N02 (无 BXX 前缀)
-├── arch/
-├── bdd/
-│   ├── login.feature
-│   └── ...
-├── add/
-│   └── state-machine.md
-└── iterations/iter-N/pipeline/status.md
-    | Phase | 状态 | 备注 |
-    |-------|------|------|
-    | 1 | ⏳ | |
-    ...
-```
+单业务线项目直接用 `design/spec/{slug}/` + `design/architecture/{slug}/`，不生成 `_landscape.md`，节点编号可直接 N01/N02（无 BXX 前缀）。详见 `skills/xdd-init/SKILL.md`。
 
 ---
 

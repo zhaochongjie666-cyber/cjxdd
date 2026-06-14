@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# scan-project-grade.sh — 项目档位扫描脚本
+# scan-project-grade.sh — 项目档位扫描脚本（逆向 Phase C）
 # 用法: bash scan-project-grade.sh [project_dir]
 #
-# 自动检测项目属于哪个档位（A/B/C/D/E）
+# 自动检测项目的设计层完整度档位（A/B/C/D/E）
 
 set -euo pipefail
 
 PROJECT_DIR="${1:-.}"
-SHADOW_DIR="$PROJECT_DIR/.shadow"
+DESIGN_DIR="$PROJECT_DIR/.xdd/design"
 
 echo "=== 项目档位扫描 ==="
 echo "项目目录: $PROJECT_DIR"
@@ -29,104 +29,80 @@ check_exists() {
     fi
 }
 
-check_contains() {
-    if [ -f "$1" ] && grep -q "$2" "$1" 2>/dev/null; then
-        echo "✅ $3"
-        return 0
-    else
-        echo "❌ $3"
-        return 1
-    fi
-}
-
 echo "--- 档位判定检查 ---"
 echo ""
 
-# 检查 1: .shadow 目录存在
-if check_exists "$SHADOW_DIR" ".shadow/ 目录存在"; then
+# 检查 1: .xdd/design 目录存在
+if check_exists "$DESIGN_DIR" ".xdd/design/ 目录存在"; then
     GRADE_SCORE=$((GRADE_SCORE + 10))
-    CHECKLIST+=("shadow_dir:yes")
+    CHECKLIST+=("design_dir:yes")
 else
-    CHECKLIST+=("shadow_dir:no")
+    CHECKLIST+=("design_dir:no")
 fi
 echo ""
 
-# 检查 2: business 存在且有 spec.md
-L1_EXISTS=false
-L1_SPEC_EXISTS=false
-if [ -d "$SHADOW_DIR/business" ]; then
-    echo "✅ business/ 目录存在"
-    L1_EXISTS=true
-    CHECKLIST+=("l1_dir:yes")
-    
-    # 检查是否有 spec.md
-    SPEC_COUNT=$(find "$SHADOW_DIR/business" -name "spec.md" 2>/dev/null | wc -l)
-    if [ "$SPEC_COUNT" -gt 0 ]; then
-        echo "✅ L1 spec.md 存在 ($SPEC_COUNT 个)"
-        L1_SPEC_EXISTS=true
+# 检查 2: spec 存在且有 rules.md
+SPEC_EXISTS=false
+SPEC_RULES_EXISTS=false
+if [ -d "$DESIGN_DIR/spec" ]; then
+    echo "✅ spec/ 目录存在"
+    SPEC_EXISTS=true
+    CHECKLIST+=("spec_dir:yes")
+
+    # 检查是否有 rules.md
+    RULES_COUNT=$(find "$DESIGN_DIR/spec" -name "rules.md" 2>/dev/null | wc -l)
+    if [ "$RULES_COUNT" -gt 0 ]; then
+        echo "✅ rules.md 存在 ($RULES_COUNT 个)"
+        SPEC_RULES_EXISTS=true
         GRADE_SCORE=$((GRADE_SCORE + 20))
-        CHECKLIST+=("l1_spec:yes")
+        CHECKLIST+=("spec_rules:yes")
     else
-        echo "❌ L1 spec.md 不存在"
-        CHECKLIST+=("l1_spec:no")
+        echo "❌ rules.md 不存在"
+        CHECKLIST+=("spec_rules:no")
     fi
 else
-    echo "❌ business/ 目录不存在"
-    CHECKLIST+=("l1_dir:no")
-    CHECKLIST+=("l1_spec:no")
+    echo "❌ spec/ 目录不存在"
+    CHECKLIST+=("spec_dir:no")
+    CHECKLIST+=("spec_rules:no")
 fi
 echo ""
 
-# 检查 3: L5-plan 存在且有 @implements
-L5_PLAN_EXISTS=false
-L5_PLAN_IMPL_EXISTS=false
-if [ -d "$SHADOW_DIR/L5-plan" ]; then
-    echo "✅ L5-plan/ 目录存在"
-    L5_PLAN_EXISTS=true
-    CHECKLIST+=("l5_plan_dir:yes")
-    
-    # 检查是否有 plan.md
-    PLAN_COUNT=$(find "$SHADOW_DIR/L5-plan" -name "plan.md" 2>/dev/null | wc -l)
-    if [ "$PLAN_COUNT" -gt 0 ]; then
-        echo "✅ L5 Plan 有 plan.md ($PLAN_COUNT 个)"
-        IMPL_COUNT=$(grep -r "@implements:" "$SHADOW_DIR/L5-plan/" 2>/dev/null | wc -l || echo 0)
-        if [ "$IMPL_COUNT" -gt 0 ]; then
-            echo "✅ L5 Plan 有 @implements 标记 ($IMPL_COUNT 处)"
-            L5_PLAN_IMPL_EXISTS=true
-            GRADE_SCORE=$((GRADE_SCORE + 20))
-            CHECKLIST+=("l5_plan_impl:yes")
-        else
-            echo "❌ L5 Plan 无 @implements 标记"
-            CHECKLIST+=("l5_plan_impl:no")
-        fi
+# 检查 3: architecture 存在且有 architecture.md
+ARCH_EXISTS=false
+if [ -d "$DESIGN_DIR/architecture" ]; then
+    ARCH_COUNT=$(find "$DESIGN_DIR/architecture" -name "architecture.md" 2>/dev/null | wc -l)
+    if [ "$ARCH_COUNT" -gt 0 ]; then
+        echo "✅ architecture.md 存在 ($ARCH_COUNT 个)"
+        ARCH_EXISTS=true
+        GRADE_SCORE=$((GRADE_SCORE + 20))
+        CHECKLIST+=("arch:yes")
     else
-        echo "❌ L5 Plan 无 plan.md"
-        CHECKLIST+=("l5_plan_impl:no")
+        echo "❌ architecture.md 不存在"
+        CHECKLIST+=("arch:no")
     fi
 else
-    echo "❌ L5-plan/ 目录不存在"
-    CHECKLIST+=("l5_plan_dir:no")
-    CHECKLIST+=("l5_plan_impl:no")
+    echo "❌ architecture/ 目录不存在"
+    CHECKLIST+=("arch:no")
 fi
 echo ""
 
 # 检查 4: 代码中有 @implements
 CODE_IMPL_EXISTS=false
-CODE_IMPL_COUNT=$(grep -r "@implements:" "$PROJECT_DIR" --include="*.py" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" 2>/dev/null | grep -v ".shadow" | wc -l || echo 0)
+CODE_IMPL_COUNT=$(grep -r "@implements" "$PROJECT_DIR" --include="*.py" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" 2>/dev/null | grep -v "/.xdd/" | wc -l || echo 0)
 if [ "$CODE_IMPL_COUNT" -gt 0 ]; then
-    echo "✅ L5 代码有 @implements 标记 ($CODE_IMPL_COUNT 处)"
+    echo "✅ 代码有 @implements 标记 ($CODE_IMPL_COUNT 处)"
     CODE_IMPL_EXISTS=true
     GRADE_SCORE=$((GRADE_SCORE + 20))
-    CHECKLIST+=("l5_impl:yes")
+    CHECKLIST+=("code_impl:yes")
 else
-    echo "❌ L5 代码无 @implements 标记"
-    CHECKLIST+=("l5_impl:no")
+    echo "❌ 代码无 @implements 标记"
+    CHECKLIST+=("code_impl:no")
 fi
 echo ""
 
 # 检查 5: INDEX.md 存在
 INDEX_EXISTS=false
-if [ -f "$SHADOW_DIR/business/INDEX.md" ]; then
+if [ -f "$DESIGN_DIR/INDEX.md" ]; then
     echo "✅ INDEX.md 存在"
     INDEX_EXISTS=true
     GRADE_SCORE=$((GRADE_SCORE + 10))
@@ -139,7 +115,7 @@ echo ""
 
 # 检查 6: TRACE.md 存在
 TRACE_EXISTS=false
-if [ -f "$SHADOW_DIR/business/TRACE.md" ]; then
+if [ -f "$DESIGN_DIR/TRACE.md" ]; then
     echo "✅ TRACE.md 存在"
     TRACE_EXISTS=true
     GRADE_SCORE=$((GRADE_SCORE + 10))
@@ -152,9 +128,9 @@ echo ""
 
 # 检查 7: 目录结构是否标准（档位 E 检查）
 STANDARD_STRUCTURE=true
-if [ -d "$SHADOW_DIR" ]; then
-    # 检查是否有旧式平铺结构
-    OLD_STYLE=$(find "$SHADOW_DIR" -maxdepth 1 -name "*.spec.md" -o -name "*.flow.mermaid" 2>/dev/null | head -1)
+if [ -d "$DESIGN_DIR" ]; then
+    # 检查是否有旧式平铺结构（根目录散落 *.spec.md / *.flow.mermaid）
+    OLD_STYLE=$(find "$DESIGN_DIR" -maxdepth 1 \( -name "*.spec.md" -o -name "*.flow.mermaid" \) 2>/dev/null | head -1)
     if [ -n "$OLD_STYLE" ]; then
         echo "⚠️  检测到旧式平铺结构（档位 E 需要标准化）"
         STANDARD_STRUCTURE=false
@@ -172,9 +148,9 @@ echo ""
 echo "--- 档位判定 ---"
 echo ""
 
-# 档位判定逻辑
-if [ "$L1_SPEC_EXISTS" = true ] && [ "$L5_PLAN_IMPL_EXISTS" = true ] && [ "$CODE_IMPL_EXISTS" = true ]; then
-    # 档位 A: 完整项目，缺索引
+# 档位判定逻辑：spec + architecture + 代码标记 三要素
+if [ "$SPEC_RULES_EXISTS" = true ] && [ "$ARCH_EXISTS" = true ] && [ "$CODE_IMPL_EXISTS" = true ]; then
+    # 档位 A: 完整项目，看是否缺索引
     if [ "$INDEX_EXISTS" = true ] && [ "$TRACE_EXISTS" = true ]; then
         GRADE="A+"
         echo "🟢 档位 A+: 完整项目（所有追溯组件就绪）"
@@ -182,22 +158,22 @@ if [ "$L1_SPEC_EXISTS" = true ] && [ "$L5_PLAN_IMPL_EXISTS" = true ] && [ "$CODE
         GRADE="A"
         echo "🟢 档位 A: 完整项目，缺索引（需要生成 INDEX.md + TRACE.md）"
     fi
-elif [ "$L1_SPEC_EXISTS" = true ] && ([ "$L5_PLAN_IMPL_EXISTS" = false ] || [ "$CODE_IMPL_EXISTS" = false ]); then
-    # 档位 B: 有设计，缺标记
+elif [ "$SPEC_RULES_EXISTS" = true ] && { [ "$ARCH_EXISTS" = false ] || [ "$CODE_IMPL_EXISTS" = false ]; }; then
+    # 档位 B: 有 spec，缺架构或标记
     GRADE="B"
-    echo "🟡 档位 B: 有设计，缺标记（需要补全 @implements）"
-elif [ "$CODE_IMPL_EXISTS" = true ] && ([ "$L1_SPEC_EXISTS" = false ] || [ "$L1_EXISTS" = false ]); then
-    # 档位 C: 有代码标记，缺整理
+    echo "🟡 档位 B: 有 spec，缺架构或代码标记（需要补全 architecture + @implements）"
+elif [ "$CODE_IMPL_EXISTS" = true ] && { [ "$SPEC_RULES_EXISTS" = false ] || [ "$SPEC_EXISTS" = false ]; }; then
+    # 档位 C: 有代码标记，缺设计整理
     GRADE="C"
-    echo "🟡 档位 C: 有代码标记，缺整理（需要整理 L1 spec）"
-elif [ ! -d "$SHADOW_DIR" ]; then
+    echo "🟡 档位 C: 有代码标记，缺整理（需要从 @implements 反推 spec）"
+elif [ ! -d "$DESIGN_DIR" ]; then
     # 档位 D: 野生项目
     GRADE="D"
     echo "🔴 档位 D: 野生项目（需要完整逆向工程）"
 else
-    # 档位 B-: 有部分 .shadow 但无标记
+    # 档位 B-: 有部分 design 但无标记
     GRADE="B-"
-    echo "🔴 档位 B-: 有部分 .shadow 但无标记（需要补全追溯链）"
+    echo "🔴 档位 B-: 有部分 .xdd/design 但追溯链不完整"
 fi
 
 # 档位 E 检测（结构标准化）
@@ -220,37 +196,38 @@ echo ""
 
 case "$GRADE" in
     A|A+)
-        echo "项目状态良好，建议:" 
-        echo "  1. 运行 bash skills/shadow-trace-init/scripts/trace.sh coverage 验证追溯链完整性"
-        echo "  2. 定期运行 shadow-project-audit 进行全局审查"
+        echo "项目状态良好，建议:"
+        echo "  1. 运行 bash skills/xdd-reverse/scripts/trace.sh coverage 验证追溯链完整性"
+        echo "  2. 定期运行档位扫描做全局审查"
         ;;
     B)
-        echo "项目需要补全 @implements 标记，建议:"
+        echo "项目需要补全架构和 @implements 标记，建议:"
         echo "  1. 运行 infer-implements.sh 推断 @implements"
-        echo "  2. 确认推断结果并写入 L5 plan 和代码"
-        echo "  3. 生成 INDEX.md + TRACE.md"
+        echo "  2. 确认推断结果并补到代码"
+        echo "  3. 补全 architecture.md（若缺）"
+        echo "  4. 生成 INDEX.md + TRACE.md"
         ;;
     C)
-        echo "项目需要整理 L1 文档，建议:"
-        echo "  1. 从代码 @implements 反推 L1 spec"
-        echo "  2. 整理 business 目录结构"
+        echo "项目需要整理 spec 文档，建议:"
+        echo "  1. 从代码 @implements 反推 rules.md"
+        echo "  2. 整理 spec 目录结构"
         echo "  3. 生成 INDEX.md + TRACE.md"
         ;;
     D)
         echo "项目需要完整逆向工程，建议:"
-        echo "  1. 调用 shadow-reverse 进行完整逆向"
+        echo "  1. 调用 xdd-reverse 进行完整逆向"
         echo "  2. 完成后回到档位 A 流程生成索引"
         ;;
     B-)
         echo "项目追溯链不完整，建议:"
-        echo "  1. 检查缺失的 .shadow 层级"
-        echo "  2. 补全 L1 spec 和 L5 plan"
+        echo "  1. 检查缺失的 .xdd/design 层级"
+        echo "  2. 补全 spec rules 和 architecture"
         echo "  3. 建立完整的追溯链"
         ;;
     *+E)
         echo "项目需要结构标准化，建议:"
-        echo "  1. 备份现有 .shadow 目录"
-        echo "  2. 按档位 E 标准重新整理目录"
+        echo "  1. 备份现有 .xdd/design 目录"
+        echo "  2. 按标准重新整理目录（spec/{slug}/ + architecture/{slug}/）"
         echo "  3. 重新生成 INDEX.md + TRACE.md"
         ;;
 esac

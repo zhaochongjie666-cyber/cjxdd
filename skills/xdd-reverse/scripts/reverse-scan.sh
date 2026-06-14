@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# reverse-scan.sh — L5 代码扫描脚本（基于 r-code-scanner.md）
+# reverse-scan.sh — 代码扫描脚本（逆向 Phase A）
 # 用法: bash reverse-scan.sh [project_dir]
 #
-# 扫描项目代码，输出代码资产盘点报告
+# 扫描项目代码，输出代码资产盘点报告（反推 architecture 的输入）
 
 set -euo pipefail
 
 PROJECT_DIR="${1:-.}"
-OUTPUT_FILE="${PROJECT_DIR}/.shadow/r-scan.md"
+OUTPUT_FILE="${PROJECT_DIR}/.xdd/design/r-scan.md"
 
-echo "=== L5 代码扫描 ==="
+echo "=== 代码扫描（逆向 Phase A）==="
 echo "项目目录: $PROJECT_DIR"
 echo ""
 
@@ -164,4 +164,4 @@ echo "" >> "$OUTPUT_FILE"
 echo "**扫描完成** — 进入 Phase B 进行业务线识别和证据化补全" >> "$OUTPUT_FILE"
 
 echo "扫描报告已生成: $OUTPUT_FILE"
-echo "✅ L5 扫描完成"
+echo "✅ 代码扫描完成"

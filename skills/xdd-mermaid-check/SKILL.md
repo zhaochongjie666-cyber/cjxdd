@@ -1,17 +1,17 @@
 ---
 name: xdd-mermaid-check
 description: |
-  Mermaid 图表渲染验证 — 用 mermaid-cli (mmdc) 验证 project.flow.mermaid 能否正确渲染为 SVG.
-  Shadow L1 AI-Flow 门禁 (步骤 3) 必通过此技能. 适用任何 Mermaid 语法验证场景.
-  触发: 检查 mermaid、验证流程图、mermaid 检查、mmdc 验证、mermaid 渲染检查、flow 渲染验证.
-version: "1.1.0"
+  Mermaid 图表渲染验证 — 用 mermaid-cli (mmdc) 验证 .xdd/design/architecture/{slug}/flow.mermaid 能否正确渲染为 SVG。
+  xdd-architecture 的结构锚配套验证工具（流程图画完必跑）。适用任何 Mermaid 语法验证场景。
+  触发：检查 mermaid、验证流程图、mermaid 检查、mmdc 验证、mermaid 渲染检查、flow 渲染验证。
+version: "1.2.0"
 ---
 
 # Mermaid Check — 流程图渲染验证
 
 ## 角色职责
 
-纯工具 skill，验证 `.shadow/business/project.flow.mermaid` 能否通过 mermaid-cli (mmdc) 正确渲染为 SVG 图片。
+纯工具 skill，验证 `.xdd/design/architecture/{slug}/flow.mermaid` 能否通过 mermaid-cli (mmdc) 正确渲染为 SVG 图片。
 
 不做业务设计、不修改任何文件，只输出 PASS/FAIL 验证结果。
 
@@ -24,13 +24,13 @@ version: "1.1.0"
 
 ### 首次执行
 
-1. **扫描文件** → 查找 `.shadow/business/project.flow.mermaid`
-2. **验证总图** → 调用 `mmdc -i <file> -o /tmp/_mmdc_XXXXXX.svg`
+1. **扫描文件** → 查找 `.xdd/design/architecture/*/flow.mermaid`（每个业务线 slug 一个）
+2. **逐个验证** → 调用 `mmdc -i <file> -o /tmp/_mmdc_XXXXXX.svg`
 3. **汇总结果** → 输出 PASS/FAIL 统计
 
 ### 修改模式
 
-**触发条件**：project.flow.mermaid 文件已更新，需要重新验证
+**触发条件**：某个 flow.mermaid 文件已更新，需要重新验证
 
 **操作步骤**：
 1. 运行验证脚本
@@ -42,23 +42,23 @@ version: "1.1.0"
 ### 直接执行
 
 ```bash
-bash skills/mermaid-check/scripts/mmdc_check.sh [.shadow路径]
+bash skills/xdd-mermaid-check/scripts/mmdc_check.sh [.xdd 路径]
 ```
 
-默认读取 `.shadow/` 目录。可通过第一个参数或 `SHADOW_DIR` 环境变量指定其他路径。
+默认从 `.xdd/design/architecture/` 扫描所有 `{slug}/flow.mermaid`。可通过第一个参数或 `XDD_DIR` 环境变量指定其他 `.xdd` 路径。
 
-### Subagent 调用方式
+### 指定路径
 
 ```bash
-# 检查当前目录下的 Shadow 项目
-bash skills/mermaid-check/scripts/mmdc_check.sh
+# 检查当前目录的 .xdd
+bash skills/xdd-mermaid-check/scripts/mmdc_check.sh
 
-# 检查指定路径
-bash skills/mermaid-check/scripts/mmdc_check.sh /path/to/project/.shadow
+# 检查指定项目
+bash skills/xdd-mermaid-check/scripts/mmdc_check.sh /path/to/project/.xdd
 
 # 通过环境变量指定
-export SHADOW_DIR=/path/to/project/.shadow
-bash skills/mermaid-check/scripts/mmdc_check.sh
+export XDD_DIR=/path/to/project/.xdd
+bash skills/xdd-mermaid-check/scripts/mmdc_check.sh
 ```
 
 ## 输出格式
@@ -66,11 +66,12 @@ bash skills/mermaid-check/scripts/mmdc_check.sh
 ```
 === Mermaid Render Validation (mmdc) ===
 
-Checking project-level project.flow.mermaid...
+Checking flow.mermaid files under .xdd/design/architecture/...
 
-  PASS mmdc: 'project.flow.mermaid' renders OK
+  PASS mmdc: 'B01-auth/flow.mermaid' renders OK
+  PASS mmdc: 'B02-order/flow.mermaid' renders OK
 
-=== Result: PASS=1 FAIL=0 ===
+=== Result: PASS=2 FAIL=0 ===
 ```
 
 退出码：0 = 全部通过，1 = 有失败。
@@ -80,22 +81,22 @@ Checking project-level project.flow.mermaid...
 | 错误 | 原因 | 解决 |
 |------|------|------|
 | `mmdc not found` | 未安装 mermaid-cli | `npm install -g @mermaid-js/mermaid-cli` |
-| `FAIL` | project.flow.mermaid 语法错误 | 检查括号匹配、节点定义、箭头语法 |
-| 文件不存在 | 路径不正确 | 确认 `.shadow/business/` 路径 |
+| `FAIL` | flow.mermaid 语法错误 | 检查括号匹配、节点定义、箭头语法 |
+| 文件不存在 | 路径不正确 | 确认 `.xdd/design/architecture/{slug}/flow.mermaid` 路径 |
 
 ## 关键约束
 
 - 纯工具 skill，不做业务设计
 - 不修改任何文件
-- 由 Shadow L1 AI-Flow 门禁（步骤 3）自动调用
+- xdd-architecture 画完 flow.mermaid 后建议跑此验证
 - 可独立使用
 
 ## 与相关技能的关系
 
 | 技能 | 边界说明 |
 |------|----------|
-| shadow-l1-flow | mermaid-check 是 flow 的验证工具，不做流程设计 |
-| shadow-reviewer | reviewer 做质量审查，mermaid-check 只做语法验证 |
+| xdd-architecture | 产出 `flow.mermaid`；mermaid-check 是它的渲染验证工具，不做流程设计 |
+| xdd-verify | 4 维一致性审计可调用本工具确认图表可渲染 |
 
 ## 参考文档
 

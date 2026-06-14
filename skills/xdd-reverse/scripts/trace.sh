@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# trace.sh — L1 ↔ L5 双向追溯脚本
+# trace.sh — spec ↔ 代码 双向追溯脚本（逆向 Phase C）
 # 用法:
-#   trace.sh forward  <RULE_ID>     从 L1 规则查实现代码（正向）
-#   trace.sh reverse  <file_path>   从代码文件查 L1 规则（反向）
+#   trace.sh forward  <RULE_ID>     从 spec 规则查实现代码（正向）
+#   trace.sh reverse  <file_path>   从代码文件查 spec 规则（反向）
 #   trace.sh node     <BXX-NYY>     从业务节点查实现代码（节点级正向）
 #   trace.sh biz      <BXX>         查看整个业务线的所有节点和实现
-#   bash skills/shadow-trace-init/scripts/trace.sh coverage [slug] 生成规则覆盖矩阵（默认全部 slug）
-#   bash skills/shadow-trace-init/scripts/trace.sh matrix          生成完整追溯矩阵 Markdown
+#   bash skills/xdd-reverse/scripts/trace.sh coverage [slug] 生成规则覆盖矩阵（默认全部 slug）
+#   bash skills/xdd-reverse/scripts/trace.sh matrix          生成完整追溯矩阵 Markdown
 
 set -uo pipefail
 
-SHADOW_DIR="${SHADOW_DIR:-.shadow}"
+DESIGN_DIR="${DESIGN_DIR:-.xdd/design}"
 PROJECT_DIR="${PROJECT_DIR:-.}"
 
 RED='\033[0;31m'
@@ -25,39 +25,32 @@ NC='\033[0m'
 
 # 从代码文件提取 @implements
 extract_implements_code() {
-    # Python: # @implements: slug-R01
-    grep -rnoP '^\s*#\s*@implements:\s*(.+)' \
+    # Python: # @implements slug-R01
+    grep -rnoP '^\s*#\s*@implements:?\s*(.+)' \
         --include='*.py' "$PROJECT_DIR" 2>/dev/null | \
-        sed -E 's/:([^:]*@implements:.*$)/:\1/' | \
-        sed -E 's/.*@implements:\s*//' || true
+        sed -E 's/:([^:]*@implements:?.*$)/:\1/' | \
+        sed -E 's/.*@implements:?\s*//' || true
 
-    # TS/JS: * @implements: slug-R01 或 // @implements: slug-R01
-    grep -rnoP '(//|\*)\s*@implements:\s*(.+)' \
+    # TS/JS: * @implements slug-R01 或 // @implements slug-R01
+    grep -rnoP '(//|\*)\s*@implements:?\s*(.+)' \
         --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' \
         "$PROJECT_DIR" 2>/dev/null | \
-        sed -E 's/.*@implements:\s*//' || true
-}
-
-# 从 L5 Plan 提取 @implements
-extract_implements_plan() {
-    grep -rnoP '@implements:\s*(.+)' \
-        "$SHADOW_DIR/L5-plan/" 2>/dev/null | \
-        sed -E 's/.*@implements:\s*//' || true
+        sed -E 's/.*@implements:?\s*//' || true
 }
 
 # 从测试提取 @covers
 extract_covers_test() {
-    grep -rnoP '@covers:\s*(.+)' \
+    grep -rnoP '@covers:?\s*(.+)' \
         "$PROJECT_DIR/server/tests/" "$PROJECT_DIR/tests/" \
         "$PROJECT_DIR/client/src/__tests__/" "$PROJECT_DIR/frontend/src/__tests__/" \
         "$PROJECT_DIR/src/__tests__/" 2>/dev/null | \
-        sed -E 's/.*@covers:\s*//' || true
+        sed -E 's/.*@covers:?\s*//' || true
 }
 
-# 从 spec.md 提取所有规则 ID
+# 从 rules.md 提取所有规则 ID
 extract_rules_from_spec() {
     local slug="$1"
-    local spec="$SHADOW_DIR/business/${slug}/${slug}.spec.md"
+    local spec="$DESIGN_DIR/spec/${slug}/rules.md"
     if [ -f "$spec" ]; then
         grep -oP "${slug}-R\d+" "$spec" 2>/dev/null | sort -u
     fi
@@ -92,27 +85,6 @@ build_rule_to_files() {
         done
     done < <(extract_implements_code)
 
-    # 从 L5 plan 提取
-    while IFS= read -r line; do
-        [ -z "$line" ] && continue
-        local file rules
-        file="$(echo "$line" | cut -d: -f1)"
-        rules="$(echo "$line" | cut -d: -f2-)"
-        file="L5:${file#*$SHADOW_DIR/}"  # 标记为 L5 Plan 层
-        IFS=',' read -ra rarr <<< "$rules"
-        for r in "${rarr[@]}"; do
-            r="$(echo "$r" | xargs)"
-            [ -z "$r" ] && continue
-            if [ -z "${rule_map[$r]:-}" ]; then
-                rule_map[$r]="$file"
-            else
-                if [[ "${rule_map[$r]}" != *"$file"* ]]; then
-                    rule_map[$r]="${rule_map[$r]},$file"
-                fi
-            fi
-        done
-    done < <(extract_implements_plan)
-
     # 输出
     for r in $(echo "${!rule_map[@]}" | tr ' ' '\n' | sort); do
         echo "$r|${rule_map[$r]}"
@@ -122,13 +94,13 @@ build_rule_to_files() {
 # 构建 文件 → 规则ID列表 映射
 build_file_to_rules() {
     # 从代码提取
-    grep -rnoP '(//|\*)\s*@implements:\s*(.+)' \
+    grep -rnoP '(//|\*)\s*@implements:?\s*(.+)' \
         --include='*.py' --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' \
         "$PROJECT_DIR" 2>/dev/null | \
         while IFS= read -r line; do
             local file rules
             file="$(echo "$line" | sed -E 's/^([^:]+):.*/\1/')"
-            rules="$(echo "$line" | sed -E 's/.*@implements:\s*//' | sed 's/\r$//')"
+            rules="$(echo "$line" | sed -E 's/.*@implements:?\s*//' | sed 's/\r$//')"
             echo "$file|$rules"
         done
 }
@@ -145,7 +117,7 @@ cmd_forward() {
     # 查找 spec 中的规则描述
     local slug
     slug="$(echo "$rule" | sed -E 's/-R[0-9]+$//')"
-    local spec="$SHADOW_DIR/business/${slug}/${slug}.spec.md"
+    local spec="$DESIGN_DIR/spec/${slug}/rules.md"
     if [ -f "$spec" ]; then
         local desc
         desc="$(grep -A1 "$rule" "$spec" 2>/dev/null | tail -1 | sed 's/^[[:space:]]*//' | head -c 120)"
@@ -153,27 +125,14 @@ cmd_forward() {
     fi
     echo ""
 
-    # 查找 L5 Plan
-    echo -e "  ${YELLOW}L5 Plan:${NC}"
-    local plan_files
-    plan_files="$(grep -rl "$rule" "$SHADOW_DIR/L5-plan/" 2>/dev/null | sed "s|$SHADOW_DIR/L5-plan/||" || true)"
-    if [ -n "$plan_files" ]; then
-        echo "$plan_files" | while IFS= read -r f; do
-            echo "    📐 $f"
-        done
-    else
-        echo "    (无)"
-    fi
-    echo ""
-
     # 查找代码实现
-    echo -e "  ${YELLOW}L5 代码实现:${NC}"
+    echo -e "  ${YELLOW}代码实现:${NC}"
     local code_files
-    code_files="$(grep -rl "@implements:.*$rule" --include='*.py' --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' "$PROJECT_DIR" 2>/dev/null | sed "s|$PROJECT_DIR/||" || true)"
+    code_files="$(grep -rl "@implements.*$rule" --include='*.py' --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' "$PROJECT_DIR" 2>/dev/null | sed "s|$PROJECT_DIR/||" || true)"
     if [ -n "$code_files" ]; then
         echo "$code_files" | while IFS= read -r f; do
             local line_num
-            line_num="$(grep -n "@implements:.*$rule" "$PROJECT_DIR/$f" 2>/dev/null | head -1 | cut -d: -f1)"
+            line_num="$(grep -n "@implements.*$rule" "$PROJECT_DIR/$f" 2>/dev/null | head -1 | cut -d: -f1)"
             echo "    💻 $f (line:$line_num)"
         done
     else
@@ -183,7 +142,7 @@ cmd_forward() {
 
     # 查找测试覆盖
     echo -e "  ${YELLOW}测试覆盖:${NC}"
-    test_files="$(grep -rl "@covers:.*$rule" \
+    test_files="$(grep -rl "@covers.*$rule" \
         "$PROJECT_DIR/server/tests/" "$PROJECT_DIR/tests/" \
         "$PROJECT_DIR/client/src/__tests__/" "$PROJECT_DIR/frontend/src/__tests__/" \
         "$PROJECT_DIR/src/__tests__/" 2>/dev/null | sed "s|$PROJECT_DIR/||" || true)"
@@ -219,7 +178,7 @@ cmd_reverse() {
         for r in $(echo "$rules" | tr ',' '\n' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//'); do
             local slug
             slug="$(echo "$r" | sed -E 's/-R[0-9]+$//')"
-            local spec="$SHADOW_DIR/business/${slug}/${slug}.spec.md"
+            local spec="$DESIGN_DIR/spec/${slug}/rules.md"
             if [ -f "$spec" ]; then
                 local desc
                 desc="$(grep -A1 "$r" "$spec" 2>/dev/null | tail -1 | sed 's/^[[:space:]]*//' | head -c 80)"
@@ -241,9 +200,9 @@ cmd_node() {
     echo ""
 
     # Find spec rules referencing this node
-    echo -e "  ${YELLOW}关联的 L1 规则:${NC}"
+    echo -e "  ${YELLOW}关联的 spec 规则:${NC}"
     local found=0
-    for spec in "$SHADOW_DIR/business"/*/spec.md; do
+    for spec in "$DESIGN_DIR/spec"/*/rules.md; do
         [ -f "$spec" ] || continue
         if grep -q "$node" "$spec" 2>/dev/null; then
             found=1
@@ -256,9 +215,9 @@ cmd_node() {
     echo ""
 
     # Find code implementing this node
-    echo -e "  ${YELLOW}L5 代码实现（搜索 $(basename "$node") 引用）:${NC}"
+    echo -e "  ${YELLOW}代码实现（搜索 $(basename "$node") 引用）:${NC}"
     local code_files
-    code_files=$(grep -rl "$node" --include='*.py' --include='*.ts' --include='*.tsx' --include='*.js' "$PROJECT_DIR" 2>/dev/null | grep -v '/\.shadow/' | head -10 || true)
+    code_files=$(grep -rl "$node" --include='*.py' --include='*.ts' --include='*.tsx' --include='*.js' "$PROJECT_DIR" 2>/dev/null | grep -v '/\.xdd/' | head -10 || true)
     if [ -n "$code_files" ]; then
         echo "$code_files" | while IFS= read -r f; do
             echo "    💻 ${f#$PROJECT_DIR/}"
@@ -283,9 +242,9 @@ cmd_biz() {
     echo -e "${CYAN}=== 业务线全局视图: $biz ===${NC}"
     echo ""
 
-    # Find all nodes in project.flow.mermaid for this biz
+    # Find all nodes in flow.mermaid for this biz
     echo -e "  ${YELLOW}流程节点清单:${NC}"
-    for flow in "$SHADOW_DIR/business/project.flow.mermaid" "$SHADOW_DIR/business/flow.mermaid" "$SHADOW_DIR/business"/*/flow.mermaid "$SHADOW_DIR/business"/*/*.flow.mermaid; do
+    for flow in "$DESIGN_DIR/architecture"/*/flow.mermaid; do
         [ -f "$flow" ] || continue
         local nodes
         nodes=$(grep -oE "N[0-9]{2}" "$flow" 2>/dev/null | sort -u || true)
@@ -302,19 +261,19 @@ cmd_biz() {
     echo ""
     echo -e "  ${YELLOW}实现文件（含 BXX-NYY 引用）:${NC}"
     local code_files
-    code_files=$(grep -rl "${biz}-N" --include='*.py' --include='*.ts' --include='*.tsx' --include='*.js' "$PROJECT_DIR" 2>/dev/null | grep -v '/\.shadow/' | head -15 || true)
+    code_files=$(grep -rl "${biz}-N" --include='*.py' --include='*.ts' --include='*.tsx' --include='*.js' "$PROJECT_DIR" 2>/dev/null | grep -v '/\.xdd/' | head -15 || true)
     [ -n "$code_files" ] && echo "$code_files" | while IFS= read -r f; do echo "    💻 ${f#$PROJECT_DIR/}"; done || echo "    (无 — 建议为代码添加 BXX-NYY 节点引用)"
 
     # Summary
     echo ""
     echo -e "  ${GREEN}业务线 $biz 全貌已展示。${NC}"
-    echo "  运行 bash skills/shadow-trace-init/scripts/trace.sh coverage <slug> 查看规则级覆盖。"
+    echo "  运行 bash skills/xdd-reverse/scripts/trace.sh coverage <slug> 查看规则级覆盖。"
     echo "  运行 trace.sh node ${biz}-N01 查看单节点。"
 }
 
 cmd_coverage() {
     local target_slug="${1:-}"
-    echo -e "${CYAN}=== L1 规则覆盖矩阵 ===${NC}"
+    echo -e "${CYAN}=== spec 规则覆盖矩阵 ===${NC}"
     echo ""
 
     # 收集所有 slug
@@ -324,7 +283,7 @@ cmd_coverage() {
     else
         while IFS= read -r d; do
             slugs+=("$(basename "$d")")
-        done < <(find "$SHADOW_DIR/business/" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
+        done < <(find "$DESIGN_DIR/spec/" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
     fi
 
     # 构建映射
@@ -385,7 +344,7 @@ cmd_coverage() {
 }
 
 cmd_matrix() {
-    echo "# L1 双向追溯矩阵"
+    echo "# spec 双向追溯矩阵"
     echo ""
     echo "> 自动生成于 $(date '+%Y-%m-%d %H:%M:%S')"
     echo ""
@@ -393,7 +352,7 @@ cmd_matrix() {
     local slugs=()
     while IFS= read -r d; do
         slugs+=("$(basename "$d")")
-    done < <(find "$SHADOW_DIR/business/" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
+    done < <(find "$DESIGN_DIR/spec/" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
 
     # 构建映射
     declare -A rule_files
@@ -420,38 +379,29 @@ cmd_matrix() {
     for slug in "${slugs[@]}"; do
         echo "## $slug"
         echo ""
-        echo "| 规则 | 描述 | L5 Plan | L5 代码 | 状态 |"
-        echo "|------|------|---------|---------|------|"
+        echo "| 规则 | 描述 | 代码 | 状态 |"
+        echo "|------|------|------|------|"
 
         while IFS= read -r rule; do
             [ -z "$rule" ] && continue
-            local short_rule desc impl_files test_status status_icon
+            local short_rule desc impl_files status_icon
 
             short_rule="$(echo "$rule" | sed -E 's/^.*-R/R/')"
 
             # 描述
-            local spec="$SHADOW_DIR/business/${slug}/${slug}.spec.md"
+            local spec="$DESIGN_DIR/spec/${slug}/rules.md"
             if [ -f "$spec" ]; then
                 desc="$(grep -A1 "$rule" "$spec" 2>/dev/null | tail -1 | sed 's/^[[:space:]]*//' | head -c 60)"
             else
                 desc="-"
             fi
 
-            # L5 Plan
-            local plan
-            plan="$(grep -rl "$rule" "$SHADOW_DIR/L5-plan/" 2>/dev/null | wc -l || echo 0)"
-            if [ "$plan" -gt 0 ]; then
-                impl_files="✅ ${plan} 个plan"
-            else
-                impl_files="-"
-            fi
-
-            # L5 代码
+            # 代码实现
             local code_count
-            code_count="$(grep -rl "@implements:.*$rule" --include='*.py' --include='*.ts' --include='*.tsx' "$PROJECT_DIR" 2>/dev/null | wc -l || echo 0)"
+            code_count="$(grep -rl "@implements.*$rule" --include='*.py' --include='*.ts' --include='*.tsx' "$PROJECT_DIR" 2>/dev/null | wc -l || echo 0)"
             if [ "$code_count" -gt 0 ]; then
-                impl_files="${impl_files} ✅ ${code_count} 个文件"
-            elif [ -z "$impl_files" ] || [ "$impl_files" = "-" ]; then
+                impl_files="✅ ${code_count} 个文件"
+            else
                 impl_files="❌ 未实现"
             fi
 
@@ -462,7 +412,7 @@ cmd_matrix() {
                 status_icon="⚠️"
             fi
 
-            echo "| $short_rule | $desc | $plan 个 | $code_count 个 | $status_icon |"
+            echo "| $short_rule | $desc | $code_count 个 | $status_icon |"
         done < <(extract_rules_from_spec "$slug")
 
         echo ""
@@ -497,22 +447,22 @@ case "${1:-help}" in
         cmd_matrix
         ;;
     help|*)
-        echo "L1 ↔ L5 双向追溯工具（含 BXX-NYY 节点级路由）"
+        echo "spec ↔ 代码 双向追溯工具（含 BXX-NYY 节点级路由）"
         echo ""
         echo "用法:"
-        echo "  trace.sh forward  <RULE_ID>      从 L1 规则查实现代码"
-        echo "  trace.sh reverse  <file_path>    从代码文件查 L1 规则"
+        echo "  trace.sh forward  <RULE_ID>      从 spec 规则查实现代码"
+        echo "  trace.sh reverse  <file_path>    从代码文件查 spec 规则"
         echo "  trace.sh node     <BXX-NYY>      从业务节点查所有实现"
         echo "  trace.sh biz      <BXX>          查看业务线全局节点和实现"
-        echo "  bash skills/shadow-trace-init/scripts/trace.sh coverage [slug]  生成规则覆盖矩阵"
-        echo "  bash skills/shadow-trace-init/scripts/trace.sh matrix           生成追溯矩阵 Markdown"
+        echo "  bash skills/xdd-reverse/scripts/trace.sh coverage [slug]  生成规则覆盖矩阵"
+        echo "  bash skills/xdd-reverse/scripts/trace.sh matrix           生成追溯矩阵 Markdown"
         echo ""
         echo "示例:"
-        echo "  trace.sh forward auto-labeling-platform-R01"
+        echo "  trace.sh forward b01-auth-R01"
         echo "  trace.sh node B01-N03"
         echo "  trace.sh biz B01"
         echo "  trace.sh reverse backend/app/api/v1/auth.py"
-        echo "  bash skills/shadow-trace-init/scripts/trace.sh coverage auto-labeling-platform"
-        echo "  bash skills/shadow-trace-init/scripts/trace.sh matrix > .shadow/business/TRACE.md"
+        echo "  bash skills/xdd-reverse/scripts/trace.sh coverage b01-auth"
+        echo "  bash skills/xdd-reverse/scripts/trace.sh matrix > .xdd/design/TRACE.md"
         ;;
 esac
