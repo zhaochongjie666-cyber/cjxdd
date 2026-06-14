@@ -1,19 +1,10 @@
-#!/bin/bash
-# chaos-runner.sh — L3 韧性真注入 (实施 #20, 放水 4 修)
+#!/usr/bin/env bash
+# chaos-runner.sh — xdd-resilience 韧性真注入（可移植，无平台 hook 依赖）
 # 5 类 chaos: network / resource / state / data / dependency
-# 跟 loop-until-pass.sh 联动 (闸门 0, scale-driven min_categories)
-# 详见 skills/xdd-l3/SKILL.md §6 + docs/LOOP-DESIGN.md
+# 详见 skills/xdd-resilience/SKILL.md §4
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HOOK_LIB="$(cd "$SCRIPT_DIR/../../.." && pwd)/hooks/xdd-gate-lib.sh"
-if [[ -f "$HOOK_LIB" ]]; then
-    source "$HOOK_LIB"
-    if is_meta_project 2>/dev/null; then
-        echo "[xdd] (Meta 项目, 框架自身, 跳过 chaos)"
-        exit 0
-    fi
-fi
 
 # === Args ===
 MIN_CATEGORIES="${XDD_CHAOS_MIN_CATEGORIES:-3}"  # 默认 3 类 (S/M 规模)
@@ -164,7 +155,7 @@ inject_chaos_data() {
         echo "  ⚠️ data: 无 minio 容器, 跑 fallback 静态检查"
         # 静态检查: chaos-scenarios.md 有 data 类别场景
         local chaos_files
-        chaos_files=$(find .xdd/baseline/arch -path "*/resilience/chaos-scenarios.md" 2>/dev/null)
+        chaos_files=$(find .xdd/design/architecture -path "*/resilience/chaos-scenarios.md" 2>/dev/null)
         if [[ -n "$chaos_files" ]] && grep -qE "data|数据|存储" "$chaos_files" 2>/dev/null; then
             echo "  ✅ data: chaos-scenarios.md 有 data 类别设计"
             return 0
@@ -195,7 +186,7 @@ inject_chaos_dependency() {
     if [[ -z "$target" ]]; then
         echo "  ⚠️ dependency: 无 redis 容器, 跑 fallback 静态检查"
         local chaos_files
-        chaos_files=$(find .xdd/baseline/arch -path "*/resilience/chaos-scenarios.md" 2>/dev/null)
+        chaos_files=$(find .xdd/design/architecture -path "*/resilience/chaos-scenarios.md" 2>/dev/null)
         if [[ -n "$chaos_files" ]] && grep -qE "dependency|依赖|cache" "$chaos_files" 2>/dev/null; then
             echo "  ✅ dependency: chaos-scenarios.md 有 dependency 类别设计"
             return 0

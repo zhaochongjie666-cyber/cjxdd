@@ -1,19 +1,10 @@
-#!/bin/bash
-# wander-test.sh — 回环 7 L6 部署验证回环
-# 跑真实漫游 (curl 所有端点, 验证 401/200/404), 同时跑 4 维 L5 audit
-# 全过才 Phase 6 ✅, loop until pass
-# 详见 skills/xdd-l6/SKILL.md + docs/LOOP-DESIGN.md § 回环 7
+#!/usr/bin/env bash
+# wander-test.sh — xdd-verify 部署验证漫游（可移植，无平台 hook 依赖）
+# 跑真实漫游 (curl 所有端点, 验证 401/200/404)
+# 详见 skills/xdd-verify/SKILL.md §2
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HOOK_LIB="$(cd "$SCRIPT_DIR/../../.." && pwd)/hooks/xdd-gate-lib.sh"
-if [[ -f "$HOOK_LIB" ]]; then
-    source "$HOOK_LIB"
-    if is_meta_project 2>/dev/null; then
-        echo "[xdd] (Meta 项目, 跳过 wander)"
-        exit 0
-    fi
-fi
 
 XDD_DIR=".xdd"
 [[ ! -d "$XDD_DIR" ]] && { echo "❌ 无 .xdd/"; exit 1; }

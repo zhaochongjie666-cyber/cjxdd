@@ -1,462 +1,184 @@
 ---
 name: xdd-execute
-description: xdd-plan 的执行者。加载实践计划，按 Task 逐步实现，遵循 TDD 循环，处理阻塞，推进进度标记，确保交付符合 BDD 验收标准的成果。当用户要求执行计划、实现计划、跑计划、开始开发时触发。
+description: |
+  xdd 代码层 —— plan 的执行者。加载计划，按 task 逐步 TDD 实现，代码用 @implements RXX 回指规则，处理阻塞，确保交付符合验收标准。
+  核心纪律：无存根、无假实现、必须跑通有证据 —— 这是反「sham 交付」的底线（session c3692b46 教训：60 端点只实施 23 = 38% 蒙混）。
+  吸收旧 xdd-scaffold 的 Step 0（环境准备：依赖/测试框架/Docker 服务）。
+  触发：执行计划、实现计划、跑计划、开始开发、写代码、实施、开工、TDD。
 ---
 
-# xdd-execute — Plan Execution Skill
+# xdd-execute — 代码层
 
-## 使用场景
+## 我锚定什么 / 上游 / 下游
 
-当用户要求执行 `xdd-plan` 生成的实现计划时，使用本 skill。
+**我把计划变成能跑的代码** —— 按 task 顺序写，每个 commit 用 `@implements RXX` 回指规则，让代码可追溯到设计意图。执行者不改计划结构、不跳验证、不在阻塞时猜。
 
-执行者的职责是：加载计划 → 逐 Task 执行 → 每个 Step 严格遵循 → 处理阻塞 → 汇报完成。执行者不修改计划结构，不跳过验证步骤，不在阻塞时猜测。
-
-## 执行流程
-
-### Step 1: 加载与审查计划
-
-1. 读取计划文件（默认路径 `docs/xdd/plan/` 下的 `.md` 文件）
-2. 提取以下信息：
-   - 文件结构表
-   - 依赖关系表
-   - BDD 覆盖追踪表
-   - 所有 Task 及其状态
-3. 逐项检查计划质量：
-   - 每个 Task 是否有精确文件路径？
-   - 每个 Task 是否声明了依赖？
-   - 每个 Task 是否标注了 BDD 来源？
-   - 代码步骤是否包含完整代码（非占位符）？
-   - 验证步骤是否有精确命令和预期输出？
-4. 分类所有发现的问题：
-   - **结构性问题**（缺少文件、占位符、类型不一致、缺少依赖声明）：记录到问题清单
-   - **微小问题**（拼写错误、路径笔误）：记录到微调清单，不影响执行
-5. 如果存在结构性问题：**一次性上报全部问题**（附清单），等待计划者修复后重新走 Step 1
-6. 如果无结构性问题：确认当前分支，开始执行
-
-### Step 2: 确认工作环境
-
-执行前必须确认：
-
-- [ ] 当前不在 main/master 分支（除非用户明确授权）
-- [ ] 工作目录干净（无未提交变更）
-- [ ] 依赖已安装（根据技术栈运行 `npm install` / `pip install` 等）
-- [ ] 测试框架可用（运行一次空测试确认）
-
-如果计划头部指定了技术栈，确认相关工具已就绪。
-
-### Step 3: 逐 Task 执行
-
-#### 执行顺序策略
-
-根据计划中的依赖关系表确定执行顺序：
-
-```
-1. 找出所有 Depends on: None 的 Task → 首批可执行
-2. 按 Task 序号从小到大排序（默认线性顺序）
-3. 每完成一个 Task，检查是否有新的 Task 满足依赖 → 加入可执行队列
-```
-
-**两种执行模式的并行策略：**
-
-| 执行模式 | 并行策略 |
+| | |
 |---|---|
-| 逐任务分派 | 依赖满足的 Task 可同时派发给不同子代理并行执行 |
-| 内联执行 | 按 Task 序号线性执行（即使无依赖也串行），每完成一个 Task 做 Review |
+| **上游** | `xdd-plan`（`.xdd/plan/{slug}/plan.md` task DAG + RXX 回指） |
+| **我产出** | 代码（每处 `@implements RXX`）+ 测试（每个 RXX 至少 1 个）+ 执行报告 |
+| **下游消费者** | `xdd-verify`（按 Feature 验收 + 真实可用契约） |
+| **回溯锚** | 代码注释 `@implements RXX` ← plan task ← spec 规则 ← design 意图 |
 
-#### 单个 Task 执行流程
+## Step 0：准备环境（吸收自旧 scaffold）
 
-对于每个 Task，按以下流程：
+写第一行代码前：
+
+- [ ] 当前不在 main/master（除非用户授权）
+- [ ] 工作目录干净
+- [ ] 依赖已装（`npm install` / `pip install` 等）
+- [ ] 测试框架可用（跑一次空测试确认）
+- [ ] Docker 服务起来（`docker compose up -d --wait`，每个 healthcheck 过）—— 用 `xdd-architecture` 的 docker-compose.yml
+- [ ] DB 迁移跑过（`alembic upgrade head` 或等价）
+
+## Step 1：加载与审计计划
+
+1. 读 `.xdd/plan/{slug}/plan.md`，提取：文件结构表、依赖关系表、RXX 覆盖追踪表、所有 task
+2. 逐项审计：每个 task 有精确文件路径？声明了依赖？标了回指 RXX？代码步骤是完整代码非占位符？验证步骤有精确命令+预期？
+3. 分类问题：**结构性**（缺文件/占位符/类型不一致/缺依赖）→ 一次性上报全部，等修后重走 Step 1；**微小**（拼写/路径笔误）→ 记微调清单，不影响执行
+
+## Step 2：逐 task TDD 执行
+
+**执行顺序**：找 `Depends on: None` 的首批 → 按 task 序号线性（或依赖满足后并行派子 agent）→ 每完成一个检查是否有新 task 满足依赖。
+
+**单个 task 流程**：
 
 ```
-1. 检查依赖：所有 Depends on 指向的 Task 是否已标记 [x]？
-   - 是 → 继续
-   - 否 → 跳过此 Task，先执行依赖 Task
-
-2. 标记 Task 为 [~]（执行中）
-
-3. 按 Step 顺序逐个执行：
-   - 每个 Step 严格按计划内容操作
-   - 代码步骤：复制计划中的代码，不做计划外的"优化"
-   - 验证步骤：运行计划指定的命令，比对实际输出与预期输出
-   - 提交步骤：使用计划指定的 commit message
-
-4. 每完成一个 Step，更新 checkbox 为 [x]
-
-5. 所有 Step 完成后：
-   - 确认 Task 内所有测试通过
-   - 更新 BDD 覆盖追踪表中对应行的状态
+1. 检查依赖 task 都 [x] 了 → 标本 task [~]
+2. 按计划 Step 顺序逐个执行（代码步骤照抄计划代码，不做计划外"优化"）
+3. Pre-write Signoff（每个方法写前）：读计划该步 → 理解它实现哪条 RXX → 假设它怎么被测
+4. 验证步骤：跑计划指定命令，比对实际 vs 预期
+5. 每步完成更新 [x]
+6. 全步完：确认 task 内测试通过 + 更新 RXX 覆盖追踪表对应行
 ```
 
-### Step 4: Task 间 Review
+**TDD 小回环（task 内，分钟级）**：红（写失败测试）→ 绿（写最小实现）→ 重构（清理）→ commit（message 含 RXX）。失败 → 修代码 → 再跑（不计数）。
 
-每完成一个 Task，执行以下检查：
+### Pre-write Signoff（写每个方法前默念）
 
-- [ ] 计划指定的测试命令是否通过？
-- [ ] 新增/修改的文件是否与计划一致？
-- [ ] 是否引入了计划外的变更？
-- [ ] 下一个 Task 的依赖是否已满足？
+写代码前对要写的方法做三件事：
+1. **读** —— 这方法在 plan 哪个 step？它实现哪条 RXX 规则？签名/返回是什么？
+2. **理解** —— 它依赖哪些已实现的东西（依赖 task 里定义的）？它被谁调用？
+3. **假设** —— 它怎么被测？测试会断言什么可观察结果？
 
-**计划外变更分级：**
+说不清就停下回 plan 看，别凭印象写。
+
+## Step 3：task 间 Review
+
+每完成一个 task 检查：计划测试命令过了？新增/修改文件跟计划一致？引入计划外变更了吗？下一 task 依赖满足了吗？
+
+**计划外变更分级**：
 
 | 级别 | 示例 | 处理 |
 |---|---|---|
-| 可忽略 | 多了一个 import、空行格式调整、注释微调 | 记录到微调清单，继续执行 |
-| 需记录 | 函数内部实现细节与计划略有不同（接口不变） | 记录到微调清单并附说明，继续执行 |
-| 需上报 | 新增/删除文件、修改接口签名、新增依赖 | 暂停上报 |
+| 可忽略 | 多个 import、空行、注释微调 | 记微调清单，继续 |
+| 需记录 | 函数内部细节与计划略不同（接口不变）| 记微调 + 说明，继续 |
+| 需上报 | 新增/删除文件、改接口签名、新增依赖 | 暂停上报 |
 
-**如果 Task 间有依赖变更**（如 Task A 的实现修改了 Task B 要引用的接口签名），在继续前确认变更不会破坏后续 Task。
+## 反 sham 底线（无存根、无假实现、跑通有证据）
 
-### Step 5: 完成与收尾
+**session c3692b46 教训**：60 端点只实施 23（38%）、2 处 stub、0 e2e、谎报 DEPLOY_PASS —— 这是 sham。本 skill 的底线就是杜绝这种事。
 
-所有 Task 执行完成后：
+**绝对禁止**：
+- ❌ 存根：`pass` / `TODO` / `return None` / `NotImplementedError` / `raise NotImplementedError`
+- ❌ 假实现：`InMemoryRepository`、mock DB、硬编码 `current_user`、假数据
+- ❌ 跳过验证步骤
+- ❌ "先 commit 后修" —— 验证失败 = 立即修
+- ❌ 在没跑通时声称"基本完成"
 
-1. 运行全量测试套件
-2. 检查 BDD 覆盖追踪表：所有 Scenario 是否都有对应的已通过测试？
-3. 检查 git log：提交历史是否与计划一致？
-4. 输出执行报告
+**每个 commit 前自检**（跑可移植脚本，非平台 hook）：
 
-#### 收尾阶段测试失败处理
-
-如果全量测试失败：
-
-```
-1. 识别失败测试归属哪个 Task
-
-2. 判断失败类型：
-   - 集成测试失败（单个 Task 内通过的测试在全量运行时失败）
-     → 通常是 Task 间集成问题
-     → 上报：附失败测试名 + 错误日志 + 估测冲突的 Task
-
-   - mock 与实际配置不匹配
-     → 通常是因为 Task 内用了 mock 但全量时用了真实配置
-     → 上报：附 mock 差异说明
-
-   - 环境问题（数据库状态、端口冲突等）
-     → 尝试清理环境后重跑一次
-     → 仍然失败则上报
-
-3. 不要自行修复失败测试
-   - 即使原因明确（如少了一个 fixture），也先上报
-   - 计划者决定修复方案后，执行者按修复方案执行
-
-4. 在执行报告中标记：
-   - 状态：部分完成（N 个测试失败）
-   - 失败测试清单及原因分析
+```bash
+bash skills/xdd-execute/scripts/no-stub-check.sh <你刚改的文件或目录>
+# 扫 pass/TODO/NotImplementedError/InMemoryRepository/mock_*/硬编码用户, 命中即修
 ```
 
-## 进度标记规范
-
-计划文件中的 checkbox 状态：
-
-| 标记 | 含义 | 使用时机 |
-|---|---|---|
-| `- [ ]` | 待执行 | 计划初始状态 |
-| `- [~]` | 执行中 | 开始执行该 Step/Task 时 |
-| `- [x]` | 已完成 | Step 验证通过后 |
-| `- [!]` | 阻塞 | 遇到阻塞时（必须附原因） |
-
-**BDD 覆盖追踪表同步更新：**
-
-| BDD Scenario | Task | 状态 |
-|---|---|---|
-| `login.feature :: Scenario: 密码登录成功` | Task 6 | - [x] |
-
-## 阻塞处理
-
-### 何时必须暂停
-
-遇到以下情况**立即暂停**，不要猜测或跳过：
-
-- 计划中标注"待确认"的内容
-- 文件不存在（计划写的是 `src/auth/service.py` 但实际没有这个路径）
-- 行号不匹配（计划写 Modify `:45-60` 但实际文件只有 30 行）
-- 函数签名不一致（计划引用 `login(username, password)` 但依赖 Task 定义的是 `login(email, password)`）
-- 测试结果与预期不符（Expected: FAIL 但实际 PASS，或反过来）
-- 缺少未声明的依赖（import 了计划中从未创建的模块）
-- 计划外的新发现（需要修改数据库 schema、需要新增文件等）
-
-### 测试结果异常分析
-
-当测试结果与预期不符时，执行者必须先分析原因再上报：
-
-**Expected: FAIL，实际: PASS**
-
-可能原因：
-
-| 原因 | 判断方式 | 处理 |
-|---|---|---|
-| 测试断言不够严格 | 测试没有 assert 或 assert 太宽泛 | 上报：测试代码有缺陷 |
-| 实现已提前存在 | 依赖 Task 的实现已覆盖此场景 | 上报：Task 可能多余，需计划者确认 |
-| 测试跑了错误的函数 | 测试调用了已实现的函数而非新函数 | 上报：测试代码路径错误 |
-
-**Expected: PASS，实际: FAIL**
-
-可能原因：
-
-| 原因 | 判断方式 | 处理 |
-|---|---|---|
-| 实现代码有 bug | 阅读错误信息，定位到计划代码的问题 | 上报：计划代码有 bug，附错误日志 |
-| 环境依赖缺失 | ImportError / ModuleNotFoundError | 检查依赖安装，如已装则上报 |
-| 依赖 Task 的实现破坏了此 Task | 回退到依赖 Task 前通过，之后失败 | 上报：Task 间依赖有冲突 |
-
-**禁止自行修复根本原因**。分析清楚后上报，让计划者决定修复方案。
-
-### 阻塞上报格式
+**完成度自检**（每 task + 收尾，纯文字对照 plan + arch）：
 
 ```
-**[阻塞] Task N: [Task 名称]**
+□ RXX 覆盖：plan 的每条 RXX 都有代码 @implements RXX + 测试？（列缺口补）
+□ 端点覆盖：architecture 的 API 端点清单，每个都有真实现？（别 60→23）
+□ 真实持久化：写 → 查 → 重启后还在？（不是 mock DB）
+□ 跨服务链路：事件 producer → queue → consumer → DB 真跑通？（至少关键路径）
+□ 0 存根：no-stub-check.sh 零命中？
+□ 全量测试 PASS
+```
 
+## Step 4：阻塞处理
+
+**遇即暂停，不猜不跳**：计划标"待确认"、文件不存在、行号不匹配、函数签名不一致、测试结果与预期不符、缺未声明依赖、计划外新发现。
+
+**测试结果异常先分析再上报**：
+
+| Expected vs 实际 | 可能原因 | 处理 |
+|---|---|---|
+| FAIL 但实际 PASS | 断言不够严 / 实现已提前存在 / 测了错函数 | 上报：测试代码缺陷 |
+| PASS 但实际 FAIL | 计划代码有 bug / 环境依赖缺 / 依赖 task 破坏了本 task | 上报：附错误日志 |
+
+**禁止自行修根本原因**。分析清楚上报，让计划者定方案。可自行处理的：拼写、行号偏移、import 顺序、commit message 微调。
+
+**阻塞上报格式**：
+```
+[阻塞] Task N: [名]
 - 阻塞步骤：Step X
-- 阻塞原因：[具体描述]
-- 实际情况：[实际输出/状态]
-- 计划预期：[计划中的预期]
-- 建议处理：[修复建议，如果有]
+- 原因：[描述]
+- 实际：[输出/状态]  vs  计划预期：[...]
+- 建议：[如有]
 ```
 
-### 阻塞后的恢复
+## 卡住怎么办（3 试 HALT，纯文字纪律）
 
-1. 计划者修复计划（更新文件路径/行号/代码/结构）
-2. 执行者重新读取计划
-3. 从阻塞点继续，已完成的 Step 不重复执行
+```
+1 次失败 → 重跑仔细点
+2 次失败 → 重读 plan 对应 step + 读 references，换实现方式
+3 次失败 → 退一步：回 xdd-plan 重规划（RXX 映射错/端点漏/依赖冲突）
+4 次失败 → 写失败日志，问用户
+```
 
-## 计划调整规则
+同一 task 连续 3 试没过 → 不要硬扛，回 plan 层（或更上 design/spec 层）找根因。这是文字纪律（靠你自觉），不是机器强制 —— 但它防的是"在错的层面反复修代码"。
 
-### 执行者可以自行处理的微调
+## Step 5：收尾
 
-- 拼写错误（变量名拼写、路径拼写）
-- 行号偏移（因之前 Task 增加了行数导致行号不匹配）
-- import 顺序调整
-- commit message 微调
+所有 task 完成后：
+1. 跑全量测试套件
+2. 检查 RXX 覆盖追踪表：每个 RXX / Scenario 有对应通过的测试？
+3. 跑 no-stub-check.sh 全项目扫，零命中
+4. 检查 git log：commit 历史跟计划一致，每个 commit message 含 RXX
+5. 输出执行报告（计划名 / 状态 / task 完成表 / RXX 覆盖结果 / 全量测试结果 / 提交历史 / 遗留事项）
 
-### 必须上报计划的变更
-
-- 新增/删除文件
-- 修改函数签名或接口
-- 跳过某个 Step 或 Task
-- 新增计划外的 Task
-- 改变实现策略（如计划用 SQL 查询但实际需要 ORM）
-
-### 禁止行为
-
-- 不得跳过验证步骤
-- 不得跳过提交步骤
-- 不得"优化"计划中的代码（如果计划的代码不好，上报而不是自行改写）
-- 不得在 main/master 上直接开发（除非用户明确授权）
-- 不得自行修改计划文件的结构、依赖关系或 BDD 追踪表
+**收尾测试失败**：识别失败属哪个 task → 判断类型（集成问题 / mock 不匹配 / 环境）→ 不自行修，上报附失败测试名 + 日志 + 估测冲突 task。
 
 ## 执行报告
-
-全部 Task 完成后，输出执行报告：
 
 ```markdown
 ## 执行报告
-
-**计划：** [计划文件名]
-**状态：** [全部完成 / 部分完成]
-**耗时：** [预估或实际时间]
-
+**计划：** plan/{slug}/plan.md
+**状态：** 全部完成 / 部分完成
 ### Task 完成情况
-
 | Task | 状态 | 备注 |
-|---|---|---|
-| Task 1 | ✅ 完成 | |
-| Task 2 | ✅ 完成 | |
-| Task 3 | ⚠️ 有微调 | [微调说明] |
-
-### BDD 覆盖结果
-
-| BDD Scenario | Task | 测试状态 |
-|---|---|---|
-| `login.feature :: Scenario: 密码登录成功` | Task 6 | PASS |
-| `login.feature :: Scenario: 密码错误` | Task 7 | PASS |
-
+### RXX 覆盖结果
+| RXX | Task | 测试状态 |
 ### 全量测试结果
-
-[粘贴全量测试运行结果]
-
+[粘贴]
 ### 提交历史
-
-[粘贴 git log --oneline 输出]
-
+[git log --oneline]
 ### 遗留事项
-
-- [如有未完成或需后续处理的项]
+- [...]
 ```
 
-## 与 xdd-plan 的交接协议
-
-### 计划者 → 执行者
-
-计划者交付时必须提供：
-
-1. 完整的计划文件（包含文件结构、依赖关系、BDD 追踪、所有 Task）
-2. 执行方式选择（逐任务分派 / 内联执行）
-3. 已确认的技术栈和工作目录
-
-### 执行者 → 计划者
-
-执行者反馈时必须提供：
-
-1. 阻塞上报（格式见上方"阻塞上报格式"）
-2. 微调记录（记录所有自行处理的微调）
-3. 执行报告（全部完成后）
-
-## 输出质量门禁
-
-执行过程中持续检查：
-
-- 是否每个 Step 都按计划执行（无跳过、无替换）？
-- 是否每个验证步骤都运行了指定命令？
-- 是否每个提交步骤都使用了计划指定的 message？
-- 是否所有 BDD Scenario 都有对应测试且通过？
-- 计划外变更是否按严重程度正确分级处理？
-- 遇到阻塞是否及时上报而非猜测？
-- 全量测试是否通过？失败时是否按收尾失败流程处理？
-- BDD 覆盖追踪表是否与实际一致？
-- Step 1 审查是否一次性上报了所有结构性问题？
-- 测试结果异常是否先分析原因再上报？
-
-## 100% 完成度 6 闸门 (95% 阈值, exit 2 = 阻断)
-
-**session c3692b46 教训**: 60 端点 23 实施 (38%) / 2 stub / 0 e2e / DEPLOY_PASS 蒙混. 这次 hook 强制 95% 闸门, 1 闸门不过 = exit 2, orchestrator 派 subagent 修, 3 试未过 HALT.
-
-**必跑** (每个 Task 完成后 + Phase 5 收尾):
-
-```bash
-# 闸门 1+2: API 端点 + BDD 覆盖率 (Phase 5 入口)
-bash hooks/xdd-gate-coverage-check.sh --api --bdd
-
-# 闸门 3+4+5: e2e + 真实持久化 + 跨服务 (Phase 5 中段)
-bash hooks/xdd-gate-coverage-check.sh --persistence
-# 闸门 4 跨服务 BXX 真链路 (实施 #17, 放水 1 修: 真跑 producer→queue→consumer→DB)
-bash hooks/xdd-gate-coverage-check.sh --cross-service-real-path
-bash hooks/xdd-gate-stub-scan.sh  # 0 stub 闸门, 绝对 0
-
-# 闸门 6: R5 lifecycle hard-gate
-bash skills/xdd-artifact-lifecycle/scripts/gate-check-lifecycle.sh
-
-# 一键跑全部
-bash hooks/xdd-gate-coverage-check.sh
-```
-
-| # | 闸门 | 阈值 | hook | 失败时 |
-|---|------|------|------|--------|
-| 1 | BDD 覆盖率 | 95% | `coverage-check --bdd` | 重做缺 RXX 的 feature |
-| 2 | API 端点覆盖率 | 95% | `coverage-check --api` | 实施缺端点 (从 arch.md 表格读) |
-| 3 | e2e 测试 | 95% RXX | `coverage-check --all` | 补 e2e (1 per RXX) |
-| 4 | 真实持久化 | 95% | `coverage-check --persistence` | 替换 mock → 真 DB |
-| 5 | 跨服务真链路 | 95% (≥ 5 paths L, ≥ 2 S/M) | `coverage-check --cross-service-real-path` | 修 producer/queue/consumer/DB 任一断链, 加 @cross-service-e2e 块 |
-| 6 | 0 stub | 100% (绝对 0) | `stub-scan` | 替换 stub → 真实现 |
-
-**TDD 循环 + 闸门 (每 Task 重复)**:
+## 自检（无平台 hook）
 
 ```
-1. 红: 写失败测试
-2. 绿: 写最小代码让测试过
-3. 重构: 清理
-4. 跑相关闸门 (e.g. --api --bdd)
-5. commit (含闸门输出)
-6. 全测试 PASS + 闸门 ≥ 95% 才进下一 Task
+□ 每个 Step 按计划执行（无跳过/替换）？
+□ 每个验证步骤跑了指定命令？
+□ 每个 commit 用了计划 message + 含 RXX？
+□ 代码每处 @implements RXX 回指？
+□ 所有 RXX 有对应测试且通过？
+□ no-stub-check.sh 全项目零存根？
+□ 计划外变更按严重程度正确分级？
+□ 遇阻塞及时上报而非猜？
+□ 全量测试通过？失败按收尾流程？
+□ RXX 覆盖追踪表跟实际一致？
+□ 没用 mock 假装真实持久化？
+□ Docker 服务起来 + healthcheck 过？
 ```
-
-**禁止行为** (用户偏好 no-advisory-policy):
-
-- ❌ 不得跳过闸门跑下一步
-- ❌ 不得用 mock 假装真实持久化
-- ❌ 不得写 stub (pass / TODO / NotImplementedError / InMemoryRepository)
-- ❌ 不得"先 commit 后修" — 闸门失败 = 立即修
-- ❌ 不得在 95% 闸门失败时声称"基本完成"
-
-**失败时**: orchestrator 看到 exit 2 → 让 phase-executor 修, 3 试未过 → 写 `.xdd-halt.json` 问用户.
-
-## Loop-Until-Pass: 实施-验证回环 (回环 3, 见 docs/LOOP-DESIGN.md)
-
-**核心**: 写 1 个方法 → 跑 6 闸门 → 不过修 → 再跑 → 全过才进下一方法. 失败必 retry, 不允许"基本通过".
-
-**完整 loop 模板** (写到 `scripts/loop-until-pass.sh`):
-
-```bash
-#!/bin/bash
-# 回环 3: 实施-验证 loop until pass
-# 6 闸门全过才退出, 任一失败自动 retry
-
-set -e
-ITER=0
-MAX_ITER=3
-REPORT=".xdd/reports/exec-loop-$(date +%Y%m%d-%H%M%S).log"
-mkdir -p .xdd/reports
-
-while [[ $ITER -lt $MAX_ITER ]]; do
-    ITER=$((ITER + 1))
-    echo "" | tee -a "$REPORT"
-    echo "=== iter $ITER / $MAX_ITER (回环 3 实施-验证) ===" | tee -a "$REPORT"
-
-    # 闸门 1-5: 5 维覆盖率
-    bash hooks/xdd-gate-coverage-check.sh 2>&1 | tee -a "$REPORT"
-    coverage_rc=${PIPESTATUS[0]}
-
-    # 闸门 6: 0 stub
-    bash hooks/xdd-gate-stub-scan.sh 2>&1 | tee -a "$REPORT"
-    stub_rc=${PIPESTATUS[0]}
-
-    # 全过 (0+0) 才出 loop
-    if [[ $coverage_rc -eq 0 && $stub_rc -eq 0 ]]; then
-        echo "✓ 回环 3 实施-验证通过 (iter $ITER)" | tee -a "$REPORT"
-        exit 0
-    fi
-
-    # 找失败维度
-    echo "--- 失败分析 (iter $ITER) ---" | tee -a "$REPORT"
-    bash hooks/xdd-gate-coverage-check.sh 2>&1 | grep '❌' | tee -a "$REPORT"
-    [[ $stub_rc -ne 0 ]] && echo "❌ stub 闸门失败" | tee -a "$REPORT"
-
-    echo "--- 修代码 (iter $ITER) ---" | tee -a "$REPORT"
-    # phase-executor 修: 补端点 / 写 e2e / 替换 mock / 删 stub
-    # 修完自动进 iter $((ITER+1))
-done
-
-# 3 试未过 → HALT
-echo "" | tee -a "$REPORT"
-echo "❌ 回环 3 失败: 3 试未过, 写 .xdd-halt.json" | tee -a "$REPORT"
-
-cat > .xdd-halt.json <<EOF
-{
-  "phase": "5",
-  "stage": "EXECUTE",
-  "loop": "3-impl-verify",
-  "attempts": 3,
-  "reason": "6 闸门 3 试未过",
-  "last_log": "$REPORT",
-  "suggested_retreat": "回 Phase 4 plan 重新规划 (RXX 映射错 / 端点清单漏)"
-}
-EOF
-
-exit 1
-```
-
-**调用方式** (每个 Task 完成后 + Phase 5 收尾):
-
-```bash
-bash skills/xdd-execute/scripts/loop-until-pass.sh
-# 退出码 0 = 6 闸门全过, 1 = HALT 升级
-```
-
-**与 TDD 红绿重构的关系** (回环 1, 内层小回环):
-
-```
-回环 1 (Task 内 TDD, 1 分钟级):
-  红 → 绿 → 重构 → commit
-  失败 → 修代码 → 再跑 (不计数)
-
-回环 3 (Phase 内实施-验证, 1 小时级):
-  闸门 1-5 覆盖率 + 闸门 6 stub 0
-  失败 → 修代码 → 再跑 (3 试 HALT)
-```
-
-**回环 1 跑通是必要条件**, 但不够 — 必须再跑回环 3 才算"Phase 5 完成".
-
-**与 HALT 机制配合**:
-
-- 任一闸门失败 → loop retry
-- 3 试全失败 → 写 `.xdd-halt.json`, 退出回环
-- orchestrator 读 `.xdd-halt.json` → 问用户"是否回退到 Phase 4 重新规划?"
