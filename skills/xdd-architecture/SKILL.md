@@ -24,10 +24,12 @@ description: |
 ## ADD 思维链
 
 ```
-功能需求(RXX) → 质量属性场景 → 架构模式 → 战术 → 架构草图
-                     ↑
-              约束 + 技术栈
+功能需求(RXX) → 质量属性场景 → 选架构模式 → 战术 → 架构草图
+                     ↑              ↑
+              约束 + 技术栈    references/architecture-patterns.md
 ```
+
+**「选架构模式」这一步不是走形式** —— 查 `references/architecture-patterns.md` 的决策矩阵,按质量属性场景选模式,把选择写进技术栈决策并标 `@intent`。**禁止默认套 4 层分层**:4 层分层只是模式之一,不是默认答案。多模式组合是常态(如「分层单体 + 事件总线做异步」)。
 
 ## 三面手
 
@@ -70,7 +72,14 @@ description: |
 
 ### 5. 技术栈 + 分层
 
-每安排一个选型记原因（背景→选项→选了→为什么），标 `@intent`。分层：Presentation(UI+API) → Application → Domain → Infrastructure。
+每安排一个选型记原因(背景→选项→选了→为什么),标 `@intent`。
+
+**结构由所选架构模式决定**,不是固定 4 层。先查 `references/architecture-patterns.md` 的决策矩阵按质量属性场景选模式,再定结构:
+- 选了**分层模式** → `Presentation(UI+API) → Application → Domain → Infrastructure`(这是分层模式的标准结构,不是所有项目的默认)
+- 选了**管道-过滤器** → Filter 链 + Pipe 数据契约
+- 选了**事件总线/CQRS/事件溯源** → 读/写模型分离 + 事件存储 + 投影
+- 选了**六边形** → 领域核心 + 端口(接口)+ 适配器(技术实现)
+- 多模式组合常见,如实写出各模式的边界
 
 ### 6. 规则传导矩阵
 
@@ -106,10 +115,13 @@ description: |
 
 ### 9. 聚合全景（全局独立产出）
 
+**聚合设计是 DDD 战术核心**。划分前必读 `references/ddd.md § 聚合划分决策法`（4 步法 + 「聚合尽量小」+ 跨聚合只引 ID）。核心原则:聚合根保护业务不变量;聚合尽量小;跨聚合只用 ID 引用 + 领域事件最终一致。
+
 `.xdd/design/architecture/aggregate-landscape.md`：
-- 聚合清单（按业务线）：聚合根、实体/值对象、一致性边界、发布事件
-- 聚合间关系（ID 引用 + 事件驱动）
+- 聚合清单（按业务线）：聚合根、实体/值对象、一致性边界、发布事件、**子域类型**、**不变量**
+- 聚合间关系（ID 引用 + 事件驱动，不持有对象引用）
 - 一致性边界：强一致（单聚合事务）vs 最终一致（跨聚合事件）
+- 跨上下文映射（context-map）：ACL/OHS/遵奉者等关系，详见 `references/ddd.md § 上下文映射`
 
 ### 10. 运维视图（ODD）
 
@@ -166,6 +178,7 @@ description: |
 
 ```
 □ 质量属性场景 3-5 个，每个有响应度量？
+□ 架构模式选择有 @intent（背景→选项→选了→为什么），非默认套分层？（查 references/architecture-patterns.md 决策矩阵）
 □ SDD 四步齐（威胁建模/认证授权/数据保护/基线）？
 □ PDD 四步齐（基准/瓶颈/缓存/并发）？
 □ 每条 RXX 规则在传导矩阵有映射？
@@ -173,6 +186,9 @@ description: |
 □ API 端点清单完整，每个标 @flow + @rules？
 □ 事件契约独立产出，不隐式散射？
 □ 聚合全景跟 spec _landscape.md 业务线清单一致？
+□ 聚合划分遵循「聚合尽量小 + 跨聚合只引 ID」？（查 references/ddd.md § 聚合划分决策法）
+□ 每个聚合根有明确的业务不变量？没有贫血模型（只有 getter/setter）？
+□ context-map 画了跨上下文关系（ACL/OHS/遵奉者等）？
 □ 运维视图 6 块齐，状态机/时序图能渲染？
 □ docker-compose.yml + .test.yml 都有，每服务有 healthcheck？
 □ flow.mermaid 能渲染（用 xdd-mermaid-check 验）？

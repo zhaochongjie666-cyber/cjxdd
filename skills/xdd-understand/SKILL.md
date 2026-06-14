@@ -92,7 +92,28 @@ description: |
 
 **用户旅程穷举**（5 层次）：主线 / 分支 / 迂回 / 意外 / 探索。
 
-### 5. 收敛成 design.md（必出）
+### 5. 通用语言（Ubiquitous Language，必出）
+
+DDD 的起点 —— 开发和业务用同一套词，代码类名 = 业务术语，不翻译不同义化。复杂领域（仿真/数据/自动驾驶）术语密集、易漂移，**通用语言是后续 spec RXX 规则、architecture 聚合命名的唯一来源**。详见 `skills/xdd-architecture/references/ddd.md § 核心思想`。
+
+建通用语言 3 步：
+1. **收集** —— 从 brainstorm、用户访谈、行业资料里捞术语。每个词记：术语 / 定义 / 同义词（及为何不用）/ 来源。
+2. **去歧义** —— 同一个词在业务里多义 → 拆成多个（如「任务」在仿真 vs 标注 vs 训练是三回事）。两个词指同一个 → 合并。
+3. **分类** —— 标它是实体（有身份）、值对象（无身份看值）、还是过程/动作。
+
+写到 `.xdd/design/notes/glossary.md`：
+
+```markdown
+| 术语 | 定义 | 同义词（不采用原因） | 类型 | 来源 |
+|------|------|---------------------|------|------|
+| 仿真任务 | 一次仿真运行请求，含场景+参数+车辆模型 | "作业"(太泛)、"Job"(非业务词) | 实体 | 业务访谈 |
+| 场景 | 一组测试条件，用于仿真评测 | "用例"(混淆测试用例) | 实体 | 行业资料 |
+| 场景坐标 | 标注框的 xywh | — | 值对象 | 标注团队 |
+```
+
+**YAGNI 也适用于通用语言**：只收本 scope 真的用到的词，不编「未来可能需要」的术语。每收一个词标来源（访谈/资料/推断），推断的标「待用户确认」。
+
+### 6. 收敛成 design.md（必出）
 
 发散完**必走**这一步。把零散笔记收敛成 1 份决策文档，5 段：
 
@@ -106,7 +127,7 @@ description: |
 
 **不替用户做决定**：复杂功能 / 砍功能 / 选方案必用户审（写到 Open Questions）。简单默认值（数据库选型、API 风格、错误码格式）可自主决策，写进 Assumptions。
 
-### 6. 自审 + 用户审
+### 7. 自审 + 用户审
 
 **自审 5 维度**（对照 design.md）：
 - **Completeness**：该定的都定了吗？有没有"待定"其实该拍板的？
@@ -128,6 +149,7 @@ description: |
 ├── intent.md           ← 意图锚：项目要什么 / 成功标准 / 1 句话定位 / 非目标
 ├── design.md           ← 收敛决策：Selected / Alternatives / Assumptions / Out of Scope / Open Questions
 └── notes/              ← 发散笔记（iter 内用，下游不直接读）
+    ├── glossary.md     ← 通用语言（DDD 起点，下游 spec RXX 术语 + architecture 聚合命名唯一来源）
     ├── recap.md        ← 已有设计消费摘要（iter-2+）
     ├── brainstorm.md   ← 引导问答案
     ├── external-references.md  ← 外部来源 URL 主索引
@@ -141,6 +163,8 @@ description: |
 ```
 □ intent.md 写了：1 句话定位 + 成功标准 + 非目标
 □ design.md 5 段齐全：Selected / Alternatives / Assumptions / Out of Scope / Open Questions
+□ glossary.md 建了通用语言，每个术语有定义 + 类型（实体/值对象/过程）+ 来源
+□ 通用语言去歧义了（多义词拆开、同义词合并，记录原因）
 □ 每个 Open Question 是真关键决策（不是偷懒没想）
 □ Out of Scope 每项有"为什么本轮不做"
 □ 5 方向外部调研都有 URL

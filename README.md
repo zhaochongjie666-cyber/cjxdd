@@ -1,7 +1,8 @@
-# xdd — 工匠型开发体系
+# xdd — 让开发更高效的工具集
 
-> **平台中立的 AI 驱动软件开发框架。** 本质：`用户 prompt → 设计层（锚）→ 代码实现`。
-> 设计层把用户意图固化，让代码不偏离用户。只靠 **skill + agent**（所有 AI coding 平台都支持），无 hook / plugin / 平台针对性代码。
+> **平台中立。** 靠一条工作流提效：`用户 prompt → 设计层（锚）→ 代码实现`。
+> 工作流把用户的精简描述逐层扩展成可评审、可封存的契约，让代码不偏离用户。
+> 只靠 **skill + agent**（所有 AI coding 平台都支持），无 hook / plugin / 平台针对性代码。
 
 ---
 
@@ -58,8 +59,9 @@ ln -s "$(pwd)/skills"  ~/.claude/skills
 
 | 特性 | 价值 |
 |------|------|
+| **提效导向** | 不是文档框架，是开发工具集；契约是产物，效率是目的 |
 | **平台中立** | 只有 agents/ + skills/，任何支持 agent+skill 的 AI 工具原样可跑 |
-| **设计层是锚** | intent→design→RXX→architecture→plan task→`@implements RXX`→verify 全链追溯，代码不偏离用户 |
+| **设计层是锚** | 把精简描述扩展成可封存契约：intent→design→RXX→architecture→plan task→`@implements RXX`→verify 全链追溯，代码不偏离用户 |
 | **工匠型 agent** | walker 自己读文件/写代码/跑命令，不是 dispatcher；大项目可派 phase 子 agent 并行 |
 | **13 skill 工具箱** | 设计 5 + 桥接 1 + 代码 2 + 入口 1 + 工具 4，按需装卸，渐进式披露 |
 | **反 sham 底线** | 无存根/无假实现/必须跑通有证据（no-stub-check.sh + 文字纪律）|
@@ -70,16 +72,34 @@ ln -s "$(pwd)/skills"  ~/.claude/skills
 ## 📦 目录结构
 
 ```
-cjxdd/
-├── agents/        # 8 agent: xdd-walker + xdd-orchestrator + 6 phase 子agent
-├── skills/        # 13 skill (见下表)
-├── docs/          # 用户文档 (WORKFLOW / BXX / 实战记录)
-├── archive/       # 归档: platform-2026-06 (旧 hook+plugin) + skills-2026-06 + agents-2026-06
-├── framework-conventions.md   # framework 维护习惯
-├── install.sh     # 通用安装
-├── CLAUDE.md      # Claude Code 项目入口
+cjxdd/                          # xdd framework 仓库自身
+├── agents/                     # 8 个 agent（平台中立）
+│   ├── xdd-walker.md           # 单工匠主入口（默认，中小项目）
+│   ├── xdd-orchestrator.md     # 多 agent 编排主调度（大项目用）
+│   └── phase-{understand,design,resilience,plan,build,verify}.md  # 6 子 agent 映射三层
+├── skills/                     # 13 个 skill（设计5 + 桥接1 + 代码2 + 入口1 + 工具4）
+│   ├── xdd-init/               # 入口：生成 .xdd/ 骨架
+│   ├── xdd-understand/         # 设计·意图锚（intent.md + design.md）
+│   ├── xdd-spec/               # 设计·规则锚（RXX + Gherkin）
+│   ├── xdd-architecture/       # 设计·结构锚（架构+flow+端点+事件+运维+模式决策库）
+│   ├── xdd-wire/               # 设计·前端锚（页面线框，纯后端跳过）
+│   ├── xdd-resilience/         # 设计·韧性锚（失败模式+兜底+混沌）
+│   ├── xdd-plan/               # 桥接：设计→TDD计划，task 回指 RXX
+│   ├── xdd-execute/            # 代码·实现（TDD，@implements RXX，无存根）
+│   ├── xdd-verify/             # 代码·验证（真能用+双契约+4维一致性）
+│   ├── xdd-reverse/            # 工具：逆向已有代码反推设计 + 追溯
+│   ├── xdd-mermaid-check/      # 工具：图表渲染验证
+│   ├── xdd-docker-helper/      # 工具：中国区 Docker 镜像
+│   └── xdd-skill-creator/      # 工具：创建/编辑 skill
+├── docs/                       # 用户文档
+├── archive/                    # 归档：agents/skills/docs/shadow/platform-2026-06 + 旧 xdd-add（已并入 arch）
+├── framework-conventions.md    # framework 维护习惯
+├── install.sh                  # 通用安装（软链 agents/+skills/ 到 harness 配置目录）
+├── CLAUDE.md                   # Claude Code 在本仓库的开发流程指引
 └── README.md
 ```
+
+**每个 skill 内部**：`SKILL.md`（<500 行 quickstart）+ `references/`（按需深读）+ `templates/`（输出模板，部分有）+ `scripts/`（可移植 bash 自检，部分有）。
 
 ### 13 skill
 
@@ -101,17 +121,54 @@ cjxdd/
 
 ---
 
+## 🧭 关键设计原则
+
+1. **渐进式披露** —— 每个 `SKILL.md` 是 <500 行 quickstart，详细内容在 `references/` 按需读。永远跟 skill 自己的 SKILL.md 流程走，别自由发挥。
+
+2. **传导链追溯（锚机制）** —— 每个产物用 ID 回指上游：`intent.md`(why) → `design.md`(决策) → `spec/ RXX`(规则) → `architecture.md`(结构+API+事件) → `plan.md` task(回指 RXX) → 代码 `@implements RXX` → `verify` 运行证据。这就是"设计锚定代码、不偏离用户"的字面实现。
+
+3. **平台中立** —— 只用 skill + agent。纪律以两种可移植形式存活：(a) 每个 skill 的文字自检段；(b) skill 自带的可移植 bash 自检脚本（`scripts/`，如 `no-stub-check.sh`）。**不再有平台 hook 强制**。
+
+4. **默认扎实设计** —— 不做 S/M/L scale 降级，默认就做完整设计（韧性 ≥6 维、兜底 ≥5 模式、wire 4 级审查等）。架构层按质量属性场景选模式，不默认套分层（见 `skills/xdd-architecture/references/architecture-patterns.md`）。
+
+5. **工藤伦底线** —— 无存根、无假实现（无 InMemoryRepository、无硬编码 current_user）、不跳层、不假"完成"。"测试通过"≠"代码对"，看断言质量。4 试失败写 FAILURE-LOG 问用户。
+
+---
+
+## 🔧 设计规范指针（改 framework 时去哪儿看）
+
+framework 的机制只写一次在源码里，下表只列位置，详细看对应文件（避免"两份真理"）：
+
+| 主题 | 实施位置 |
+|------|---------|
+| **三层骨架** prompt→设计→代码 | `agents/xdd-walker.md` + `docs/WORKFLOW.md` |
+| **意图锚** brainstorm+发散+通用语言(DDD 起点)+design.md 收敛 | `skills/xdd-understand/SKILL.md` |
+| **规则锚** RXX 规则编号 + Gherkin + 业务线=限界上下文(子域分类) | `skills/xdd-spec/SKILL.md` |
+| **结构锚** ADD+SDD+PDD+ODD + 端点/事件契约 + flow colocation + 模式决策库 | `skills/xdd-architecture/SKILL.md` + `references/architecture-patterns.md` |
+| **DDD 方法论** 通用语言 + 限界上下文 + 聚合划分（三层联动：understand→spec→architecture） | `skills/xdd-architecture/references/ddd.md` |
+| **前端锚** 三步法 + 6 操作态 + 攻击式 review + UX 4 级 | `skills/xdd-wire/SKILL.md` + `references/ux-review.md` |
+| **韧性锚** RDA 8 维失败模式 + 10 兜底 + @chaos | `skills/xdd-resilience/SKILL.md` + `scripts/chaos-runner.sh` |
+| **桥接** plan task 回指 RXX + 禁占位符 | `skills/xdd-plan/SKILL.md` |
+| **代码层** TDD + Pre-write Signoff + 反 sham + `@implements RXX` | `skills/xdd-execute/SKILL.md` + `scripts/no-stub-check.sh` |
+| **代码层验证** 禁偷懒归因 + 双契约 + 4 维一致性 + 漫游 | `skills/xdd-verify/SKILL.md` + `scripts/wander-test.sh` |
+| **多 agent 编排** | `agents/xdd-orchestrator.md` |
+| **逆向 + 追溯** | `skills/xdd-reverse/SKILL.md` |
+
+---
+
 ## 📖 文档导航
 
 | 想了解... | 看 |
 |----------|---|
-| 框架哲学 / 三层骨架 | 本文件 + `CLAUDE.md` |
+| 框架哲学 / 三层骨架 | 本文件（§ 核心特性 + § 关键设计原则）|
+| 在本仓库开发的流程指引（Meta 守卫 / 常用命令 / Git workflow） | `CLAUDE.md` |
 | 三层工作流详解 | `docs/WORKFLOW.md` |
+| 流程总览图 | `docs/xdd/flow.mermaid` |
 | 多 agent 编排 | `agents/xdd-orchestrator.md` |
 | 多业务线（BXX）模型 | `docs/BXX.md` |
 | Walker 5 步节奏 + Meta 守卫 | `agents/xdd-walker.md` |
 | 单个 skill 怎么用 | `skills/{name}/SKILL.md` |
-| 架构图 | `docs/architecture.mmd` |
+| 改 framework 时去哪查机制 | 本文件 § 设计规范指针 |
 
 ---
 

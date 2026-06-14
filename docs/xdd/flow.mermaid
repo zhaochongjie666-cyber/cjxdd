@@ -1,0 +1,63 @@
+%%{ init: { 'theme': 'dark' } }%%
+%% xdd 流程总览：prompt → 设计层（锚）→ 桥接 → 代码层
+%% 两道闸：① design.md 用户审；② verify 验证通过判定
+%% 详见 docs/WORKFLOW.md
+
+flowchart TD
+    START(["👤 用户: 做个 XX 系统"]):::user
+
+    subgraph ENTRY["入口"]
+        INIT["xdd-init<br/>生成 .xdd 骨架"]:::entry
+    end
+
+    subgraph DESIGN_LAYER["设计层 · 锚"]
+        direction TB
+        UND["xdd-understand<br/>意图: 为什么做"]:::design
+        SPEC["xdd-spec<br/>规则: RXX 做什么"]:::design
+        ARCH["xdd-architecture<br/>结构: 怎么做"]:::design
+        WIRE["xdd-wire<br/>前端: 长啥样"]:::design
+        RES["xdd-resilience<br/>韧性: 挂了咋办"]:::design
+    end
+
+    BRIDGE["xdd-plan<br/>桥接: 拆 task, 回指 RXX"]:::bridge
+
+    subgraph CODE_LAYER["代码层"]
+        direction TB
+        EXEC["xdd-execute<br/>TDD 写代码 @implements RXX"]:::code
+        VERIFY["xdd-verify<br/>真能用 + 双契约"]:::code
+    end
+
+    GATE1{"用户审<br/>design.md"}:::gate
+    GATE2{"验证<br/>通过?"}:::gate
+    NEXT{"开新<br/>iter?"}:::gate
+    SHIP(["🚀 交付"]):::user
+
+    START --> INIT
+    INIT --> UND
+    UND --> GATE1
+    GATE1 -->|确认| SPEC
+    GATE1 -->|要改| UND
+    SPEC --> ARCH
+    ARCH --> WIRE
+    ARCH --> RES
+    WIRE --> BRIDGE
+    RES --> BRIDGE
+    SPEC --> BRIDGE
+    BRIDGE --> EXEC
+    EXEC --> VERIFY
+    VERIFY --> GATE2
+    GATE2 -->|有 P1| EXEC
+    GATE2 -->|回退设计层| DESIGN_LAYER
+    GATE2 -->|全过| NEXT
+    NEXT -->|--iter N+1| INIT
+    NEXT -->|完成| SHIP
+
+    %% 追溯闭环：每层 ID 回指上游
+    VERIFY -. "代码 @implements RXX → plan task → spec RXX → design 意图" .-> UND
+
+    classDef user fill:#3b1a4d,stroke:#a855f7,stroke-width:2px,color:#fff
+    classDef entry fill:#1e3a5f,stroke:#3b82f6,stroke-width:2px,color:#fff
+    classDef design fill:#1a4d2e,stroke:#22c55e,stroke-width:2px,color:#fff
+    classDef bridge fill:#4d3a1a,stroke:#f59e0b,stroke-width:2px,color:#fff
+    classDef code fill:#4d1a2e,stroke:#ec4899,stroke-width:2px,color:#fff
+    classDef gate fill:#4d2a1a,stroke:#fbbf24,stroke-width:2px,color:#fff

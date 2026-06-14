@@ -110,21 +110,28 @@ Feature: [业务能力] — [核心价值]    @covers-R01
 
 ## 业务线分组（多业务线项目）
 
-`_landscape.md` 是全局业务线全景：
+**业务线（BXX）= DDD 限界上下文（Bounded Context）**。每条业务线是一套独立的通用语言 + 领域模型，词义不跨业务线混淆。详见 `skills/xdd-architecture/references/ddd.md § 限界上下文`。
+
+`_landscape.md` 是全局业务线全景，**加子域类型列**（决定投入分配：核心域重点 DDD 建模、通用域买现成）：
 
 ```markdown
 # 业务线 Landscape
 
-| BXX | slug | 名称 | 定位（1 句话） |
-|-----|------|------|--------------|
-| B01 | auth | 鉴权 | 登录注册+鉴权+权限 |
-| B02 | order | 订单 | 下单+支付+履约 |
+| BXX | slug | 名称 | 定位（1 句话） | 子域类型 |
+|-----|------|------|--------------|---------|
+| B01 | auth | 鉴权 | 登录注册+鉴权+权限 | 通用（用现成方案） |
+| B02 | sim | 仿真 | 提交仿真任务+运行+结果 | 核心（重点 DDD） |
+| B03 | labeling | 标注 | 数据帧分派+标注+质检 | 核心 |
+| B04 | dataset | 数据管理 | 数据集+版本+血缘 | 支撑 |
 
 ## 跨业务线主题
 - 多租户隔离: 所有业务线按 tenant_id 隔离
+- 跨上下文关系: 见 architecture context-map（ACL/OHS/遵奉者等）
 ```
 
-每个业务线 `{slug}/business.md` 写：业务目标 / 关键问题 / 范围（in/out）/ 关联（RXX 列表 + arch + resilience + wire 路径）。
+**子域类型判定**：核心（差异化竞争力，重点投入 DDD）/ 支撑（必要但非差异化，简化做）/ 通用（行业通用，买开源）。详见 `references/ddd.md § 子域`。
+
+每个业务线 `{slug}/business.md` 写：业务目标 / 关键问题 / 范围（in/out）/ **通用语言（从 understand 的 glossary.md 引用本上下文的词）** / 关联（RXX 列表 + arch + resilience + wire 路径）。
 
 ## 产出
 
@@ -150,5 +157,7 @@ Feature: [业务能力] — [核心价值]    @covers-R01
 □ 没把架构细节（锁/事务/线程）写进 BDD？
 □ 每条 RXX 至少 1 个 Feature 覆盖？
 □ 状态名/角色名/错误码跟 design.md / flow.mermaid / 代码一致，未知标"待确认"？
+□ RXX 规则术语全部来自 understand 的 glossary.md（通用语言），无新造同义词？
+□ _landscape.md 每条业务线标了子域类型（核心/支撑/通用）？
 □ _landscape.md 业务线清单跟 architecture/aggregate-landscape.md 一致？
 ```
