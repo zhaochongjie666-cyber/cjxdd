@@ -1,89 +1,78 @@
 # Framework Conventions
 
 > **xdd 框架自身（cjxdd 仓库）维护时的操作习惯。**
-> 跟产品项目的 `.xdd/core/` 同源思路：用户意图是真相之源，AI 不能擅删。
 
 ## 1. wire 设计习惯
 
-1. **wire 放在 `.xdd/wire/` 目录下**（原 shadow 时代的 L1-wire 目录已废弃）。
-   - 跟 `.xdd/bdd/` / `.xdd/add/` 平级
-   - 相关 group 页面单独一个 svg（如登录流程：`login-flow.desktop.svg` + `login-flow.mobile.svg`）
-2. **用户最友好的操作**：
-   - `input` + `selector`（最稳定的交互范式）
-   - 不依赖 mouse 坐标 / 复杂 key 序列
+1. **wire 放在 `.xdd/design/wire/` 目录下**（深度重构后路径）。
+   - 跟 `.xdd/design/spec/` / `.xdd/design/architecture/` 平级
+   - 相关 group 页面单独目录（如登录流程：`login/index.html` + `login/index.mobile.html`）
+2. **用户最友好的操作**：`input` + `selector`（最稳定的交互范式），不依赖 mouse 坐标 / 复杂 key 序列。
+3. 详见 `skills/xdd-wire/SKILL.md`。
 
-## 2. skill / agent / hook 命名
+## 2. 命名约定
 
 ### 2.1 skill 命名
 - 全部带 `xdd-` 前缀
-- 不用 `shadow-` 命名（已废弃归档到 `archive/shadow-2026-06/`，90 天后删除）
-- 核心 13 个 (v2.0 9→6 合并: xdd-add 已并入 xdd-arch § 12 运维视图)：`xdd-core` / `xdd-bdd` / `xdd-flow` / `xdd-wire` / `xdd-arch` / `xdd-scaffold` / `xdd-l0` / `xdd-l3` / `xdd-l6` / `xdd-plan` / `xdd-execute` / `xdd-init` / `xdd-artifact-lifecycle`
-- utility 也带前缀：`xdd-taste` / `xdd-mermaid-check` / `xdd-docker-helper` / `xdd-skill-creator` 等
+- 13 个 skill（设计 5 + 桥接 1 + 代码 2 + 入口 1 + 工具 4）：
+  - 设计层：`xdd-understand` / `xdd-spec` / `xdd-architecture` / `xdd-wire` / `xdd-resilience`
+  - 桥接：`xdd-plan`
+  - 代码层：`xdd-execute` / `xdd-verify`
+  - 入口：`xdd-init`
+  - 工具：`xdd-reverse` / `xdd-mermaid-check` / `xdd-docker-helper` / `xdd-skill-creator`
+- 旧的 `xdd-l0` / `xdd-bdd` / `xdd-arch` / `xdd-flow` / `xdd-l3` / `xdd-l6` / `xdd-core` / `xdd-gherkin-writer` / `xdd-ux-design` / `xdd-scaffold` / `xdd-artifact-lifecycle` / `xdd-trace-init` 等已归档（合并/废弃见 `archive/skills-2026-06/README.md`）
 
 ### 2.2 agent 命名
-- 全部带 `xdd-` 前缀
-- 当前：`xdd-walker` (CC/OC 通用) / `xdd-walker-pi` (pi 协议变体)
-- 旧的 `shadow-walker` / `shadow-worker` 已废弃
+- 全部带 `xdd-` 前缀（walker / orchestrator）；phase 子 agent 用 `phase-` 前缀
+- 8 个：`xdd-walker` / `xdd-orchestrator` / `phase-{understand,design,resilience,plan,build,verify}`
+- 旧的 `xdd-walker-pi` 已合并进 `xdd-walker`（hook 删除后差异塌缩）；旧 8 个 phase 子 agent 已归档
 
-### 2.3 hook 命名
-- 全部带 `xdd-gate-` 前缀
-- 11 个 gate：`xdd-gate-{meta,0-init,1-research,2-design,3-review,4-plan,5-execute,6-verify,pre-skill,stub-scan,session-start,stop,user-prompt-submit,team-dispatch,pressure}` (实际 14 个包含全部 hook)
-- 旧 `lib.sh` / `pre-skill.sh` 等已废弃
-
-### 2.4 plugin 命名
-- `plugins/xdd-gates.ts` (合并 shadow-hooks.ts + back-cover.ts)
-- `plugins/xdd-goal.tsx` (替代 goal-mode.tsx)
-- `plugins/xdd-meta.ts` (显式 Meta 守卫, 供 settings 配)
-
-### 2.5 prompt 命名
-- `prompts/xdd_full.md` (替代 ai-execution-prompt.md)
-- `prompts/xdd-team-loop.md` (替代 team_loop.md)
+### 2.3 没有平台专属命名
+- **不再有** `xdd-gate-*` hook 命名、`plugins/*.ts` plugin 命名、`commands/*.md` slash command 命名 —— 这些平台层全部归档
+- skill 自带的可移植 bash 自检脚本放 `skills/{name}/scripts/*.sh`（如 `no-stub-check.sh` / `wander-test.sh` / `chaos-runner.sh`），不是平台 hook
 
 ## 3. 工件目录
 
-- **产品项目**: `.xdd/`
-- **framework 自身**: git 仓库（`/home/zhaocj/ws/cjxdd/`）
-- **不创建** `.shadow/`（已废弃）
+- **产品项目**：`.xdd/`（结构见 `skills/xdd-init/SKILL.md`：`design/` + `plan/` + `status.md` + `current-iteration`）
+- **framework 自身**：git 仓库（`/home/zhaocj/ws/cjxdd/`）
+- **不创建** `.shadow/`（已废弃）、不再有 `baseline/` 子树（深度重构后扁平到 `design/`）
 
-## 4. 顶层配置
+## 4. install
 
-| 旧 | 新 |
-|----|----|
-| `settings.json` (shadow hook paths) | `settings.json` (xdd-gate-* paths) |
-| `core.md` (122 字节 wire 方针) | `framework-conventions.md` (本文件, 扩写) |
-| `docs/SHADOW-WORKFLOW.md` (411 行) | `docs/WORKFLOW.md` (xdd 6 Phase 总览) |
-| `commands/cjgoal.md` | `commands/xdd-goal.md` |
-| `docs/work-order-template.md` | `docs/xdd/PLAN-TEMPLATE.md` |
+- 单一 `install.sh`（通用，自动探测 harness，只软链 `agents/` + `skills/`）
+- 不再有 `install-to-{claude-code,opencode,pi}.sh` 三个平台脚本（已归档）
+- 软链目标：`~/.claude/`（CC）/ `~/.config/opencode/`（OC）/ `~/.pi/`（pi）/ 等
 
-## 5. install 脚本
+## 5. 平台中立是硬约束
 
-- `install-to-claude-code.sh` (重写: 源路径 `skills/shadow-*` → `skills/xdd-*`)
-- `install-to-opencode.sh` (重写: 同样源路径)
-- `install-to-pi.sh` (重写: 同样源路径)
-- 软链目标路径不变（`~/.claude/` / `~/.config/opencode/` / `~/.pi/`）
+改 skill / agent 时必须保持：
 
-## 6. scale.md 字段
+```bash
+# 零平台耦合（核心约束）
+grep -rIn 'xdd-gate\|hooks/xdd\|plugins/' agents/ skills/   # 期望 0（排除 archive/）
+# SKILL.md size discipline
+wc -l skills/*/SKILL.md                                       # 全 < 500
+```
 
-- 产品项目 `.xdd/scale.md` 必含 `strict_mode: true` (默认)
-- 5 个下游 skill 读这个字段不读 scale 标签
-- 降级必须显式（改字段，不改 scale 标签）
+命中即违规。纪律用 (a) skill 文字自检段 + (b) skill 自带可移植 bash 脚本表达，不用平台 hook。
 
-## 7. Meta 项目边界
+## 6. Meta 项目边界
 
 **这个项目就是 xdd 框架自身。**
 
-- ❌ 不要加载 `xdd-walker` agent 来开发本仓库（会污染 `.xdd/`）
-- ❌ 不要跑 xdd 流水线
+- ❌ 不要加载 `xdd-walker` / `xdd-orchestrator` agent 开发本仓库（会污染 `.xdd/`）
+- ❌ 不要跑三层流水线
 - ❌ 不要在本仓库创建 `.xdd/`
-- ❌ 不要用 `xdd-init` / `xdd-l0` 等 skill "调研" framework 自身
-- ❌ 不要被 `xdd-gate-user-prompt-submit.sh` 引导"加载 walker 给我做一个 XX 系统"
-- ✅ 直接 Read/Edit 改 `agents/` / `skills/` / `hooks/` / `plugins/` / `commands/` 源码
-- ✅ 改完跑对应 smoke 验证
-- ✅ 直接 commit (Conventional Commits, 末尾 Co-Authored-By)
-- ✅ 想"用 framework 验证 framework" → 仓库外另起产品项目
+- ❌ 不要用 `xdd-init` / `xdd-understand` 等 skill "调研" framework 自身
+- ✅ 直接 Read/Edit 改 `agents/` / `skills/` 源码
+- ✅ 改完跑验证（见 §5）
+- ✅ 直接 commit（Conventional Commits + 末尾 `Co-Authored-By`）
+- ✅ 想"用 framework 验证 framework" → `./demo/<project>/` 起产品项目
 
-## 8. 防御式 hook 旁路
+`agents/xdd-walker.md` / `xdd-orchestrator.md` 顶部 Meta 守卫段，加载时检测 project root，若是 cjxdd 自身立即拒绝执行。
 
-`hooks/xdd-gate-user-prompt-submit.sh` 加 Meta 旁路：当前 CWD 是 cjxdd 仓库自身时，**不触发** "build me X" → walker 加载引导。详见 `hooks/xdd-gate-lib.sh:is_meta_project()`。
+## 7. 工具名 / frontmatter（walker 必踩）
 
-`agents/xdd-walker.md` / `xdd-walker-pi.md` 顶部都加了 "Meta 守卫" 段，加载时先检测 project root，若是 cjxdd 自身，立即拒绝执行并提示用户直接改源码。
+Walker / orchestrator agent 的 frontmatter **故意不写 `tools` 字段** —— 各 harness 对它的合法格式互斥（CC 是逗号分隔字符串 `Read, Write`；OpenCode 是对象 `{read: true}`；pi 类似 CC）。写任一种都会让另一边 schema 拒绝。**省略 = 全工具开放**，跨平台兼容。改 agent frontmatter 时不要加 `tools` 字段。
+
+Agent 正文里的工具名按 Claude Code 风格 TitleCase 引用（`Read`/`Write`/`Bash`/...）—— 仅为文档可读性，不参与 schema 校验，两边都无所谓。

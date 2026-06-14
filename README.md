@@ -1,59 +1,56 @@
 # xdd — 工匠型开发体系
 
-> **AI 驱动的工匠型软件开发框架** —— 1 个 walker agent + 23 个 skill + 严苛 6 Phase 流水线 + 11 个自动化 gate.
->
-> **前身**: Shadow Framework. 已合并 (xdd = 唯一命名, shadow 已归档到 `archive/shadow-2026-06/`, 90 天后删除).
+> **平台中立的 AI 驱动软件开发框架。** 本质：`用户 prompt → 设计层（锚）→ 代码实现`。
+> 设计层把用户意图固化，让代码不偏离用户。只靠 **skill + agent**（所有 AI coding 平台都支持），无 hook / plugin / 平台针对性代码。
 
 ---
 
-## ⚡ 快速开始 (3 分钟)
+## ⚡ 快速开始（3 分钟）
 
-### 1. 选你的 harness, 装到本地
+### 1. 装（通用，平台中立）
 
 ```bash
-# OpenCode 用户
-./install-to-opencode.sh
-
-# Claude Code 用户
-./install-to-claude-code.sh
-
-# pi 用户
-./install-to-pi.sh
-# 或自定义路径
-PI_DIR=~/.config/pi ./install-to-pi.sh
+./install.sh                       # 自动探测 harness，软链 agents/ + skills/
+TARGET_DIR=~/.claude ./install.sh  # 或指定目标目录
 ```
 
-**装什么** (软链, 修改自动同步):
-- `agents/` → `~/.claude/agents/` 等
-- `skills/` → `~/.claude/skills/` 等
-- `hooks/` → `~/.claude/hooks/` 等 (含 11 个 xdd-gate-*.sh)
-- `plugins/` → `~/.config/opencode/plugins/` (仅 OpenCode)
-- `commands/` → `~/.claude/commands/` (含 /xdd-goal 等 slash command)
-- `settings.json` → `~/.claude/settings.json` (钩子配置)
+**只软链 `agents/` + `skills/` 两个目录**（平台公约数）。不装 hooks/plugins/commands/settings —— 那些是平台专属的，已归档。
+
+支持的平台：Claude Code（`~/.claude/`）/ OpenCode（`~/.config/opencode/`）/ pi（`~/.pi/`）/ Cursor / 任何支持 agent+skill 的工具。手动软链也行：
+
+```bash
+ln -s "$(pwd)/agents"  ~/.claude/agents
+ln -s "$(pwd)/skills"  ~/.claude/skills
+```
 
 ### 2. 启动
 
-打开 Claude Code / OpenCode, 对 AI 说:
+打开你的 AI coding 工具，对 AI 说：
 
-> "使用 xdd-walker subagent 给我做一个登录系统"
+> "用 xdd-walker 给我做一个登录系统"
 
-或加载 walker 自己做:
+或大项目用多 agent 编排：
 
-> "加载 xdd-walker subagent, 帮我从用户需求走到生产部署"
+> "用 xdd-orchestrator 给我做一个 XX 系统"
 
-### 3. 走 6 Phase 流水线
+### 3. 走三层流程
 
 ```
-Phase 0 INIT          xdd-init (按需) — 准备 .xdd/ 骨架
-Phase 1 RESEARCH      xdd-l0 — 发散调研 (v2: brainstorm + 5 方向)
-Phase 2 DESIGN        xdd-bdd / flow / add / wire / arch — 5 个工件
-Phase 2.5 BDD          (含在 Phase 2, 含 Gherkin 业务约束)
-Phase 2.7 SCAFFOLD    xdd-scaffold — 7 步 Docker 开发环境
-Phase 3 REVIEW        用户审查 + 显式确认
-Phase 4 PLAN          xdd-plan — 写 TDD 执行计划
-Phase 5 EXECUTE       xdd-execute — 按 Batch 串行实现
-Phase 6 VERIFY        xdd-l6 — 部署 + 真实验证 (含 L3 chaos)
+[入口]   xdd-init            生成 .xdd/ 骨架
+   ↓
+[设计层] xdd-understand      意图锚: intent.md + design.md
+         xdd-spec            规则锚: RXX 规则 + Gherkin
+         xdd-architecture    结构锚: 架构 + flow + 端点/事件契约 + 运维
+         xdd-wire            前端锚: 页面线框（纯后端跳过）
+         xdd-resilience      韧性锚: 失败模式 + 兜底 + 混沌
+   ↓
+[桥接]   xdd-plan            设计→TDD计划, task 回指 RXX
+   ↓
+[代码层] xdd-execute         写代码 @implements RXX（TDD，无存根）
+         xdd-verify          真实验证（真能用 + 双契约 + 4维一致性）
 ```
+
+**用户审查节点**：`design.md` 写完（understand 出口）停下给用户看，确认意图对齐才继续。
 
 ---
 
@@ -61,203 +58,82 @@ Phase 6 VERIFY        xdd-l6 — 部署 + 真实验证 (含 L3 chaos)
 
 | 特性 | 价值 |
 |------|------|
-| **工匠型 agent** | 1 个 walker 自己读文件 / 写代码 / 跑命令, 不是 dispatcher |
-| **23 个 skill 工具箱** | 14 核心流水线 + 9 utility, 按需装卸 |
-| **6 Phase 流水线** | INIT → RESEARCH → DESIGN → SCAFFOLD → REVIEW → PLAN → EXECUTE → VERIFY |
-| **11 个自动化 gate** | xdd-gate-{meta,0-6,pre-skill,stub-scan,session-start,stop,user-prompt-submit,team-dispatch,pressure} |
-| **strict-default L 级** | scale.md 字段控制下游, 默认 L + 扩展模式 |
-| **No-advisory 严苛** | 5 段 hard-gate, 3 试未修升级 HALT |
-| **3 harness 适配** | Claude Code / OpenCode / pi 3 个, 1 套 source |
-| **真实可用契约** | 真实持久化 / 真实账号 / 跨服务链路 / R11 4 层验证 |
+| **平台中立** | 只有 agents/ + skills/，任何支持 agent+skill 的 AI 工具原样可跑 |
+| **设计层是锚** | intent→design→RXX→architecture→plan task→`@implements RXX`→verify 全链追溯，代码不偏离用户 |
+| **工匠型 agent** | walker 自己读文件/写代码/跑命令，不是 dispatcher；大项目可派 phase 子 agent 并行 |
+| **13 skill 工具箱** | 设计 5 + 桥接 1 + 代码 2 + 入口 1 + 工具 4，按需装卸，渐进式披露 |
+| **反 sham 底线** | 无存根/无假实现/必须跑通有证据（no-stub-check.sh + 文字纪律）|
+| **真实可用契约** | 真实持久化/认证/跨服务链路/重启数据保留/P0 证据 + 生产接受契约 |
 
 ---
 
 ## 📦 目录结构
 
 ```
-cjxdd/                          # xdd framework 仓库自身
-├── agents/                     # 工匠型 agent
-│   ├── xdd-walker.md           # 主入口 (CC/OC 通用, ~500 行)
-│   └── xdd-walker-pi.md        # pi 协议变体 (~310 行)
-├── skills/                     # 23 个 skill
-│   ├── xdd-core/               # 用户意图 (不可删)
-│   ├── xdd-init/               # Phase 0 INIT
-│   ├── xdd-l0/                 # Phase 1 发散
-│   ├── xdd-bdd/                # Phase 2 BDD + 业务线 landscape (v2.0 9→6 吸收 business)
-│   ├── xdd-flow/               # Phase 2 Flow (v2.0 输出 colocation 入 baseline/arch/{slug}/flow.mermaid)
-│   ├── xdd-wire/               # Phase 2 Wire
-│   ├── xdd-arch/               # Phase 2.5 Architecture (v7.0.0 含 § 12 运维视图, 合并自旧 xdd-add)
-│   ├── xdd-scaffold/           # Phase 2.7 Scaffold
-│   ├── xdd-l3/                 # Phase 3 L3 韧性
-│   ├── xdd-plan/               # Phase 4 Plan
-│   ├── xdd-execute/            # Phase 5 Execute
-│   ├── xdd-l6/                 # Phase 6 Verify
-│   ├── xdd-artifact-lifecycle/ # 元 skill
-│   └── (9 utility: xdd-taste / xdd-mermaid-check / xdd-docker-helper / etc.)
-├── hooks/                      # 11 个 xdd-gate-*.sh
-│   ├── xdd-gate-lib.sh         # 共享 lib (832 行)
-│   ├── xdd-gate-session-start.sh
-│   ├── xdd-gate-user-prompt-submit.sh
-│   ├── xdd-gate-pre-skill.sh
-│   ├── xdd-gate-stub-scan.sh
-│   ├── xdd-gate-stop.sh
-│   ├── xdd-gate-team-dispatch.sh
-│   ├── xdd-gate-meta.sh
-│   ├── xdd-gate-pressure.sh
-│   └── xdd-gate-{0-init,1-research,2-design,3-review,4-plan,5-execute,6-verify}.sh
-├── plugins/                    # OpenCode 端 3 个 plugin
-│   ├── xdd-gates.ts            # 3000+ 行 (合并 shadow-hooks + back-cover)
-│   ├── xdd-cover.ts           # ~230 行 (防伪完成硬锁)
-│   └── xdd-goal.tsx            # ~430 行 (TUI plugin)
-├── commands/                   # Claude Code slash command
-│   ├── xdd-goal.md             # /xdd-goal {目标}
-│   ├── xdd-status.md           # /xdd-status (打印当前 Phase)
-│   └── xdd-halt.md             # /xdd-halt (触发 3 试 HALT)
-├── prompts/
-│   ├── xdd_full.md             # 6 Phase 完整 prompt
-│   └── xdd-team-loop.md
-├── docs/                       # 用户文档
-│   ├── WORKFLOW.md             # 6 Phase 工作流总览
-│   ├── architecture.mmd        # Mermaid 架构图
-│   ├── SCALE.md                # scale.md 字段说明
-│   ├── BXX.md                  # 多业务线模型
-│   ├── GATES.md                # 11 gate 编排器
-│   └── xdd/
-│       └── PLAN-TEMPLATE.md    # 实施计划模板
-├── framework-conventions.md    # framework 自身操作习惯
-├── settings.json               # Claude Code 钩子配置
-├── CLAUDE.md                   # Claude Code 项目级入口
-├── install-to-{claude-code,opencode,pi}.sh
-└── archive/
-    └── shadow-2026-06/         # 旧 shadow 体系归档 (90 天后删除)
+cjxdd/
+├── agents/        # 8 agent: xdd-walker + xdd-orchestrator + 6 phase 子agent
+├── skills/        # 13 skill (见下表)
+├── docs/          # 用户文档 (WORKFLOW / BXX / 实战记录)
+├── archive/       # 归档: platform-2026-06 (旧 hook+plugin) + skills-2026-06 + agents-2026-06
+├── framework-conventions.md   # framework 维护习惯
+├── install.sh     # 通用安装
+├── CLAUDE.md      # Claude Code 项目入口
+└── README.md
 ```
+
+### 13 skill
+
+| 层 | skill | 锚定什么 | 产出 |
+|----|-------|---------|------|
+| 入口 | `xdd-init` | — | `.xdd/` 骨架 |
+| 设计 | `xdd-understand` | 意图 | `design/intent.md` + `design.md` |
+| 设计 | `xdd-spec` | 规则 RXX | `design/spec/{slug}/` rules.md + *.feature |
+| 设计 | `xdd-architecture` | 结构 | `design/architecture/{slug}/` architecture.md + flow.mermaid |
+| 设计 | `xdd-wire` | 前端 | `design/wire/{page}/` 6 操作态 |
+| 设计 | `xdd-resilience` | 韧性 | `architecture/{slug}/resilience/` 5 文档 |
+| 桥接 | `xdd-plan` | 设计→计划 | `plan/{slug}/plan.md`（task 回指 RXX）|
+| 代码 | `xdd-execute` | 实现 | 代码 `@implements RXX` + 测试 |
+| 代码 | `xdd-verify` | 验证 | 验证报告（双契约 + 4 维一致性）|
+| 工具 | `xdd-reverse` | 逆向 | 反推 design/ + @implements 追溯 |
+| 工具 | `xdd-mermaid-check` | 图表 | flow.mermaid 渲染验证 |
+| 工具 | `xdd-docker-helper` | 容器 | 中国区镜像源 |
+| 工具 | `xdd-skill-creator` | 元工具 | 创建/编辑 skill |
 
 ---
 
 ## 📖 文档导航
 
 | 想了解... | 看 |
-|----------|-----|
-| 框架整体定位 / 哲学 | `CLAUDE.md` § 0 |
-| 6 Phase 流水线 | `docs/WORKFLOW.md` |
-| 4 类核心抽象 (业务/架构/验收/韧性) | `docs/WORKFLOW.md` § 3 |
+|----------|---|
+| 框架哲学 / 三层骨架 | 本文件 + `CLAUDE.md` |
+| 三层工作流详解 | `docs/WORKFLOW.md` |
+| 多 agent 编排 | `agents/xdd-orchestrator.md` |
+| 多业务线（BXX）模型 | `docs/BXX.md` |
 | Walker 5 步节奏 + Meta 守卫 | `agents/xdd-walker.md` |
-| 7 类 ID 全链追溯 | `docs/WORKFLOW.md` § 5 |
-| Iter 模型 | `docs/WORKFLOW.md` § 6 |
-| Scale 模型 + strict-default | `docs/SCALE.md` |
-| 多业务线 (BXX) | `docs/BXX.md` |
-| 11 gate 编排器 | `docs/GATES.md` |
-| 钩子 vs 插件 (CC vs OpenCode) | `docs/WORKFLOW.md` § 10 |
-| Meta 项目边界 | `framework-conventions.md` § 7 |
-| 已知限制 + 待办 | `docs/WORKFLOW.md` § 12 |
+| 单个 skill 怎么用 | `skills/{name}/SKILL.md` |
+| 架构图 | `docs/architecture.mmd` |
 
 ---
 
-## 🛠️ 自动门禁 (Hooks)
+## 🤝 贡献（修改 framework 自身）
 
-11 个 xdd-gate-*.sh 钩子 + 3 个 OpenCode 插件, 实施 5 类门禁:
+这是 Meta 任务（改 framework，不是用 framework 做产品）：
 
-| 类别 | 抓什么 | 力度 |
-|------|--------|------|
-| **存根扫描** (stub scan) | `pass` / `TODO` / `NotImplementedError` / `InMemoryRepository` | 软 → 硬 (Phase 6 升级) |
-| **设计基线改动传播** | 设计基线 mtime 异常 | 软警告 |
-| **漂移检测** | 5 角色 lifecycle 一致, 路径不在 schema | **R5 hard** |
-| **L0 重做门禁** | per-iter 14 天 mtime | Round 1 软 → Round 2 硬 |
-| **L5 Consistency Audit** | 4 维 (spec↔code / wire↔code / arch↔code / l3↔code) ≥ 0.9 | **hard** |
-| **3 试 HALT** | 连续 3 轮未修 P1 | **hard** + 升级 HALT |
-| **bypass 显式化** | `# bypass-shdw: <reason>` 注释 | audit log |
-| **zh-continue schema 修** | 模糊词误触 OpenCode 拒收 | **hard (fix)** |
-| **5 段压力信号** | RUSH/TIME/SKIP/SIMPLIFY/WORKLOAD | 软提醒 |
-| **API error 兜底** | 6 类分类 + toast 恢复指引 | warning/error |
-| **R11 真实烟雾测试** | 4 层验证 (marker / 解析 / 测试 / hash) | **新项目 hard** / 老 advisory |
+1. **不要加载 walker/orchestrator**，直接 Read/Edit 改 `agents/` / `skills/` 源码
+2. 改完验证：`grep -rIn 'xdd-gate\|hooks/xdd\|plugins/' agents/ skills/` 期望 0（排除 archive）；`wc -l skills/*/SKILL.md` 全 <500
+3. **直接 commit** —— Conventional Commits，末尾 `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`
 
-详见 `docs/GATES.md`.
+想"用 framework 验证 framework"：在 `./demo/<project>/` 起产品项目，cd 后跑 walker，跟 framework 解耦。
+
+详见 `CLAUDE.md § Meta`。
 
 ---
 
-## 🔌 自动化护栏 (Hooks / Plugins)
+## 📜 为什么砍掉 hook + plugin（重构说明）
 
-### 6 个 CC 端 hook 1:1 对齐 OpenCode 3 个 plugin
+重构前有 `hooks/`（19 文件 3255 行）+ `plugins/`（3 文件 4033 行）+ commands/settings/3 install 脚本，共 ~7300 行"强制机器"。砍掉理由：
 
-| 事件 | Claude Code | OpenCode |
-|------|------------|----------|
-| `SessionStart` | `xdd-gate-session-start.sh` | `experimental.chat.system.transform` |
-| `UserPromptSubmit` | `xdd-gate-user-prompt-submit.sh` | `chat.message` |
-| `PreToolUse(Skill)` | `xdd-gate-pre-skill.sh` | `tool.execute.before` (Skill) |
-| `PreToolUse(Task)` | `xdd-gate-team-dispatch.sh` | 同上 (Task 也匹配) |
-| `PostToolUse(Write\|Edit)` | `xdd-gate-stub-scan.sh` | `tool.execute.after` |
-| `Stop` | `xdd-gate-stop.sh` | `event(message.updated finish=stop)` |
+- **不可移植**：Claude Code 的 hook 事件 vs OpenCode 的 plugin SDK 是两套完全不同的 API，要支持第三个平台就得再写一套
+- **没真起作用**：实证（审计记录）7000 行闸门产出的 reviewer 是 sham —— spec↔code 脱节、L6 没跑
 
-**Toast 通道** (OpenCode 独有): `client.tui.showToast({variant, title, message, duration})` 弹右上角通知, 4 variant (info/success/warning/error), 1500ms 去重.
-
-### `/xdd-goal` 自驱循环 (OpenCode + Claude Code)
-
-- **OpenCode**: `plugins/xdd-goal.tsx` (TUI plugin) 注册 `/xdd-goal` slash command. v3 修复: 整段文本全收 (PREFIX_RE `[\s\S]+` 跨行) + user-driven continue. 4 条收尾路径: `/xdd-goal done` / 隐式短答 (≤15 chars) / `/xdd-goal stop` / 10 轮 cap.
-- **Claude Code**: `commands/xdd-goal.md` (slash command) — 简化, 手动 `/xdd-goal done` 触发 final.md.
-
----
-
-## 🚀 端到端流程 (示例: 登录功能)
-
-### Phase 0: INIT
-- 跑 xdd-init → 生成 `.xdd/scale.md` (strict_mode=true) + status.md + iter-1/
-- 写 `.xdd/core/intent.md` (业务目标 / 关键问题 / 范围)
-
-### Phase 1: RESEARCH
-- 调 xdd-l0 → 9 份发散笔记本
-- scale ≥ M 触发; bxx_enabled 决定 BXX 业务线划分
-
-### Phase 2: DESIGN
-- 2.1 BDD: 6+ Scenario (密码登录 / 密码错误 / 账号锁定 / 记住我 / 短信 / OAuth)
-- 2.2 Flow: AuthService + POST /api/auth/login + bcrypt + JWT
-- 2.3 ADD: 状态机 + 启动/关闭序列 + 排障清单
-  - **L3 韧性段** (强制): 9 维失败模式 + 12 模式 + FMEA 8 字段
-- 2.4 BDD: Design-Conformance Gherkin 业务约束翻译
-- 2.5 Arch: API 8 端点 + ADR + 事件契约
-- 2.7 Scaffold: 7 步 Docker
-
-### Phase 3: REVIEW
-- `git diff .xdd/` 给用户看
-- 用户确认 → 进 Plan
-
-### Phase 4: PLAN
-- 12+ Task 按 BDD Scenario 1:1 拆
-- 依赖关系 DAG, BDD 覆盖追踪表
-- plan-iter-check (v5.1, 防过期 plan)
-
-### Phase 5: EXECUTE
-- Pre-write Signoff (v5.2, 写前 sign-off block)
-- 阻塞上报 → 回 Phase 2 补 BDD
-
-### Phase 6: VERIFY
-- 全量测试 PASS
-- 4 维 L5 一致性审计
-- L6 子阶段: health-check + wander-test + chaos-drill + R11
-- `final.md` 收尾
-
----
-
-## 🤝 贡献指南
-
-修改 framework 自身时 (这是 Meta 任务):
-
-1. **不要加载 walker**, 直接 Read/Edit 改源码
-2. 改完跑对应 smoke
-3. **直接 commit** — Conventional Commits, 末尾 `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`
-
-想"用 framework 验证 framework":
-- 仓库外另起产品项目 (e.g. `/tmp/test-product/`)
-- 在那里 `cd` 后 `claude` + 调 walker, 走完整 6 Phase
-- 跟 framework 解耦
-
-详见 `CLAUDE.md` § ⚠️ Meta: 你正在修改 xdd 自身, 禁用 xdd 流程.
-
----
-
-## 📜 已知限制 + 未来工作
-
-详见 `docs/WORKFLOW.md` § 12.
-
----
-
-**xdd 是单一框架**. 没有 shadow 体系, 没有兼容性路径. 旧 shadow 体系 (2026-06-08 前) 已归档到 `archive/shadow-2026-06/`, 90 天后 (2026-09-08) 删除.
+砍掉后纪律以可移植形式存活：每个 skill 的文字自检段 + skill 自带的可移植 bash 自检脚本（`no-stub-check.sh` / `wander-test.sh` / `chaos-runner.sh`）。旧平台代码归档在 `archive/platform-2026-06/`，需要参考闸门逻辑实现时可读源码移植。
