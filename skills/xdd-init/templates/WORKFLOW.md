@@ -23,7 +23,7 @@
 
 ## 2. 每层做什么
 
-### 入口：xdd-init
+### 入口：xdd-init··
 生成 `.xdd/` 骨架（`design/` + `runs/iter-N/` + `status.md` + `current-iteration`）+ 本文件 + `.xdd/rules/`。
 
 ### 设计层（5 skill，每个产出一个"锚"）
