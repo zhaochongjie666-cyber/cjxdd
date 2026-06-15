@@ -77,7 +77,7 @@ verify 运行证据                   ← xdd-verify
 
 ## 5. status.md（walker / orchestrator 的工作内存）
 
-walker 每切换一层就更新 `.xdd/status.md`：上一层 ✅，下一层 ⏳，更新"当前层 / 本层必读 / 上游指针"。让 status.md 替模型记，不靠脑子。骨架见 `skills/xdd-init/SKILL.md`。
+walker 每切换一层就更新 `.xdd/runs/iter-N/status.md`：上一层 ✅，下一层 ⏳，更新"当前层 / 本层必读 / 上游指针"。让 status.md 替模型记，不靠脑子。骨架见 `skills/xdd-init/SKILL.md`。
 
 ## 6. 单工匠 vs 多 agent
 
@@ -99,7 +99,7 @@ session c3692b46 教训：60 端点只实施 23（38%）= sham。深度重构后
 
 ## 8. 卡住回退
 
-同一处连续 3 试没过 → 不硬扛，写 `.xdd/FAILURE-LOG.md`，回设计层找根因：
+同一处连续 3 试没过 → 不硬扛，写 `.xdd/runs/iter-N/failure-log.md`，回设计层找根因：
 
 ```
 死胡同/空状态缺失 → 回 xdd-wire

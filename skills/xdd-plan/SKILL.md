@@ -4,7 +4,7 @@ description: |
   xdd 桥接层 —— 把设计层的锚（design.md 意图 + RXX 规则 + architecture 端点/事件 + wire 页面 + resilience 兜底）翻译成零上下文工程师可直接执行的 TDD 任务计划。
   每个任务显式回指 RXX 规则 —— 这就是「设计锚定代码」的桥：plan task → RXX → design 意图，代码 @implements RXX 再回指 task。
   粒度 2-5 分钟单动作步骤，先测试后实现，禁占位符，频繁提交。
-  产出 .xdd/plan/{slug}/plan.md。
+  产出 .xdd/runs/iter-N/plan/{slug}/plan.md。
   触发：计划、plan、任务拆解、实施计划、开发计划、TDD 计划、实现计划、开工、跑计划。
 ---
 
@@ -17,7 +17,7 @@ description: |
 | | |
 |---|---|
 | **上游** | `design.md`(意图) + `spec/{slug}/`(RXX 规则 + Feature) + `architecture/{slug}/`(端点/事件/状态机/文件清单) + `wire/{page}/`(前端) + `architecture/{slug}/resilience/`(兜底约束) |
-| **我产出** | `.xdd/plan/{slug}/plan.md`（任务 DAG + RXX 回指 + 全局约束） |
+| **我产出** | `.xdd/runs/iter-N/plan/{slug}/plan.md`（任务 DAG + RXX 回指 + 全局约束） |
 | **下游消费者** | `xdd-execute`（按 task 写代码，每个 commit 回指 RXX）、`xdd-verify`（按 Feature 验收） |
 | **回溯锚** | 每个 task 标 `**回指 RXX:** R01,R03` + `**Feature:** login.feature :: Scenario: 密码登录成功` |
 

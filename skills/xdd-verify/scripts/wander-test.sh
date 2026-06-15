@@ -121,11 +121,15 @@ while [[ $ITER -lt $MAX_ITER ]]; do
     echo "phase-verifier 修: 补 RXX 实施 / 修端点 / 起服务" | tee -a "$REPORT"
 done
 
-# 3 试未过 → 卡住回退（写 FAILURE-LOG，停下问用户）
+# 3 试未过 → 卡住回退（写 failure-log，停下问用户）
+# 定位当前 iter 的 runs 目录（读 current-iteration 指针）
+CUR_ITER="$(cat .xdd/current-iteration 2>/dev/null || echo iter-1)"
+FAILURE_LOG=".xdd/runs/$CUR_ITER/failure-log.md"
+mkdir -p "$(dirname "$FAILURE_LOG")"
 echo "" | tee -a "$REPORT"
-echo "[xdd] ❌ wander $MAX_ITER 试未过, 写 .xdd/FAILURE-LOG.md, 停下问用户" | tee -a "$REPORT"
+echo "[xdd] ❌ wander $MAX_ITER 试未过, 写 $FAILURE_LOG, 停下问用户" | tee -a "$REPORT"
 
-cat > .xdd/FAILURE-LOG.md <<EOF
+cat > "$FAILURE_LOG" <<EOF
 # FAILURE-LOG — 卡在 代码·验证
 
 - 子 agent: phase-verify

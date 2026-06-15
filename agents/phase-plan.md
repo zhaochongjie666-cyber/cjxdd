@@ -23,7 +23,7 @@ temperature: 0.6
 5. RXX → task 映射（一条 RXX 一个或多个 task，每个 task 标回指 RXX）
 6. 禁占位符（TBD/TODO/"稍后实现"/"添加适当错误处理" 都不行，必须有完整代码）
 
-产出 `.xdd/plan/{slug}/plan.md`。
+产出 `.xdd/runs/iter-N/plan/{slug}/plan.md`。
 
 ## 出口自检
 

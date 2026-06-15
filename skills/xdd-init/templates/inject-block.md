@@ -28,6 +28,11 @@ See `./.xdd/rules/backend.rules` for backend development conventions
 See `./.xdd/rules/ui-ux.rules` for frontend UI/UX conventions
 (component library, layout, motion, accessibility, design tokens).
 
+# Frontend Rules
+
+See `./.xdd/rules/frontend.rules` for frontend engineering conventions
+(naming, file structure, 600-line limit, Composition API, routing, project layout).
+
 # recap
 
 每次对话完，do a quick recap of xdd，how is the process.

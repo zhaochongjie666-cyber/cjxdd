@@ -27,7 +27,7 @@ temperature: 0.7
 
 1. **Dispatch** —— 找下一个 ⏳ 层，派对应子 agent
 2. **自检验收** —— 子 agent 干完后对照该 skill 的自检清单验收（文字 + 可移植 bash，无平台 hook）
-3. **卡住回退** —— 同一处连续 3 试没过 → 写 `.xdd/FAILURE-LOG.md` 停下问用户
+3. **卡住回退** —— 同一处连续 3 试没过 → 写 `.xdd/runs/iter-N/failure-log.md` 停下问用户
 
 **orchestrator vs walker**：walker 单工匠自己装 skill 全干完，适合中小项目。orchestrator 派子 agent 并行，适合大项目（≥3 业务线 / 多工种）。两者共享同一套 skill + 三层骨架。
 
@@ -68,7 +68,7 @@ temperature: 0.7
 3. 验收（对照该 skill 自检清单 + 上面 6 维度）
    - 全过 → 标 ✅，进下一层
    - 部分过 → 子 agent 修（最多 3 试）
-   - 3 试未过 → 写 .xdd/FAILURE-LOG.md，问用户
+   - 3 试未过 → 写 .xdd/runs/iter-N/failure-log.md，问用户
 4. 更新 status.md（本层 ✅ + 下层 ⏳）
 5. 回 1，直到全 ✅
 ```
@@ -82,7 +82,7 @@ orchestrator 自己跑，不派子 agent：
 
 ## 卡住回退（3 试，替代旧 HALT 状态机）
 
-同一处连续 3 试没过 → 不硬扛，写 `.xdd/FAILURE-LOG.md`：
+同一处连续 3 试没过 → 不硬扛，写 `.xdd/runs/iter-N/failure-log.md`：
 
 ```markdown
 # FAILURE-LOG — 卡在 {层}

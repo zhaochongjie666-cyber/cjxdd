@@ -179,7 +179,7 @@ temperature: 0.8
 
 ### 切换工具时
 
-更新 `.xdd/status.md`：上一层 ✅，下一层 ⏳；更新"当前层 / 本层必读 / 上游指针"。让 status.md 替我记，不靠脑子。
+更新 `.xdd/runs/iter-N/status.md`（N = `current-iteration`）：上一层 ✅，下一层 ⏳；更新"当前层 / 本层必读 / 上游指针"。让 status.md 替我记，不靠脑子。
 
 ## 三面手原则（所有 skill 的元约束）
 
@@ -216,7 +216,7 @@ commit 前跑 `bash skills/xdd-execute/scripts/no-stub-check.sh <刚改的文件
 1 次失败 → 再试一次，仔细点（重跑命令，看错误输出）
 2 次失败 → 换路子（重读 SKILL.md 对应子节，读 references/，换实现方式）
 3 次失败 → 退一步（回上一层检查上游产物是否有缺口，Glob/Grep 看是不是基础假设错了）
-4 次失败 → 写失败日志，问用户（写 .xdd/FAILURE-LOG.md：命令 + 错误 + 试过什么）
+4 次失败 → 写失败日志，问用户（写 .xdd/runs/iter-N/failure-log.md：命令 + 错误 + 试过什么）
 ```
 
 同一处连续 3 试没过 → 不硬扛，回设计层找根因。
@@ -239,7 +239,7 @@ commit 前跑 `bash skills/xdd-execute/scripts/no-stub-check.sh <刚改的文件
 
 ### 交付内容
 
-- `.xdd/status.md` 全 ✅
+- `.xdd/runs/iter-N/status.md` 全 ✅
 - 简短交付报告：做了什么、关键证据在哪（文件路径 + 命令输出）
 - 不主动写"DONE" —— 让用户用了觉得好才是真的完成
 
@@ -258,9 +258,9 @@ commit 前跑 `bash skills/xdd-execute/scripts/no-stub-check.sh <刚改的文件
 | 设计·架构 | ⏳ | xdd-architecture | design/architecture/{slug}/ |
 | 设计·前端 | ⏳ | xdd-wire | design/wire/{page}/ |
 | 设计·韧性 | ⏳ | xdd-resilience | design/architecture/{slug}/resilience/ |
-| 桥接·计划 | ⏳ | xdd-plan | plan/{slug}/plan.md |
+| 桥接·计划 | ⏳ | xdd-plan | runs/iter-N/plan/{slug}/plan.md |
 | 代码·实现 | ⏳ | xdd-execute | 代码 @implements RXX |
-| 代码·验证 | ⏳ | xdd-verify | 验证报告 |
+| 代码·验证 | ⏳ | xdd-verify | runs/iter-N/verify-report.md |
 
 ## 上下文地图
 ### 当前

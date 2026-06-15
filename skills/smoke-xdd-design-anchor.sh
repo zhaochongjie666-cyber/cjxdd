@@ -67,10 +67,13 @@ check "8. walker/orchestrator 不声明 tools 字段 (实际 $tools)" "$tools"
 rm -rf /tmp/xdd-smoke-init && mkdir -p /tmp/xdd-smoke-init && cd /tmp/xdd-smoke-init
 bash "$ROOT/skills/xdd-init/scripts/init.sh" >/dev/null 2>&1
 missing=0
-for p in .xdd/design/spec .xdd/design/architecture .xdd/design/wire .xdd/plan .xdd/design/intent.md .xdd/design/design.md .xdd/status.md .xdd/current-iteration; do
+for p in .xdd/design/spec .xdd/design/architecture .xdd/design/wire .xdd/design/notes \
+         .xdd/design/intent.md .xdd/design/design.md \
+         .xdd/runs/iter-1/status.md .xdd/runs/iter-1/plan .xdd/runs/iter-1/audits \
+         .xdd/current-iteration .xdd/WORKFLOW.md; do
   [ -e "$p" ] || { echo "  init 漏: $p"; missing=1; }
 done
-check "9. init.sh 生成 design/+plan/+status.md+current-iteration" "$missing"
+check "9. init.sh 生成 design/(含 notes) + runs/iter-1/(status/plan/audits) + current-iteration + WORKFLOW.md" "$missing"
 cd "$ROOT"
 
 # 10. no-stub-check.sh bash 语法正确

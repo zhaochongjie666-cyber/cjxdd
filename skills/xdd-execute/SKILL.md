@@ -15,7 +15,7 @@ description: |
 
 | | |
 |---|---|
-| **上游** | `xdd-plan`（`.xdd/plan/{slug}/plan.md` task DAG + RXX 回指） |
+| **上游** | `xdd-plan`（`.xdd/runs/iter-N/plan/{slug}/plan.md` task DAG + RXX 回指） |
 | **我产出** | 代码（每处 `@implements RXX`）+ 测试（每个 RXX 至少 1 个）+ 执行报告 |
 | **下游消费者** | `xdd-verify`（按 Feature 验收 + 真实可用契约） |
 | **回溯锚** | 代码注释 `@implements RXX` ← plan task ← spec 规则 ← design 意图 |
@@ -33,7 +33,7 @@ description: |
 
 ## Step 1：加载与审计计划
 
-1. 读 `.xdd/plan/{slug}/plan.md`，提取：文件结构表、依赖关系表、RXX 覆盖追踪表、所有 task
+1. 读 `.xdd/runs/iter-N/plan/{slug}/plan.md`，提取：文件结构表、依赖关系表、RXX 覆盖追踪表、所有 task
 2. 逐项审计：每个 task 有精确文件路径？声明了依赖？标了回指 RXX？代码步骤是完整代码非占位符？验证步骤有精确命令+预期？
 3. 分类问题：**结构性**（缺文件/占位符/类型不一致/缺依赖）→ 一次性上报全部，等修后重走 Step 1；**微小**（拼写/路径笔误）→ 记微调清单，不影响执行
 
