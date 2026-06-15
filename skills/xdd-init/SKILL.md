@@ -2,6 +2,7 @@
 name: xdd-init
 description: |
   xdd 入口 —— 把空仓库变成 xdd 项目。生成简化版 .xdd/（design/ 设计层锚 + plan/ 桥接 + status.md 进度 + current-iteration）。
+  + inject：cp WORKFLOW.md 模板 + rules/ 模板 + 往 AGENTS.md/CLAUDE.md 注入 xdd pointer（idempotent，被改过不动）。
   平台中立，无 hook 依赖。新项目第一步。
   触发：初始化、init、新项目、xdd-init、起项目、开始、脚手架骨架。
 ---
@@ -39,6 +40,10 @@ bash skills/xdd-init/scripts/init.sh
 
 ```
 .xdd/
+├── WORKFLOW.md                ← 工作流指南（cp 模板，AI 必读）
+├── rules/                     ← 项目规则模板（首次生成，用户可改）
+│   ├── backend.rules          ← 后端约定（分层/错误码/auth/测试）
+│   └── ui-ux.rules            ← 前端 UI/UX 约定（4 级 + 10 反模式）
 ├── design/                    ← 设计层（锚）
 │   ├── intent.md              ← 意图锚（xdd-understand 填）
 │   ├── design.md              ← 收敛决策（xdd-understand 填）
@@ -51,6 +56,8 @@ bash skills/xdd-init/scripts/init.sh
 ├── status.md                  ← 进度（3 层 × 业务线，✅/⏳）
 └── current-iteration          ← "iter-N"
 ```
+
+**inject 到用户文件**：若项目根已有 `AGENTS.md` / `CLAUDE.md`，init 在文件开头注入一段用 `<!-- xdd:start -->` / `<!-- xdd:end -->` 包裹的 pointer（Personality 留空段 + XDD/Backend/UI-UX/recap 指向 `.xdd/`）。
 
 **砍掉的旧产物**（深度重构）：`scale.md`（不再 scale 降级，默认就做扎实）、`xdd-schema.json`（曾是闸门单一源真理，无闸门则不需要）、`gates/`（control_marker 目录）、`iterations/iter-N/pipeline/` 子树（status.md 提到根，iter 版本走 git）、5-marker 状态机（⏳/🔄/✅/❌/🚧 → 简化 ✅/⏳）。
 
@@ -86,6 +93,19 @@ bash skills/xdd-init/scripts/init.sh
 2. **idempotent-with-warning** — 重复 init 不静默覆盖，`--force` 才覆盖。
 3. **不调 walker** — init 完打印"下一步"，但 walker 由用户触发。
 4. **平台中立** — 纯 bash，无 hook 依赖，无 schema.json，任何平台能跑。
+5. **inject 尊重用户文件** — `AGENTS.md`/`CLAUDE.md` 是用户文件：init 不创建新的；软链跳过（只注入真文件）；注入块用 marker 包裹 + 忽略空白 diff，**被用户改过的不动只警告**。
+
+## inject 行为（幂等细节）
+
+| 情况 | init 行为 |
+|------|----------|
+| 文件无 marker | 首次注入（插开头）|
+| 有 marker，内容 == 模板（忽略空白）| 跳过（idempotent）|
+| 有 marker，内容 != 模板（被改过）| **不动 + 警告**（让用户手动决定）|
+| 文件是软链 | 跳过（真文件那次会处理，避免双写）|
+| 文件不存在 | 跳过（不创建用户文件）|
+| `rules/*.rules` 已存在 | 跳过（用户改过的保护）|
+| `WORKFLOW.md` | 每次覆盖（framework 维护，非用户文件）|
 
 ## 下一步
 

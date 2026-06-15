@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 # xdd-init/scripts/init.sh — 一键初始化 xdd 项目（三层设计锚骨架）
-# 生成 .xdd/design/ + .xdd/plan/ + status.md + current-iteration
+# 生成 .xdd/design/ + .xdd/runs/ + status.md + current-iteration
+# + inject：cp WORKFLOW.md 模板 + rules/ 模板 + 往 AGENTS.md/CLAUDE.md 注入 pointer
 # 平台中立，无 hook 依赖。详见 skills/xdd-init/SKILL.md
 
 set -euo pipefail
+
+# 脚本自身目录（找 templates/，不依赖 CWD）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TEMPLATES_DIR="$SCRIPT_DIR/../templates"
 
 ITER=1
 FORCE=false
@@ -165,6 +170,68 @@ cat > .xdd/status.md <<EOF
 - 上游指针: —
 - 自检: —
 EOF
+
+# === inject 段：WORKFLOW.md + rules/ + AGENTS.md/CLAUDE.md pointer ===
+inject_xdd_section() {
+  echo
+  echo "=== inject xdd section ==="
+
+  # 1. cp WORKFLOW.md 模板（framework 维护，每次覆盖）
+  if [ -f "$TEMPLATES_DIR/WORKFLOW.md" ]; then
+    cp "$TEMPLATES_DIR/WORKFLOW.md" .xdd/WORKFLOW.md
+    echo "✓ .xdd/WORKFLOW.md"
+  fi
+
+  # 2. rules/（用户文件，已存在不覆盖；首次才写）
+  if [ -f "$TEMPLATES_DIR/rules-backend.rules" ] || [ -f "$TEMPLATES_DIR/rules-ui-ux.rules" ]; then
+    mkdir -p .xdd/rules
+    if [ ! -f .xdd/rules/backend.rules ]; then
+      cp "$TEMPLATES_DIR/rules-backend.rules" .xdd/rules/backend.rules
+      echo "✓ .xdd/rules/backend.rules (首次生成)"
+    else
+      echo "→ .xdd/rules/backend.rules 已存在，跳过"
+    fi
+    if [ ! -f .xdd/rules/ui-ux.rules ]; then
+      cp "$TEMPLATES_DIR/rules-ui-ux.rules" .xdd/rules/ui-ux.rules
+      echo "✓ .xdd/rules/ui-ux.rules (首次生成)"
+    else
+      echo "→ .xdd/rules/ui-ux.rules 已存在，跳过"
+    fi
+  fi
+
+  # 3. 往 AGENTS.md / CLAUDE.md 注入 pointer（用户文件，init 不创建新的）
+  for f in AGENTS.md CLAUDE.md; do
+    # 软链跳过（指向真文件，避免双写；真文件那次会处理）
+    if [ -L "$f" ]; then
+      echo "→ 跳过 $f (软链，指向 $(readlink "$f"))"
+      continue
+    fi
+    # 不存在不创建
+    if [ ! -f "$f" ]; then
+      echo "→ 跳过 $f (不存在，init 不创建用户文件)"
+      continue
+    fi
+
+    # 无 marker → 首次注入（插文件开头）
+    if ! grep -q '<!-- xdd:start -->' "$f"; then
+      tmp="$(mktemp)"
+      cat "$TEMPLATES_DIR/inject-block.md" "$f" > "$tmp" && mv "$tmp" "$f"
+      echo "✓ inject xdd section → $f (首次)"
+      continue
+    fi
+
+    # 有 marker → 忽略空白 diff 判定是否被改过
+    # 提取文件中 marker 之间的块 vs 模板，diff -w 忽略空白差异
+    file_block="$(sed -n '/<!-- xdd:start -->/,/<!-- xdd:end -->/p' "$f")"
+    tmpl_block="$(cat "$TEMPLATES_DIR/inject-block.md")"
+    if diff -w <(printf '%s\n' "$file_block") <(printf '%s\n' "$tmpl_block") >/dev/null 2>&1; then
+      echo "→ $f 注入块未改动，跳过 (idempotent)"
+    else
+      echo "⚠️  $f 注入块已被修改过，init 不动它（如需更新，手动删除 <!-- xdd:start -->~<!-- xdd:end --> 后重跑）"
+    fi
+  done
+}
+inject_xdd_section
 
 echo
 echo "✅ xdd-init 完成 (iter-$ITER)"
