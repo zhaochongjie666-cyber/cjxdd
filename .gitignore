@@ -11,3 +11,7 @@ demo/
 
 # 用户模型配置 (旧 install 软链反向写入, 非 framework 内容)
 settings.json
+
+# 回归测试运行时产物（trial 目录、m2cc 输出、报告、cron 日志）
+regression/runs/
+regression/reports/

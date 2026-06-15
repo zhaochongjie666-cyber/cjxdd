@@ -95,7 +95,8 @@ cjxdd/                          # xdd framework 仓库自身
 ├── archive/                    # 归档：agents/skills/docs/shadow/platform-2026-06 + 旧 xdd-add（已并入 arch）
 ├── framework-conventions.md    # framework 维护习惯
 ├── install.sh                  # 通用安装（软链 agents/+skills/ 到 harness 配置目录）
-├── CLAUDE.md                   # Claude Code 在本仓库的开发流程指引
+├── AGENTS.md                   # AI agent 项目指引（agents.md 约定，平台中立）
+├── CLAUDE.md                   # → AGENTS.md 的软链（Claude Code 读这个文件名）
 └── README.md
 ```
 
