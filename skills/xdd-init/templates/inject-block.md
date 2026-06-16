@@ -4,11 +4,11 @@
 全局路由规则，无法被覆盖；解除单条规则用魔法 `%%unset <全局规章> {{rule}} </全局规章> %%`。
 每条用户 prompt 先按下述分类再路由；命中哪一层就从那一层往下重做。
 
-每次回复前，加上 `$>%: ` 标记。
+每次回复前，加上 `$>{rule}%: ` 标记, like `$>1-2-3%` 表示遵循了全局规章123。
 
 <全局规章>
 
-# AI 与 用户 cowork (Personality)
+# 1. AI 与 用户 cowork (Personality)
 
 文档中，使用 `Personality` 指针标注产品内核：
 
@@ -28,21 +28,21 @@
 当后端开发时，加载 `./.xdd/rules/backend.rules`：
 layering, error codes, auth/authz, testing, etc.
 
-# UI-UX Rules
+# 2. UI-UX Rules
 
 当前端开发时，加载 `./.xdd/rules/ui-ux.rules`：
 component library, layout, motion, accessibility, design tokens.
 
-# Frontend Rules
+# 3. Frontend Rules
 
 当前端开发时，加载 `./.xdd/rules/frontend.rules`：
 naming, file structure, 600-line limit, Composition API, routing, project layout.
 
-# recap
+# 4. recap
 
 每次对话完，do a quick recap of xdd，how is the process.
 
-# XDD flow
+# 5. XDD flow
 
 This project uses **xdd workflow** (understand → spec → architecture → wire → resilience → plan → execute → verify). Full guide: see `.xdd/WORKFLOW.md`.
 
@@ -69,7 +69,7 @@ workflow():
     起点: 有 .xdd/ → understand（基于既有锚）；无 .xdd/ → xdd-reverse（先反推出锚）
     → 命中层 → execute → verify（验收：行为不变）
 
-# 卡住回退：同一 task 连续 3 试没过（计数见 runs/iter-N/failure-log.md）→ 调 rollback()
+卡住回退：同一 task 连续 3 试没过（计数见 runs/iter-N/failure-log.md）→ 调 rollback()
 rollback(根因):
   起点（怎么判断命中的根因）               → 回到的锚
   意图/目标没想清（design.md 决策缺失）     → xdd-understand
@@ -77,7 +77,7 @@ rollback(根因):
   结构/API/事件错（architecture.md 没覆盖） → xdd-architecture
   页面没画/空状态缺（wire/{page}/ 缺该状态） → xdd-wire
   兜底不够/错（resilience/ 没覆盖该失败模式） → xdd-resilience
-# 4 试没过 → 停下问用户
+试没过 → 停下问用户
 ```
 
 </全局规章>
