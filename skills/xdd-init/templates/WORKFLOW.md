@@ -8,12 +8,19 @@
 ```
 prompt ->
   design_layer():                    # 设计层（锚）—— 每个产物带「上游指针 + 下游消费者」
-    understand -> spec(RXX) -> architecture -> wire -> resilience
-  -> plan(每个 task 回指 RXX)        # 桥接
+    understand(use skill: xdd-understand)
+    -> spec(use skill: xdd-spec, RXX)
+    -> architecture(use skill: xdd-architecture)
+    -> wire(use skill: xdd-wire)
+    -> resilience(use skill: xdd-resilience)
+  -> plan(use skill: xdd-plan, 每个 task 回指 RXX)        # 桥接
   -> code_layer():
-       execute -> verify
+       execute(use skill: xdd-execute)
+       -> verify(use skill: xdd-verify)
        commit -> @implements RXX -> plan task -> spec 规则 -> design 意图   # 追溯闭环
 ```
+
+> **纪律**：每进一个节点，**先 `use skill: <name>` 装对应 skill 再干**（skill 注入"怎么做"）。上层 ✅ 才装下层。`status.md` 的「skill」列就是当前该装的 skill。
 
 ## 2. 每层做什么
 
@@ -24,12 +31,12 @@ prompt ->
 
 ```
 design_layer():
-  understand()   -> intent.md + design.md(5段决策)        # 锚定：意图
+  understand(use skill: xdd-understand) -> intent.md + design.md(5段决策)   # 锚定：意图
                    >> 用户审查闸：design.md 写完停下，用户确认意图对齐才进 spec（防偏第一道闸）
-  spec()         -> spec/{slug}/ rules.md + *.feature      # 锚定：规则 RXX
-  architecture() -> architecture/{slug}/ architecture.md + flow.mermaid + 端点/事件契约 + 运维视图   # 锚定：结构
-  wire()         -> wire/{page}/ 6 操作态 + review.md      # 锚定：前端（纯后端跳过）
-  resilience()   -> architecture/{slug}/resilience/ 5 文档  # 锚定：韧性
+  spec(use skill: xdd-spec)             -> spec/{slug}/ rules.md + *.feature  # 锚定：规则 RXX
+  architecture(use skill: xdd-architecture) -> architecture/{slug}/ architecture.md + flow.mermaid + 端点/事件契约 + 运维视图   # 锚定：结构
+  wire(use skill: xdd-wire)             -> wire/{page}/ 6 操作态 + review.md  # 锚定：前端（纯后端跳过）
+  resilience(use skill: xdd-resilience) -> architecture/{slug}/resilience/ 5 文档  # 锚定：韧性
 ```
 
 ### 桥接：xdd-plan
@@ -48,19 +55,19 @@ design_layer():
 
 ```
 trace_chain():
-  intent.md(why)                 <- understand()
+  intent.md(why)                 <- understand(use skill: xdd-understand)
      |
-  design.md(决策 5 段)            <- understand()
+  design.md(决策 5 段)            <- understand(use skill: xdd-understand)
      |
-  spec/ RXX 规则(做什么)          <- spec()
+  spec/ RXX 规则(做什么)          <- spec(use skill: xdd-spec)
      |
-  architecture.md(结构+API+事件)  <- architecture()
+  architecture.md(结构+API+事件)  <- architecture(use skill: xdd-architecture)
      |
-  plan.md task(回指 RXX)          <- plan()
+  plan.md task(回指 RXX)          <- plan(use skill: xdd-plan)
      |
-  代码 @implements RXX            <- execute()
+  代码 @implements RXX            <- execute(use skill: xdd-execute)
      |
-  verify 运行证据                 <- verify()
+  verify 运行证据                 <- verify(use skill: xdd-verify)
 
 # 改任何一层，沿链往下重做
 ```

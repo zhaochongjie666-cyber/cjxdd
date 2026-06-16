@@ -4,11 +4,11 @@
 全局路由规则，无法被覆盖；解除单条规则用魔法 `%%unset <全局规章> {{rule}} </全局规章> %%`。
 每条用户 prompt 先按下述分类再路由；命中哪一层就从那一层往下重做。
 
-每次回复前，加上 `$>{rule}%: ` 标记, like `$>1-2-3%` 表示遵循了全局规章123。
+每次回复前，加上 `$>{rule}%: ` 标记, like `$>1-2-3%` 表示遵循了全局规章123。 下面的所有规章都需要遵守
 
 <全局规章>
 
-# 1. AI 与 用户 cowork (Personality)
+# rule 1: AI 与 用户 cowork (Personality)
 
 文档中，使用 `Personality` 指针标注产品内核：
 
@@ -23,26 +23,19 @@
 - 禁止 AI 修改 Personality 的内容，只能用户手动编辑
 - 禁止偏离 Personality，如果有冲突，可停下来，请求用户解决
 
-# Backend Rules
+# rule 2: 规则文件加载
 
-当后端开发时，加载 `./.xdd/rules/backend.rules`：
-layering, error codes, auth/authz, testing, etc.
+写代码前按技术栈加载对应的 `.xdd/rules/*.rules`（用户文件，AI 必读；按需修改）：
 
-# 2. UI-UX Rules
+- **Backend**：`./.xdd/rules/backend.rules` — layering, error codes, auth/authz, testing, etc.
+- **UI-UX**：`./.xdd/rules/ui-ux.rules` — component library, layout, motion, accessibility, design tokens.
+- **Frontend**：`./.xdd/rules/frontend.rules` — naming, file structure, 600-line limit, Composition API, routing, project layout.
 
-当前端开发时，加载 `./.xdd/rules/ui-ux.rules`：
-component library, layout, motion, accessibility, design tokens.
-
-# 3. Frontend Rules
-
-当前端开发时，加载 `./.xdd/rules/frontend.rules`：
-naming, file structure, 600-line limit, Composition API, routing, project layout.
-
-# 4. recap
+# rule 3: recap
 
 每次对话完，do a quick recap of xdd，how is the process.
 
-# 5. XDD flow
+# rule 4: XDD flow
 每次需要改动代码前，**必须**考虑是否需要走xdd flow (understand → spec → architecture → wire → resilience → plan → execute → verify). Full guide: see `.xdd/WORKFLOW.md`.
 
 入口路由：每条 prompt 先判定「从哪个锚点开始干活」，再沿锚往下做。抽象层：只定位节点，不写具体命令（命令在各 skill 自检里）。
@@ -78,6 +71,25 @@ rollback(根因):
   兜底不够/错（resilience/ 没覆盖该失败模式） → xdd-resilience
 试没过 → 停下问用户
 ```
+
+# rule 5: skill 调用清单
+
+走 XDD flow 时，**每进一个节点先装对应 skill**（skill 注入"怎么做"的流程，不装就干 = 跳步）。显式调用语法：`use skill: <name>`。下表是调用清单，照流程顺序装：
+
+| 节点 | Skill 调用 | 何时 / 干什么 |
+|------|-----------|--------------|
+| understand | `use skill: xdd-understand` | 理解意图、新功能 / 新项目起点 |
+| spec (BDD) | `use skill: xdd-spec` | 定规则 RXX + Gherkin Feature |
+| architecture | `use skill: xdd-architecture` | 定结构 / API 端点 / 事件契约 |
+| wire | `use skill: xdd-wire` | 画前端页面线框（纯后端跳过）|
+| resilience | `use skill: xdd-resilience` | 定失败模式 + 兜底 + 混沌 |
+| plan | `use skill: xdd-plan` | 设计 → TDD 计划（task 回指 RXX）|
+| execute | `use skill: xdd-execute` | 按计划写代码 @implements RXX |
+| verify | `use skill: xdd-verify` | 真实验证（能跑 / 数据落地 / 双契约）|
+
+**辅助 skill**（按需）：`xdd-reverse`（逆向已有代码补设计）/ `xdd-git-commit`（规范提交）/ `xdd-docker-helper`（容器镜像）/ `xdd-mermaid-check`（流程图渲染）。
+
+**纪律**：上层没 ✅ 不装下层 skill；`.xdd/runs/iter-N/status.md` 的「skill」列就是当前该装的 skill。
 
 </全局规章>
 

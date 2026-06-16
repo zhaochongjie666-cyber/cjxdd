@@ -135,6 +135,8 @@ temperature: 0.8
 
 ### 三层流程（标准项目）
 
+> **调用纪律（核心）**：每进一个流程节点，**先 `use skill: <name>` 装对应 skill 再干**（skill 注入"怎么做"的流程，不装就干 = 跳步）。`.xdd/runs/iter-N/status.md` 的「skill」列就是当前该装的 skill。上层没 ✅ 不装下层。
+
 ```text
 [入口]   xdd-init            ── 生成 .xdd/ 骨架
    ↓
