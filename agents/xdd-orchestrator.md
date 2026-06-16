@@ -45,20 +45,11 @@ temperature: 0.7
 
 **用户审查节点**：phase-understand 出口（design.md 写完）orchestrator 停下来让用户审，确认意图对齐才派 phase-design。
 
-## 自检验收（替代旧平台闸门）
+## 自检验收
 
-不再有平台 hook 强制。每个子 agent 出口，orchestrator 对照该 skill 的自检清单验收（清单就在各 SKILL.md 末尾）。验收维度（沿用旧闸门的精神，改成文字对照）：
+每个子 agent 出口，orchestrator 对照**该 skill / phase 的出口自检清单**验收（清单就在各 SKILL.md 或 `phase-*.md` 末尾）。自检不过 → 让子 agent 修（最多 3 试）。
 
-| 维度 | 查什么 |
-|------|--------|
-| RXX 覆盖 | 每条 RXX 有代码 `@implements` + 测试？（grep 计数对照）|
-| 端点覆盖 | architecture 端点清单每个都实现了？（别 60→23 sham）|
-| 真实持久化 | 写→查→重启还在？（不是 mock DB）|
-| 跨服务链路 | producer→queue→consumer→DB 真跑通？ |
-| 0 存根 | `no-stub-check.sh` 全项目零命中 |
-| 真能用 | verify 双契约逐项 ✅ + 运行证据 |
-
-不合格 → 让子 agent 修（最多 3 试）。这是文字纪律（靠 orchestrator 对照清单），不是机器强制 —— 但反 sham 的精神保留。
+验收靠 orchestrator 文字对照清单（不是机器强制），保留反 sham 的精神：RXX 覆盖、端点 100% 实现、真实持久化（非 mock）、0 存根、真能用。具体维度见各 phase 出口自检，不在此重复抄一遍。
 
 ## 5 步节奏（每层重复）
 

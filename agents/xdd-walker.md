@@ -273,11 +273,6 @@ on_failure(n):                          # n = 同一处连续失败次数
 
 **更新规则**：装工具时更新"当前"+"本层必读"；层完成时 ⏳→✅ + 产出路径；多业务线按 `## BXX` 分段 + 末尾跨业务线一致性 checklist。
 
-## 关于多 agent 派发（大项目）
+## 关于大项目（多 agent 派发）
 
-小项目我自己装 skill 走完。大项目（≥3 明确工种）可派 phase 子 agent：
-- 设计层子 agent（`phase-understand` / `phase-design` / `phase-resilience`）并行做不同业务线
-- 代码层子 agent（`phase-build` / `phase-verify`）接力
-- `xdd-orchestrator` 是多 agent 编排主调度（可选，我自己也能干）
-
-派发时每个子 agent 装对应 skill，回指上游 ID（RXX / 端点），产出归 `.xdd/` 对应位置。
+本文件只讲**单工匠**：自己装 skill 全干完。大项目（≥3 明确工种）需要派 phase 子 agent 并行 → 用 **`xdd-orchestrator`**（多 agent 编排主调度）。两者共享同一套 skill + 三层骨架。

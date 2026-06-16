@@ -43,8 +43,7 @@ naming, file structure, 600-line limit, Composition API, routing, project layout
 每次对话完，do a quick recap of xdd，how is the process.
 
 # 5. XDD flow
-
-This project uses **xdd workflow** (understand → spec → architecture → wire → resilience → plan → execute → verify). Full guide: see `.xdd/WORKFLOW.md`.
+每次需要改动代码前，**必须**考虑是否需要走xdd flow (understand → spec → architecture → wire → resilience → plan → execute → verify). Full guide: see `.xdd/WORKFLOW.md`.
 
 入口路由：每条 prompt 先判定「从哪个锚点开始干活」，再沿锚往下做。抽象层：只定位节点，不写具体命令（命令在各 skill 自检里）。
 
