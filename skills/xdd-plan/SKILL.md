@@ -21,9 +21,25 @@ description: |
 | **下游消费者** | `xdd-execute`（按 task 写代码，每个 commit 回指 RXX）、`xdd-verify`（按 Feature 验收） |
 | **回溯锚** | 每个 task 标 `**回指 RXX:** R01,R03` + `**Feature:** login.feature :: Scenario: 密码登录成功` |
 
+## 怎么做
+
+```
+work():
+  1. INPUT: 读全部设计层锚（design.md + spec/{slug}/ + architecture/{slug}/ + wire/ + resilience/）
+  2. ACT:   输入对齐——术语 1:1 一致，未知标"待确认"，不编造
+  3. ACT:   拆 task——一条行为路径 = 一个 task；粒度 3-5 个 Step
+  4. ACT:   每 task 标四字段（回指 RXX + Stack + Feature + Files）
+     GATE:  grep -c "回指 RXX" plan.md == task 数
+            && grep -c "Stack:" plan.md == task 数
+            && grep -c "Files:" plan.md == task 数
+  5. ACT:   排依赖（Depends on DAG，无依赖的首批先跑）
+  6. ACT:   生成 .xdd/runs/iter-N/plan/{slug}/plan.md
+     GATE:  test -f 该 plan.md 且每个 task 都有 ≥1 个测试 Step（grep "Expected: PASS/FAIL"）
+```
+
 ## 输入对齐（生成前必读，术语必须 1:1 一致，未知标"待确认"）
 
-1. `.xdd/design/spec/{slug}/*.feature` —— Feature/Scenario、Then/And 断言、异常路径、Scenario Outline + Examples
+1. `.xdd/design/spec/{slug}/*.feature` —— Feature/Scenario、Then/And 断言、异常路径、Scenario Outline + Examples（语法/具体值写法 → 详见 `xdd-gherkin-plus` skill）
 2. `.xdd/design/architecture/{slug}/architecture.md` —— 状态机、启动/关闭、并发模型、异常恢复、API 端点契约、文件清单、规则传导矩阵
 3. `.xdd/design/architecture/{slug}/flow.mermaid` —— 组件名/职责、数据流向、协议、外部依赖
 4. `.xdd/design/wire/{page}/` —— 页面清单、组件交互、设计 token（前端项目）
@@ -106,11 +122,14 @@ description: |
 
 ## 任务结构（每个 task 必含）
 
+`**Stack:**` 取 `backend` 或 `frontend`（来自 architecture 规则传导矩阵的列：后端文件→backend / 前端组件→frontend；纯后端项目全 backend）。task 的 Stack 字段决定 execute 装哪个专项 skill（`xdd-backend` / `xdd-frontend`）。
+
 ````markdown
 ### Task N: [行为路径]
 
 **Depends on:** Task X
 **回指 RXX:** R01,R03
+**Stack:** backend
 **Feature:** `login.feature :: Scenario: 密码登录成功`
 **Files:**
 - Create: `exact/path/file.py`

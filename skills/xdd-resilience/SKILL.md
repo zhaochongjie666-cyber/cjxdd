@@ -97,7 +97,7 @@ description: |
 
 ### 4. 混沌场景（@chaos Gherkin）
 
-`chaos-scenarios.md` 把高优先级失败模式翻译成可执行 Gherkin。强制标签：`@chaos` + `@failure-mode-FXX` + `@P0/@P1` + `@covers-RXX`。
+`chaos-scenarios.md` 把高优先级失败模式翻译成可执行 Gherkin。强制标签：`@chaos` + `@failure-mode-FXX` + `@P0/@P1` + `@covers-RXX`。Gherkin 语法/具体值写法 → 详见 `xdd-gherkin-plus` skill。
 
 ```gherkin
 @chaos @P0 @failure-mode-F12 @covers-R03

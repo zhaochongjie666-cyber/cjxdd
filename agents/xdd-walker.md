@@ -156,25 +156,27 @@ temperature: 0.8
 
 **用户审查节点**：design.md 写完（understand 出口）停下来给用户看，确认意图对齐才进 spec。这是防偏的第一道闸。
 
-### 变更传播规则
+### 变更传播 + 回退
 
-| 改了什么 | 必须重做 |
-|---------|---------|
-| 用户意图/目标 | understand 全部 + 下游全链 |
-| 业务规则（RXX）| spec + architecture + plan + execute + verify |
-| 流程节点 | architecture(flow) + spec + wire + 下游 |
-| API/聚合/事件 | architecture + resilience + plan + execute + verify |
-| 技术栈/基础设施 | architecture + plan + execute + verify |
-| 失败模式新增 | resilience（增量）+ execute（兜底）+ verify（chaos）|
-| 代码缺陷 | execute 当前批 + 重验 verify |
-
-**回退决策树**（发现遗漏/错误时）：
 ```
-遗漏是因为 → 意图没想清     → 回 xdd-understand
-           → 规则没写       → 回 xdd-spec
-           → 结构设计错     → 回 xdd-architecture
-           → 页面没画       → 回 xdd-wire
-           → 兜底不够/错    → 回 xdd-resilience
+# 改了什么 → 从哪个锚点起，往下重做到哪些层
+# 起点锚点：改动的那个产物文件；往下 = 该锚到 verify 之间所有受影响的层
+propagate(change):
+  if change == 用户意图/目标:         起点 design.md → 重做 understand + 下游全链(spec..verify)
+  elif change == 业务规则(RXX):       起点 rules.md/{slug}/ 该行 → 重做 spec → architecture → plan → execute → verify
+  elif change == 流程节点:            起点 flow.mermaid → 重做 architecture(flow) → spec → wire → plan → execute → verify
+  elif change == API/聚合/事件:       起点 architecture.md 端点/事件段 → 重做 architecture → resilience → plan → execute → verify
+  elif change == 技术栈/基础设施:     起点 architecture.md §技术栈 → 重做 architecture → plan → execute → verify
+  elif change == 失败模式新增:        起点 resilience/ 新增文档 → execute 补兜底 → verify(chaos)
+  elif change == 代码缺陷:            起点代码文件（设计层不动）→ execute(当前批) → 重验 verify
+
+# 发现遗漏/错误时，按根因回到对应的设计锚（判定见括号：那个产物缺了什么），再调 propagate 往下
+rollback(根因):
+  意图/目标没想清（design.md 该决策缺失）   → xdd-understand
+  规则没写清（rules.md 该 RXX 模糊/无异常路径）→ xdd-spec
+  结构/API/事件错（architecture.md 没覆盖）   → xdd-architecture
+  页面没画/空状态缺（wire/{page}/ 缺该状态）  → xdd-wire
+  兜底不够/错（resilience/ 没覆盖该失败模式）  → xdd-resilience
 ```
 
 ### 切换工具时
@@ -213,13 +215,13 @@ commit 前跑 `bash skills/xdd-execute/scripts/no-stub-check.sh <刚改的文件
 ## 卡住怎么办
 
 ```
-1 次失败 → 再试一次，仔细点（重跑命令，看错误输出）
-2 次失败 → 换路子（重读 SKILL.md 对应子节，读 references/，换实现方式）
-3 次失败 → 退一步（回上一层检查上游产物是否有缺口，Glob/Grep 看是不是基础假设错了）
-4 次失败 → 写失败日志，问用户（写 .xdd/runs/iter-N/failure-log.md：命令 + 错误 + 试过什么）
+on_failure(n):                          # n = 同一处连续失败次数
+  if   n == 1: 重跑仔细点（看错误输出）
+  elif n == 2: 换路子（重读 SKILL.md 对应子节 + references/，换实现方式）
+  elif n == 3: 退一步（Glob/Grep 查上游产物有没缺口，调 rollback() 回设计锚找根因）
+  elif n == 4: 写 .xdd/runs/iter-N/failure-log.md（命令 + 错误 + 试过什么），停下问用户
+# 核心：3 试没过就别在代码层硬扛，回设计层（rollback）找根因
 ```
-
-同一处连续 3 试没过 → 不硬扛，回设计层找根因。
 
 ## 干完怎么交
 

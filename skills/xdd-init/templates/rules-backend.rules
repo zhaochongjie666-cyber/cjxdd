@@ -63,3 +63,13 @@
 # 代码风格
 函数不得超过50行（注释+代码），尽可能压缩注释成一行
 文件行数不得超过500行
+
+## 命名约定（语言无关）
+
+- boolean：is / has / can 前缀（`is_active` / `has_permission` / `can_edit`）
+- 函数：动词前缀，对齐 CRUD 语义（`get_user` / `create_order` / `update_status` / `delete_item`）；查询用 `get` / `fetch` / `find` / `list`
+- 常量：大写 + 下划线（`MAX_RETRY` / `DEFAULT_PAGE_SIZE`）
+- 类 / 枚举：PascalCase（`UserService` / `OrderStatus`）
+- 用完整单词，别缩写（`configuration` 非 `cfg`；`calculate` 非 `calc`）
+- 避免魔法值，抽常量（`if retry > MAX_RETRY` 非 `if retry > 3`）
+- 大小写风格按语言约定：Python `snake_case`、Java/TS `camelCase`、Go 驼峰 + 导出首字母大写

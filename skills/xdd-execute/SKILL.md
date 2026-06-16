@@ -20,6 +20,15 @@ description: |
 | **下游消费者** | `xdd-verify`（按 Feature 验收 + 真实可用契约） |
 | **回溯锚** | 代码注释 `@implements RXX` ← plan task ← spec 规则 ← design 意图 |
 
+## 怎么做
+
+读 task 的 `**Stack:**` 字段，按栈装专项 skill：
+- `backend`  → 装 `xdd-backend`（加载 `.xdd/rules/backend.rules` + 后端检查：DB 迁移/端点/事件/事务）
+- `frontend` → 装 `xdd-frontend`（加载 `frontend.rules`+`ui-ux.rules` + 前端检查：对照 wire 6 态/600行）
+- 纯后端项目（无 wire）→ 默认 backend
+
+execute 是通用 TDD 主流程；专项 skill 补栈特定约定与检查。主流程 Step 0-5 如下：
+
 ## Step 0：准备环境（吸收自旧 scaffold）
 
 写第一行代码前：
@@ -39,17 +48,29 @@ description: |
 
 ## Step 2：逐 task TDD 执行
 
-**执行顺序**：找 `Depends on: None` 的首批 → 按 task 序号线性（或依赖满足后并行派子 agent）→ 每完成一个检查是否有新 task 满足依赖。
+**执行顺序**：
+
+```
+run_tasks(tasks):
+  ready = [t for t in tasks if t.depends_on is None]      # 首批：无依赖
+  while tasks has 未完成:
+    for t in (ready 且依赖都已 [x]):       # 序号线性，或依赖满足后并行派子 agent
+      run_single_task(t)
+      on_complete: 解锁依赖 t 的新 task   # 每完成一个检查是否有新 task 满足依赖
+```
 
 **单个 task 流程**：
 
 ```
-1. 检查依赖 task 都 [x] 了 → 标本 task [~]
-2. 按计划 Step 顺序逐个执行（代码步骤照抄计划代码，不做计划外"优化"）
-3. Pre-write Signoff（每个方法写前）：读计划该步 → 理解它实现哪条 RXX → 假设它怎么被测
-4. 验证步骤：跑计划指定命令，比对实际 vs 预期
-5. 每步完成更新 [x]
-6. 全步完：确认 task 内测试通过 + 更新 RXX 覆盖追踪表对应行
+run_single_task(t):
+  assert all(dep.status == [x] for dep in t.depends_on)   # 1. 依赖都完成
+  t.status = [~]                                          # 标本 task 执行中
+  for step in t.plan_steps:                               # 2. 按 Step 顺序逐个执行（代码照抄，不计划外"优化"）
+    pre_write_signoff(step)                               # 3. 写前默念（见下）
+    run(step.cmd); compare actual vs step.expected        # 4. 验证步骤
+    step.status = [x]                                     # 5. 每步完成更新
+  assert tests_pass(t)                                    # 6. 全步完：task 内测试通过
+  update RXX 覆盖追踪表(t.RXX)
 ```
 
 **TDD 小回环（task 内，分钟级）**：红（写失败测试）→ 绿（写最小实现）→ 重构（清理）→ commit（message 含 RXX）。失败 → 修代码 → 再跑（不计数）。
@@ -106,16 +127,21 @@ bash skills/xdd-execute/scripts/no-stub-check.sh <你刚改的文件或目录>
 
 ## Step 4：阻塞处理
 
-**遇即暂停，不猜不跳**：计划标"待确认"、文件不存在、行号不匹配、函数签名不一致、测试结果与预期不符、缺未声明依赖、计划外新发现。
+```
+on_block(problem):                      # 遇即暂停，不猜不跳
+  if problem in [计划标"待确认", 文件不存在, 行号不匹配, 函数签名不一致, 缺未声明依赖, 计划外新发现]:
+    report(problem)                     # 一次性上报，等修后重走；不自行修根本原因
 
-**测试结果异常先分析再上报**：
+  # 测试结果异常：先分析根因再上报
+  elif test.FAIL_but_actually_PASS:     # 断言不够严 / 实现已提前存在 / 测了错函数
+    report("测试代码缺陷", evidence)
+  elif test.PASS_but_actually_FAIL:     # 计划代码有 bug / 环境依赖缺 / 依赖 task 破坏了本 task
+    report("附错误日志", evidence)
 
-| Expected vs 实际 | 可能原因 | 处理 |
-|---|---|---|
-| FAIL 但实际 PASS | 断言不够严 / 实现已提前存在 / 测了错函数 | 上报：测试代码缺陷 |
-| PASS 但实际 FAIL | 计划代码有 bug / 环境依赖缺 / 依赖 task 破坏了本 task | 上报：附错误日志 |
-
-**禁止自行修根本原因**。分析清楚上报，让计划者定方案。可自行处理的：拼写、行号偏移、import 顺序、commit message 微调。
+  # 例外：可自行处理（不报）
+  elif problem in [拼写, 行号偏移, import 顺序, commit message 微调]:
+    log_microchange(); continue
+```
 
 **阻塞上报格式**：
 ```
@@ -129,13 +155,13 @@ bash skills/xdd-execute/scripts/no-stub-check.sh <你刚改的文件或目录>
 ## 卡住怎么办（3 试 HALT，纯文字纪律）
 
 ```
-1 次失败 → 重跑仔细点
-2 次失败 → 重读 plan 对应 step + 读 references，换实现方式
-3 次失败 → 退一步：回 xdd-plan 重规划（RXX 映射错/端点漏/依赖冲突）
-4 次失败 → 写失败日志，问用户
+on_failure(n):                          # n = 同一 task 连续失败次数
+  if   n == 1: 重跑仔细点
+  elif n == 2: 重读 plan 对应 step + references，换实现方式
+  elif n == 3: 退一步回 xdd-plan 重规划（RXX 映射错 / 端点漏 / 依赖冲突；或更上 design/spec 层找根因）
+  elif n == 4: 写失败日志，停下问用户
+# 核心：3 试没过别在代码层反复修 —— 在错的层面硬扛无意义
 ```
-
-同一 task 连续 3 试没过 → 不要硬扛，回 plan 层（或更上 design/spec 层）找根因。这是文字纪律（靠你自觉），不是机器强制 —— 但它防的是"在错的层面反复修代码"。
 
 ## Step 5：收尾
 

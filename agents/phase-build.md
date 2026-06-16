@@ -32,7 +32,12 @@ temperature: 0.6
 
 ## 卡住
 
-阻塞（计划"待确认"/文件不存在/签名不符/测试与预期不符）→ 暂停上报，不猜。同一 task 3 试没过 → 写 `.xdd/runs/iter-N/failure-log.md`，回 plan 层找根因。
+```
+if blocked(计划标"待确认" or 文件不存在 or 签名不符 or 测试与预期不符):
+  HALT -> 暂停上报，不猜
+if same_task.failures == 3:
+  write runs/iter-N/failure-log.md -> 回 plan 层找根因
+```
 
 ## 出口自检
 

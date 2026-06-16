@@ -63,14 +63,16 @@ temperature: 0.7
 ## 5 步节奏（每层重复）
 
 ```
-1. 读 status.md → 找下一个 ⏳ 层
-2. 派子 agent（给必产出清单 + 出口自检维度）
-3. 验收（对照该 skill 自检清单 + 上面 6 维度）
-   - 全过 → 标 ✅，进下一层
-   - 部分过 → 子 agent 修（最多 3 试）
-   - 3 试未过 → 写 .xdd/runs/iter-N/failure-log.md，问用户
-4. 更新 status.md（本层 ✅ + 下层 ⏳）
-5. 回 1，直到全 ✅
+while exists layer where status == ⏳:
+  layer = next ⏳ layer                # 1. 读 status.md 找下一个待办层
+  dispatch(subagent, layer, 必产出清单 + 出口自检维度)   # 2. 派子 agent
+  result = verify(layer)              # 3. 验收（skill 自检清单 + 上面 6 维度）
+  if result.all_pass:
+    mark(layer, ✅); mark(next, ⏳); update status.md      # 4. 更新 status.md
+  elif retries < 3:
+    subagent.fix(); retries++         # 部分过 → 子 agent 修
+  else:
+    write runs/iter-N/failure-log.md; HALT -> 问用户       # 3 试未过，见下方"卡住回退"
 ```
 
 ## 我的入口层（INIT）
@@ -82,18 +84,13 @@ orchestrator 自己跑，不派子 agent：
 
 ## 卡住回退（3 试，替代旧 HALT 状态机）
 
-同一处连续 3 试没过 → 不硬扛，写 `.xdd/runs/iter-N/failure-log.md`：
-
-```markdown
-# FAILURE-LOG — 卡在 {层}
-
-- 层: 代码·实现 / 子 agent: phase-build
-- 卡点: {具体，命令 + 错误 + 试过什么}
-- 3 试都没过的原因: {分析}
-- 建议回退: {回 design / spec / architecture / resilience 哪层找根因}
 ```
-
-写完**立即停下问用户**："是否回退到 {建议层} 重新跑？" 不自己硬修。
+on_3_strikes(layer):                    # 同一处连续 3 试没过
+  write runs/iter-N/failure-log.md:
+    层 / 子 agent / 卡点(命令+错误+试过什么) / 没过的原因 / 建议回退层
+  HALT                                   # 立即停下，不自己硬修
+  ask_user("是否回退到 {建议层} 重新跑？")
+```
 
 ## 工具箱
 

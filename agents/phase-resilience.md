@@ -2,7 +2,7 @@
 name: phase-resilience
 description: >
   xdd 设计层子 agent —— 灾难发散设计。在 architecture + spec 骨架上做韧性。
-  装 xdd-resilience skill。RDA：8 维失败模式 + 10 兜底模式 + @chaos Gherkin + 恢复剧本。
+  装 xdd-resilience skill。RDA：8 维失败模式 + 10 兜底模式 + @chaos Gherkin + 恢复剧本。（Gherkin 语法/具体值 → 详见 `xdd-gherkin-plus` skill）
   产出 architecture/{slug}/resilience/ 5 文档。
 mode: subagent
 temperature: 0.7

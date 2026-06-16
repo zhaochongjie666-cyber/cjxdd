@@ -113,13 +113,19 @@ bash skills/xdd-execute/scripts/no-stub-check.sh .
 ## 失败处理（3 轮硬上限）
 
 ```
-Round 1: 修代码层 P0 + P1 → 重跑验证
-Round 2: 修剩余 P1 + P2 → 重跑
-Round 3: 仍有 P1 → 必须回退设计层：
-  - 死胡同/空状态缺失 → 回 xdd-wire
-  - 工作流卡点 → 回 xdd-understand
-  - API 错误 → 回 xdd-architecture
-  → 修设计 → 重传下游 → 重跑 verify
+# 起点：本 skill 产出的验证报告里的失败项（按 P0/P1/P2 优先级）
+# 终点：每轮修完重跑「健康检查 + 漫游测试」（见 §1/§2），直到无 P0/P1
+for round in 1..3:
+  if round == 1: 修报告里的 P0 + P1（改代码）→ 重跑健康检查+漫游
+  elif round == 2: 修剩余 P1 + P2 → 重跑
+  elif round == 3:
+    if 仍有 P1:                       # 代码层修不动 = 根因在设计层
+      rollback(根因):                 # 判定见括号
+        空状态/页面缺（wire/{page}/ 缺该状态）→ xdd-wire
+        工作流卡点（design.md 该决策缺失）  → xdd-understand
+        API/事件错（architecture.md 没覆盖）→ xdd-architecture
+      → 沿 propagate 往下重做 → 回到 verify 重跑
+# 3 轮仍有 P1 → 写 runs/iter-N/failure-log.md，停下问用户
 ```
 
 ## 漫游修复卡住怎么办

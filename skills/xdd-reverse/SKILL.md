@@ -19,7 +19,7 @@ description: |
 | **我产出** | `.xdd/design/`（反推的 intent/spec/architecture）+ 代码 `@implements RXX` 标注 + INDEX |
 | **下游消费者** | 之后可正常走 `xdd-plan` / `xdd-execute` / `xdd-verify` 改这个项目 |
 
-## 三阶段
+## 怎么做
 
 | 阶段 | 名称 | 任务 | 脚本 |
 |:----:|:-----|:-----|:-----|
@@ -27,7 +27,7 @@ description: |
 | B | 证据补全 | 按业务线反推 spec（RXX 规则 + Gherkin）+ intent | `reverse-bizline-detect.sh` |
 | C | 追溯建立 | 补 `@implements RXX` 标注 + 生成 INDEX + 评分 | `infer-implements.sh` + `generate-index.sh` + `trace.sh` + `scan-project-grade.sh` |
 
-## 执行步骤
+### 执行步骤
 
 ### Step 1：结构骨架扫描（reverse-scan.sh）
 
@@ -40,7 +40,7 @@ description: |
 
 按业务线反推规则锚：
 - 分析代码逻辑，推断业务规则（RXX）
-- 生成 `.xdd/design/spec/{slug}/rules.md` + `*.feature`（反推版）
+- 生成 `.xdd/design/spec/{slug}/rules.md` + `*.feature`（反推版）。Gherkin 语法/具体值写法 → 详见 `xdd-gherkin-plus` skill。
 - 生成 `.xdd/design/intent.md`（从代码行为 + git 历史推断意图）
 
 ### Step 3：追溯建立（trace-init 吸收）
@@ -59,9 +59,13 @@ description: |
 
 ## 与正向流程的衔接
 
-reverse 完成后，项目就有了 `.xdd/design/` 锚，之后可正常走：
-- 要改功能 → `xdd-understand`（基于反推的 design.md 继续）→ `xdd-spec` → ... → `xdd-execute`
-- 要补追溯 → 直接用本 skill 的 Step 3
+```
+# reverse 完成后，项目有了 .xdd/design/ 锚，之后按目的分流：
+if 要改功能:
+  xdd-understand(基于反推的 design.md 继续) -> xdd-spec -> ... -> xdd-execute
+elif 要补追溯:
+  用本 skill 的 Step 3（infer-implements + generate-index + trace）
+```
 
 ## 自检
 

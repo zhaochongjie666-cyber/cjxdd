@@ -20,7 +20,18 @@ description: |
 - 项目已有 `.xdd/` 且想继续 → 直接调 walker / 下一个 skill
 - 想迁移老项目 → 手改或重跑 `--force`
 
-## 最快路径
+## 怎么做
+
+```
+work():
+  1. 进项目目录            -> 空仓库或新目录（已有 .xdd/ 用 --force 或 walker）
+  2. 跑 init.sh            -> 生成 .xdd/ 骨架 + 本文件 + .xdd/rules/ + 注入 AGENTS.md 指针
+  3. 多业务线              -> --bizlines B01-auth,B02-order 预生成业务线占位
+  4. 开新 iter             -> --iter N 写 current-iteration（上一 iter 完成后续做）
+  5. 下一步                -> 启动 walker，进 xdd-understand
+```
+
+最快路径（单业务线）：
 
 ```bash
 # 任何项目目录下：
@@ -48,7 +59,7 @@ bash skills/xdd-init/scripts/init.sh
 │   ├── intent.md              ← 意图锚（xdd-understand 填）
 │   ├── design.md              ← 收敛决策（xdd-understand 填）
 │   ├── notes/                 ← 发散笔记（glossary 持久；其余设计期）
-│   ├── spec/                  ← 规则锚 RXX + Gherkin（xdd-spec 填）
+│   ├── spec/                  ← 规则锚 RXX + Gherkin（xdd-spec 填；语法详见 xdd-gherkin-plus）
 │   │   ├── _landscape.md      ← 业务线全景（--bizlines 时生成）
 │   │   └── {slug}/business.md ← 业务线占位（--bizlines 时生成）
 │   ├── architecture/          ← 结构锚 colocation（xdd-architecture 填）

@@ -37,7 +37,22 @@ description: |
 2. `.xdd/design/architecture/{slug}/flow.mermaid`（组件名、外部系统、产物流向，若已有）
 3. 当前代码 / 用户材料（API 名、状态枚举、错误码、存储对象）
 
-## 核心编写规范
+## 怎么做
+
+```
+work():
+  1. INPUT: 读 design.md + intent.md，提取业务意图、术语、范围、角色
+  2. ACT:   按 BXX 拆规则，每条业务规则 = 一个 RXX（编号见下）
+  3. ACT:   每条 RXX 写一个 Feature（Background + 正向 Scenario + Scenario Outline + 异常 Scenario）
+     GATE:  find .xdd/design/spec/{slug} -name '*.feature' | wc -l >= RXX 数（每 RXX ≥1 文件）
+  4. ACT:   断言具体可观察（Then 写前端/后端/存储/通知/审计，给具体字段值；笼统→具体见 xdd-gherkin-plus）
+     GATE:  每个 Feature 至少 1 个含"应"或"应返回"或"应拒绝"的 Then（无空泛"系统正常运行"）
+  5. ACT:   输入对齐（状态名/产物名/角色名/错误码与 design + architecture 一致，未知标"待确认"）
+  6. ACT:   自检（见文末清单，逐项过）
+     GATE:  每个 Feature 含 ≥1 个异常 Scenario（Scenario 名含"拒绝/失败/不存在/无权限/冲突"之一）
+```
+
+## 核心编写规范（补充）
 
 1. **禁止程序式 UI 流水账** —— 不写"点击某按钮""输入某文本""勾选复选框"。改业务意图："用户选择对比任务""用户提交回灌任务"。
 
@@ -57,6 +72,8 @@ description: |
 8. **幂等与重复提交业务化表达** —— 不写 CAS/锁/事务。写"不应创建重复任务""应返回已存在任务""原状态不应被覆盖"。
 
 ## 标准输出模板
+
+> Gherkin 语法质量（具体值、Examples、Data Table、异常路径）→ 详见 `xdd-gherkin-plus` skill。
 
 ```gherkin
 Feature: [业务能力] — [核心价值]    @covers-R01
@@ -89,7 +106,7 @@ Feature: [业务能力] — [核心价值]    @covers-R01
 
 ## RXX 规则编号（锚的核心）
 
-**一条业务规则 = 一个 RXX = 一个 Feature 文件**。RXX 是贯穿 plan→code→verify 的追溯 ID。
+**一条业务规则 = 一个 RXX = 一个 Feature 文件**。RXX 是贯穿 plan→code→verify 的追溯 ID。Gherkin 语法/具体值写法 → 详见 `xdd-gherkin-plus` skill。
 
 `rules.md` 是规则目录：
 

@@ -22,13 +22,13 @@ description: |
 | **下游消费者** | `xdd-architecture`（前端文件清单）、`xdd-plan`（前端 task）、`xdd-execute`（前端实现）、`xdd-verify`（页面渲染验收） |
 | **回溯锚** | 页面里的交互回指 RXX 规则（HTML 注释标 `@covers-RXX`） |
 
-## 三步流程
+## 怎么做
 
 ### Step 1 · 解析规格，产出页面清单
 
 **输入优先级**（按顺序读）：
 
-1. `.xdd/design/spec/{slug}/*.feature` — Feature/Scenario 里的页面名、交互、角色
+1. `.xdd/design/spec/{slug}/*.feature` — Feature/Scenario 里的页面名、交互、角色（语法/具体值写法 → 详见 `xdd-gherkin-plus` skill）
 2. `.xdd/design/intent.md` — 业务目标
 3. `.xdd/design/design.md` — 范围（in/out scope）
 4. `.xdd/design/wire/` — 历史 wire（识别可复用组件）

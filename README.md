@@ -63,7 +63,7 @@ ln -s "$(pwd)/skills"  ~/.claude/skills
 | **平台中立** | 只有 agents/ + skills/，任何支持 agent+skill 的 AI 工具原样可跑 |
 | **设计层是锚** | 把精简描述扩展成可封存契约：intent→design→RXX→architecture→plan task→`@implements RXX`→verify 全链追溯，代码不偏离用户 |
 | **工匠型 agent** | walker 自己读文件/写代码/跑命令，不是 dispatcher；大项目可派 phase 子 agent 并行 |
-| **13 skill 工具箱** | 设计 5 + 桥接 1 + 代码 2 + 入口 1 + 工具 4，按需装卸，渐进式披露 |
+| **17 skill 工具箱** | 设计 5 + 桥接 1 + 代码 4 + 入口 1 + 工具 6，按需装卸，渐进式披露 |
 | **反 sham 底线** | 无存根/无假实现/必须跑通有证据（no-stub-check.sh + 文字纪律）|
 | **真实可用契约** | 真实持久化/认证/跨服务链路/重启数据保留/P0 证据 + 生产接受契约 |
 
@@ -77,7 +77,7 @@ cjxdd/                          # xdd framework 仓库自身
 │   ├── xdd-walker.md           # 单工匠主入口（默认，中小项目）
 │   ├── xdd-orchestrator.md     # 多 agent 编排主调度（大项目用）
 │   └── phase-{understand,design,resilience,plan,build,verify}.md  # 6 子 agent 映射三层
-├── skills/                     # 13 个 skill（设计5 + 桥接1 + 代码2 + 入口1 + 工具4）
+├── skills/                     # 17 个 skill（设计5 + 桥接1 + 代码4 + 入口1 + 工具6）
 │   ├── xdd-init/               # 入口：生成 .xdd/ 骨架
 │   ├── xdd-understand/         # 设计·意图锚（intent.md + design.md）
 │   ├── xdd-spec/               # 设计·规则锚（RXX + Gherkin）
@@ -90,7 +90,8 @@ cjxdd/                          # xdd framework 仓库自身
 │   ├── xdd-reverse/            # 工具：逆向已有代码反推设计 + 追溯
 │   ├── xdd-mermaid-check/      # 工具：图表渲染验证
 │   ├── xdd-docker-helper/      # 工具：中国区 Docker 镜像
-│   └── xdd-skill-creator/      # 工具：创建/编辑 skill
+│   ├── xdd-skill-creator/      # 工具：创建/编辑 skill
+│   └── xdd-git-commit/         # 工具：Conventional Commits 规范提交
 ├── docs/                       # 用户文档
 ├── archive/                    # 归档：agents/skills/docs/shadow/platform-2026-06 + 旧 xdd-add（已并入 arch）
 ├── framework-conventions.md    # framework 维护习惯
@@ -102,7 +103,7 @@ cjxdd/                          # xdd framework 仓库自身
 
 **每个 skill 内部**：`SKILL.md`（<500 行 quickstart）+ `references/`（按需深读）+ `templates/`（输出模板，部分有）+ `scripts/`（可移植 bash 自检，部分有）。
 
-### 13 skill
+### 17 skill
 
 | 层 | skill | 锚定什么 | 产出 |
 |----|-------|---------|------|
@@ -113,12 +114,16 @@ cjxdd/                          # xdd framework 仓库自身
 | 设计 | `xdd-wire` | 前端 | `design/wire/{page}/` 6 操作态 |
 | 设计 | `xdd-resilience` | 韧性 | `architecture/{slug}/resilience/` 5 文档 |
 | 桥接 | `xdd-plan` | 设计→计划 | `plan/{slug}/plan.md`（task 回指 RXX）|
-| 代码 | `xdd-execute` | 实现 | 代码 `@implements RXX` + 测试 |
+| 代码 | `xdd-execute` | 实现（通用 TDD） | 代码 `@implements RXX` + 测试，按 Stack 派发专项 |
+| 代码 | `xdd-backend` | 后端实现锚 | 加载 backend.rules + 后端检查（DB/端点/事件/事务） |
+| 代码 | `xdd-frontend` | 前端实现锚 | 加载 frontend.rules + 前端检查（对照 wire 6 态/600行） |
 | 代码 | `xdd-verify` | 验证 | 验证报告（双契约 + 4 维一致性）|
 | 工具 | `xdd-reverse` | 逆向 | 反推 design/ + @implements 追溯 |
 | 工具 | `xdd-mermaid-check` | 图表 | flow.mermaid 渲染验证 |
 | 工具 | `xdd-docker-helper` | 容器 | 中国区镜像源 |
 | 工具 | `xdd-skill-creator` | 元工具 | 创建/编辑 skill |
+| 工具 | `xdd-gherkin-plus` | Gherkin 语法锚 | 被引用（无产出文件）|
+| 工具 | `xdd-git-commit` | 提交 | Conventional Commits message + `git commit` |
 
 ---
 

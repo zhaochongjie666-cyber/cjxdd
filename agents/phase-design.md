@@ -18,7 +18,7 @@ temperature: 0.7
 
 按顺序装三个 skill，每个按其 SKILL.md 走：
 
-1. **xdd-spec** —— design.md → RXX 规则 + Gherkin Feature。一条规则 = 一个 RXX = 一个 Feature。
+1. **xdd-spec** —— design.md → RXX 规则 + Gherkin Feature。一条规则 = 一个 RXX = 一个 Feature。（Gherkin 语法/具体值 → 详见 `xdd-gherkin-plus` skill）
    - 产出 `.xdd/design/spec/_landscape.md` + `{slug}/business.md` + `{slug}/rules.md` + `{slug}/*.feature`
 2. **xdd-architecture** —— spec RXX → 技术架构。ADD+SDD+PDD+ODD 四支柱 + API 端点清单（100% 完整）+ 事件契约 + 聚合全景 + flow.mermaid + docker-compose + 运维视图。
    - 产出 `.xdd/design/architecture/aggregate-landscape.md` + `event-contract.md` + `{slug}/architecture.md` + `{slug}/flow.mermaid` + `docker-compose*.yml`

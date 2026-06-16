@@ -8,17 +8,30 @@ version: "1.1.0"
 
 A skill for creating new skills and iteratively improving them.
 
+## 怎么做
+
 At a high level, the process of creating a skill goes like this:
 
-- Decide what you want the skill to do and roughly how it should do it
-- Write a draft of the skill
-- Create a few test prompts and run claude-with-access-to-the-skill on them
-- Help the user evaluate the results both qualitatively and quantitatively
-  - While the runs happen in the background, draft some quantitative evals if there aren't any (if there are some, you can either use as is or modify if you feel something needs to change about them). Then explain them to the user (or if they already existed, explain the ones that already exist)
-  - Use the `eval-viewer/generate_review.py` script to show the user the results for them to look at, and also let them look at the quantitative metrics
-- Rewrite the skill based on feedback from the user's evaluation of the results (and also if there are any glaring flaws that become apparent from the quantitative benchmarks)
-- Repeat until you're satisfied
-- Expand the test set and try again at larger scale
+```
+create_skill():
+  decide(what the skill does + roughly how)
+  draft = write_draft_skill()
+  repeat:
+    test_prompts = create_few_test_prompts()
+    parallel:                                   # 后台跑测试时，同时准备量化评估
+      runs = run_claude_with_skill(test_prompts, draft)
+      evals = draft_or_modify_quantitative_evals()
+    review_with_user(runs, evals, eval-viewer/generate_review.py)   # 定性 + 定量
+    draft = rewrite_skill(based_on feedback + glaring_flaws_in_benchmarks)
+    until user_satisfied and not has_glaring_flaws
+  expand_test_set(); goto repeat                # 放大规模再试一轮
+```
+
+Your job when using this skill is to figure out where the user is in this process and then jump in and help them progress through these stages. So for instance, maybe they're like "I want to make a skill for X". You can help narrow down what they mean, write a draft, write the test cases, figure out how they want to evaluate, run all the prompts, and repeat.
+
+On the other hand, maybe they already have a draft of the skill. In this case you can go straight to the eval/iterate part of the loop.
+
+Of course, you should always be flexible and if the user is like "I don't need to run a bunch of evaluations, just vibe with me", you can do that instead.
 
 Your job when using this skill is to figure out where the user is in this process and then jump in and help them progress through these stages. So for instance, maybe they're like "I want to make a skill for X". You can help narrow down what they mean, write a draft, write the test cases, figure out how they want to evaluate, run all the prompts, and repeat.
 
@@ -476,16 +489,7 @@ The references/ directory has additional documentation:
 
 ---
 
-Repeating one more time the core loop here for emphasis:
-
-- Figure out what the skill is about
-- Draft or edit the skill
-- Run claude-with-access-to-the-skill on test prompts
-- With the user, evaluate the outputs:
-  - Create benchmark.json and run `eval-viewer/generate_review.py` to help the user review them
-  - Run quantitative evals
-- Repeat until you and the user are satisfied
-- Package the final skill and return it to the user.
+Repeating the core loop from the top of this file one more time, for emphasis: figure out what the skill is about → draft/edit → run claude-with-access-to-the-skill on test prompts → with the user evaluate the outputs (create `benchmark.json` + run `eval-viewer/generate_review.py`, run quantitative evals) → repeat until you and the user are satisfied → package the final skill and return it.
 
 Please add steps to your TodoList, if you have such a thing, to make sure you don't forget. If you're in Cowork, please specifically put "Create evals JSON and run `eval-viewer/generate_review.py` so human can review test cases" in your TodoList to make sure it happens.
 

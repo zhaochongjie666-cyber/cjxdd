@@ -21,6 +21,19 @@ description: >
 3. **Ubuntu 基础镜像构建** — 生成带中国 apt 源的 Ubuntu Dockerfile
 4. **常用镜像快速拉取** — 一键拉取常用基础镜像（PG、Redis、Nginx、Go 等）
 
+## 怎么做
+
+```
+work():
+  1. 环境检测  -> scripts/probe-registry.sh 探 GFW/代理可达性（退出码 0/1/2/3）
+  2. 配镜像源  -> daemon.json 加可用镜像源（见下「镜像源与代理清单」）
+  3. 拉镜像    -> daemon.json 不通则用代理前缀直接拉（docker pull <prefix>/image）
+  4. 构基础镜像 -> 生成带中国 apt 源的 Ubuntu Dockerfile
+  5. 输清单    -> 给出本次配置的镜像源/代理 + 拉取结果
+```
+
+> 详细分步见文末「工作流程」。下面「镜像源与代理清单」是配置时查的参考表。
+
 ## 镜像源与代理清单
 
 ### Docker Registry 镜像源（daemon.json）

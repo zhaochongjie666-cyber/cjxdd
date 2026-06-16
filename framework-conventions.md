@@ -14,12 +14,12 @@
 
 ### 2.1 skill 命名
 - 全部带 `xdd-` 前缀
-- 13 个 skill（设计 5 + 桥接 1 + 代码 2 + 入口 1 + 工具 4）：
+- 17 个 skill（设计 5 + 桥接 1 + 代码 4 + 入口 1 + 工具 6）：
   - 设计层：`xdd-understand` / `xdd-spec` / `xdd-architecture` / `xdd-wire` / `xdd-resilience`
   - 桥接：`xdd-plan`
-  - 代码层：`xdd-execute` / `xdd-verify`
+  - 代码层：`xdd-execute` / `xdd-backend` / `xdd-frontend` / `xdd-verify`
   - 入口：`xdd-init`
-  - 工具：`xdd-reverse` / `xdd-mermaid-check` / `xdd-docker-helper` / `xdd-skill-creator`
+  - 工具：`xdd-reverse` / `xdd-mermaid-check` / `xdd-docker-helper` / `xdd-skill-creator` / `xdd-gherkin-plus` / `xdd-git-commit`
 - 旧的 `xdd-l0` / `xdd-bdd` / `xdd-arch` / `xdd-flow` / `xdd-l3` / `xdd-l6` / `xdd-core` / `xdd-gherkin-writer` / `xdd-ux-design` / `xdd-scaffold` / `xdd-artifact-lifecycle` / `xdd-trace-init` 等已归档（合并/废弃见 `archive/skills-2026-06/README.md`）
 
 ### 2.2 agent 命名
@@ -27,7 +27,13 @@
 - 8 个：`xdd-walker` / `xdd-orchestrator` / `phase-{understand,design,resilience,plan,build,verify}`
 - 旧的 `xdd-walker-pi` 已合并进 `xdd-walker`（hook 删除后差异塌缩）；旧 8 个 phase 子 agent 已归档
 
-### 2.3 没有平台专属命名
+### 2.3 skill 结构约定（「工作方式在前」）
+- 每个 skill 的 SKILL.md 必须有 `## 怎么做` 段，作为**第二位**章节（紧跟定位段「我锚定什么/上游/下游」或「何时用」）
+- `## 怎么做` 先讲**流程/方法**（这个 skill 怎么干活，建议用伪代码 `work(): ...` 或有序步骤），再讲补充
+- 规范 / 参考表 / 自检等是**补充**，放 `## 怎么做` 之后
+- 读者打开任何 SKILL.md，扫到第二个 `##` 就能抓到「怎么干」，不用翻全文
+
+### 2.4 没有平台专属命名
 - **不再有** `xdd-gate-*` hook 命名、`plugins/*.ts` plugin 命名、`commands/*.md` slash command 命名 —— 这些平台层全部归档
 - skill 自带的可移植 bash 自检脚本放 `skills/{name}/scripts/*.sh`（如 `no-stub-check.sh` / `wander-test.sh` / `chaos-runner.sh`），不是平台 hook
 

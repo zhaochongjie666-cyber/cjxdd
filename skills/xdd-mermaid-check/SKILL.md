@@ -20,7 +20,7 @@ version: "1.2.0"
 - 安装 mermaid-cli：`npm install -g @mermaid-js/mermaid-cli`
 - 或通过环境变量指定：`MMDC=/path/to/mmdc`
 
-## 执行步骤
+## 怎么做
 
 ### 首次执行
 
