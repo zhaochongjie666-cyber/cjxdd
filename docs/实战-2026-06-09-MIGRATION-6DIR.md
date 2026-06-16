@@ -97,7 +97,7 @@ iterations/    ← per-iter 全包
 | 维度 | 11 目录 (旧) | 6 目录 (新) | 收益 |
 |------|--------------|-------------|------|
 | `ls .xdd/` 顶层 | 11 项混杂 | **3 项清晰** | 一眼看清楚 |
-| 跨 iter 设计资产 | 散落 8 目录 | **baseline/{intent,research,bdd,flow,add,arch,resilience,wire,business}/** | 同类聚合, 业务线用 {slug}/ 自然分 |
+| 跨 iter 设计资产 | 散落 8 目录 | **baseline/{intent,research,bdd,flow,add,arch,resilience,wire,business}/** | 同类聚合, 业务线用 {bxx-slug}/ 自然分 |
 | 控制标记 | 3 文件散根 | **gates/{scale.md, current-iteration, xdd-version, .xdd-halt.json, .l5-unresolved.json}/** | 1 个 ls 看 |
 | per-iter 证据 | 7 子目录 iter-N/ | **10 子目录 iter-N/ (含 chaos / design / execute / gate-logs / pipeline / plan / reports / research / verify / wire-reviews)** | 收尾时整 iter 冻结 |
 | plan 位置 | `.xdd/plan/` (跨 iter) | `.xdd/iterations/iter-1/plan/` (per-iter) | plan 跟着 iter 收尾, 不污染设计资产 |
@@ -168,7 +168,7 @@ $ curl http://localhost:3838/healthz
 
 1. **6 目录结构**自然生成, 跟 xdd-schema.json canonical_paths 完全对齐
 2. **`ls .xdd/` 顶层只 3 项** (baseline/ + gates/ + iterations/), 视觉清爽
-3. **业务线维度用 `{slug}/` 子目录自然分** (B01/B02/B03), 不需要额外 BXX 目录
+3. **业务线维度用 `{bxx-slug}/` 子目录自然分** (B01/B02/B03), 不需要额外 BXX 目录
 4. **plan 跟 iter 走** (在 iterations/iter-1/plan/), 不会被错认为"跨 iter 设计资产"
 5. **L 规模 l3_extended_mode=true** 真实启用, 9 维 + 12 模式 + 8 字段 FMEA, chaos 5 场景真跑全过
 6. **4 维 L5 audit 100%** (4 个维度全 100% 通过)

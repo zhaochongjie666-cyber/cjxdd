@@ -1,10 +1,8 @@
 # xdd BXX 业务线模型
 
-> **本文件目的**: 解释多业务线项目 (BXX > 1) 的目录组织 + 编号规则 + 跨线一致性 checklist
-
-> ⚠️ **目录段曾基于旧的 `.shadow`/`core`/`arch`/`bdd`/`scale.md` 布局，现已与现状不符**。
-> 当前正确布局见 `README.md § 目录结构` + `skills/xdd-init/SKILL.md`（`design/spec/{slug}/` + `design/architecture/{slug}/`，无 scale.md）。
-> 下文 §3/§4 的目录树仅作历史参考；**BXX-NYY 编号规则（§1）和跨线一致性 checklist（§5）仍然有效**。
+> **本文件目的**: 解释业务线（BXX）的目录组织 + 编号规则 + 跨线一致性 checklist。
+>
+> 目录结构权威声明见 `skills/xdd-init/SKILL.md § 生成的结构`（含三层模型：项目层 / 业务线层 / 迭代层）。本文件只讲 BXX 特有的编号规则 + 跨线一致性。
 
 ---
 
@@ -12,103 +10,67 @@
 
 - `BXX` = 业务线 ID (两位数字, 01-99)
 - `NYY` = 该业务线内 Feature 序号 (01-99)
+- `RXX` = 该业务线内规则编号（如 `B01-R01`）
 
 **例**:
+- `B01` = 业务线 1（目录名，始终带 BXX）
+- `B01-R01` = 业务线 1 的第 1 条规则
 - `B01-001` = 业务线 1 的第 1 个 Feature
-- `B01-002-NNN` = 业务线 1 的第 2 个 Feature 的第 N 个 Scenario
+- `B01-001-NNN` = 业务线 1 的第 2 个 Feature 的第 N 个 Scenario
+
+**功能维度不增设目录**：业务线内多功能靠 RXX 规则编号（`B01-R01/R02`）+ Gherkin Feature 名区分，不在 `spec/{bxx-slug}/` 下再建功能子目录。
 
 ---
 
-## 2. 触发条件
+## 2. 触发条件 / 生成
 
-多业务线识别（现状）：`xdd-init --bizlines B01-auth,B02-order` 预生成 `design/spec/_landscape.md` + 每业务线 `spec/{slug}/` 占位。
-Walker 在 design 层据此组织目录结构（不再读 scale.md —— 该产物已移除）。
+- `xdd-init --bizlines B01-auth,B02-order` → 预生成 `design/spec/_landscape.md` + 每业务线 `spec/{bxx-slug}/business.md` 占位。
+- **无 `--bizlines`** → 默认建 `design/spec/B01/`（始终用 BXX，单业务线 = 一个 B01）。
+
+**始终用 BXX**：单业务线也带 BXX 前缀，单→多演进零重构（无需重命名目录）。
 
 ---
 
-## 3. 多业务线时目录组织（现状）
-
-```
-.xdd/design/
-├── intent.md                       # 用户意图 (跨业务线共享)
-├── spec/
-│   ├── _landscape.md               # 业务线全景（BXX → slug → 名称 → 定位）
-│   ├── B01-auth/
-│   │   ├── business.md
-│   │   ├── rules.md                # RXX 规则（B01-R01...）
-│   │   └── *.feature               # Gherkin
-│   ├── B02-order/
-│   │   └── ...
-│   └── cross-cutting/              # 跨业务线（如 auth）
-├── architecture/
-│   ├── aggregate-landscape.md      # 全局聚合全景
-│   ├── event-contract.md           # 全局事件契约
-│   ├── B01-auth/
-│   │   ├── architecture.md
-│   │   └── flow.mermaid            # 节点用 BXX-NYY 编号
-│   └── B02-order/
-│       └── ...
-└── runs/iter-N/                    # 单轮工作记录（plan/报告/审计）
-    └── status.md                   # 含 ## BXX 分段 + cross-BXX 一致性 checklist
-```
-
-<details>
-<summary>旧版目录组织（已废弃，仅留作历史参考）</summary>
+## 3. 目录组织（三层模型）
 
 ```
 .xdd/
-├── scale.md                       # bxx_enabled: true
-├── core/                          # 用户意图 (跨业务线共享)
-├── project.flow.mermaid           # 全局图, 节点用 BXX-NYY 编号
-├── arch/                          # 架构 (跨业务线)
-├── bdd/
-│   ├── B01-001/                   # 业务线 1
-│   │   ├── B01-001-001-login.feature
-│   │   └── B01-001-002-logout.feature
-│   ├── B02-001/                   # 业务线 2
-│   │   └── B02-001-001-order-create.feature
-│   └── cross-cutting/             # 跨业务线
-│       └── auth.feature
-├── add/
-│   ├── shared/                    # 共享架构
-│   │   └── api-gateway.md
-│   ├── B01/                       # 业务线 1 专属
-│   │   └── state-machine.md
-│   └── B02/                       # 业务线 2 专属
-│       └── order-workflow.md
-└── iterations/iter-N/pipeline/status.md
-    ## B01 用户管理
-    | Phase | 状态 | 备注 |
-    |-------|------|------|
-    | 1 | ⏳ | |
-    | 2 | ⏳ | |
-    ## B02 订单管理
-    | Phase | 状态 | 备注 |
-    |-------|------|------|
-    | 1 | ⏳ | |
-    | 2 | ⏳ | |
-    ## cross-BXX 一致性 (强制)
-    - [ ] 跨业务线术语一致
-    - [ ] 跨业务线 API 命名风格一致
-    - [ ] 跨业务线错误码格式一致
-    - [ ] 跨业务线 auth/authz 模型一致
-    - [ ] 跨业务线审计日志字段一致
-    - [ ] 跨业务线 multi-tenant 隔离一致
+├── design/                          【持久锚，跨 iter 保留】
+│   ├── intent.md                    ← 【项目层】总意图（跨业务线共享）
+│   ├── design.md                    ← 【项目层】项目级总决策（跨业务线）
+│   ├── spec/
+│   │   ├── _landscape.md            ← 业务线全景（仅 --bizlines 时生成）
+│   │   ├── B01-auth/                ← 【业务线层】
+│   │   │   ├── business.md
+│   │   │   ├── rules.md             ← RXX 规则（B01-R01...）
+│   │   │   └── *.feature            ← Gherkin
+│   │   ├── B02-order/
+│   │   │   └── ...
+│   │   └── cross-cutting/           ← 跨业务线（如 auth）
+│   ├── architecture/                ← 【业务线层】（与 spec 同 BXX 分层）
+│   │   ├── aggregate-landscape.md   ← 全局聚合全景
+│   │   ├── event-contract.md        ← 全局事件契约
+│   │   ├── B01-auth/
+│   │   │   ├── architecture.md
+│   │   │   ├── flow.mermaid         ← 节点用 BXX-NYY 编号
+│   │   │   └── resilience/          ← 韧性 colocation（5 文档）
+│   │   └── B02-order/
+│   │       └── ...
+│   └── wire/                        ← 【业务线层】前端线框
+└── runs/
+    └── iter-N/                      【迭代层】单轮工作记录（plan/报告/审计）
+        ├── status.md                ← 含 ## BXX 分段 + cross-BXX 一致性 checklist
+        ├── plan/{bxx-slug}/
+        └── audits/
 ```
 
-</details>
+**三层边界**：项目层（intent/design，无 BXX）→ 业务线层（spec/architecture/wire，带 BXX）→ 迭代层（runs/iter-N）。详见 `skills/xdd-init/SKILL.md`。
 
 ---
 
-## 4. 单业务线时
+## 4. 跨 BXX 一致性 checklist
 
-单业务线项目直接用 `design/spec/{slug}/` + `design/architecture/{slug}/`，不生成 `_landscape.md`，节点编号可直接 N01/N02（无 BXX 前缀）。详见 `skills/xdd-init/SKILL.md`。
-
----
-
-## 5. 跨 BXX 一致性 checklist
-
-每写完一个 slug (B01/B02/...) 的同层产物, 立即对照 status.md 的 "cross-BXX 一致性" 段:
+每写完一个 BXX (B01/B02/...) 的同层产物，立即对照 `status.md` 的 "cross-BXX 一致性" 段：
 
 - **命名规范** 是否统一 (e.g., `ServiceXxx` vs `XxxService`)
 - **事件命名** 是否统一 (e.g., `domain.event` vs `EventName`)
@@ -118,15 +80,15 @@ Walker 在 design 层据此组织目录结构（不再读 scale.md —— 该产
 - **审计日志** 字段是否一致
 - **multi-tenant 隔离** 是否一致
 
-不一致 → 改最新写的, 保持风格统一后再进下一层.
+不一致 → 改最新写的，保持风格统一后再进下一层。
 
 ---
 
-## 6. 变更传播 (BXX 内)
+## 5. 变更传播（BXX 内）
 
 | 改了什么 (BXX 内) | 只需重跑 |
 |-------------------|---------|
-| BXX 事件归属 | BXX research + flow + spec, wire 视情况 |
-| BXX 术语 | BXX research + spec, 下游视情况 |
-| BXX 聚合边界 | BXX research + spec + Phase 2.5 聚合全景 |
-| 跨 BXX 事件 | 两侧 BXX research + flow + 全局事件流 |
+| BXX 事件归属 | BXX spec/flow，wire 视情况 |
+| BXX 术语 | BXX spec，下游视情况 |
+| BXX 聚合边界 | BXX spec + architecture 聚合全景 |
+| 跨 BXX 事件 | 两侧 BXX spec/flow + 全局事件流 |

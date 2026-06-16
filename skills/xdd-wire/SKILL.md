@@ -28,7 +28,7 @@ description: |
 
 **输入优先级**（按顺序读）：
 
-1. `.xdd/design/spec/{slug}/*.feature` — Feature/Scenario 里的页面名、交互、角色（语法/具体值写法 → 详见 `xdd-gherkin-plus` skill）
+1. `.xdd/design/spec/{bxx-slug}/*.feature` — Feature/Scenario 里的页面名、交互、角色（语法/具体值写法 → 详见 `xdd-gherkin-plus` skill）
 2. `.xdd/design/intent.md` — 业务目标
 3. `.xdd/design/design.md` — 范围（in/out scope）
 4. `.xdd/design/wire/` — 历史 wire（识别可复用组件）

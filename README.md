@@ -107,13 +107,13 @@ cjxdd/                          # xdd framework 仓库自身
 
 | 层 | skill | 锚定什么 | 产出 |
 |----|-------|---------|------|
-| 入口 | `xdd-init` | — | `.xdd/` 骨架 |
-| 设计 | `xdd-understand` | 意图 | `design/intent.md` + `design.md` |
-| 设计 | `xdd-spec` | 规则 RXX | `design/spec/{slug}/` rules.md + *.feature |
-| 设计 | `xdd-architecture` | 结构 | `design/architecture/{slug}/` architecture.md + flow.mermaid |
+| 入口 | `xdd-init` | — | `.xdd/` 骨架（三层：项目层/业务线层 BXX/迭代层）|
+| 设计 | `xdd-understand` | 意图 | `design/intent.md` + `design.md`（项目层总意图）|
+| 设计 | `xdd-spec` | 规则 RXX | `design/spec/{bxx-slug}/` rules.md + *.feature |
+| 设计 | `xdd-architecture` | 结构 | `design/architecture/{bxx-slug}/` architecture.md + flow.mermaid |
 | 设计 | `xdd-wire` | 前端 | `design/wire/{page}/` 6 操作态 |
-| 设计 | `xdd-resilience` | 韧性 | `architecture/{slug}/resilience/` 5 文档 |
-| 桥接 | `xdd-plan` | 设计→计划 | `plan/{slug}/plan.md`（task 回指 RXX）|
+| 设计 | `xdd-resilience` | 韧性 | `architecture/{bxx-slug}/resilience/` 5 文档 |
+| 桥接 | `xdd-plan` | 设计→计划 | `runs/iter-N/plan/{bxx-slug}/plan.md`（task 回指 RXX）|
 | 代码 | `xdd-execute` | 实现（通用 TDD） | 代码 `@implements RXX` + 测试，按 Stack 派发专项 |
 | 代码 | `xdd-backend` | 后端实现锚 | 加载 backend.rules + 后端检查（DB/端点/事件/事务） |
 | 代码 | `xdd-frontend` | 前端实现锚 | 加载 frontend.rules + 前端检查（对照 wire 6 态/600行） |

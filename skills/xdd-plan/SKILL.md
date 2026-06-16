@@ -4,7 +4,7 @@ description: |
   xdd 桥接层 —— 把设计层的锚（design.md 意图 + RXX 规则 + architecture 端点/事件 + wire 页面 + resilience 兜底）翻译成零上下文工程师可直接执行的 TDD 任务计划。
   每个任务显式回指 RXX 规则 —— 这就是「设计锚定代码」的桥：plan task → RXX → design 意图，代码 @implements RXX 再回指 task。
   粒度 2-5 分钟单动作步骤，先测试后实现，禁占位符，频繁提交。
-  产出 .xdd/runs/iter-N/plan/{slug}/plan.md。
+  产出 .xdd/runs/iter-N/plan/{bxx-slug}/plan.md。
   触发：计划、plan、任务拆解、实施计划、开发计划、TDD 计划、实现计划、开工、跑计划。
 ---
 
@@ -16,8 +16,8 @@ description: |
 
 | | |
 |---|---|
-| **上游** | `design.md`(意图) + `spec/{slug}/`(RXX 规则 + Feature) + `architecture/{slug}/`(端点/事件/状态机/文件清单) + `wire/{page}/`(前端) + `architecture/{slug}/resilience/`(兜底约束) |
-| **我产出** | `.xdd/runs/iter-N/plan/{slug}/plan.md`（任务 DAG + RXX 回指 + 全局约束） |
+| **上游** | `design.md`(意图) + `spec/{bxx-slug}/`(RXX 规则 + Feature) + `architecture/{bxx-slug}/`(端点/事件/状态机/文件清单) + `wire/{page}/`(前端) + `architecture/{bxx-slug}/resilience/`(兜底约束) |
+| **我产出** | `.xdd/runs/iter-N/plan/{bxx-slug}/plan.md`（任务 DAG + RXX 回指 + 全局约束） |
 | **下游消费者** | `xdd-execute`（按 task 写代码，每个 commit 回指 RXX）、`xdd-verify`（按 Feature 验收） |
 | **回溯锚** | 每个 task 标 `**回指 RXX:** R01,R03` + `**Feature:** login.feature :: Scenario: 密码登录成功` |
 
@@ -25,7 +25,7 @@ description: |
 
 ```
 work():
-  1. INPUT: 读全部设计层锚（design.md + spec/{slug}/ + architecture/{slug}/ + wire/ + resilience/）
+  1. INPUT: 读全部设计层锚（design.md + spec/{bxx-slug}/ + architecture/{bxx-slug}/ + wire/ + resilience/）
   2. ACT:   输入对齐——术语 1:1 一致，未知标"待确认"，不编造
   3. ACT:   拆 task——一条行为路径 = 一个 task；粒度 3-5 个 Step
   4. ACT:   每 task 标四字段（回指 RXX + Stack + Feature + Files）
@@ -33,17 +33,17 @@ work():
             && grep -c "Stack:" plan.md == task 数
             && grep -c "Files:" plan.md == task 数
   5. ACT:   排依赖（Depends on DAG，无依赖的首批先跑）
-  6. ACT:   生成 .xdd/runs/iter-N/plan/{slug}/plan.md
+  6. ACT:   生成 .xdd/runs/iter-N/plan/{bxx-slug}/plan.md
      GATE:  test -f 该 plan.md 且每个 task 都有 ≥1 个测试 Step（grep "Expected: PASS/FAIL"）
 ```
 
 ## 输入对齐（生成前必读，术语必须 1:1 一致，未知标"待确认"）
 
-1. `.xdd/design/spec/{slug}/*.feature` —— Feature/Scenario、Then/And 断言、异常路径、Scenario Outline + Examples（语法/具体值写法 → 详见 `xdd-gherkin-plus` skill）
-2. `.xdd/design/architecture/{slug}/architecture.md` —— 状态机、启动/关闭、并发模型、异常恢复、API 端点契约、文件清单、规则传导矩阵
-3. `.xdd/design/architecture/{slug}/flow.mermaid` —— 组件名/职责、数据流向、协议、外部依赖
+1. `.xdd/design/spec/{bxx-slug}/*.feature` —— Feature/Scenario、Then/And 断言、异常路径、Scenario Outline + Examples（语法/具体值写法 → 详见 `xdd-gherkin-plus` skill）
+2. `.xdd/design/architecture/{bxx-slug}/architecture.md` —— 状态机、启动/关闭、并发模型、异常恢复、API 端点契约、文件清单、规则传导矩阵
+3. `.xdd/design/architecture/{bxx-slug}/flow.mermaid` —— 组件名/职责、数据流向、协议、外部依赖
 4. `.xdd/design/wire/{page}/` —— 页面清单、组件交互、设计 token（前端项目）
-5. `.xdd/design/architecture/{slug}/resilience/failsafe-design.md` —— 兜底约束 + 失败注入点
+5. `.xdd/design/architecture/{bxx-slug}/resilience/failsafe-design.md` —— 兜底约束 + 失败注入点
 6. 当前代码/材料 —— 文件路径、入口、数据模型、错误码、测试框架
 
 ## 全局约束（定义一次，所有 task 共享）
@@ -100,7 +100,7 @@ work():
 **目标：** [一句话]
 **架构：** [2-3 句方案]
 **技术栈：** [关键依赖]
-**验收来源：** spec/{slug}/*.feature
+**验收来源：** spec/{bxx-slug}/*.feature
 **回指锚：** 每个task标 RXX，代码用 @implements RXX 回指
 
 ## 全局约束

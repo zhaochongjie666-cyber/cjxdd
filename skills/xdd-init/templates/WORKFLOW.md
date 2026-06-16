@@ -33,14 +33,14 @@ prompt ->
 design_layer():
   understand(use skill: xdd-understand) -> intent.md + design.md(5段决策)   # 锚定：意图
                    >> 用户审查闸：design.md 写完停下，用户确认意图对齐才进 spec（防偏第一道闸）
-  spec(use skill: xdd-spec)             -> spec/{slug}/ rules.md + *.feature  # 锚定：规则 RXX
-  architecture(use skill: xdd-architecture) -> architecture/{slug}/ architecture.md + flow.mermaid + 端点/事件契约 + 运维视图   # 锚定：结构
+  spec(use skill: xdd-spec)             -> spec/{bxx-slug}/ rules.md + *.feature  # 锚定：规则 RXX
+  architecture(use skill: xdd-architecture) -> architecture/{bxx-slug}/ architecture.md + flow.mermaid + 端点/事件契约 + 运维视图   # 锚定：结构
   wire(use skill: xdd-wire)             -> wire/{page}/ 6 操作态 + review.md  # 锚定：前端（纯后端跳过）
-  resilience(use skill: xdd-resilience) -> architecture/{slug}/resilience/ 5 文档  # 锚定：韧性
+  resilience(use skill: xdd-resilience) -> architecture/{bxx-slug}/resilience/ 5 文档  # 锚定：韧性
 ```
 
 ### 桥接：xdd-plan
-设计层 → 可执行 TDD 计划。每个 task 显式**回指 RXX**（plan task → RXX → design 意图）。禁占位符。产出 `runs/iter-N/plan/{slug}/plan.md`。
+设计层 → 可执行 TDD 计划。每个 task 显式**回指 RXX**（plan task → RXX → design 意图）。禁占位符。产出 `runs/iter-N/plan/{bxx-slug}/plan.md`。
 
 ### 代码层（2 skill）
 
@@ -72,16 +72,25 @@ trace_chain():
 # 改任何一层，沿链往下重做
 ```
 
-## 4. 多业务线（BXX）
+## 4. 三层模型 + 业务线层（BXX）
+
+目录分三层，对应「项目 → 业务线 → 迭代」：
+
+| 层 | 落点 | 内容 | 跨 iter？ |
+|----|------|------|-----------|
+| **项目层** | `design/intent.md` + `design.md` | 项目总意图 + 跨业务线的全局决策（技术栈/错误码/auth）| 是（持久锚）|
+| **业务线层** | `design/spec/{bxx-slug}/` + `architecture/{bxx-slug}/` + `wire/` | 每条业务线的规则/结构/前端 | 是（持久锚）|
+| **迭代层** | `runs/iter-N/` | 单轮 plan/报告/审计 | 否（单轮）|
+
+**始终用 BXX**：单业务线 = 一个 B01，多业务线 = B01/B02/...。单→多演进零重构。业务线内多功能靠 RXX 编号（B01-R01/R02）区分，不增设子目录。
 
 ```
-if 项目有多条业务线(BXX):
-  for each BXX:
-    独立产出 spec/{slug}/ + architecture/{slug}/      # 各 BXX 独立
-  共享:
-    spec/_landscape.md            # 业务线全景
-    architecture/aggregate-landscape.md   # 聚合全景
-    architecture/event-contract.md        # 事件契约
+for each BXX:
+  独立产出 spec/{bxx-slug}/ + architecture/{bxx-slug}/      # 各 BXX 独立
+多业务线额外共享:
+  spec/_landscape.md            # 业务线全景（仅 --bizlines 时生成）
+  architecture/aggregate-landscape.md   # 聚合全景
+  architecture/event-contract.md        # 事件契约
 
 # 跨 BXX 一致性 checklist（status.md 末尾）：
 #   术语 / API 命名 / 错误码 / auth / 审计 / multi-tenant 隔离 全统一

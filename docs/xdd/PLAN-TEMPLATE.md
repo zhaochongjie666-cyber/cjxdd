@@ -118,7 +118,7 @@ X 分钟（用作 walker 的 effort baseline）
 - [ ] 上游 artifact 路径都给了
 - [ ] 下游消费者提了（如果有）
 - [ ] 约束（命名/技术栈）写了
-- [ ] plan 已写入 `.xdd/runs/iter-N/plan/{slug}/plan.md`（task DAG + RXX 回指）
+- [ ] plan 已写入 `.xdd/runs/iter-N/plan/{bxx-slug}/plan.md`（task DAG + RXX 回指）
 - [ ] 每个 task 标 `**回指 RXX:**` + `**Feature:**`
 
 收活时 walker 自检：

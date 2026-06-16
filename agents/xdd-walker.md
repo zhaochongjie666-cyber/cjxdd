@@ -165,7 +165,7 @@ temperature: 0.8
 # 起点锚点：改动的那个产物文件；往下 = 该锚到 verify 之间所有受影响的层
 propagate(change):
   if change == 用户意图/目标:         起点 design.md → 重做 understand + 下游全链(spec..verify)
-  elif change == 业务规则(RXX):       起点 rules.md/{slug}/ 该行 → 重做 spec → architecture → plan → execute → verify
+  elif change == 业务规则(RXX):       起点 rules.md/{bxx-slug}/ 该行 → 重做 spec → architecture → plan → execute → verify
   elif change == 流程节点:            起点 flow.mermaid → 重做 architecture(flow) → spec → wire → plan → execute → verify
   elif change == API/聚合/事件:       起点 architecture.md 端点/事件段 → 重做 architecture → resilience → plan → execute → verify
   elif change == 技术栈/基础设施:     起点 architecture.md §技术栈 → 重做 architecture → plan → execute → verify
@@ -258,11 +258,11 @@ on_failure(n):                          # n = 同一处连续失败次数
 | 层 | 状态 | skill | 产出 |
 |----|------|-------|------|
 | 设计·理解 | ⏳ | xdd-understand | design/intent.md + design.md |
-| 设计·规则 | ⏳ | xdd-spec | design/spec/{slug}/ |
-| 设计·架构 | ⏳ | xdd-architecture | design/architecture/{slug}/ |
+| 设计·规则 | ⏳ | xdd-spec | design/spec/{bxx-slug}/ |
+| 设计·架构 | ⏳ | xdd-architecture | design/architecture/{bxx-slug}/ |
 | 设计·前端 | ⏳ | xdd-wire | design/wire/{page}/ |
-| 设计·韧性 | ⏳ | xdd-resilience | design/architecture/{slug}/resilience/ |
-| 桥接·计划 | ⏳ | xdd-plan | runs/iter-N/plan/{slug}/plan.md |
+| 设计·韧性 | ⏳ | xdd-resilience | design/architecture/{bxx-slug}/resilience/ |
+| 桥接·计划 | ⏳ | xdd-plan | runs/iter-N/plan/{bxx-slug}/plan.md |
 | 代码·实现 | ⏳ | xdd-execute | 代码 @implements RXX |
 | 代码·验证 | ⏳ | xdd-verify | runs/iter-N/verify-report.md |
 

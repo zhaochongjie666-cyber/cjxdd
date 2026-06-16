@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# mmdc_check.sh — 验证 .xdd/design/architecture/{slug}/flow.mermaid 能否渲染
+# mmdc_check.sh — 验证 .xdd/design/architecture/{bxx-slug}/flow.mermaid 能否渲染
 # 扫描所有业务线 slug 的 flow.mermaid，逐个用 mmdc 渲染验证。
 set -euo pipefail
 
@@ -46,7 +46,7 @@ fi
 echo "Checking flow.mermaid files under ${arch_dir}/..."
 echo ""
 
-# 收集所有 {slug}/flow.mermaid
+# 收集所有 {bxx-slug}/flow.mermaid
 flows=()
 while IFS= read -r -d '' f; do
     flows+=("$f")

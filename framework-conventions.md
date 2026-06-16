@@ -39,7 +39,11 @@
 
 ## 3. 工件目录
 
-- **产品项目**：`.xdd/`（结构见 `skills/xdd-init/SKILL.md`：`design/` + `plan/` + `status.md` + `current-iteration`）
+- **产品项目**：`.xdd/` 三层模型（结构见 `skills/xdd-init/SKILL.md`）：
+  - **项目层**：`design/intent.md` + `design.md`（总意图 + 跨业务线全局决策，跨 iter 保留）
+  - **业务线层**：`design/spec/{bxx-slug}/` + `architecture/{bxx-slug}/` + `wire/`（每业务线，始终用 BXX）
+  - **迭代层**：`runs/iter-N/`（`status.md` + `plan/{bxx-slug}/` + `audits/`，单轮工作记录）
+  - 根级 `current-iteration` 指针
 - **framework 自身**：git 仓库（`/home/zhaocj/ws/cjxdd/`）
 - **不创建** `.shadow/`（已废弃）、不再有 `baseline/` 子树（深度重构后扁平到 `design/`）
 

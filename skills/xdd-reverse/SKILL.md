@@ -34,13 +34,13 @@ description: |
 扫代码结构反推架构锚：
 - 识别主要模块、接口、API 端点（grep `@app.get/post` / route 定义）
 - 提取函数签名、数据模型、状态枚举
-- 生成 `.xdd/design/architecture/{slug}/architecture.md`（反推版）
+- 生成 `.xdd/design/architecture/{bxx-slug}/architecture.md`（反推版）
 
 ### Step 2：证据补全（reverse-bizline-detect.sh）
 
 按业务线反推规则锚：
 - 分析代码逻辑，推断业务规则（RXX）
-- 生成 `.xdd/design/spec/{slug}/rules.md` + `*.feature`（反推版）。Gherkin 语法/具体值写法 → 详见 `xdd-gherkin-plus` skill。
+- 生成 `.xdd/design/spec/{bxx-slug}/rules.md` + `*.feature`（反推版）。Gherkin 语法/具体值写法 → 详见 `xdd-gherkin-plus` skill。
 - 生成 `.xdd/design/intent.md`（从代码行为 + git 历史推断意图）
 
 ### Step 3：追溯建立（trace-init 吸收）

@@ -4,7 +4,7 @@ description: |
   xdd 设计层 —— 结构锚。把业务规则（RXX）落到技术架构：质量属性驱动决策 + 安全 + 性能 + 运维视图 + API 端点契约 + 事件契约 + 聚合全景 + 流程图。
   四支柱：ADD（质量属性）+ SDD（安全）+ PDD（性能）+ ODD（运维视图 启动/关闭/状态机/排障）。
   吸收旧 xdd-arch + xdd-flow（流程图 colocation 到同业务线目录）。
-  产出 .xdd/design/architecture/{slug}/architecture.md + flow.mermaid + docker-compose*.yml，全局 aggregate-landscape.md + event-contract.md。
+  产出 .xdd/design/architecture/{bxx-slug}/architecture.md + flow.mermaid + docker-compose*.yml，全局 aggregate-landscape.md + event-contract.md。
   触发：架构、architecture、ADD、质量属性、技术栈、分层、API 端点、事件契约、event-contract、聚合、安全、SDD、性能、PDD、运维、ODD、流程图、flow、启动序列、关闭序列、状态机、排障、PoC。
 ---
 
@@ -17,7 +17,7 @@ description: |
 | | |
 |---|---|
 | **上游** | `xdd-understand`(design.md) + `xdd-spec`(RXX 规则 + flow.mermaid 若已有) |
-| **我产出** | `{slug}/architecture.md` + `flow.mermaid` + `docker-compose*.yml`；全局 `aggregate-landscape.md` + `event-contract.md` |
+| **我产出** | `{bxx-slug}/architecture.md` + `flow.mermaid` + `docker-compose*.yml`；全局 `aggregate-landscape.md` + `event-contract.md` |
 | **下游消费者** | `xdd-plan`（端点/聚合/事件 → task）、`xdd-execute`（文件清单 + 端点契约）、`xdd-resilience`（ODD 失败模型是韧性种子） |
 | **回溯锚** | 每个端点标 `@flow BXX-NYY` + `@rules RXX`，每个技术选型标 `@intent` |
 
@@ -139,7 +139,7 @@ description: |
 
 ### 11. 流程图（flow，吸收自 xdd-flow）
 
-`.xdd/design/architecture/{slug}/flow.mermaid` —— 通过组件分解体现非功能性设计：
+`.xdd/design/architecture/{bxx-slug}/flow.mermaid` —— 通过组件分解体现非功能性设计：
 
 1. **体现组件职责与边界**：前端/网关/服务/MQ/存储/AI 引擎分层
 2. **暴露核心数据流向**：箭头标协议（HTTP/gRPC）或核心 Payload
@@ -156,13 +156,13 @@ description: |
 
 ## 业务线 colocation（v8.0.0 保留）
 
-`architecture/{slug}/` 一站式放整个业务线的架构产物，不跨目录跳查：
+`architecture/{bxx-slug}/` 一站式放整个业务线的架构产物，不跨目录跳查：
 
 ```
 .xdd/design/architecture/
 ├── aggregate-landscape.md       # 全局聚合全景
 ├── event-contract.md            # 全局事件契约
-└── {slug}/
+└── {bxx-slug}/
     ├── architecture.md          # 含 §运维视图
     ├── flow.mermaid             # 流程图
     ├── docker-compose.yml

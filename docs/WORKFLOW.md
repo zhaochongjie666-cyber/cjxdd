@@ -30,15 +30,15 @@ xdd 的本质一句话：**用户 prompt → 设计层（锚）→ 代码实现*
 | 顺序 | skill | 锚定 | 产出 | 下游 |
 |------|-------|------|------|------|
 | 1 | `xdd-understand` | **意图** | `design/intent.md` + `design.md`（5 段决策）| spec 只读 design.md |
-| 2 | `xdd-spec` | **规则 RXX** | `design/spec/{slug}/` rules.md + *.feature | architecture 把 RXX 映射到层/端点 |
-| 3 | `xdd-architecture` | **结构** | `design/architecture/{slug}/` architecture.md + flow.mermaid + 端点/事件契约 + 运维视图 | plan 拆 task，resilience 在此目录加韧性 |
+| 2 | `xdd-spec` | **规则 RXX** | `design/spec/{bxx-slug}/` rules.md + *.feature | architecture 把 RXX 映射到层/端点 |
+| 3 | `xdd-architecture` | **结构** | `design/architecture/{bxx-slug}/` architecture.md + flow.mermaid + 端点/事件契约 + 运维视图 | plan 拆 task，resilience 在此目录加韧性 |
 | 4 | `xdd-wire`（前端）| **前端** | `design/wire/{page}/` 6 操作态 + review.md | execute 实现前端，verify 验渲染 |
-| 5 | `xdd-resilience` | **韧性** | `architecture/{slug}/resilience/` 5 文档 | plan 写兜底约束，verify 跑混沌 |
+| 5 | `xdd-resilience` | **韧性** | `architecture/{bxx-slug}/resilience/` 5 文档 | plan 写兜底约束，verify 跑混沌 |
 
 **用户审查节点**：design.md 写完（understand 出口）停下给用户看，确认意图对齐才进 spec。这是防偏的第一道闸。
 
 ### 桥接：xdd-plan
-设计层 → 可执行 TDD 计划。每个 task 显式**回指 RXX**（plan task → RXX → design 意图）。禁占位符。产出 `plan/{slug}/plan.md`。
+设计层 → 可执行 TDD 计划。每个 task 显式**回指 RXX**（plan task → RXX → design 意图）。禁占位符。产出 `plan/{bxx-slug}/plan.md`。
 
 ### 代码层（2 skill）
 
@@ -71,7 +71,7 @@ verify 运行证据                   ← xdd-verify
 
 ## 4. 多业务线（BXX）
 
-项目有多条业务线时，每条 BXX 在 `design/spec/{slug}/` + `design/architecture/{slug}/` 下独立产出，但共享全局的 `spec/_landscape.md`（业务线全景）+ `architecture/aggregate-landscape.md`（聚合全景）+ `architecture/event-contract.md`（事件契约）。
+项目有多条业务线时，每条 BXX 在 `design/spec/{bxx-slug}/` + `design/architecture/{bxx-slug}/` 下独立产出，但共享全局的 `spec/_landscape.md`（业务线全景）+ `architecture/aggregate-landscape.md`（聚合全景）+ `architecture/event-contract.md`（事件契约）。
 
 跨业务线一致性 checklist（status.md 末尾）：术语 / API 命名 / 错误码 / auth / 审计 / multi-tenant 隔离 全统一。详见 `docs/BXX.md`。
 

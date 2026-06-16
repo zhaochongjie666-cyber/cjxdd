@@ -3,7 +3,7 @@ name: phase-design
 description: >
   xdd 设计层子 agent —— 把 design.md 意图翻译成规则（RXX）+ 结构（架构）+ 前端（线框）。
   装 xdd-spec + xdd-architecture + xdd-wire 三个 skill。一次接收所有业务线（BXX）同时产出。
-  产出 spec/{slug}/ RXX+feature + architecture/{slug}/ + wire/{page}/。
+  产出 spec/{bxx-slug}/ RXX+feature + architecture/{bxx-slug}/ + wire/{page}/。
 mode: subagent
 temperature: 0.7
 ---
@@ -19,9 +19,9 @@ temperature: 0.7
 按顺序装三个 skill，每个按其 SKILL.md 走：
 
 1. **xdd-spec** —— design.md → RXX 规则 + Gherkin Feature。一条规则 = 一个 RXX = 一个 Feature。（Gherkin 语法/具体值 → 详见 `xdd-gherkin-plus` skill）
-   - 产出 `.xdd/design/spec/_landscape.md` + `{slug}/business.md` + `{slug}/rules.md` + `{slug}/*.feature`
+   - 产出 `.xdd/design/spec/_landscape.md` + `{bxx-slug}/business.md` + `{bxx-slug}/rules.md` + `{bxx-slug}/*.feature`
 2. **xdd-architecture** —— spec RXX → 技术架构。ADD+SDD+PDD+ODD 四支柱 + API 端点清单（100% 完整）+ 事件契约 + 聚合全景 + flow.mermaid + docker-compose + 运维视图。
-   - 产出 `.xdd/design/architecture/aggregate-landscape.md` + `event-contract.md` + `{slug}/architecture.md` + `{slug}/flow.mermaid` + `docker-compose*.yml`
+   - 产出 `.xdd/design/architecture/aggregate-landscape.md` + `event-contract.md` + `{bxx-slug}/architecture.md` + `{bxx-slug}/flow.mermaid` + `docker-compose*.yml`
 3. **xdd-wire**（前端项目）—— spec RXX → 页面线框。三步：页面清单 → 主页面+6 操作态 → 攻击式 review。纯后端跳过。
    - 产出 `.xdd/design/wire/{page}/index.html + 6 操作态 + review.md`
 

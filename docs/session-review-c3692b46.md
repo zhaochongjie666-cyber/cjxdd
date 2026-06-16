@@ -156,7 +156,7 @@ A: 之前时间紧, R5 排在 PR 5 末尾. 当下任务 #6 修剩余 bug 已完�
 **问题**: 60 端点设计 23 实施, 没人发现 38% 缺口. walker 自己说 "DEPLOY_PASS" 蒙混.
 
 **修法**: 新增 `hooks/xdd-gate-coverage-check.sh`:
-- 比对 `.xdd/bdd/{slug}/*.feature` 的 Scenario 数 (设计)
+- 比对 `.xdd/bdd/{bxx-slug}/*.feature` 的 Scenario 数 (设计)
 - 比对 `app/*/api/*.py` 的 `@router` 端点数 (实施)
 - 输出: 设计 N / 实施 M / 覆盖率 X% / threshold 80%
 - 不通过 → 阻断

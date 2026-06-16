@@ -23,7 +23,7 @@ while [ $# -gt 0 ]; do
       echo "用法: bash init.sh [--iter N] [--force] [--bizlines B01-鉴权,B02-订单]"
       echo "  --iter N        iter 号（默认 1）。iter 只能前进，不能倒退。"
       echo "  --force         强制覆盖（会丢 status）。也用于绕过存量代码检测。"
-      echo "  --bizlines B01-x,B02-y  预生成业务线 spec 占位"
+      echo "  --bizlines B01-x,B02-y  预生成多条业务线 spec 占位（无此参数则建默认 B01）"
       exit 0 ;;
     *) echo "未知参数: $1"; exit 1 ;;
   esac
@@ -135,20 +135,32 @@ if [ -n "$BIZLINES" ]; then
 | BXX | slug | 名称 | 定位 | 关联 |
 |-----|------|------|------|------|
 EOF
-  # 解析 "B01-鉴权,B02-订单" → 每条建 spec/{slug}/business.md
+  # 解析 "B01-鉴权,B02-订单" → 每条建 spec/BXX-slug/business.md
   echo "$BIZLINES" | tr ',' '\n' | while IFS='-' read -r bid slug; do
     [ -z "$bid" ] && continue
-    # slug 可能含中文，用 BXX 作目录名兜底
-    biz_slug="$(echo "$bid" | grep -oE 'B[0-9]+')"
-    [ -z "$biz_slug" ] && biz_slug="$bid"
-    mkdir -p ".xdd/design/spec/$biz_slug"
-    cat > ".xdd/design/spec/$biz_slug/business.md" <<EOF2
-# $biz_slug — $slug
+    # 目录名 = BXX-slug 组合（BXX 稳定编号 + slug 可读名，如 B01-auth）
+    bxx="$(echo "$bid" | grep -oE 'B[0-9]+')"
+    [ -z "$bxx" ] && bxx="$bid"
+    [ -z "$slug" ] && slug="$bxx"
+    slug_dir="${bxx}-${slug}"
+    mkdir -p ".xdd/design/spec/$slug_dir"
+    cat > ".xdd/design/spec/$slug_dir/business.md" <<EOF2
+# $slug_dir — 业务线占位
 
 > 业务线占位。xdd-spec 填：目标 / 关键问题 / 范围 / 通用语言引用 / 关联。
 EOF2
   done
   echo "✓ spec/_landscape.md + $(echo "$BIZLINES" | tr ',' '\n' | wc -l) 业务线占位"
+else
+  # 始终用 BXX：无 --bizlines 时也建默认 B01（单业务线 = 一个 BXX-slug，单→多演进零重构）
+  mkdir -p .xdd/design/spec/B01-default
+  cat > .xdd/design/spec/B01-default/business.md <<'EOF2'
+# B01-default — 业务线占位
+
+> 默认业务线占位（始终用 BXX-slug 结构）。xdd-spec 填：目标 / 关键问题 / 范围 / 通用语言引用 / 关联。
+> 多业务线时用 `--bizlines B01-auth,B02-order` 预生成更多 BXX-slug。
+EOF2
+  echo "✓ spec/B01-default/ 默认业务线占位（无 --bizlines，单业务线 = B01-default）"
 fi
 
 fi  # end NEW_PROJECT
@@ -173,11 +185,11 @@ cat > ".xdd/runs/iter-$ITER/status.md" <<EOF
 | 层 | 状态 | skill | 产出 |
 |----|------|-------|------|
 | 设计·理解 | ⏳ | xdd-understand | design/intent.md + design.md |
-| 设计·规则 | ⏳ | xdd-spec | design/spec/{slug}/ rules.md + *.feature |
-| 设计·架构 | ⏳ | xdd-architecture | design/architecture/{slug}/ |
+| 设计·规则 | ⏳ | xdd-spec | design/spec/{bxx-slug}/ rules.md + *.feature |
+| 设计·架构 | ⏳ | xdd-architecture | design/architecture/{bxx-slug}/ |
 | 设计·前端 | ⏳ | xdd-wire | design/wire/{page}/（纯后端跳过）|
-| 设计·韧性 | ⏳ | xdd-resilience | design/architecture/{slug}/resilience/ |
-| 桥接·计划 | ⏳ | xdd-plan | runs/iter-$ITER/plan/{slug}/plan.md |
+| 设计·韧性 | ⏳ | xdd-resilience | design/architecture/{bxx-slug}/resilience/ |
+| 桥接·计划 | ⏳ | xdd-plan | runs/iter-$ITER/plan/{bxx-slug}/plan.md |
 | 代码·实现 | ⏳ | xdd-execute | 代码 @implements RXX |
 | 代码·验证 | ⏳ | xdd-verify | runs/iter-$ITER/verify-report.md |
 
@@ -236,8 +248,24 @@ inject_xdd_section() {
       continue
     fi
     if [ ! -f "$f" ]; then
-      echo "→ 跳过 $f (不存在，init 不创建用户文件)"
-      continue
+      # 全新空仓库 + AGENTS.md/CLAUDE.md 都缺：直接拼「inject 块 + 占位」一步建好 CLAUDE.md，
+      # 让全局 rule + ACK 在入口就落地（iter 迁移/已有项目不建；AGENTS.md 由用户自建或软链）
+      # 直接拼而不走下方 grep 分支，避免占位文案误含 marker 字面时被当成"已注入"跳过
+      if [ "$f" = "CLAUDE.md" ] && [ ! -e "AGENTS.md" ] && [ "$NEW_PROJECT" = "true" ]; then
+        tmp="$(mktemp)"
+        cat "$TEMPLATES_DIR/inject-block.md" - > "$tmp" <<'PLACE'
+
+# 项目说明
+
+> 项目描述、约定、命令等写在这里（XDD 全局规则 rule 1-5 已在本文件开头）。
+PLACE
+        mv "$tmp" "$f"
+        echo "✓ 新建最小 $f + 注入全局 rule（全新空仓库，ACK 落地）"
+        continue
+      else
+        echo "→ 跳过 $f (不存在)"
+        continue
+      fi
     fi
     if ! grep -q '<!-- xdd:start -->' "$f"; then
       tmp="$(mktemp)"

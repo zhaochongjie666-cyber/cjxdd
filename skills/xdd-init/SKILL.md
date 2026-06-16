@@ -45,7 +45,7 @@ bash skills/xdd-init/scripts/init.sh
 |------|------|------|
 | `--iter N` | `1` | 初始化哪个 iter，写 `current-iteration` |
 | `--force` | false | `.xdd/` 存在时强制覆盖（**危险**，丢 status） |
-| `--bizlines B01-鉴权,B02-订单` | 空 | 多业务线项目：预生成 `spec/_landscape.md` + 每业务线 `spec/{slug}/business.md` 占位 |
+| `--bizlines B01-鉴权,B02-订单` | 空 | 多业务线项目：预生成 `spec/_landscape.md` + 每业务线 `spec/{bxx-slug}/business.md` 占位 |
 
 ## 生成的结构
 
@@ -56,25 +56,30 @@ bash skills/xdd-init/scripts/init.sh
 │   ├── backend.rules          ← 后端约定（分层/错误码/auth/测试）
 │   └── ui-ux.rules            ← 前端 UI/UX 约定（4 级 + 10 反模式）
 ├── design/                    ← 设计层（持久锚，跨 iter 保留）
-│   ├── intent.md              ← 意图锚（xdd-understand 填）
-│   ├── design.md              ← 收敛决策（xdd-understand 填）
+│   ├── intent.md              ← 【项目层】意图锚：项目总意图（跨业务线共享），xdd-understand 填
+│   ├── design.md              ← 【项目层】收敛决策：项目级总决策（跨业务线的全局决策），xdd-understand 填
 │   ├── notes/                 ← 发散笔记（glossary 持久；其余设计期）
-│   ├── spec/                  ← 规则锚 RXX + Gherkin（xdd-spec 填；语法详见 xdd-gherkin-plus）
+│   ├── spec/                  ← 【业务线层】规则锚 RXX + Gherkin（xdd-spec 填；语法详见 xdd-gherkin-plus）
 │   │   ├── _landscape.md      ← 业务线全景（--bizlines 时生成）
-│   │   └── {slug}/business.md ← 业务线占位（--bizlines 时生成）
-│   ├── architecture/          ← 结构锚 colocation（xdd-architecture 填）
-│   └── wire/                  ← 前端锚（xdd-wire 填，纯后端跳过）
-├── runs/                      ← 单轮工作记录（每 iter 一份）
+│   │   └── BXX/business.md    ← 业务线占位（始终用 BXX；--bizlines 时按参数生成，否则 B01）
+│   ├── architecture/          ← 【业务线层】结构锚 colocation（xdd-architecture 填）
+│   └── wire/                  ← 【业务线层】前端锚（xdd-wire 填，纯后端跳过）
+├── runs/                      ← 【迭代层】单轮工作记录（每 iter 一份）
 │   └── iter-N/
 │       ├── status.md          ← 本 iter 进度（3 层 × 业务线，✅/⏳）
-│       ├── plan/{slug}/       ← 本 iter 的 TDD task DAG（xdd-plan 填）
+│       ├── plan/{bxx-slug}/          ← 本 iter 的 TDD task DAG（xdd-plan 填）
 │       └── audits/            ← 本 iter 的 PoC / arch-audit
 └── current-iteration          ← "iter-N"（根级指针，找活跃 iter）
 ```
 
+**三层模型**：
+- **项目层**（`design/intent.md` + `design.md`）—— 项目总意图 + 跨业务线的全局决策（技术栈 / 错误码格式 / auth 模型）。跨业务线共享，跨 iter 保留。
+- **业务线层**（`design/spec/{bxx-slug}/` + `design/architecture/{bxx-slug}/` + `design/wire/`）—— 每条业务线的具体规则 / 结构 / 前端。**始终用 BXX**（单业务线 = 一个 B01；多业务线 = B01/B02/...）。业务线内多功能靠 RXX 编号（B01-R01/R02）区分，不增设子目录。
+- **迭代层**（`runs/iter-N/`）—— 单轮工作记录（plan / 报告 / 审计）。`design/` 跨 iter 累积（持久锚），迭代隔离只在 `runs/`。
+
 **design/ vs runs/ 二分**：`design/` 是持久锚（review 基准，跨 iter 保留）；`runs/iter-N/` 是单轮工作记录（plan/报告/审计，iter 间不覆盖）。`--iter N+1` 时旧 iter 原地保留作历史。
 
-**inject 到用户文件**：若项目根已有 `AGENTS.md` / `CLAUDE.md`，init 在文件开头注入一段用 `<!-- xdd:start -->` / `<!-- xdd:end -->` 包裹的 pointer（Personality 留空段 + XDD/Backend/UI-UX/recap 指向 `.xdd/`）。
+**inject 到用户文件**：若项目根已有 `AGENTS.md` / `CLAUDE.md`，init 在文件开头注入一段用 `<!-- xdd:start -->` / `<!-- xdd:end -->` 包裹的 pointer（Personality 留空段 + XDD/Backend/UI-UX/recap 指向 `.xdd/`）。**全新空仓库**（两者都没有）时，init 建一个最小 `CLAUDE.md` 再注入——让全局 rule + ACK 在入口就落地。
 
 **砍掉的旧产物**（深度重构）：`scale.md`（不再 scale 降级，默认就做扎实）、`xdd-schema.json`（曾是闸门单一源真理，无闸门则不需要）、`gates/`（control_marker 目录）、5-marker 状态机（⏳/🔄/✅/❌/🚧 → 简化 ✅/⏳）。
 
@@ -87,11 +92,11 @@ bash skills/xdd-init/scripts/init.sh
 | 层 | 状态 | skill | 产出 |
 |----|------|-------|------|
 | 设计·理解 | ⏳ | xdd-understand | design/intent.md + design.md |
-| 设计·规则 | ⏳ | xdd-spec | design/spec/{slug}/ |
-| 设计·架构 | ⏳ | xdd-architecture | design/architecture/{slug}/ |
+| 设计·规则 | ⏳ | xdd-spec | design/spec/{bxx-slug}/ |
+| 设计·架构 | ⏳ | xdd-architecture | design/architecture/{bxx-slug}/ |
 | 设计·前端 | ⏳ | xdd-wire | design/wire/{page}/ |
-| 设计·韧性 | ⏳ | xdd-resilience | design/architecture/{slug}/resilience/ |
-| 桥接·计划 | ⏳ | xdd-plan | plan/{slug}/plan.md |
+| 设计·韧性 | ⏳ | xdd-resilience | design/architecture/{bxx-slug}/resilience/ |
+| 桥接·计划 | ⏳ | xdd-plan | plan/{bxx-slug}/plan.md |
 | 代码·实现 | ⏳ | xdd-execute | 代码 @implements RXX |
 | 代码·验证 | ⏳ | xdd-verify | 验证报告 |
 
@@ -112,7 +117,7 @@ bash skills/xdd-init/scripts/init.sh
 4. **iter 实质迁移** — `--iter N+1` 归档旧 iter（`runs/iter-N/` 原地保留），建新 iter 工作区，`design/` 持久锚不动。
 5. **不调 walker** — init 完打印"下一步"，但 walker 由用户触发。
 6. **平台中立** — 纯 bash，无 hook 依赖，无 schema.json，任何平台能跑。
-7. **inject 尊重用户文件** — `AGENTS.md`/`CLAUDE.md` 是用户文件：init 不创建新的；软链跳过（只注入真文件）；注入块用 marker 包裹 + 忽略空白 diff，**被用户改过的不动只警告**。
+7. **inject 尊重用户文件** — `AGENTS.md`/`CLAUDE.md` 是用户文件：init 不创建新的（**例外**：全新空仓库两者都没有时，建最小 `CLAUDE.md`，让全局 rule + ACK 在入口落地）；软链跳过（只注入真文件）；注入块用 marker 包裹 + 忽略空白 diff，**被用户改过的不动只警告**。
 8. **自检** — init 是唯一输出被全下游依赖的入口，必须自检（关键文件/git/inject marker）。
 
 ## inject 行为（幂等细节）
@@ -123,7 +128,8 @@ bash skills/xdd-init/scripts/init.sh
 | 有 marker，内容 == 模板（忽略空白）| 跳过（idempotent）|
 | 有 marker，内容 != 模板（被改过）| **不动 + 警告**（让用户手动决定）|
 | 文件是软链 | 跳过（真文件那次会处理，避免双写）|
-| 文件不存在 | 跳过（不创建用户文件）|
+| 文件不存在（全新空仓库 + AGENTS.md/CLAUDE.md 都缺）| 建最小 `CLAUDE.md`（让全局 rule + ACK 落地）|
+| 文件不存在（iter 迁移 / 已有项目）| 跳过（不创建用户文件）|
 | `rules/*.rules` 已存在 | 跳过（用户改过的保护）|
 | `WORKFLOW.md` | 每次覆盖（framework 维护，非用户文件）|
 

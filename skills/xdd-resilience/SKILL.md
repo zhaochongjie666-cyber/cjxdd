@@ -4,7 +4,7 @@ description: |
   xdd 设计层 —— 韧性锚。在 architecture（结构骨架）+ spec（行为骨架）之上做"灾难发散"。
   RDA：FMEA 失败模式 + 兜底设计 + 混沌场景 + 恢复剧本。回答：挂了会怎样 / 怎么发现 / 怎么兜 / 怎么恢复。
   8 维度失败模式 + 10 兜底模式 + 5 字段 FMEA（大项目加跨地域第 9 维 + 业务对账/幂等 2 模式 + 3 字段）。
-  产出 colocation 到 architecture/{slug}/resilience/：failure-modes.md / failsafe-design.md / chaos-scenarios.md / resilience-test-plan.md / recovery-runbook.md。
+  产出 colocation 到 architecture/{bxx-slug}/resilience/：failure-modes.md / failsafe-design.md / chaos-scenarios.md / resilience-test-plan.md / recovery-runbook.md。
   触发：韧性、resilience、混沌、chaos、失败模式、failure mode、兜底、fallback、熔断、circuit breaker、容错、降级、degradation、补偿、compensation、极端条件、业务对账、业务幂等、FMEA、灾难、recovery。
 ---
 
@@ -17,7 +17,7 @@ description: |
 | | |
 |---|---|
 | **上游** | `xdd-architecture`（架构 + 运维视图 §失败模型 = 韧性种子）+ `xdd-spec`（行为基线，找它的反面） |
-| **我产出** | `architecture/{slug}/resilience/` 5 文档 |
+| **我产出** | `architecture/{bxx-slug}/resilience/` 5 文档 |
 | **下游消费者** | `xdd-plan`（兜底约束 + 失败注入点写进 task）、`xdd-execute`（兜底实现位置）、`xdd-verify`（混沌演练验兜底） |
 | **回溯锚** | 每条失败模式 FXX 引用爆炸半径（RXX 规则 / API 端点）；每个兜底策略标实现位置 |
 
@@ -34,10 +34,10 @@ description: |
 
 ### 1. 读骨架（必读）
 
-1. `architecture/{slug}/architecture.md` §运维视图 §失败模型（正常路径基线 + 失败种子）
+1. `architecture/{bxx-slug}/architecture.md` §运维视图 §失败模型（正常路径基线 + 失败种子）
 2. `architecture/event-contract.md`（事件传递方式 = 兜底设计基线）
-3. `architecture/{slug}/architecture.md` §技术栈（决定哪些兜底模式可用）
-4. `spec/{slug}/*.feature`（行为基线，找反面）
+3. `architecture/{bxx-slug}/architecture.md` §技术栈（决定哪些兜底模式可用）
+4. `spec/{bxx-slug}/*.feature`（行为基线，找反面）
 5. `architecture/aggregate-landscape.md`（跨聚合一致性边界 = 兜底策略边界）
 
 ### 2. 8 维度（+1 大项目）失败模式发散
@@ -145,7 +145,7 @@ Scenario: 网络分区下提交降级
 ## 产出（colocation 到 architecture 同业务线目录）
 
 ```
-.xdd/design/architecture/{slug}/resilience/
+.xdd/design/architecture/{bxx-slug}/resilience/
 ├── failure-modes.md         # 失败模式目录 (FMEA 8 维 × 字段)
 ├── failsafe-design.md       # 兜底设计 (10 模式 × 实现位置)
 ├── chaos-scenarios.md       # 混沌场景 (@chaos Gherkin + 注入命令)

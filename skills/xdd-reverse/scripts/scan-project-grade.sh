@@ -227,7 +227,7 @@ case "$GRADE" in
     *+E)
         echo "项目需要结构标准化，建议:"
         echo "  1. 备份现有 .xdd/design 目录"
-        echo "  2. 按标准重新整理目录（spec/{slug}/ + architecture/{slug}/）"
+        echo "  2. 按标准重新整理目录（spec/{bxx-slug}/ + architecture/{bxx-slug}/）"
         echo "  3. 重新生成 INDEX.md + TRACE.md"
         ;;
 esac

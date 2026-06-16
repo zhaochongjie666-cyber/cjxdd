@@ -4,7 +4,7 @@ description: |
   xdd 设计层 —— 把 design.md 的意图翻译成可验收的业务规则（RXX）+ Gherkin 场景。
   规则锚：每条 RXX 规则 = 一个 Feature，是 plan task 和代码 @implements RXX 回指的锚点。
   与 xdd-architecture 互补：spec 写"业务该表现成什么样"，architecture 写"系统怎么实现"。
-  产出 .xdd/design/spec/_landscape.md（业务线全景）+ {slug}/business.md + {slug}/rules.md(RXX) + {slug}/*.feature。
+  产出 .xdd/design/spec/_landscape.md（业务线全景）+ {bxx-slug}/business.md + {bxx-slug}/rules.md(RXX) + {bxx-slug}/*.feature。
   触发：规格、spec、业务规则、RXX、验收、bdd、gherkin、feature、场景、验收标准、业务线、需求转场景。
 ---
 
@@ -17,7 +17,7 @@ description: |
 | | |
 |---|---|
 | **上游** | `xdd-understand` 的 design.md（意图 + 决策） |
-| **我产出** | `spec/_landscape.md` + `{slug}/business.md` + `{slug}/rules.md`(RXX) + `{slug}/*.feature` |
+| **我产出** | `spec/_landscape.md` + `{bxx-slug}/business.md` + `{bxx-slug}/rules.md`(RXX) + `{bxx-slug}/*.feature` |
 | **下游消费者** | `xdd-architecture`（每条规则映射到层/端点）、`xdd-plan`（规则拆 task）、`xdd-verify`（Gherkin 验收） |
 | **回溯锚** | RXX 规则编号 —— plan 的每个 task、代码的每处 `@implements RXX` 都指回这里 |
 
@@ -34,7 +34,7 @@ description: |
 所有状态名、产物名、角色名、错误原因必须与以下来源一致，未知标"待确认"，不编造：
 
 1. `.xdd/design/design.md` + `intent.md`（意图、术语、范围）
-2. `.xdd/design/architecture/{slug}/flow.mermaid`（组件名、外部系统、产物流向，若已有）
+2. `.xdd/design/architecture/{bxx-slug}/flow.mermaid`（组件名、外部系统、产物流向，若已有）
 3. 当前代码 / 用户材料（API 名、状态枚举、错误码、存储对象）
 
 ## 怎么做
@@ -44,7 +44,7 @@ work():
   1. INPUT: 读 design.md + intent.md，提取业务意图、术语、范围、角色
   2. ACT:   按 BXX 拆规则，每条业务规则 = 一个 RXX（编号见下）
   3. ACT:   每条 RXX 写一个 Feature（Background + 正向 Scenario + Scenario Outline + 异常 Scenario）
-     GATE:  find .xdd/design/spec/{slug} -name '*.feature' | wc -l >= RXX 数（每 RXX ≥1 文件）
+     GATE:  find .xdd/design/spec/{bxx-slug} -name '*.feature' | wc -l >= RXX 数（每 RXX ≥1 文件）
   4. ACT:   断言具体可观察（Then 写前端/后端/存储/通知/审计，给具体字段值；笼统→具体见 xdd-gherkin-plus）
      GATE:  每个 Feature 至少 1 个含"应"或"应返回"或"应拒绝"的 Then（无空泛"系统正常运行"）
   5. ACT:   输入对齐（状态名/产物名/角色名/错误码与 design + architecture 一致，未知标"待确认"）
@@ -148,14 +148,14 @@ Feature: [业务能力] — [核心价值]    @covers-R01
 
 **子域类型判定**：核心（差异化竞争力，重点投入 DDD）/ 支撑（必要但非差异化，简化做）/ 通用（行业通用，买开源）。详见 `references/ddd.md § 子域`。
 
-每个业务线 `{slug}/business.md` 写：业务目标 / 关键问题 / 范围（in/out）/ **通用语言（从 understand 的 glossary.md 引用本上下文的词）** / 关联（RXX 列表 + arch + resilience + wire 路径）。
+每个业务线 `{bxx-slug}/business.md` 写：业务目标 / 关键问题 / 范围（in/out）/ **通用语言（从 understand 的 glossary.md 引用本上下文的词）** / 关联（RXX 列表 + arch + resilience + wire 路径）。
 
 ## 产出
 
 ```
 .xdd/design/spec/
 ├── _landscape.md          ← 业务线全景（全局索引）
-└── {slug}/                ← 每业务线一个目录
+└── {bxx-slug}/                ← 每业务线一个目录
     ├── business.md        ← 业务线分组：目标/关键问题/范围/关联
     ├── rules.md           ← RXX 规则目录（一条规则一行 + 关联 Feature/端点）
     └── *.feature          ← Gherkin 验收场景，一条 RXX 一个文件

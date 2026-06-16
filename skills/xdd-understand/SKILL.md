@@ -31,8 +31,8 @@ description: |
 .xdd/design/intent.md              # 项目意图
 .xdd/design/design.md              # 收敛决策
 .xdd/design/spec/_landscape.md     # 业务线全景
-.xdd/design/spec/{slug}/rules.md   # 现有 RXX 规则
-.xdd/design/architecture/{slug}/architecture.md  # 架构决策
+.xdd/design/spec/{bxx-slug}/rules.md   # 现有 RXX 规则
+.xdd/design/architecture/{bxx-slug}/architecture.md  # 架构决策
 ```
 
 读完标 3 段到 `00-recap.md`（或笔记头部）：**已有什么 / 缺什么 / 本轮增量**。
@@ -144,10 +144,13 @@ DDD 的起点 —— 开发和业务用同一套词，代码类名 = 业务术�
 
 ## 产出
 
+**我产出的是【项目层】总意图锚** —— 跨业务线共享的项目顶层视角。业务线级的具体设计（规则/结构/端点）由下游 spec/architecture 承载（带 BXX 分层），顶层 design.md 只管项目级总决策。
+
 ```
 .xdd/design/
-├── intent.md           ← 意图锚：项目要什么 / 成功标准 / 1 句话定位 / 非目标
-├── design.md           ← 收敛决策：Selected / Alternatives / Assumptions / Out of Scope / Open Questions
+├── intent.md           ← 【项目层】意图锚：项目要什么 / 成功标准 / 1 句话定位 / 非目标（跨业务线共享）
+├── design.md           ← 【项目层】收敛决策：跨业务线的全局决策（技术栈/错误码格式/auth 模型 等）
+│                         ↑ 业务线级细节（端点/规则/架构）不写这里，见下游 spec/BXX/ + architecture/BXX/
 └── notes/              ← 发散笔记（iter 内用，下游不直接读）
     ├── glossary.md     ← 通用语言（DDD 起点，下游 spec RXX 术语 + architecture 聚合命名唯一来源）
     ├── recap.md        ← 已有设计消费摘要（iter-2+）
@@ -155,6 +158,8 @@ DDD 的起点 —— 开发和业务用同一套词，代码类名 = 业务术�
     ├── external-references.md  ← 外部来源 URL 主索引
     └── *.md            ← 行业 / 竞品 / 画像 / 旅程 / 技术 等，内容自由
 ```
+
+**三层边界**：understand 产【项目层】（intent+design，无 BXX）；下游 spec/architecture/wire/resilience 产【业务线层】（带 BXX）。顶层 design.md 写"项目要什么、全局怎么定"，别把单业务线的端点清单/规则塞进来。
 
 模板见 `templates/intent.md` + `templates/design.md`。
 

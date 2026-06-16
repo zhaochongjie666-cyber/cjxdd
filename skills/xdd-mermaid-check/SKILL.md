@@ -1,7 +1,7 @@
 ---
 name: xdd-mermaid-check
 description: |
-  Mermaid 图表渲染验证 — 用 mermaid-cli (mmdc) 验证 .xdd/design/architecture/{slug}/flow.mermaid 能否正确渲染为 SVG。
+  Mermaid 图表渲染验证 — 用 mermaid-cli (mmdc) 验证 .xdd/design/architecture/{bxx-slug}/flow.mermaid 能否正确渲染为 SVG。
   xdd-architecture 的结构锚配套验证工具（流程图画完必跑）。适用任何 Mermaid 语法验证场景。
   触发：检查 mermaid、验证流程图、mermaid 检查、mmdc 验证、mermaid 渲染检查、flow 渲染验证。
 version: "1.2.0"
@@ -11,7 +11,7 @@ version: "1.2.0"
 
 ## 角色职责
 
-纯工具 skill，验证 `.xdd/design/architecture/{slug}/flow.mermaid` 能否通过 mermaid-cli (mmdc) 正确渲染为 SVG 图片。
+纯工具 skill，验证 `.xdd/design/architecture/{bxx-slug}/flow.mermaid` 能否通过 mermaid-cli (mmdc) 正确渲染为 SVG 图片。
 
 不做业务设计、不修改任何文件，只输出 PASS/FAIL 验证结果。
 
@@ -45,7 +45,7 @@ version: "1.2.0"
 bash skills/xdd-mermaid-check/scripts/mmdc_check.sh [.xdd 路径]
 ```
 
-默认从 `.xdd/design/architecture/` 扫描所有 `{slug}/flow.mermaid`。可通过第一个参数或 `XDD_DIR` 环境变量指定其他 `.xdd` 路径。
+默认从 `.xdd/design/architecture/` 扫描所有 `{bxx-slug}/flow.mermaid`。可通过第一个参数或 `XDD_DIR` 环境变量指定其他 `.xdd` 路径。
 
 ### 指定路径
 
@@ -82,7 +82,7 @@ Checking flow.mermaid files under .xdd/design/architecture/...
 |------|------|------|
 | `mmdc not found` | 未安装 mermaid-cli | `npm install -g @mermaid-js/mermaid-cli` |
 | `FAIL` | flow.mermaid 语法错误 | 检查括号匹配、节点定义、箭头语法 |
-| 文件不存在 | 路径不正确 | 确认 `.xdd/design/architecture/{slug}/flow.mermaid` 路径 |
+| 文件不存在 | 路径不正确 | 确认 `.xdd/design/architecture/{bxx-slug}/flow.mermaid` 路径 |
 
 ## 关键约束
 

@@ -63,9 +63,9 @@ docker compose ps                    # 所有服务 Up (healthy)
 
 | 维度 | 对照 | 查什么 |
 |------|------|--------|
-| **spec ↔ code** | `spec/{slug}/rules.md` RXX | 每条 RXX 有代码 `@implements RXX` + 测试？grep `@implements` 数 ≥ RXX 数 |
+| **spec ↔ code** | `spec/{bxx-slug}/rules.md` RXX | 每条 RXX 有代码 `@implements RXX` + 测试？grep `@implements` 数 ≥ RXX 数 |
 | **wire ↔ code** | `wire/{page}/` | 每个页面真渲染了？每个操作态（空/加载/错误/成功/确认）都实现？ |
-| **architecture ↔ code** | `architecture/{slug}/architecture.md` 端点清单 | 端点清单的每个端点都实现了？grep `@app.get/post` 数 = 清单数（别 60→23）|
+| **architecture ↔ code** | `architecture/{bxx-slug}/architecture.md` 端点清单 | 端点清单的每个端点都实现了？grep `@app.get/post` 数 = 清单数（别 60→23）|
 | **resilience ↔ code** | `resilience/failsafe-design.md` 兜底 | 每个兜底策略在代码里有实现位置？ |
 
 不一致 → 回 execute 补，或回设计层修。

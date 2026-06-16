@@ -513,6 +513,6 @@ plan.md task(回指 RXX,实现所选模式的结构)
 verify 4 维一致性(architecture↔code:验证代码结构真的体现了所选模式)
 ```
 
-**回溯锚**:架构模式选择写在 `architecture/{slug}/architecture.md` 的「技术栈决策」段,标 `@intent`;若下游 verify 发现「代码结构跟所选模式不符」(如选了六边形但领域层依赖了 ORM),这是 4 维一致性审计的 architecture↔code 维度的失败项,要回 architecture 改。
+**回溯锚**:架构模式选择写在 `architecture/{bxx-slug}/architecture.md` 的「技术栈决策」段,标 `@intent`;若下游 verify 发现「代码结构跟所选模式不符」(如选了六边形但领域层依赖了 ORM),这是 4 维一致性审计的 architecture↔code 维度的失败项,要回 architecture 改。
 
 **变更传播**:若中途换模式(分层 → 事件驱动),沿锚链重做 architecture.md 的「规则传导矩阵」+ flow.mermaid + 事件契约,plan 的 task 全部重排。这是大改,`agents/xdd-walker.md` 的变更传播表会触发。
