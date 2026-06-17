@@ -67,6 +67,13 @@ description: |
 - **从主页面派生，不从零画**：保留导航+标题+操作栏（骨架），只换内容区。这样视觉一致、画得快。详见手册"怎么从主页面派生"。
 - 每态有明确的"该有什么/不该有什么"（空状态要有行动引导别写"暂无数据"；错误要人话+重试别只显错误码；确认要说明后果、取消是默认）。
 
+**别从零写 HTML，copy templates 改**（`templates/` 下有现成骨架）：
+- `templates/tokens.css` —— 标准 design token（色板/间距/字号/圆角/阴影/语义色）。每个 HTML 引用它，**改主题只改这一份**，跨页面自动一致。禁止在单个 HTML 硬编码颜色/尺寸。
+- `templates/index.html` —— 主页面骨架（导航+标题+操作栏+内容区+移动端适配）。copy 它改成你的页面。
+- `templates/_states.html` —— 6 态的「内容区片段」集。copy 主页面骨架成 empty.html，把 `.content` 换成 `_states.html` 里对应片段。loading/error/success/confirm/edge 同理。
+
+**工作流**：① copy `index.html` → 改成主页面 → ② copy 主页面 6 份（empty/loading/.../edge）→ 每份只换 `.content` 为 `_states.html` 对应片段 → ③ 全部 `@import tokens.css`。这样 7 个文件视觉一致、token 统一、不重复劳动。
+
 **设计旋钮**（HTML 注释标注）：
 
 | 旋钮 | 默认 | 场景预设 |
@@ -116,7 +123,8 @@ description: |
 □ 6 操作态全覆盖（空/加载/错误/成功/确认/边界，每态查 references/operation-states.md 规范，不是只列文件名）？
 □ 每个按钮有 label 或 tooltip？
 □ 混淆元素 A/B/C/D 四类全扫，零未处理项？
-□ 设计 token 抽成 CSS 变量？
+□ 设计 token 用 templates/tokens.css（@import，禁止单个 HTML 硬编码颜色/尺寸）？
+□ 主页面 + 6 态 copy templates 改（不从零写），视觉一致？
 □ viewport meta 设了（移动端适配）？
 □ 可见文字无 em-dash（—）？
 □ 每页目录有一份 review.md？
