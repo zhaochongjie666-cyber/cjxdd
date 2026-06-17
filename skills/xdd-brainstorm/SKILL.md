@@ -5,7 +5,7 @@ description: |
   整条「prompt → 设计 → 代码」链的起点：用户说的每一句话都在这里被固化成"我们要做什么、不做什么、为什么"。
   下游 xdd-spec 只消费 design.md + intent.md，不读发散笔记。
   产出 .xdd/design/intent.md（意图）+ .xdd/design/design.md（收敛决策 5 段）。
-  触发：理解需求、发散、调研、brainstorm、意图、intent、design、design.md、项目意图、需求分析、新项目、新功能。
+  触发：理解需求、发散、调研、brainstorm、意图、intent、design、design.md、项目意图、需求分析、新项目、新功能、模块化、通用能力、基础能力、核心业务、复用。
 ---
 
 # xdd-brainstorm — 意图锚
@@ -69,6 +69,9 @@ description: |
 | 事件与流程 | 业务里发生了什么？谁触发？怎么流转？ |
 | 约束与风险 | 合规？性能？安全？已知陷阱？ |
 | 灵感与假设 | 如果这样做会怎样？这个方向可行吗？ |
+| **模块化识别** | **哪些是通用基础能力（认证/存储/通知/审计等，该用现成/复用），哪些是核心业务（该自建）？避免每条业务线各造一遍通用能力** |
+
+**模块化识别（重要）**：意图层就要有这根弦——区分**核心业务**（项目差异化，值得自建）vs **通用基础能力**（行业通用，买/开源/复用就够）。这是下游 `xdd-architecture §13 模块化设计`的种子：brainstorm 识别出"哪些该下沉为基础模块"，architecture 才能把它们组织成 base 层 + 依赖矩阵。**别在意图层把通用能力当核心业务设计**——否则 spec 给它写 RXX 规则、architecture 给它建模，全是浪费（认证用现成方案就够，别给 JWT 设计聚合根）。
 
 **外部调研至少搜 5 个方向**（产物写到 `notes/external-references.md`，带 URL）：
 1. 行业最佳实践（`{domain} best practices 2026`）
@@ -127,6 +130,8 @@ DDD 的起点 —— 开发和业务用同一套词，代码类名 = 业务术�
 
 **不替用户做决定**：复杂功能 / 砍功能 / 选方案必用户审（写到 Open Questions）。简单默认值（数据库选型、API 风格、错误码格式）可自主决策，写进 Assumptions。
 
+**模块化决策写进 design.md（衔接 architecture §13）**：发散阶段识别的"通用基础能力"，在 Selected/Assumptions 段明确"走基础模块/现成方案，不自建"。例：Selected 写"认证/授权用现成 OAuth2 方案作基础模块，不自建"；Assumptions 写"文件存储用对象存储基础服务，各业务线复用"。这样下游 spec 不会给通用能力编业务 RXX、architecture 把它们组织成 base 层。
+
 ### 7. 自审 + 用户审
 
 **自审 5 维度**（对照 design.md）：
@@ -179,5 +184,6 @@ DDD 的起点 —— 开发和业务用同一套词，代码类名 = 业务术�
 □ Out of Scope 每项有"为什么本轮不做"
 □ 5 方向外部调研都有 URL
 □ 6 维度画像 + 5 层次旅程至少各列了要点
+□ 识别了通用基础能力 vs 核心业务（design.md 写明通用能力走基础模块/现成，不自建，衔接 architecture §13）
 □ design.md 给用户看了，用户确认 OK
 ```
