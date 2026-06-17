@@ -8,7 +8,7 @@
 ```
 prompt ->
   design_layer():                    # 设计层（锚）—— 每个产物带「上游指针 + 下游消费者」
-    understand(use skill: xdd-understand)
+    understand(use skill: xdd-brainstorm)
     -> spec(use skill: xdd-spec, RXX)
     -> architecture(use skill: xdd-architecture)
     -> wire(use skill: xdd-wire)
@@ -31,7 +31,7 @@ prompt ->
 
 ```
 design_layer():
-  understand(use skill: xdd-understand) -> intent.md + design.md(5段决策)   # 锚定：意图
+  understand(use skill: xdd-brainstorm) -> intent.md + design.md(5段决策)   # 锚定：意图
                    >> 用户审查闸：design.md 写完停下，用户确认意图对齐才进 spec（防偏第一道闸）
   spec(use skill: xdd-spec)             -> spec/{bxx-slug}/ rules.md + *.feature  # 锚定：规则 RXX
   architecture(use skill: xdd-architecture) -> architecture/{bxx-slug}/ architecture.md + flow.mermaid + 端点/事件契约 + 运维视图   # 锚定：结构
@@ -55,9 +55,9 @@ design_layer():
 
 ```
 trace_chain():
-  intent.md(why)                 <- understand(use skill: xdd-understand)
+  intent.md(why)                 <- understand(use skill: xdd-brainstorm)
      |
-  design.md(决策 5 段)            <- understand(use skill: xdd-understand)
+  design.md(决策 5 段)            <- understand(use skill: xdd-brainstorm)
      |
   spec/ RXX 规则(做什么)          <- spec(use skill: xdd-spec)
      |

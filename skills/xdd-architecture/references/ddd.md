@@ -240,7 +240,7 @@ framework 已经在产 DDD 产物,本文件给它们补方法论 + 追溯关系:
 
 | xdd 产物 | DDD 概念 | 本文件对应章节 | 锚点 skill |
 |---------|---------|--------------|-----------|
-| `notes/glossary.md`(新增) | **通用语言 Ubiquitous Language** | [核心思想](#核心思想通用语言--模型驱动) | xdd-understand |
+| `notes/glossary.md`(新增) | **通用语言 Ubiquitous Language** | [核心思想](#核心思想通用语言--模型驱动) | xdd-brainstorm |
 | `spec/_landscape.md` 业务线(BXX) | **限界上下文 Bounded Context** | [限界上下文](#限界上下文-bounded-context切边界) | xdd-spec |
 | `_landscape.md` 加子域类型列 | **子域分类 Core/Supporting/Generic** | [子域](#子域-subdomain核心--支撑--通用) | xdd-spec |
 | 上下文映射(architecture 新增 context-map) | **上下文映射 Context Map** | [上下文映射](#上下文映射-context-map画关系) | xdd-architecture |

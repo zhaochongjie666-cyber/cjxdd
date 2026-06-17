@@ -39,7 +39,7 @@ ln -s "$(pwd)/skills"  ~/.claude/skills
 ```
 [入口]   xdd-init            生成 .xdd/ 骨架
    ↓
-[设计层] xdd-understand      意图锚: intent.md + design.md
+[设计层] xdd-brainstorm      意图锚: intent.md + design.md
          xdd-spec            规则锚: RXX 规则 + Gherkin
          xdd-architecture    结构锚: 架构 + flow + 端点/事件契约 + 运维
          xdd-wire            前端锚: 页面线框（纯后端跳过）
@@ -79,7 +79,7 @@ cjxdd/                          # xdd framework 仓库自身
 │   └── phase-{understand,design,resilience,plan,build,verify}.md  # 6 子 agent 映射三层
 ├── skills/                     # 17 个 skill（设计5 + 桥接1 + 代码4 + 入口1 + 工具6）
 │   ├── xdd-init/               # 入口：生成 .xdd/ 骨架
-│   ├── xdd-understand/         # 设计·意图锚（intent.md + design.md）
+│   ├── xdd-brainstorm/         # 设计·意图锚（intent.md + design.md）
 │   ├── xdd-spec/               # 设计·规则锚（RXX + Gherkin）
 │   ├── xdd-architecture/       # 设计·结构锚（架构+flow+端点+事件+运维+模式决策库）
 │   ├── xdd-wire/               # 设计·前端锚（页面线框，纯后端跳过）
@@ -108,7 +108,7 @@ cjxdd/                          # xdd framework 仓库自身
 | 层 | skill | 锚定什么 | 产出 |
 |----|-------|---------|------|
 | 入口 | `xdd-init` | — | `.xdd/` 骨架（三层：项目层/业务线层 BXX/迭代层）|
-| 设计 | `xdd-understand` | 意图 | `design/intent.md` + `design.md`（项目层总意图）|
+| 设计 | `xdd-brainstorm` | 意图 | `design/intent.md` + `design.md`（项目层总意图）|
 | 设计 | `xdd-spec` | 规则 RXX | `design/spec/{bxx-slug}/` rules.md + *.feature |
 | 设计 | `xdd-architecture` | 结构 | `design/architecture/{bxx-slug}/` architecture.md + flow.mermaid |
 | 设计 | `xdd-wire` | 前端 | `design/wire/{page}/` 6 操作态 |
@@ -148,7 +148,7 @@ framework 的机制只写一次在源码里，下表只列位置，详细看对�
 | 主题 | 实施位置 |
 |------|---------|
 | **三层骨架** prompt→设计→代码 | `agents/xdd-walker.md` + `docs/WORKFLOW.md` |
-| **意图锚** brainstorm+发散+通用语言(DDD 起点)+design.md 收敛 | `skills/xdd-understand/SKILL.md` |
+| **意图锚** brainstorm+发散+通用语言(DDD 起点)+design.md 收敛 | `skills/xdd-brainstorm/SKILL.md` |
 | **规则锚** RXX 规则编号 + Gherkin + 业务线=限界上下文(子域分类) | `skills/xdd-spec/SKILL.md` |
 | **结构锚** ADD+SDD+PDD+ODD + 端点/事件契约 + flow colocation + 模式决策库 | `skills/xdd-architecture/SKILL.md` + `references/architecture-patterns.md` |
 | **DDD 方法论** 通用语言 + 限界上下文 + 聚合划分（三层联动：understand→spec→architecture） | `skills/xdd-architecture/references/ddd.md` |

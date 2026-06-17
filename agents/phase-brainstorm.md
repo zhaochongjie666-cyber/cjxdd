@@ -1,14 +1,14 @@
 ---
-name: phase-understand
+name: phase-brainstorm
 description: >
   xdd 设计层子 agent —— 理解意图，发散调研，收敛成 design.md（意图锚）。
-  装 xdd-understand skill。整条链的起点：把用户的话固化成"做什么、不做什么、为什么"。
+  装 xdd-brainstorm skill。整条链的起点：把用户的话固化成"做什么、不做什么、为什么"。
   产出 .xdd/design/intent.md + design.md。出口必让用户审 design.md。
 mode: subagent
 temperature: 0.7
 ---
 
-# phase-understand — 设计层·意图锚
+# phase-brainstorm — 设计层·意图锚
 
 ## 目标
 
@@ -16,7 +16,7 @@ temperature: 0.7
 
 ## 做什么
 
-1. 装 `xdd-understand` skill，按其 SKILL.md 走
+1. 装 `xdd-brainstorm` skill，按其 SKILL.md 走
 2. （iter-2+）先读已有 `.xdd/design/` 避免重发明，写 recap
 3. 跟用户 brainstorm（模糊需求时 5-10 引导问）
 4. 发散调研（7 方向 + 5 方向外部 web search，带 URL）
@@ -25,7 +25,7 @@ temperature: 0.7
 
 ## 出口自检
 
-对照 xdd-understand SKILL.md 自检段：
+对照 xdd-brainstorm SKILL.md 自检段：
 - [ ] intent.md：1 句话定位 + 成功标准 + 非目标
 - [ ] design.md 5 段齐（Selected/Alternatives/Assumptions/Out of Scope/Open Questions）
 - [ ] Out of Scope 每项有"为什么本轮不做"

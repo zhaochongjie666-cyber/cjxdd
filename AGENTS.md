@@ -86,7 +86,7 @@ xdd 是**让开发更高效的工具集**。提效靠一条工作流机制：**�
 - ❌ 不要加载 `xdd-walker` / `xdd-orchestrator` 来开发本仓库
 - ❌ 不要跑三层流水线（understand→spec→...→verify）
 - ❌ 不要在本仓库创建 `.xdd/`
-- ❌ 不要用 `xdd-init` / `xdd-understand` 等 skill "调研" framework 自身
+- ❌ 不要用 `xdd-init` / `xdd-brainstorm` 等 skill "调研" framework 自身
 
 ### ✅ 正确做法（直接当代码仓库改）
 
@@ -99,7 +99,7 @@ xdd 是**让开发更高效的工具集**。提效靠一条工作流机制：**�
 ### 怎么判断"我是不是在做 Meta 任务"
 
 ```bash
-[ -f agents/xdd-walker.md ] && [ -f skills/xdd-understand/SKILL.md ] && echo "META: 在改 framework 自身"
+[ -f agents/xdd-walker.md ] && [ -f skills/xdd-brainstorm/SKILL.md ] && echo "META: 在改 framework 自身"
 ```
 
 或 `pwd` 含 `/cjxdd` 且仓库根有 `agents/xdd-walker.md` → Meta 任务。

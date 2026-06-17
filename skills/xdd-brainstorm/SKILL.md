@@ -1,5 +1,5 @@
 ---
-name: xdd-understand
+name: xdd-brainstorm
 description: |
   xdd 设计层第一步 —— 理解用户意图，发散调研，收敛成 design.md（意图锚）。
   整条「prompt → 设计 → 代码」链的起点：用户说的每一句话都在这里被固化成"我们要做什么、不做什么、为什么"。
@@ -8,7 +8,7 @@ description: |
   触发：理解需求、发散、调研、brainstorm、意图、intent、design、design.md、项目意图、需求分析、新项目、新功能。
 ---
 
-# xdd-understand — 意图锚
+# xdd-brainstorm — 意图锚
 
 ## 我锚定什么 / 上游 / 下游
 

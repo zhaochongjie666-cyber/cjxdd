@@ -122,7 +122,7 @@ for round in 1..3:
     if 仍有 P1:                       # 代码层修不动 = 根因在设计层
       rollback(根因):                 # 判定见括号
         空状态/页面缺（wire/{page}/ 缺该状态）→ xdd-wire
-        工作流卡点（design.md 该决策缺失）  → xdd-understand
+        工作流卡点（design.md 该决策缺失）  → xdd-brainstorm
         API/事件错（architecture.md 没覆盖）→ xdd-architecture
       → 沿 propagate 往下重做 → 回到 verify 重跑
 # 3 轮仍有 P1 → 写 runs/iter-N/failure-log.md，停下问用户

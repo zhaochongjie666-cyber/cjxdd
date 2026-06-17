@@ -5,7 +5,7 @@
 
 | W | 工作流 | skill | 产出 |
 |---|--------|-------|------|
-| W1 | 理解意图 | xdd-understand | intent.md + design.md |
+| W1 | 理解意图 | xdd-brainstorm | intent.md + design.md |
 | W2 | 规则 | xdd-spec | spec/{bxx-slug}/rules.md |
 | W3 | 架构 | xdd-architecture | architecture/{bxx-slug}/ |
 | W4 | 前端 | xdd-wire | wire/{page}/ |

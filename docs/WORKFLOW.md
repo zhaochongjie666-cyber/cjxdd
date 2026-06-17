@@ -23,22 +23,22 @@ xdd 的本质一句话：**用户 prompt → 设计层（锚）→ 代码实现*
 ## 2. 每层做什么
 
 ### 入口：xdd-init
-生成 `.xdd/` 骨架（`design/` + `plan/` + `status.md` + `current-iteration`）。平台中立，无 hook。
+生成 `.xdd/` 骨架（三层：项目层 `design/` + 业务线层 `design/spec|architecture|wire/{bxx-slug}/` + 迭代层 `runs/iter-N/` + `current-iteration` 指针）。平台中立，无 hook。结构权威见 `skills/xdd-init/SKILL.md`。
 
 ### 设计层（5 skill，每个产出一个"锚"）
 
 | 顺序 | skill | 锚定 | 产出 | 下游 |
 |------|-------|------|------|------|
-| 1 | `xdd-understand` | **意图** | `design/intent.md` + `design.md`（5 段决策）| spec 只读 design.md |
+| 1 | `xdd-brainstorm` | **意图** | `design/intent.md` + `design.md`（项目层总决策，跨业务线）| spec 只读 design.md |
 | 2 | `xdd-spec` | **规则 RXX** | `design/spec/{bxx-slug}/` rules.md + *.feature | architecture 把 RXX 映射到层/端点 |
 | 3 | `xdd-architecture` | **结构** | `design/architecture/{bxx-slug}/` architecture.md + flow.mermaid + 端点/事件契约 + 运维视图 | plan 拆 task，resilience 在此目录加韧性 |
 | 4 | `xdd-wire`（前端）| **前端** | `design/wire/{page}/` 6 操作态 + review.md | execute 实现前端，verify 验渲染 |
-| 5 | `xdd-resilience` | **韧性** | `architecture/{bxx-slug}/resilience/` 5 文档 | plan 写兜底约束，verify 跑混沌 |
+| 5 | `xdd-resilience` | **韧性** | `design/architecture/{bxx-slug}/resilience/` 5 文档 | plan 写兜底约束，verify 跑混沌 |
 
-**用户审查节点**：design.md 写完（understand 出口）停下给用户看，确认意图对齐才进 spec。这是防偏的第一道闸。
+**用户审查节点**：design.md 写完（brainstorm 出口）停下给用户看，确认意图对齐才进 spec。这是防偏的第一道闸。
 
 ### 桥接：xdd-plan
-设计层 → 可执行 TDD 计划。每个 task 显式**回指 RXX**（plan task → RXX → design 意图）。禁占位符。产出 `plan/{bxx-slug}/plan.md`。
+设计层 → 可执行 TDD 计划。每个 task 显式**回指 RXX**（plan task → RXX → design 意图）。禁占位符。产出 `runs/iter-N/plan/{bxx-slug}/plan.md`。
 
 ### 代码层（2 skill）
 
@@ -52,9 +52,9 @@ xdd 的本质一句话：**用户 prompt → 设计层（锚）→ 代码实现*
 每个产物用 ID 回指上游，这就是"设计锚定代码、不偏离用户"的字面实现：
 
 ```
-intent.md (why)                 ← xdd-understand
+intent.md (why)                 ← xdd-brainstorm
    ↓
-design.md (决策 5 段)            ← xdd-understand
+design.md (决策 5 段)            ← xdd-brainstorm
    ↓
 spec/ RXX 规则 (做什么)          ← xdd-spec
    ↓
@@ -103,7 +103,7 @@ session c3692b46 教训：60 端点只实施 23（38%）= sham。深度重构后
 
 ```
 死胡同/空状态缺失 → 回 xdd-wire
-工作流卡点       → 回 xdd-understand
+工作流卡点       → 回 xdd-brainstorm
 API 错误         → 回 xdd-architecture
 兜底不够/错      → 回 xdd-resilience
 规则没写清       → 回 xdd-spec

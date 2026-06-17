@@ -28,7 +28,7 @@ work():
   2. 跑 init.sh            -> 生成 .xdd/ 骨架 + 本文件 + .xdd/rules/ + 注入 AGENTS.md 指针
   3. 多业务线              -> --bizlines B01-auth,B02-order 预生成业务线占位
   4. 开新 iter             -> --iter N 写 current-iteration（上一 iter 完成后续做）
-  5. 下一步                -> 启动 walker，进 xdd-understand
+  5. 下一步                -> 启动 walker，进 xdd-brainstorm
 ```
 
 最快路径（单业务线）：
@@ -57,8 +57,8 @@ bash skills/xdd-init/scripts/init.sh
 │   ├── backend.rules          ← 后端约定（分层/错误码/auth/测试）
 │   └── ui-ux.rules            ← 前端 UI/UX 约定（4 级 + 10 反模式）
 ├── design/                    ← 设计层（持久锚，跨 iter 保留）
-│   ├── intent.md              ← 【项目层】意图锚：项目总意图（跨业务线共享），xdd-understand 填
-│   ├── design.md              ← 【项目层】收敛决策：项目级总决策（跨业务线的全局决策），xdd-understand 填
+│   ├── intent.md              ← 【项目层】意图锚：项目总意图（跨业务线共享），xdd-brainstorm 填
+│   ├── design.md              ← 【项目层】收敛决策：项目级总决策（跨业务线的全局决策），xdd-brainstorm 填
 │   ├── notes/                 ← 发散笔记（glossary 持久；其余设计期）
 │   ├── spec/                  ← 【业务线层】规则锚 RXX + Gherkin（xdd-spec 填；语法详见 xdd-gherkin-plus）
 │   │   ├── _landscape.md      ← 业务线全景（--bizlines 时生成）
@@ -95,7 +95,7 @@ bash skills/xdd-init/scripts/init.sh
 ## 项目层
 | 层 | 状态 | skill | 产出 |
 |----|------|-------|------|
-| 设计·理解 | ⏳ | xdd-understand | design/intent.md + design.md |
+| 设计·理解 | ⏳ | xdd-brainstorm | design/intent.md + design.md |
 | 设计·规则 | ⏳ | xdd-spec | design/spec/{bxx-slug}/ |
 | 设计·架构 | ⏳ | xdd-architecture | design/architecture/{bxx-slug}/ |
 | 设计·前端 | ⏳ | xdd-wire | design/wire/{page}/ |
@@ -115,7 +115,7 @@ bash skills/xdd-init/scripts/init.sh
 
 ## 设计原则
 
-1. **只生骨架** — init 不写 design.md 内容（那是 xdd-understand 的活），只生占位 + 目录结构。
+1. **只生骨架** — init 不写 design.md 内容（那是 xdd-brainstorm 的活），只生占位 + 目录结构。
 2. **入口路由判定** — 检测存量代码（源码/项目配置/git 跟踪文件）→ 警告指向 `xdd-reverse`，`--force` 才继续。不让 init 盲目 scaffold 进遗留项目。
 3. **idempotent-with-warning** — 重复 init（同 iter）不静默覆盖，`--force` 才覆盖；不同 iter → 走迁移。
 4. **iter 实质迁移** — `--iter N+1` 归档旧 iter（`runs/iter-N/` 原地保留），建新 iter 工作区，`design/` 持久锚不动。
@@ -170,7 +170,7 @@ iter-1 完成 → init --iter 2
 # 对 AI 说:
 "用 xdd-walker 给我做一个 <你的功能>"
 
-# walker 第一步装 xdd-understand 写 design/intent.md + design.md
+# walker 第一步装 xdd-brainstorm 写 design/intent.md + design.md
 ```
 
 ## 自检（init 末尾自动跑）

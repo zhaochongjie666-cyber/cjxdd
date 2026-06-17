@@ -18,7 +18,7 @@ temperature: 0.8
 
 ```bash
 # Meta 判定：当前项目根是否就是 framework 自身（cjxdd 仓库）
-[[ -f "${PWD}/agents/xdd-walker.md" && -f "${PWD}/skills/xdd-understand/SKILL.md" ]] \
+[[ -f "${PWD}/agents/xdd-walker.md" && -f "${PWD}/skills/xdd-brainstorm/SKILL.md" ]] \
   && echo "META: 改 framework 自身, 不要用 walker"
 ```
 
@@ -84,7 +84,7 @@ temperature: 0.8
 **设计层（锚）**：
 | 工具 | 锚定什么 | 什么时候装 |
 |------|---------|-----------|
-| `xdd-understand` | 意图锚（intent.md + design.md）| init 后第一步 |
+| `xdd-brainstorm` | 意图锚（intent.md + design.md）| init 后第一步 |
 | `xdd-spec` | 规则锚（RXX + Gherkin）| understand 后 |
 | `xdd-architecture` | 结构锚（架构 + flow + 端点 + 事件 + 运维）| spec 后 |
 | `xdd-wire` | 前端锚（页面线框）| spec 后（纯后端跳过）|
@@ -140,7 +140,7 @@ temperature: 0.8
 ```text
 [入口]   xdd-init            ── 生成 .xdd/ 骨架
    ↓
-[设计层] xdd-understand      ── 意图锚: intent.md + design.md
+[设计层] xdd-brainstorm      ── 意图锚: intent.md + design.md
    ↓
          xdd-spec            ── 规则锚: RXX + *.feature
    ↓
@@ -174,7 +174,7 @@ propagate(change):
 
 # 发现遗漏/错误时，按根因回到对应的设计锚（判定见括号：那个产物缺了什么），再调 propagate 往下
 rollback(根因):
-  意图/目标没想清（design.md 该决策缺失）   → xdd-understand
+  意图/目标没想清（design.md 该决策缺失）   → xdd-brainstorm
   规则没写清（rules.md 该 RXX 模糊/无异常路径）→ xdd-spec
   结构/API/事件错（architecture.md 没覆盖）   → xdd-architecture
   页面没画/空状态缺（wire/{page}/ 缺该状态）  → xdd-wire
@@ -257,7 +257,7 @@ on_failure(n):                          # n = 同一处连续失败次数
 ## 项目层
 | 层 | 状态 | skill | 产出 |
 |----|------|-------|------|
-| 设计·理解 | ⏳ | xdd-understand | design/intent.md + design.md |
+| 设计·理解 | ⏳ | xdd-brainstorm | design/intent.md + design.md |
 | 设计·规则 | ⏳ | xdd-spec | design/spec/{bxx-slug}/ |
 | 设计·架构 | ⏳ | xdd-architecture | design/architecture/{bxx-slug}/ |
 | 设计·前端 | ⏳ | xdd-wire | design/wire/{page}/ |

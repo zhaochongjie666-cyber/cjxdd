@@ -15,7 +15,7 @@
 ### 2.1 skill 命名
 - 全部带 `xdd-` 前缀
 - 17 个 skill（设计 5 + 桥接 1 + 代码 4 + 入口 1 + 工具 6）：
-  - 设计层：`xdd-understand` / `xdd-spec` / `xdd-architecture` / `xdd-wire` / `xdd-resilience`
+  - 设计层：`xdd-brainstorm` / `xdd-spec` / `xdd-architecture` / `xdd-wire` / `xdd-resilience`
   - 桥接：`xdd-plan`
   - 代码层：`xdd-execute` / `xdd-backend` / `xdd-frontend` / `xdd-verify`
   - 入口：`xdd-init`
@@ -41,7 +41,7 @@
 
 - **产品项目**：`.xdd/` 三层模型（结构见 `skills/xdd-init/SKILL.md`）：
   - **项目层**：`design/intent.md` + `design.md`（总意图 + 跨业务线全局决策，跨 iter 保留）
-  - **业务线层**：`design/spec/{bxx-slug}/` + `architecture/{bxx-slug}/` + `wire/`（每业务线，始终用 BXX）
+  - **业务线层**：`design/spec/{bxx-slug}/` + `design/architecture/{bxx-slug}/` + `design/wire/`（每业务线，始终用 BXX）
   - **迭代层**：`runs/iter-N/`（`status.md` + `plan/{bxx-slug}/` + `audits/`，单轮工作记录）
   - 根级 `current-iteration` 指针
 - **framework 自身**：git 仓库（`/home/zhaocj/ws/cjxdd/`）
@@ -73,7 +73,7 @@ wc -l skills/*/SKILL.md                                       # 全 < 500
 - ❌ 不要加载 `xdd-walker` / `xdd-orchestrator` agent 开发本仓库（会污染 `.xdd/`）
 - ❌ 不要跑三层流水线
 - ❌ 不要在本仓库创建 `.xdd/`
-- ❌ 不要用 `xdd-init` / `xdd-understand` 等 skill "调研" framework 自身
+- ❌ 不要用 `xdd-init` / `xdd-brainstorm` 等 skill "调研" framework 自身
 - ✅ 直接 Read/Edit 改 `agents/` / `skills/` 源码
 - ✅ 改完跑验证（见 §5）
 - ✅ 直接 commit（Conventional Commits + 末尾 `Co-Authored-By`）

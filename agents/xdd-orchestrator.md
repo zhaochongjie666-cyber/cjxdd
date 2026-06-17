@@ -16,7 +16,7 @@ temperature: 0.7
 ## 🛑 Meta 守卫
 
 ```bash
-[[ -f "${PWD}/agents/xdd-orchestrator.md" && -f "${PWD}/skills/xdd-understand/SKILL.md" ]] \
+[[ -f "${PWD}/agents/xdd-orchestrator.md" && -f "${PWD}/skills/xdd-brainstorm/SKILL.md" ]] \
   && echo "META: 改 framework 自身, 不要用 orchestrator"
 ```
 命中 → 当前是 cjxdd 仓库自身，停加载，直接改 framework 源码（不写 `.xdd/`）。
@@ -36,14 +36,14 @@ temperature: 0.7
 | 层 | 子 agent | 装 skill | 必产出 | 出口自检 |
 |----|---------|---------|--------|---------|
 | 入口 | （orchestrator 自己）| xdd-init | `.xdd/` 骨架 | init.sh 跑通 |
-| 设计·理解 | `phase-understand` | xdd-understand | design/intent.md + design.md | understand 自检 + 用户审 design.md |
+| 设计·理解 | `phase-brainstorm` | xdd-brainstorm | design/intent.md + design.md | understand 自检 + 用户审 design.md |
 | 设计·规格 | `phase-design` | xdd-spec + xdd-architecture + xdd-wire | spec/{bxx-slug}/ RXX+feature + architecture/{bxx-slug}/ + wire/{page}/ | 三 skill 自检 + mermaid 渲染 |
 | 设计·韧性 | `phase-resilience` | xdd-resilience | architecture/{bxx-slug}/resilience/ 5 文档 | resilience 自检 |
 | 桥接·计划 | `phase-plan` | xdd-plan | plan/{bxx-slug}/plan.md（task 回指 RXX）| plan 自检（RXX 覆盖 + 禁占位符）|
 | 代码·实现 | `phase-build` | xdd-execute | 代码 @implements RXX + 测试 | no-stub-check.sh 零命中 + 全测试 PASS |
 | 代码·验证 | `phase-verify` | xdd-verify | 验证报告（双契约 + 4 维一致性）| verify 自检 + 真能用证据 |
 
-**用户审查节点**：phase-understand 出口（design.md 写完）orchestrator 停下来让用户审，确认意图对齐才派 phase-design。
+**用户审查节点**：phase-brainstorm 出口（design.md 写完）orchestrator 停下来让用户审，确认意图对齐才派 phase-design。
 
 ## 自检验收
 
@@ -71,7 +71,7 @@ while exists layer where status == ⏳:
 orchestrator 自己跑，不派子 agent：
 1. 装 `xdd-init`
 2. 跑 `bash skills/xdd-init/scripts/init.sh` 生成 `.xdd/`
-3. 标入口 ✅，派 `phase-understand`
+3. 标入口 ✅，派 `phase-brainstorm`
 
 ## 卡住回退（3 试，替代旧 HALT 状态机）
 

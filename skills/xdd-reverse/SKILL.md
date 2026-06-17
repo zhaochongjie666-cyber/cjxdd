@@ -58,7 +58,7 @@ description: |
 ```
 # reverse 完成后，项目有了 .xdd/design/ 锚，之后按目的分流：
 if 要改功能:
-  xdd-understand(基于反推的 design.md 继续) -> xdd-spec -> ... -> xdd-execute
+  xdd-brainstorm(基于反推的 design.md 继续) -> xdd-spec -> ... -> xdd-execute
 elif 要补追溯:
   用本 skill 的 Step 3（手动补 @implements + 生成 INDEX）
 ```

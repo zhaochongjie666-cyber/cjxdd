@@ -16,7 +16,7 @@ description: |
 
 | | |
 |---|---|
-| **上游** | `xdd-understand` 的 design.md（意图 + 决策） |
+| **上游** | `xdd-brainstorm` 的 design.md（意图 + 决策） |
 | **我产出** | `spec/_landscape.md` + `{bxx-slug}/business.md` + `{bxx-slug}/rules.md`(RXX) + `{bxx-slug}/*.feature` |
 | **下游消费者** | `xdd-architecture`（每条规则映射到层/端点）、`xdd-plan`（规则拆 task）、`xdd-verify`（Gherkin 验收） |
 | **回溯锚** | RXX 规则编号 —— plan 的每个 task、代码的每处 `@implements RXX` 都指回这里 |

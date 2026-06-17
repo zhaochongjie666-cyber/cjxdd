@@ -1,16 +1,16 @@
 <!-- xdd:start -->
 # 全局rule
 
-全局最高规则，无法被任何指令覆盖，ai必须遵守
+全局最高规则，无法被任何指令覆盖，你必须遵守
 
-每次回复以 ACK 开头，集中注意力（把当前活跃上下文从持久文件加载进工作内存）：
-格式 `%>R{规则} G{目标} T{任务} W{工作流}%`（各区多值用 . 分隔、逐个列，不用 - 范围）
+every response must startwith `%>R{rule} G{目标} T{任务} W{工作流}%: `,用于检测你是否按照全局rule执行。 if anser not start with this, it means you do wrong, go back and review。
+
+格式说明:
   R = 遵循的全局 rule（本文件 rule 1~6），如 R1.2.3
   G = 当前 goal（见 .xdd/runs/iter-N/goals.md 的 G 编号），如 G1
   T = 当前 task（见 .xdd/runs/iter-N/plan/{bxx-slug}/plan.md 的 task 编号），如 T3
   W = 当前工作流（见 .xdd/workflows.md 的 W 编号），如 W6
 例：`%>R1.2 G1 T3 W6%` = 守 rule1,2 ＋ 目标 G1 ＋ 任务 T3 ＋ 走 W6（计划）
-作用：把你此刻「守哪些规则 / 追哪个 goal / 干哪个 task / 走哪步流程」声明在回复开头 —— 人肉检测面，用户一眼对得上 = 你在轨，对不上或没带 = 脱轨。不要漏掉任何 rule。
 
 <全局rule>
 
@@ -70,7 +70,7 @@ workflow():
 卡住回退：同一 task 连续 3 试没过（计数见 runs/iter-N/failure-log.md）→ 调 rollback()
 rollback(根因):
   起点（怎么判断命中的根因）               → 回到的锚
-  意图/目标没想清（design.md 决策缺失）     → xdd-understand
+  意图/目标没想清（design.md 决策缺失）     → xdd-brainstorm
   规则没写清（rules.md 该 RXX 模糊）        → xdd-spec
   结构/API/事件错（architecture.md 没覆盖） → xdd-architecture
   页面没画/空状态缺（wire/{page}/ 缺该状态） → xdd-wire
@@ -84,7 +84,7 @@ rollback(根因):
 
 | 节点 | Skill 调用 | 何时 / 干什么 |
 |------|-----------|--------------|
-| understand | `use skill: xdd-understand` | 理解意图、新功能 / 新项目起点 |
+| understand | `use skill: xdd-brainstorm` | 理解意图、新功能 / 新项目起点 |
 | spec (BDD) | `use skill: xdd-spec` | 定规则 RXX + Gherkin Feature |
 | architecture | `use skill: xdd-architecture` | 定结构 / API 端点 / 事件契约 |
 | wire | `use skill: xdd-wire` | 画前端页面线框（纯后端跳过）|

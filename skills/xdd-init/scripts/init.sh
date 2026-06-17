@@ -85,12 +85,12 @@ mkdir -p ".xdd/runs/iter-$ITER/audits"
 # === 持久锚占位（仅全新项目写，iter 迁移保留已有）===
 if [ "$NEW_PROJECT" = "true" ]; then
 
-# intent.md（意图锚占位，xdd-understand 填）
+# intent.md（意图锚占位，xdd-brainstorm 填）
 cat > .xdd/design/intent.md <<'EOF'
 # 意图锚 — {项目名}
 
 > 用户为什么做这个？要解决谁的什么问题？不行的话现状痛在哪？
-> 这一层是**用户审的契约**——确认对齐才往下。xdd-understand 填。
+> 这一层是**用户审的契约**——确认对齐才往下。xdd-brainstorm 填。
 
 ## 一句话
 {一句话：谁 + 做什么 + 为什么}
@@ -102,12 +102,12 @@ cat > .xdd/design/intent.md <<'EOF'
 -
 EOF
 
-# design.md（收敛决策占位，xdd-understand 填）
+# design.md（收敛决策占位，xdd-brainstorm 填）
 cat > .xdd/design/design.md <<'EOF'
 # 收敛决策 — {项目名}
 
 > 5 段：Selected（选定方案）/ Alternatives（考虑过没选的）/ Assumptions（假设）/
-> Out of Scope（不做）/ Open Questions（待答）。xdd-understand 填。
+> Out of Scope（不做）/ Open Questions（待答）。xdd-brainstorm 填。
 
 ## Selected（选定方案）
 -
@@ -184,7 +184,7 @@ cat > ".xdd/runs/iter-$ITER/status.md" <<EOF
 
 | 层 | 状态 | skill | 产出 |
 |----|------|-------|------|
-| 设计·理解 | ⏳ | xdd-understand | design/intent.md + design.md |
+| 设计·理解 | ⏳ | xdd-brainstorm | design/intent.md + design.md |
 | 设计·规则 | ⏳ | xdd-spec | design/spec/{bxx-slug}/ rules.md + *.feature |
 | 设计·架构 | ⏳ | xdd-architecture | design/architecture/{bxx-slug}/ |
 | 设计·前端 | ⏳ | xdd-wire | design/wire/{page}/（纯后端跳过）|
@@ -355,4 +355,4 @@ find .xdd -type d | sort
 echo
 echo "=== 下一步 ==="
 echo "对 AI 说: \"用 xdd-walker 给我做一个 <你的功能>\""
-echo "walker 第一步会装 xdd-understand 写 design/intent.md + design.md"
+echo "walker 第一步会装 xdd-brainstorm 写 design/intent.md + design.md"

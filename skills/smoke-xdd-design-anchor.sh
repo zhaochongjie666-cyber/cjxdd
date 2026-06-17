@@ -17,7 +17,7 @@ echo "=== xdd 三层骨架 smoke ==="
 
 # 1. 17 skill 存在
 miss=0
-for s in xdd-init xdd-understand xdd-spec xdd-architecture xdd-wire xdd-resilience xdd-plan xdd-execute xdd-backend xdd-frontend xdd-verify xdd-reverse xdd-mermaid-check xdd-docker-helper xdd-skill-creator xdd-gherkin-plus xdd-git-commit; do
+for s in xdd-init xdd-brainstorm xdd-spec xdd-architecture xdd-wire xdd-resilience xdd-plan xdd-execute xdd-backend xdd-frontend xdd-verify xdd-reverse xdd-mermaid-check xdd-docker-helper xdd-skill-creator xdd-gherkin-plus xdd-git-commit; do
   [ -f "skills/$s/SKILL.md" ] || { echo "  缺 skill: $s"; miss=1; }
 done
 n=$(ls -d skills/*/ 2>/dev/null | wc -l)
@@ -25,7 +25,7 @@ n=$(ls -d skills/*/ 2>/dev/null | wc -l)
 
 # 2. 8 agent 存在
 miss=0
-for a in xdd-walker xdd-orchestrator phase-understand phase-design phase-resilience phase-plan phase-build phase-verify; do
+for a in xdd-walker xdd-orchestrator phase-brainstorm phase-design phase-resilience phase-plan phase-build phase-verify; do
   [ -f "agents/$a.md" ] || { echo "  缺 agent: $a"; miss=1; }
 done
 n=$(ls agents/*.md 2>/dev/null | wc -l)
@@ -89,7 +89,7 @@ check "12. install.sh 不软链 hooks/plugins/commands/settings (坏软链行 $b
 
 # 13. 追溯锚贯穿链 (check 0=PASS, miss=1 表失败)
 miss=0
-grep -q 'intent' skills/xdd-understand/SKILL.md || miss=1
+grep -q 'intent' skills/xdd-brainstorm/SKILL.md || miss=1
 grep -q 'RXX' skills/xdd-spec/SKILL.md || miss=1
 grep -q '@implements RXX' skills/xdd-execute/SKILL.md || miss=1
 grep -q 'plan' skills/xdd-plan/SKILL.md || miss=1
