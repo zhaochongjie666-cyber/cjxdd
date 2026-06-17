@@ -5,7 +5,7 @@
 
 每次回复以 ACK 开头，集中注意力（把当前活跃上下文从持久文件加载进工作内存）：
 格式 `%>R{规则} G{目标} T{任务} W{工作流}%`（各区多值用 . 分隔、逐个列，不用 - 范围）
-  R = 遵循的全局 rule（本文件 rule 1~5），如 R1.2.3
+  R = 遵循的全局 rule（本文件 rule 1~6），如 R1.2.3
   G = 当前 goal（见 .xdd/runs/iter-N/goals.md 的 G 编号），如 G1
   T = 当前 task（见 .xdd/runs/iter-N/plan/{bxx-slug}/plan.md 的 task 编号），如 T3
   W = 当前工作流（见 .xdd/workflows.md 的 W 编号），如 W6
@@ -96,7 +96,13 @@ rollback(根因):
 **辅助 skill**（按需）：`xdd-reverse`（逆向已有代码补设计）/ `xdd-git-commit`（规范提交）/ `xdd-docker-helper`（容器镜像）/ `xdd-mermaid-check`（流程图渲染）。
 
 **纪律**：上层没 ✅ 不装下层 skill；`.xdd/runs/iter-N/status.md` 的「skill」列就是当前该装的 skill。
-# rule 6: 
+
+# rule 6: 永远不允许 mock 和实现层逃避性兜底
+
+永远永远不允许代码出现 mock（假实现 / 假数据 / InMemory 占位），出现**实现层逃避性兜底**（try-catch 吞异常、return 默认值掩盖错误、占位假兜底）—— mock 和逃避性兜底只会让代码更加糟糕，问题必须暴露、不许藏。
+
+> 不冲突 xdd-resilience：经 FMEA 分析的**设计层容错**（熔断 / 降级 / 补偿 / recovery）是规划好的、有据可查的容错，不是逃避。本 rule 禁的是「实现层随手糊个兜底掩盖问题」，不是「设计层规划好的容错」。
+
 </全局rule>
 
 <!-- xdd:end -->

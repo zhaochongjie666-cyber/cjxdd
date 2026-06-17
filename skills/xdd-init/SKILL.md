@@ -83,7 +83,7 @@ bash skills/xdd-init/scripts/init.sh
 
 **inject 到用户文件**：若项目根已有 `AGENTS.md` / `CLAUDE.md`，init 在文件开头注入一段用 `<!-- xdd:start -->` / `<!-- xdd:end -->` 包裹的 pointer（全局 rule + ACK v2 定义 + Backend/UI-UX/recap 指向 `.xdd/`）。**全新空仓库**（两者都没有）时，init 建一个最小 `CLAUDE.md` 再注入——让全局 rule + ACK 在入口就落地。
 
-**ACK v2**（注入块里定义）：每次回复开头带 `%>R{规则} G{目标} T{任务} W{工作流}%`，把「守哪些 rule / 追哪个 goal / 干哪个 task / 走哪步 workflow」加载进工作内存、集中注意力。四区索引源：R→本文件 rule 1~5（. 分隔逐个列）；G→`runs/iter-N/goals.md` 的 G 编号；T→`runs/iter-N/plan/{bxx-slug}/plan.md` 的 task 编号；W→`.xdd/workflows.md` 的 W 编号。**人肉检测面**：用户扫回复开头对得上 = 在轨，不配脚本校验（ACK 是瞬时对话流、不落盘）。
+**ACK v2**（注入块里定义）：每次回复开头带 `%>R{规则} G{目标} T{任务} W{工作流}%`，把「守哪些 rule / 追哪个 goal / 干哪个 task / 走哪步 workflow」加载进工作内存、集中注意力。四区索引源：R→本文件 rule 1~6（. 分隔逐个列）；G→`runs/iter-N/goals.md` 的 G 编号；T→`runs/iter-N/plan/{bxx-slug}/plan.md` 的 task 编号；W→`.xdd/workflows.md` 的 W 编号。**人肉检测面**：用户扫回复开头对得上 = 在轨，不配脚本校验（ACK 是瞬时对话流、不落盘）。
 
 **砍掉的旧产物**（深度重构）：`scale.md`（不再 scale 降级，默认就做扎实）、`xdd-schema.json`（曾是闸门单一源真理，无闸门则不需要）、`gates/`（control_marker 目录）、5-marker 状态机（⏳/🔄/✅/❌/🚧 → 简化 ✅/⏳）。
 
