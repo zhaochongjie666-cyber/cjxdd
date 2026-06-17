@@ -23,23 +23,82 @@ description: |
 
 ## 怎么做
 
-### 1. 消费已有设计（iter-2+ 必读）
+### 1. 先吃透现状（必做，任何 iter）—— 建立前因后果再谈别的
 
-不是"零起点发散"。第二轮起，先读现有设计避免重发明：
+**发散前先把所有该读的读进来。** 不知道现有设计、现有业务、现有约定，就谈不上"本轮做什么"——在信息不全时发散 = 重发明 + 偏离现状。这一步**任何 iter 都做**（iter-1 也读：用户材料/存量代码；iter-2+ 读上轮全部产物）。
+
+**读什么（按存在性逐类读，缺的标"本轮要补"）**：
 
 ```
-.xdd/design/intent.md              # 项目意图
-.xdd/design/design.md              # 收敛决策
-.xdd/design/spec/_landscape.md     # 业务线全景
-.xdd/design/spec/{bxx-slug}/rules.md   # 现有 RXX 规则
-.xdd/design/architecture/{bxx-slug}/architecture.md  # 架构决策
+【项目层·意图与决策】
+.xdd/design/intent.md                          # 项目意图（为什么做）
+.xdd/design/design.md                          # 收敛决策（做什么/不做什么/全局决策）
+.xdd/runs/iter-N/goals.md                      # 本 iter 目标 + G 编号
+
+【业务线层·现有规则与结构】
+.xdd/design/spec/_landscape.md                 # 业务线全景（有哪些业务线）
+.xdd/design/spec/{bxx-slug}/business.md        # 各业务线目标/范围/术语
+.xdd/design/spec/{bxx-slug}/rules.md           # 现有 RXX 规则（现有业务行为）
+.xdd/design/spec/{bxx-slug}/*.feature          # Gherkin 验收场景
+.xdd/design/architecture/{bxx-slug}/architecture.md   # 架构决策/技术栈/端点
+.xdd/design/architecture/{bxx-slug}/flow.mermaid       # 流程/组件/数据流
+
+【全局·跨业务线契约】
+.xdd/design/architecture/aggregate-landscape.md  # 聚合全景（现有领域模型）
+.xdd/design/architecture/event-contract.md       # 事件契约（现有服务间协作）
+.xdd/design/architecture/module-landscape.md     # 模块全景（基础建设/依赖方向）
+
+【前端与韧性】
+.xdd/design/wire/{page}/                         # 现有页面/交互/状态态
+.xdd/design/architecture/{bxx-slug}/resilience/  # 现有失败模式/兜底
+
+【项目约定】
+.xdd/rules/backend.rules / frontend.rules / ui-ux.rules   # 项目编码/设计约定
+
+【现有业务·代码】（给已有项目加功能/改功能时读，要和设计对照）
+src/ app/ server/ ...                           # 现有代码
+git log                                         # 提交历史（前因后果/演进）
 ```
 
-读完标 3 段到 `00-recap.md`（或笔记头部）：**已有什么 / 缺什么 / 本轮增量**。
+> **设计 ↔ 代码要对照，发现脱节标记裁决，别单信一方**。文档写"设计想做什么"，代码是"实际做了什么"——两者常脱节，且**双向都可能**：
+> - **设计新、代码旧**（设计演进，代码没跟上）→ 代码读到过时实现
+> - **代码新、设计旧**（代码改了甚至 sham 了，设计没更新）→ 代码读到偏离意图的实现（**在 xdd 里更危险**，会让偏差固化进新一轮设计）
+>
+> 读代码不是"拿代码当真相"，是**和 .xdd/ 设计对照**：一致 ✅；脱节 → 标到 recap「⚠️ 设计↔代码脱节」，写清是哪边该改（设计过时改设计 / 代码 sham 改代码），**本轮 brainstorm 先认设计意图为准**（xdd 的锚是设计，不是代码），脱节项留给下游 execute/verify 修。iter-1 全新项目无代码则跳过。
 
-### 2. Brainstorm —— 跟用户对话探索方案
+**读完后产出 `notes/00-recap.md`**（现状建象，必出，下游也参考）：
 
-用户需求模糊时（"想做个 XX"），先 brainstorm 再发散。这是"用户驱动 + AI 引导"的对话，不是 AI 单向发散。按需挑 5-10 问：
+```markdown
+# 现状 recap
+
+## 前因后果
+- 项目为什么存在 / 要解决什么 / 历史怎么走到现在（从 intent + git log）
+
+## 现有设计（已有什么）
+- 业务线：B01-x / B02-y（来自 _landscape）
+- 现有规则：B01 有 R01..R05，B02 有 R01..R03
+- 架构：技术栈 X，聚合 Y/Z，事件 e1/e2，基础模块 auth/storage
+- 前端：已有 login/order-list 页面
+
+## 现有业务（代码实际在跑什么）
+- （有代码时）核心模块/入口/依赖关系摘要
+
+## ⚠️ 设计 ↔ 代码脱节（对照发现，标记裁决）
+- 设计 X vs 代码 Y：哪边该改（设计过时 / 代码 sham）→ 本轮先认设计意图，脱节留 execute/verify 修
+- （无脱节则写"一致"，无代码则写"全新项目"）
+
+## 缺什么 / 本轮增量
+- 本轮要补的：新增 B03 / B01 加 R06 / 补 wire 空状态 / ...
+
+## 约束与边界
+- 项目约定（rules）、不可碰的不变量、Out of Scope 继承项
+```
+
+**自检**：读全了上述（存在的都读了，缺的标了）？recap 写清了前因后果 + 现有设计 + 现有业务 + 本轮增量？**没读全别进 Step 2 发散**——信息不全的发散是浪费。
+
+### 2. Brainstorm —— 基于现状跟用户对话探索方案
+
+吃透现状（Step 1）后，基于"已有什么、缺什么"跟用户对话，不是从零问。这是"用户驱动 + AI 引导"的对话，不是 AI 单向发散。**对话要带着现状提问**：例如"现有 B01 有 R01..R05，你说的这个功能是 B01 加规则，还是新开 B03？"按需挑 5-10 问：
 
 | # | 引导问 | 目的 |
 |---|--------|------|
