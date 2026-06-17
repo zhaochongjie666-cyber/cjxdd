@@ -5,7 +5,7 @@ description: |
   四支柱：ADD（质量属性）+ SDD（安全）+ PDD（性能）+ ODD（运维视图 启动/关闭/状态机/排障）。
   吸收旧 xdd-arch + xdd-flow（流程图 colocation 到同业务线目录）。
   产出 .xdd/design/architecture/{bxx-slug}/architecture.md + flow.mermaid + docker-compose*.yml，全局 aggregate-landscape.md + event-contract.md。
-  触发：架构、architecture、ADD、质量属性、技术栈、分层、API 端点、事件契约、event-contract、聚合、安全、SDD、性能、PDD、运维、ODD、流程图、flow、启动序列、关闭序列、状态机、排障、PoC。
+  触发：架构、architecture、ADD、质量属性、技术栈、分层、API 端点、事件契约、event-contract、聚合、安全、SDD、性能、PDD、运维、ODD、流程图、flow、启动序列、关闭序列、状态机、排障、PoC、模块化、基础建设、base 层、foundation、共享内核、shared kernel、通用能力下沉、module-landscape。
 ---
 
 # xdd-architecture — 结构锚
@@ -148,6 +148,8 @@ description: |
 
 **节点编号 NYY（流程节点序号）**：flow.mermaid 的节点用人读组件名（`Client`/`Handler`，可读优先）。**NYY 编号**（`B01-N01`）用于端点契约的 `@flow BXX-NYY` 追溯标注——给端点触发的流程步骤编序，序号在该业务线内全局唯一、递增。NYY 只活在端点 `@flow` 标注里（机器追溯），不强制写进 flow.mermaid 节点显示名。
 
+**分两层画（多业务线时）**：flow.mermaid 明确分 **base 层**（通用/支撑上下文下沉的基础建设，foundation）+ **业务层**（核心子域），依赖箭头只从业务指向基础（单向，见 §13）。让"哪些是基础建设、依赖方向"可视化。
+
 ### 12. Docker Compose 部署
 
 生产 + 测试环境都 Docker Compose 封装：
@@ -155,6 +157,34 @@ description: |
 - `docker-compose.test.yml`（test profile、独立 DB、无持久卷）
 - 每服务必有 healthcheck，`depends_on` 用 `condition: service_healthy`
 - 敏感信息走 `.env`
+
+### 13. 模块化设计（通用能力下沉为基础建设）
+
+架构不只是"按业务线切上下文"，还要**把通用能力抽成基础模块（base/foundation），业务模块复用它**，别让每条业务线各造一遍认证/存储/通知/审计。模块粒度 = **DDD 限界上下文级**（不是代码包级）。
+
+**识别基础建设**（哪些上下文该下沉为 base）：查 `references/ddd.md § 子域分类`——通用子域（认证授权/文件存储/通知/审计日志，买现成）、支撑子域（任务调度/血缘追踪，自己做但简化）都是基础建设候选。核心子域（业务差异化）才是业务模块，值得完整 DDD 建模。
+
+```
+识别基础建设():
+  for each 限界上下文:
+    判定子域类型(查 ddd.md §子域):
+      通用子域 → 下沉为 base 上下文（用现成方案，别造轮子造聚合根）
+      支撑子域 → 下沉为 base 上下文（简化自建）
+      核心子域 → 业务上下文（重点投入 DDD）
+```
+
+**通用能力组织成 base 模块**（独立上下文），业务上下文依赖它。优先用 **ACL（防腐层）** 隔离，慎用 **Shared Kernel（共享内核）**——shared kernel 易成耦合点（`ddd.md § 上下文映射` 已警告）。
+
+**依赖方向规则（核心）**：业务上下文 → 基础上下文，**单向**。
+- ✅ 订单上下文依赖 auth base（拿当前用户）
+- ❌ auth base 依赖订单上下文（基础模块不该知道业务）
+反向依赖 = 基础建设被业务污染，是架构腐烂的起点。基础上下文需要感知业务事件时，用**事件订阅**（基础订阅业务发的领域事件），不直接依赖业务模块。
+
+**产出**：`.xdd/design/architecture/module-landscape.md`（全局，与 `aggregate-landscape.md` / `event-contract.md` 并列）——
+- 基础上下文清单（base/foundation：各自职责 + 提供能力 + 子域类型）
+- 业务上下文清单（core：核心子域）
+- 依赖矩阵（业务上下文 × 基础上下文，✓=依赖；**反向依赖必须为空**）
+- 共享内核清单（如有，标耦合风险 + 取代方案）
 
 ## 业务线 colocation（v8.0.0 保留）
 
@@ -164,6 +194,7 @@ description: |
 .xdd/design/architecture/
 ├── aggregate-landscape.md       # 全局聚合全景
 ├── event-contract.md            # 全局事件契约
+├── module-landscape.md          # 全局模块全景（base 基础建设 + 业务上下文 + 依赖矩阵，见 §13）
 └── {bxx-slug}/
     ├── architecture.md          # 含 §运维视图
     ├── flow.mermaid             # 流程图
@@ -175,6 +206,8 @@ description: |
 ## 产出（architecture.md 一份文档含）
 
 质量属性场景 + 安全设计(SDD) + 性能设计(PDD) + 限界上下文 + 技术栈决策 + 分层架构 + 规则传导矩阵 + API 端点清单 + 文件清单（后端+前端）+ 质量要点 + 运维视图(ODD) + Docker Compose 架构。
+
+**全局独立产出**（非 colocation，跨业务线）：`aggregate-landscape.md`（聚合全景）+ `event-contract.md`（事件契约）+ `module-landscape.md`（模块全景：base 基础建设 + 业务上下文 + 依赖矩阵，见 §13）。
 
 ## 自检（无平台 hook）
 
@@ -195,4 +228,6 @@ description: |
 □ docker-compose.yml + .test.yml 都有，每服务有 healthcheck？
 □ flow.mermaid 能渲染（用 xdd-mermaid-check 验）？
 □ 组件名/状态名跟 spec rules.md 一致，未知标"待确认"？
+□ 识别了基础建设上下文（通用/支撑子域下沉为 base，查 ddd.md §子域），业务上下文没各造一遍认证/存储/通知？
+□ 依赖方向单向（业务→基础），无反向依赖？flow.mermaid 画了 base 层？module-landscape.md 依赖矩阵反向为空？
 ```
