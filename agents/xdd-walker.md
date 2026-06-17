@@ -218,11 +218,14 @@ commit 前跑 `bash skills/xdd-execute/scripts/no-stub-check.sh <刚改的文件
 
 ```
 on_failure(n):                          # n = 同一处连续失败次数
+  append .xdd/runs/iter-N/failure-log.md:   # n==1 起每试都记一行（持久化，防上下文压缩后计数丢失）
+    [n=N] 命令 / 错误摘要 / 试过什么
   if   n == 1: 重跑仔细点（看错误输出）
   elif n == 2: 换路子（重读 SKILL.md 对应子节 + references/，换实现方式）
   elif n == 3: 退一步（Glob/Grep 查上游产物有没缺口，调 rollback() 回设计锚找根因）
-  elif n == 4: 写 .xdd/runs/iter-N/failure-log.md（命令 + 错误 + 试过什么），停下问用户
-# 核心：3 试没过就别在代码层硬扛，回设计层（rollback）找根因
+  elif n == 4: failure-log 已累积 4 条，停下问用户
+# 核心：3 试没过就别在代码层硬扛，回设计层（rollback）找根因。
+# failure-log 从 n==1 起持久化 → 上下文压缩后仍知当前是第几试，保证 4 试上限有效。
 ```
 
 ## 干完怎么交

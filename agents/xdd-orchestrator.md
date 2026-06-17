@@ -36,7 +36,7 @@ temperature: 0.7
 | 层 | 子 agent | 装 skill | 必产出 | 出口自检 |
 |----|---------|---------|--------|---------|
 | 入口 | （orchestrator 自己）| xdd-init | `.xdd/` 骨架 | init.sh 跑通 |
-| 设计·理解 | `phase-brainstorm` | xdd-brainstorm | design/intent.md + design.md | understand 自检 + 用户审 design.md |
+| 设计·理解 | `phase-brainstorm` | xdd-brainstorm | design/intent.md + design.md | brainstorm 自检 + 用户审 design.md |
 | 设计·规格 | `phase-design` | xdd-spec + xdd-architecture + xdd-wire | spec/{bxx-slug}/ RXX+feature + architecture/{bxx-slug}/ + wire/{page}/ | 三 skill 自检 + mermaid 渲染 |
 | 设计·韧性 | `phase-resilience` | xdd-resilience | architecture/{bxx-slug}/resilience/ 5 文档 | resilience 自检 |
 | 桥接·计划 | `phase-plan` | xdd-plan | plan/{bxx-slug}/plan.md（task 回指 RXX）| plan 自检（RXX 覆盖 + 禁占位符）|
@@ -76,12 +76,17 @@ orchestrator 自己跑，不派子 agent：
 ## 卡住回退（3 试，替代旧 HALT 状态机）
 
 ```
-on_3_strikes(layer):                    # 同一处连续 3 试没过
-  write runs/iter-N/failure-log.md:
-    层 / 子 agent / 卡点(命令+错误+试过什么) / 没过的原因 / 建议回退层
-  HALT                                   # 立即停下，不自己硬修
-  ask_user("是否回退到 {建议层} 重新跑？")
+on_3_strikes(layer):                    # 同一处连续 3 试没过 → 自动 rollback（与 walker 一致）
+  append runs/iter-N/failure-log.md:    # n==1 起就记，这里汇总
+    层 / 子 agent / 卡点(命令+错误+试过什么) / 没过的原因 / 判定根因层
+  rollback(根因层):                     # 自动回退到根因层重跑（不硬问用户）
+    根因映射见 inject-block rule 4 rollback 段（brainstorm/spec/architecture/wire/resilience）
+  if rollback 后该 task 仍 3 试不过:    # rollback 一轮还救不回 = 第 4 试
+    HALT
+    ask_user("已 rollback 到 {根因层} 仍卡住，是否手动介入？")
 ```
+
+> 与 walker 语义统一：3 试自动 rollback 找根因，rollback 后仍失败（累计 4 试）才 HALT 问用户。两条路径的回退行为现在一致。
 
 ## 工具箱
 
@@ -100,4 +105,4 @@ on_3_strikes(layer):                    # 同一处连续 3 试没过
 
 ## Fall-back
 
-`xdd-walker`（单工匠）保留，适合小项目或 orchestrator 不可用的 harness。中小项目直接 walker，大项目用 orchestrator。两者共享同一套 13 skill + 三层骨架。
+`xdd-walker`（单工匠）保留，适合小项目或 orchestrator 不可用的 harness。中小项目直接 walker，大项目用 orchestrator。两者共享同一套 17 skill + 三层骨架。

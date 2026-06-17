@@ -156,11 +156,14 @@ on_block(problem):                      # 遇即暂停，不猜不跳
 
 ```
 on_failure(n):                          # n = 同一 task 连续失败次数
+  append runs/iter-N/failure-log.md:    # n==1 起每试记一行（持久化，防压缩后计数丢失）
+    [n=N] task / 命令 / 错误摘要 / 试过什么
   if   n == 1: 重跑仔细点
   elif n == 2: 重读 plan 对应 step + references，换实现方式
   elif n == 3: 退一步回 xdd-plan 重规划（RXX 映射错 / 端点漏 / 依赖冲突；或更上 design/spec 层找根因）
-  elif n == 4: 写失败日志，停下问用户
-# 核心：3 试没过别在代码层反复修 —— 在错的层面硬扛无意义
+  elif n == 4: failure-log 已累积 4 条，停下问用户
+# 核心：3 试没过别在代码层反复修 —— 在错的层面硬扛无意义。
+# failure-log 从 n==1 起持久化 → 压缩后仍知第几试，4 试上限有效。
 ```
 
 ## Step 5：收尾

@@ -64,7 +64,7 @@
 │   │   ├── event-contract.md        ← 全局事件契约
 │   │   ├── B01-auth/
 │   │   │   ├── architecture.md
-│   │   │   ├── flow.mermaid         ← 节点用 BXX-NYY 编号
+│   │   │   ├── flow.mermaid         ← 节点用人读组件名；NYY 编号用于端点 @flow 标注
 │   │   │   └── resilience/          ← 韧性 colocation（5 文档）
 │   │   └── B02-order/
 │   │       └── ...

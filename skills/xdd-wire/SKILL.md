@@ -19,7 +19,7 @@ description: |
 |---|---|
 | **上游** | `xdd-brainstorm`(intent.md) + `xdd-spec`(RXX 规则 + Feature 里的页面名/交互/角色) |
 | **我产出** | `.xdd/design/wire/{page}/index.html` + 6 操作态 + `review.md` |
-| **下游消费者** | `xdd-architecture`（前端文件清单）、`xdd-plan`（前端 task）、`xdd-execute`（前端实现）、`xdd-verify`（页面渲染验收） |
+| **下游消费者** | `xdd-plan`（前端 task）、`xdd-execute`（前端实现）、`xdd-verify`（页面渲染验收） |
 | **回溯锚** | 页面里的交互回指 RXX 规则（HTML 注释标 `@covers-RXX`） |
 
 ## 怎么做

@@ -157,7 +157,11 @@ DDD 的起点 —— 开发和业务用同一套词，代码类名 = 业务术�
     ├── brainstorm.md   ← 引导问答案
     ├── external-references.md  ← 外部来源 URL 主索引
     └── *.md            ← 行业 / 竞品 / 画像 / 旅程 / 技术 等，内容自由
+.xdd/runs/iter-N/
+└── goals.md            ← 【项目层】本 iter 高层目标 + G 编号（brainstorm 产，见下）
 ```
+
+**G 编号生成方（brainstorm 的职责）**：brainstorm 把 intent.md 的「成功标准」拆成本 iter 的高层目标，写入 `runs/iter-N/goals.md`，**分配 G 编号**（G1/G2...，替换 init 占位）。这是 ACK 的 G 区索引源——G 编号由此 skill 生成，下游 plan 的 task 用 `**goal:** G1` 回指。多业务线时 goals 仍是项目级（一份），各业务线的 plan task 回指同一套 G。
 
 **三层边界**：understand 产【项目层】（intent+design，无 BXX）；下游 spec/architecture/wire/resilience 产【业务线层】（带 BXX）。顶层 design.md 写"项目要什么、全局怎么定"，别把单业务线的端点清单/规则塞进来。
 
@@ -168,6 +172,7 @@ DDD 的起点 —— 开发和业务用同一套词，代码类名 = 业务术�
 ```
 □ intent.md 写了：1 句话定位 + 成功标准 + 非目标
 □ design.md 5 段齐全：Selected / Alternatives / Assumptions / Out of Scope / Open Questions
+□ goals.md 写了本 iter 高层目标，分配了 G 编号（G1/G2...，替换 init 占位，来自 intent「成功标准」）
 □ glossary.md 建了通用语言，每个术语有定义 + 类型（实体/值对象/过程）+ 来源
 □ 通用语言去歧义了（多义词拆开、同义词合并，记录原因）
 □ 每个 Open Question 是真关键决策（不是偷懒没想）

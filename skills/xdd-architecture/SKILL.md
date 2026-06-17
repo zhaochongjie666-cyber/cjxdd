@@ -16,7 +16,7 @@ description: |
 
 | | |
 |---|---|
-| **上游** | `xdd-brainstorm`(design.md) + `xdd-spec`(RXX 规则 + flow.mermaid 若已有) |
+| **上游** | `xdd-brainstorm`(design.md) + `xdd-spec`(RXX 规则) |
 | **我产出** | `{bxx-slug}/architecture.md` + `flow.mermaid` + `docker-compose*.yml`；全局 `aggregate-landscape.md` + `event-contract.md` |
 | **下游消费者** | `xdd-plan`（端点/聚合/事件 → task）、`xdd-execute`（文件清单 + 端点契约）、`xdd-resilience`（ODD 失败模型是韧性种子） |
 | **回溯锚** | 每个端点标 `@flow BXX-NYY` + `@rules RXX`，每个技术选型标 `@intent` |
@@ -145,6 +145,8 @@ description: |
 2. **暴露核心数据流向**：箭头标协议（HTTP/gRPC）或核心 Payload
 3. **凸显非功能战术**：高并发（限流）、异步（转码/AI）、高可用（缓存/副本）用专门节点体现
 4. **与 spec 字段对齐**：路由分支/数据状态与 `rules.md` 名词一致
+
+**节点编号 NYY（流程节点序号）**：flow.mermaid 的节点用人读组件名（`Client`/`Handler`，可读优先）。**NYY 编号**（`B01-N01`）用于端点契约的 `@flow BXX-NYY` 追溯标注——给端点触发的流程步骤编序，序号在该业务线内全局唯一、递增。NYY 只活在端点 `@flow` 标注里（机器追溯），不强制写进 flow.mermaid 节点显示名。
 
 ### 12. Docker Compose 部署
 

@@ -10,7 +10,7 @@
 - 六边形：Domain 核心 + Port(接口) + Adapter(技术实现)
 - 事件总线/CQRS：读/写模型分离 + 事件存储
 
-> 实际选型见 `.xdd/design/architecture/{slug}/architecture.md` §技术栈。
+> 实际选型见 `.xdd/design/architecture/{bxx-slug}/architecture.md` §技术栈。
 
 ## 错误处理
 
@@ -49,7 +49,7 @@
 ## 测试
 
 - 每个 RXX 规则至少 1 个测试
-- 代码标注 `@implements RXX`，测试标注 `@covers RXX`
+- 代码标注 `@implements RXX`，测试标注 `@covers-RXX`
 - 测试跑真实依赖（DB 起来），不是全 mock
 - 看断言质量，不只看 GREEN 数
 

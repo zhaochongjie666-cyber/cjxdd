@@ -13,13 +13,13 @@
 
 ## 必须走完的三层流程（每层装对应 skill，按它的 SKILL.md 流程做，产物落 `.xdd/`）
 
-1. **xdd-init** → 生成 `.xdd/` 骨架（design/{spec,architecture,wire} + plan/ + status.md + current-iteration）
-2. **xdd-understand** → `.xdd/design/intent.md` + `.xdd/design/design.md`（5 段：Selected/Alternatives/Assumptions/Out of Scope/Open Questions）
-3. **xdd-spec** → `.xdd/design/spec/<slug>/rules.md`（RXX 规则编号）+ `*.feature`（Gherkin）
-4. **xdd-architecture** → `.xdd/design/architecture/<slug>/architecture.md` + `flow.mermaid`
+1. **xdd-init** → 生成 `.xdd/` 骨架（design/{spec,architecture,wire,notes} + runs/iter-1/{status.md,plan,audits} + current-iteration）
+2. **xdd-brainstorm** → `.xdd/design/intent.md` + `.xdd/design/design.md`（项目层总决策，5 段：Selected/Alternatives/Assumptions/Out of Scope/Open Questions）
+3. **xdd-spec** → `.xdd/design/spec/{bxx-slug}/rules.md`（RXX 规则编号）+ `*.feature`（Gherkin）
+4. **xdd-architecture** → `.xdd/design/architecture/{bxx-slug}/architecture.md` + `flow.mermaid`
 5. **xdd-wire** → 纯后端项目，**可跳过**，在 status.md 标注"纯后端跳过 wire"
-6. **xdd-resilience** → `.xdd/design/architecture/<slug>/resilience/`（按 skill 要求的失败模式 + 兜底 + 混沌）
-7. **xdd-plan** → `.xdd/plan/<slug>/plan.md`（每个 task 显式回指 RXX）
+6. **xdd-resilience** → `.xdd/design/architecture/{bxx-slug}/resilience/`（按 skill 要求的失败模式 + 兜底 + 混沌）
+7. **xdd-plan** → `.xdd/runs/iter-1/plan/{bxx-slug}/plan.md`（每个 task 显式回指 RXX）
 8. **xdd-execute** → 写 `server.js` + `tests/hello.test.js`，代码用 `@implements RXX` 回指规则，**TDD，无存根**。commit 前跑 `bash skills/xdd-execute/scripts/no-stub-check.sh`，**零命中**。
 9. **xdd-verify** → 真实验证：跑测试用 **`node --test tests/*.test.js`**（**显式 glob，不要用 `node --test tests/` 目录模式** —— Node 22 目录模式有 quirks 会误报）**全过** + `node server.js` 真能起 + `curl /api/hello` 返回 `200 {"msg":"hello, xdd"}` + 写验证报告。
 
@@ -43,7 +43,7 @@
 trial: ${TRIAL_NUM}
 tier: 2
 status: PASS
-layers: init,understand,spec,architecture,wire,plan,execute,verify
+layers: init,brainstorm,spec,architecture,wire,plan,execute,verify
 artifacts: <列出你实际产出的关键 .xdd/ 路径，逗号分隔>
 test_result: <跑 node --test 的真实数字，如 "3 passed / 0 failed">
 run_evidence: <如 "curl localhost:PORT/api/hello -> 200 {msg:hello, xdd}">

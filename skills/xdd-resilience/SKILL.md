@@ -95,6 +95,8 @@ description: |
 
 **目标**：至少选 5 个模式，大项目选 8+（必含业务对账 + 业务幂等）。
 
+**标签格式规约**：failsafe-design 每个兜底条目用 `@failure-mode-FXX`（**连字符，连写**，与 chaos-scenarios 一致），指向它兜底的失败模式。禁止空格分写（`@failure-mode FXX` ❌ → `@failure-mode-FXX` ✅），否则韧性覆盖率 grep 会漏匹配。
+
 ### 4. 混沌场景（@chaos Gherkin）
 
 `chaos-scenarios.md` 把高优先级失败模式翻译成可执行 Gherkin。强制标签：`@chaos` + `@failure-mode-FXX` + `@P0/@P1` + `@covers-RXX`。Gherkin 语法/具体值写法 → 详见 `xdd-gherkin-plus` skill。

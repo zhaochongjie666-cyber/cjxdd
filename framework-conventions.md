@@ -24,7 +24,7 @@
 
 ### 2.2 agent 命名
 - 全部带 `xdd-` 前缀（walker / orchestrator）；phase 子 agent 用 `phase-` 前缀
-- 8 个：`xdd-walker` / `xdd-orchestrator` / `phase-{understand,design,resilience,plan,build,verify}`
+- 8 个：`xdd-walker` / `xdd-orchestrator` / `phase-{brainstorm,design,resilience,plan,build,verify}`
 - 旧的 `xdd-walker-pi` 已合并进 `xdd-walker`（hook 删除后差异塌缩）；旧 8 个 phase 子 agent 已归档
 
 ### 2.3 skill 结构约定（「工作方式在前」）

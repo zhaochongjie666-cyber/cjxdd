@@ -33,15 +33,20 @@ description: |
 
 所有状态名、产物名、角色名、错误原因必须与以下来源一致，未知标"待确认"，不编造：
 
-1. `.xdd/design/design.md` + `intent.md`（意图、术语、范围）
-2. `.xdd/design/architecture/{bxx-slug}/flow.mermaid`（组件名、外部系统、产物流向，若已有）
+1. `.xdd/design/design.md` + `intent.md`（意图锚，字段映射见下）
+2. `.xdd/design/architecture/{bxx-slug}/flow.mermaid`（组件名、外部系统、产物流向；**仅 iter-2+ 变更回读**，首次全链路此文件不存在）
 3. 当前代码 / 用户材料（API 名、状态枚举、错误码、存储对象）
 
 ## 怎么做
 
 ```
 work():
-  1. INPUT: 读 design.md + intent.md，提取业务意图、术语、范围、角色
+  1. INPUT: 读 design.md + intent.md，按字段映射提取（**显式指针**，非笼统"提取意图"）：
+       intent.md「1 句话定位」「成功标准」「非目标」 → 本业务线规则的目标边界
+       design.md「Selected」   → 做什么（转正向 Scenario）
+       design.md「Out of Scope」→ 不做什么（转约束/边界）
+       design.md「Assumptions」→ 前置假设（转 Given/前置条件）
+       design.md「Open Questions」→ 待定项（标 TODO，不编规则）
   2. ACT:   按 BXX 拆规则，每条业务规则 = 一个 RXX（编号见下）
   3. ACT:   每条 RXX 写一个 Feature（Background + 正向 Scenario + Scenario Outline + 异常 Scenario）
      GATE:  find .xdd/design/spec/{bxx-slug} -name '*.feature' | wc -l >= RXX 数（每 RXX ≥1 文件）
@@ -122,7 +127,7 @@ Feature: [业务能力] — [核心价值]    @covers-R01
 
 **约束**：
 - 每条 RXX 至少 1 个 `*.feature` 覆盖（空规则 = 漏验收）
-- RXX 编号全局唯一，跨业务线不重号（用 BXX 前缀分组：B01-R01）
+- RXX 编号：业务线内裸 `R01`；跨业务线/全局表带 `BXX` 前缀（`B01-R01`）。详见 `docs/BXX.md` §1.1 前缀裁决
 - 改一条 RXX → 通知 plan + code（改下游追溯链）
 
 ## 业务线分组（多业务线项目）

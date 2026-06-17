@@ -39,19 +39,19 @@ description: |
 ### Step 2：证据补全（反推 spec + intent）
 
 按业务线反推规则锚：
-- `Read` 分析代码逻辑，推断业务规则（RXX），按 `BXX-RXX` 编号（如 `B01-R01`，见 `docs/BXX.md` §1）
+- `Read` 分析代码逻辑，推断业务规则（RXX），前缀规则见 `docs/BXX.md` §1.1：业务线内可裸 `R01`，跨业务线/INDEX/全局表必须带 `BXX-R01`
 - 产出 `.xdd/design/spec/{bxx-slug}/rules.md` + `*.feature`（反推版）。Gherkin 语法/具体值写法 → 详见 `xdd-gherkin-plus` skill。
 - 产出 `.xdd/design/intent.md`（从代码行为 + `git log` 推断意图）
 
 ### Step 3：追溯建立（补 @implements + INDEX）
 
 给代码补追溯标注，让代码→RXX→design 闭环：
-- **推断 @implements**：`Read` 每段代码，判断它实现哪条 RXX，补 `@implements BXX-RXX` 注释
-- **生成 INDEX**：`Grep -rn '@implements'` 收集所有标注，手写 `.xdd/design/INDEX.md`（RXX → 代码位置 反查表）
+- **推断 @implements**：`Read` 每段代码，判断它实现哪条 RXX，补 `@implements RXX` 注释（业务线内裸 `R01`）
+- **生成 INDEX**：`Grep -rn '@implements'` 收集所有标注，手写 `.xdd/design/INDEX.md`（INDEX 是跨业务线全局表，行内 RXX **必须带 BXX**：`B01-R01`）
 - **双向校验**：
-  - 正向：每条 RXX（spec）都有代码 `@implements`？（`Grep '@implements BXX-RXX'` 计数对照 rules.md 的 RXX 数）
+  - 正向：每条 RXX（spec）都有代码 `@implements`？（`Grep '@implements'` 计数对照 rules.md 的 RXX 数）
   - 反向：每段 `@implements` 指向的 RXX 在 spec 里真存在？（无悬空标注）
-  - 规则前缀用 **BXX**（如 `B01`），不是目录名 `B01-auth`（目录名含 slug，规则编号不含）
+  - 规则前缀：单业务线可裸 `R01`；多业务线的 INDEX 行必须带 `B01-R01`
 
 ## 与正向流程的衔接
 
@@ -69,7 +69,7 @@ elif 要补追溯:
 □ 反推了 architecture（模块/端点/状态机）？arch/{bxx-slug}/architecture.md + flow.mermaid 在
 □ 反推了 spec（RXX 规则 + Gherkin）？spec/{bxx-slug}/rules.md + *.feature 在
 □ 反推了 intent（项目意图）？design/intent.md 在
-□ 代码补了 @implements BXX-RXX 标注？Grep '@implements' 有命中
+□ 代码补了 @implements RXX 标注？Grep '@implements' 有命中
 □ 生成了 INDEX（RXX ↔ 代码 双向）？design/INDEX.md 在
 □ 双向校验通过：无悬空 @implements / 无裸 RXX（每条 RXX 有代码）？
 □ 缺口清单输出：哪些 RXX 无代码 / 哪些代码无 RXX？

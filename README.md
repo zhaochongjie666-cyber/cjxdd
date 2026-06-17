@@ -76,7 +76,7 @@ cjxdd/                          # xdd framework 仓库自身
 ├── agents/                     # 8 个 agent（平台中立）
 │   ├── xdd-walker.md           # 单工匠主入口（默认，中小项目）
 │   ├── xdd-orchestrator.md     # 多 agent 编排主调度（大项目用）
-│   └── phase-{understand,design,resilience,plan,build,verify}.md  # 6 子 agent 映射三层
+│   └── phase-{brainstorm,design,resilience,plan,build,verify}.md  # 6 子 agent 映射三层
 ├── skills/                     # 17 个 skill（设计5 + 桥接1 + 代码4 + 入口1 + 工具6）
 │   ├── xdd-init/               # 入口：生成 .xdd/ 骨架
 │   ├── xdd-brainstorm/         # 设计·意图锚（intent.md + design.md）

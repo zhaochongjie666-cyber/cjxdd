@@ -126,6 +126,8 @@ work():
 
 ````markdown
 ### Task N: [行为路径]
+# ↑ N = T 编号（ACK T 区索引）。task 按本文件出现顺序自然编号 T1/T2...，全局唯一。
+# 多业务线时 T 编号在各自 plan/{bxx-slug}/plan.md 内独立（ACK T 区配合 status.md 活跃 slug 定位）。
 
 **Depends on:** Task X
 **回指 RXX:** R01,R03

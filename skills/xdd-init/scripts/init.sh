@@ -208,16 +208,8 @@ cat > ".xdd/runs/iter-$ITER/status.md" <<EOF
 EOF
 
 # goals.md（本 iter 的高层目标清单，per-iter；ACK 的 G 区指向下表 G 编号）
-cat > ".xdd/runs/iter-$ITER/goals.md" <<EOF
-# Goals — iter-$ITER
-
-> 本 iter 要达成的高层目标。**动态追加**（用户/AI 提一条加一条）。
-> ACK 的 G 区指向下表 G 编号（高层目标）；T 区指向 plan task（见 plan/{bxx-slug}/plan.md，goal 的 TDD 分解）。
-
-| G | 目标 | 状态 | 来源 |
-|---|------|------|------|
-| G1 | （示例，替换为你的目标） | ⏳ | 用户 prompt |
-EOF
+# 从 template 复制（G 编号由 xdd-brainstorm 生成分配）
+sed "s/{iter}/$ITER/g" "$TEMPLATES_DIR/goals.md" > ".xdd/runs/iter-$ITER/goals.md"
 
 # === inject 段：WORKFLOW.md + rules/ + AGENTS.md/CLAUDE.md pointer ===
 inject_xdd_section() {
