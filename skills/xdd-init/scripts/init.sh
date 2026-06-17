@@ -207,6 +207,18 @@ cat > ".xdd/runs/iter-$ITER/status.md" <<EOF
 - 自检: —
 EOF
 
+# goals.md（本 iter 的高层目标清单，per-iter；ACK 的 t 区指向下表 G 编号）
+cat > ".xdd/runs/iter-$ITER/goals.md" <<EOF
+# Goals — iter-$ITER
+
+> 本 iter 要达成的高层目标。**动态追加**（用户/AI 提一条加一条）。
+> ACK 的 t 区指向下表 G 编号。比 plan task 更高层、更松散 —— plan task 是 goal 的 TDD 分解（见 plan/{bxx-slug}/plan.md）。
+
+| G | 目标 | 状态 | 来源 |
+|---|------|------|------|
+| G1 | （示例，替换为你的目标） | ⏳ | 用户 prompt |
+EOF
+
 # === inject 段：WORKFLOW.md + rules/ + AGENTS.md/CLAUDE.md pointer ===
 inject_xdd_section() {
   echo
@@ -238,6 +250,16 @@ inject_xdd_section() {
       echo "✓ .xdd/rules/frontend.rules (首次生成)"
     else
       echo "→ .xdd/rules/frontend.rules 已存在，跳过"
+    fi
+  fi
+
+  # 2b. workflows.md（用户文件，ACK w 区索引源；已存在不覆盖）
+  if [ -f "$TEMPLATES_DIR/workflows.md" ]; then
+    if [ ! -f .xdd/workflows.md ]; then
+      cp "$TEMPLATES_DIR/workflows.md" .xdd/workflows.md
+      echo "✓ .xdd/workflows.md (首次生成，ACK w 区索引源)"
+    else
+      echo "→ .xdd/workflows.md 已存在，跳过（用户文件保护）"
     fi
   fi
 
@@ -290,9 +312,10 @@ self_check() {
   echo
   echo "=== 自检 ==="
   local ok=0
-  for f in .xdd/current-iteration .xdd/WORKFLOW.md \
+  for f in .xdd/current-iteration .xdd/WORKFLOW.md .xdd/workflows.md \
            .xdd/design/intent.md .xdd/design/design.md .xdd/design/notes \
-           ".xdd/runs/iter-$ITER/status.md" ".xdd/runs/iter-$ITER/plan" ".xdd/runs/iter-$ITER/audits"; do
+           ".xdd/runs/iter-$ITER/status.md" ".xdd/runs/iter-$ITER/goals.md" \
+           ".xdd/runs/iter-$ITER/plan" ".xdd/runs/iter-$ITER/audits"; do
     if [ -e "$f" ]; then
       echo "  ✅ $f"
     else

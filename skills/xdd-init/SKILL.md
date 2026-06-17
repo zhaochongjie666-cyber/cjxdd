@@ -52,6 +52,7 @@ bash skills/xdd-init/scripts/init.sh
 ```
 .xdd/
 ├── WORKFLOW.md                ← 工作流指南（cp 模板，AI 必读）
+├── workflows.md               ← 工作流清单（ACK w 区索引源，首次生成，用户可改）
 ├── rules/                     ← 项目规则模板（首次生成，用户可改）
 │   ├── backend.rules          ← 后端约定（分层/错误码/auth/测试）
 │   └── ui-ux.rules            ← 前端 UI/UX 约定（4 级 + 10 反模式）
@@ -67,6 +68,7 @@ bash skills/xdd-init/scripts/init.sh
 ├── runs/                      ← 【迭代层】单轮工作记录（每 iter 一份）
 │   └── iter-N/
 │       ├── status.md          ← 本 iter 进度（3 层 × 业务线，✅/⏳）
+│       ├── goals.md           ← 本 iter 高层目标清单（ACK t 区索引源，动态追加）
 │       ├── plan/{bxx-slug}/          ← 本 iter 的 TDD task DAG（xdd-plan 填）
 │       └── audits/            ← 本 iter 的 PoC / arch-audit
 └── current-iteration          ← "iter-N"（根级指针，找活跃 iter）
@@ -79,7 +81,9 @@ bash skills/xdd-init/scripts/init.sh
 
 **design/ vs runs/ 二分**：`design/` 是持久锚（review 基准，跨 iter 保留）；`runs/iter-N/` 是单轮工作记录（plan/报告/审计，iter 间不覆盖）。`--iter N+1` 时旧 iter 原地保留作历史。
 
-**inject 到用户文件**：若项目根已有 `AGENTS.md` / `CLAUDE.md`，init 在文件开头注入一段用 `<!-- xdd:start -->` / `<!-- xdd:end -->` 包裹的 pointer（Personality 留空段 + XDD/Backend/UI-UX/recap 指向 `.xdd/`）。**全新空仓库**（两者都没有）时，init 建一个最小 `CLAUDE.md` 再注入——让全局 rule + ACK 在入口就落地。
+**inject 到用户文件**：若项目根已有 `AGENTS.md` / `CLAUDE.md`，init 在文件开头注入一段用 `<!-- xdd:start -->` / `<!-- xdd:end -->` 包裹的 pointer（全局 rule + ACK v2 定义 + Backend/UI-UX/recap 指向 `.xdd/`）。**全新空仓库**（两者都没有）时，init 建一个最小 `CLAUDE.md` 再注入——让全局 rule + ACK 在入口就落地。
+
+**ACK v2**（注入块里定义）：每次回复开头带 `%>R{规则} t{任务} w{工作流}%`，把「守哪些 rule / 干哪个 goal / 走哪步 workflow」加载进工作内存、集中注意力。三区索引源：R→本文件 rule 1-5；t→`runs/iter-N/goals.md` 的 G 编号；w→`.xdd/workflows.md` 的 W 编号。**人肉检测面**：用户扫回复开头对得上 = 在轨，不配脚本校验（ACK 是瞬时对话流、不落盘）。
 
 **砍掉的旧产物**（深度重构）：`scale.md`（不再 scale 降级，默认就做扎实）、`xdd-schema.json`（曾是闸门单一源真理，无闸门则不需要）、`gates/`（control_marker 目录）、5-marker 状态机（⏳/🔄/✅/❌/🚧 → 简化 ✅/⏳）。
 
@@ -131,7 +135,9 @@ bash skills/xdd-init/scripts/init.sh
 | 文件不存在（全新空仓库 + AGENTS.md/CLAUDE.md 都缺）| 建最小 `CLAUDE.md`（让全局 rule + ACK 落地）|
 | 文件不存在（iter 迁移 / 已有项目）| 跳过（不创建用户文件）|
 | `rules/*.rules` 已存在 | 跳过（用户改过的保护）|
+| `workflows.md` | 首次生成（ACK w 区索引源）；已存在跳过（用户文件保护）|
 | `WORKFLOW.md` | 每次覆盖（framework 维护，非用户文件）|
+| `runs/iter-N/goals.md` | 每次 init 新 iter 都生成（per-iter，ACK t 区索引源）|
 
 ## 入口路由判定（init 的入口职责）
 
