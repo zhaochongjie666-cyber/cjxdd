@@ -100,7 +100,7 @@ for each BXX:
 
 walker 每切换一层就更新 `.xdd/runs/iter-N/status.md`：上一层 ✅，下一层 ⏳，更新"当前层 / 本层必读 / 上游指针"。让 status.md 替模型记，不靠脑子。
 
-**ACK 索引源**：回复开头的 ACK `%>R.. t.. w..%` 三区指向 —— R 指本仓库的全局 rule；t 指 `.xdd/runs/iter-N/goals.md` 的 G 编号；w 指 `.xdd/workflows.md` 的 W 编号。status.md 仍是 walker 进度内存，goals.md / workflows.md 是 ACK 的索引源（职责不同，不混）。
+**ACK 索引源**：回复开头的 ACK `%>R.. G.. T.. W..%` 四区指向 —— R 指本仓库的全局 rule；G 指 `.xdd/runs/iter-N/goals.md` 的 G 编号；T 指 `runs/iter-N/plan/{bxx-slug}/plan.md` 的 task 编号；W 指 `.xdd/workflows.md` 的 W 编号。status.md 仍是 walker 进度内存，goals.md / plan.md / workflows.md 是 ACK 的索引源（职责不同，不混）。
 
 ## 6. 单工匠 vs 多 agent
 

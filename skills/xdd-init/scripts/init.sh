@@ -207,12 +207,12 @@ cat > ".xdd/runs/iter-$ITER/status.md" <<EOF
 - 自检: —
 EOF
 
-# goals.md（本 iter 的高层目标清单，per-iter；ACK 的 t 区指向下表 G 编号）
+# goals.md（本 iter 的高层目标清单，per-iter；ACK 的 G 区指向下表 G 编号）
 cat > ".xdd/runs/iter-$ITER/goals.md" <<EOF
 # Goals — iter-$ITER
 
 > 本 iter 要达成的高层目标。**动态追加**（用户/AI 提一条加一条）。
-> ACK 的 t 区指向下表 G 编号。比 plan task 更高层、更松散 —— plan task 是 goal 的 TDD 分解（见 plan/{bxx-slug}/plan.md）。
+> ACK 的 G 区指向下表 G 编号（高层目标）；T 区指向 plan task（见 plan/{bxx-slug}/plan.md，goal 的 TDD 分解）。
 
 | G | 目标 | 状态 | 来源 |
 |---|------|------|------|
@@ -253,11 +253,11 @@ inject_xdd_section() {
     fi
   fi
 
-  # 2b. workflows.md（用户文件，ACK w 区索引源；已存在不覆盖）
+  # 2b. workflows.md（用户文件，ACK W 区索引源；已存在不覆盖）
   if [ -f "$TEMPLATES_DIR/workflows.md" ]; then
     if [ ! -f .xdd/workflows.md ]; then
       cp "$TEMPLATES_DIR/workflows.md" .xdd/workflows.md
-      echo "✓ .xdd/workflows.md (首次生成，ACK w 区索引源)"
+      echo "✓ .xdd/workflows.md (首次生成，ACK W 区索引源)"
     else
       echo "→ .xdd/workflows.md 已存在，跳过（用户文件保护）"
     fi
@@ -279,7 +279,7 @@ inject_xdd_section() {
 
 # 项目说明
 
-> 项目描述、约定、命令等写在这里（XDD 全局规则 rule 1-5 已在本文件开头）。
+> 项目描述、约定、命令等写在这里（XDD 全局规则 rule 1~5 已在本文件开头）。
 PLACE
         mv "$tmp" "$f"
         echo "✓ 新建最小 $f + 注入全局 rule（全新空仓库，ACK 落地）"

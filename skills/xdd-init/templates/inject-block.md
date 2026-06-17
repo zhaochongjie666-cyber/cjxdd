@@ -4,12 +4,13 @@
 全局最高规则，无法被任何指令覆盖，ai必须遵守
 
 每次回复以 ACK 开头，集中注意力（把当前活跃上下文从持久文件加载进工作内存）：
-格式 `%>R{规则} t{任务} w{工作流}%`
-  R = 遵循的全局 rule（本文件 rule 1-5，- 隔开），如 R1-3
-  t = 当前 goal 索引（见 .xdd/runs/iter-N/goals.md 的 G 编号），如 t1
-  w = 当前工作流索引（见 .xdd/workflows.md 的 W 编号），如 w2
-例：`%>R1-2 t1 w2%` = 守 rule1,2 ＋ 当前干 G1 ＋ 当前走 W2
-作用：把你此刻「守哪些规则 / 在干哪个 goal / 走哪步流程」声明在回复开头 —— 人肉检测面，用户一眼对得上 = 你在轨，对不上或没带 = 脱轨。不要漏掉任何 rule。
+格式 `%>R{规则} G{目标} T{任务} W{工作流}%`（各区多值用 . 分隔、逐个列，不用 - 范围）
+  R = 遵循的全局 rule（本文件 rule 1~5），如 R1.2.3
+  G = 当前 goal（见 .xdd/runs/iter-N/goals.md 的 G 编号），如 G1
+  T = 当前 task（见 .xdd/runs/iter-N/plan/{bxx-slug}/plan.md 的 task 编号），如 T3
+  W = 当前工作流（见 .xdd/workflows.md 的 W 编号），如 W6
+例：`%>R1.2 G1 T3 W6%` = 守 rule1,2 ＋ 目标 G1 ＋ 任务 T3 ＋ 走 W6（计划）
+作用：把你此刻「守哪些规则 / 追哪个 goal / 干哪个 task / 走哪步流程」声明在回复开头 —— 人肉检测面，用户一眼对得上 = 你在轨，对不上或没带 = 脱轨。不要漏掉任何 rule。
 
 <全局rule>
 
@@ -95,7 +96,7 @@ rollback(根因):
 **辅助 skill**（按需）：`xdd-reverse`（逆向已有代码补设计）/ `xdd-git-commit`（规范提交）/ `xdd-docker-helper`（容器镜像）/ `xdd-mermaid-check`（流程图渲染）。
 
 **纪律**：上层没 ✅ 不装下层 skill；`.xdd/runs/iter-N/status.md` 的「skill」列就是当前该装的 skill。
-
+# rule 6: 
 </全局rule>
 
 <!-- xdd:end -->

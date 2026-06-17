@@ -1,6 +1,6 @@
-# Workflows — 工作流清单（ACK w 区索引源）
+# Workflows — 工作流清单（ACK W 区索引源）
 
-> 回复开头的 ACK `%>R.. t.. w..%` 的 **w 区**指向下表 W 编号。
+> 回复开头的 ACK `%>R.. G.. T.. W..%` 的 **W 区**指向下表 W 编号。
 > 默认列 XDD 8 节点；项目可自定义组合 —— **改本文件 = 改本项目认可的工作流**。
 
 | W | 工作流 | skill | 产出 |
@@ -14,7 +14,7 @@
 | W7 | 实现 | xdd-execute | 代码 @implements RXX |
 | W8 | 验证 | xdd-verify | verify-report.md |
 
-<!-- 自定义工作流组合（可选）：在下追加项目专属流程，ACK 的 w 区就能指到，如
+<!-- 自定义工作流组合（可选）：在下追加项目专属流程，ACK 的 W 区就能指到，如
 | W9 | 安全扫描 | （自定义）| security-report.md |
 | W10 | 性能压测 | （自定义）| perf-report.md |
 -->
