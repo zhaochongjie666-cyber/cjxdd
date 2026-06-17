@@ -27,40 +27,31 @@ description: |
 
 **发散前分两步：先把设计文档完完整整读完建立整个概念，再带着概念读代码查方案去核对。** 信息不全就发散 = 重发明 + 偏离现状。任何 iter 都做（iter-1 读用户材料；iter-2+ 读上轮全部产物）。
 
-#### 第一步：读完全部设计文档（建立整体概念，不读完不进第二步）
+#### 第一步：机械遍历，读完全部设计文档（不许凭感觉跳，不许"读几个觉得够了"）
 
-**设计文档（.xdd/design/ + .xdd/rules/）必须完完整整全部读完**，先在脑子里建立项目的整个概念——为什么做、有哪些业务线、规则/架构/事件/模块/前端/韧性各是什么、约定是什么。**不读完不许进行第二步**，因为没整体概念就读代码，方向必偏。
+**这是硬规则，不是"应该读全"。** 不靠理解、不靠判断"我掌握了没"——**遍历 + 逐个读 + 列清单核查**，三步机械执行，无脑照做：
 
-按存在性逐类读（缺的标"本轮要补"，但不能跳过整类）：
+**① 遍历**：先 glob 列出所有该读的文件，拿到完整文件清单（不知道有多少文件就读不准，必须先列出来）：
 
 ```
-【项目层·意图与决策】
-.xdd/design/intent.md                          # 项目意图（为什么做）
-.xdd/design/design.md                          # 收敛决策（做什么/不做什么/全局决策）
-.xdd/runs/iter-N/goals.md                      # 本 iter 目标 + G 编号
+遍历这两个目录下的所有文件（含子目录，递归）:
+  .xdd/design/**/*        # 全部设计产物（spec/architecture/wire/resilience/...，所有 {bxx-slug} 子目录）
+  .xdd/rules/**/*         # 全部项目约定（backend/frontend/ui-ux.rules）
+加 .xdd/runs/iter-N/goals.md   # 本 iter 目标
 
-【业务线层·现有规则与结构】
-.xdd/design/spec/_landscape.md                 # 业务线全景（有哪些业务线）
-.xdd/design/spec/{bxx-slug}/business.md        # 各业务线目标/范围/术语
-.xdd/design/spec/{bxx-slug}/rules.md           # 现有 RXX 规则（现有业务行为）
-.xdd/design/spec/{bxx-slug}/*.feature          # Gherkin 验收场景
-.xdd/design/architecture/{bxx-slug}/architecture.md   # 架构决策/技术栈/端点
-.xdd/design/architecture/{bxx-slug}/flow.mermaid       # 流程/组件/数据流
-
-【全局·跨业务线契约】
-.xdd/design/architecture/aggregate-landscape.md  # 聚合全景（现有领域模型）
-.xdd/design/architecture/event-contract.md       # 事件契约（现有服务间协作）
-.xdd/design/architecture/module-landscape.md     # 模块全景（基础建设/依赖方向）
-
-【前端与韧性】
-.xdd/design/wire/{page}/                         # 现有页面/交互/状态态
-.xdd/design/architecture/{bxx-slug}/resilience/  # 现有失败模式/兜底
-
-【项目约定】
-.xdd/rules/backend.rules / frontend.rules / ui-ux.rules   # 项目编码/设计约定
+用 Glob 工具（或 find）把上面每个文件的路径列出来，得到一个完整的待读清单。
+列出来的文件数 = 你这步必须读的数量，少读一个都不算完成。
 ```
 
-**读完第一步，你应该能回答**：项目为什么存在？有几条业务线、各自目标？现有规则/架构/事件/模块/前端的全貌？项目约定是什么？答不上 = 没读全，回去读。
+**② 逐个读**：对清单里**每一个文件**，逐个 Read 全文。**不许跳过任何一个**，哪怕你觉得"这个文件不重要/我已经知道了"——凭感觉跳 = 偷懒，正是要消灭的。读完一个划掉一个，直到清单清空。
+
+**③ 核查**：把**实际读过的每个文件路径**列进 recap 的「已读文件清单」段（见下）。**列出的路径数必须 = ①遍历到的文件数**。对不上 = 偷懒漏读了，回去补。
+
+> **为什么要机械遍历而不是"按类别读"**：按类别读（"我读了 spec 类、架构类..."）会被钻空子——AI 看了类别就觉得"这类我懂了"，跳过该类下的具体文件。机械遍历把"读全"变成可数任务：文件清单 23 个，你就得 Read 23 次，recap 列 23 条路径。**少一个都对不上，没法自欺**。这是强迫读完的唯一可靠方式。
+
+> **iter-1 全新项目**：`.xdd/design/` 可能只有 init 占位（intent.md/design.md 空模板）。仍遍历读（确认是空的），主要信息来自用户材料（prompt/附件），把这些也列进清单。
+
+读完第一步，你应该能回答：项目为什么存在？有几条业务线、各自目标？规则/架构/事件/模块/前端/约定全貌？答不上 = 没读全，**对照 recap 的文件清单查哪个没读**，回去读。
 
 #### 第二步：带着设计概念，去读代码、查代码、查方案（核对而非建立概念）
 
@@ -81,6 +72,16 @@ description: |
 
 ```markdown
 # 现状 recap
+
+## 已读文件清单（第一步硬核查——路径数必须 = 遍历到的文件数）
+遍历 .xdd/design/ + .xdd/rules/ + goals.md 共 N 个文件，逐个读完：
+1. .xdd/design/intent.md
+2. .xdd/design/design.md
+3. .xdd/design/spec/B01-auth/business.md
+4. .xdd/design/spec/B01-auth/rules.md
+... （每个实际读过的文件路径全列，不许省略）
+N. .xdd/rules/backend.rules
+→ 列出 N 条 = 遍历 N 个，对得上才算第一步完成。漏列/对不上 = 偷懒，回去补读。
 
 ## 前因后果
 - 项目为什么存在 / 要解决什么 / 历史怎么走到现在（从 intent + git log）
@@ -106,7 +107,7 @@ description: |
 ```
 
 **自检（两步顺序，缺一不可）**：
-- **第一步**：.xdd/design/ + .xdd/rules/ 全部设计文档完完整整读完了？能答出"项目全貌/业务线/规则架构事件模块前端/约定"？（没读全/答不上 = 回去读，别进第二步）
+- **第一步硬核查**：recap「已读文件清单」列的路径数 = 你 glob 遍历到的文件数？（**对不上 = 偷懒漏读，回去补，不许进第二步**。不是"我觉得读全了"，是文件数对得上才算。）
 - **第二步**：带着设计概念读了代码、查了方案核对？脱节标了裁决？
 - recap 写清了前因后果 + 现有设计 + 现有业务 + 脱节 + 本轮增量？
 
