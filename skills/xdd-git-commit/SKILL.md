@@ -1,6 +1,6 @@
 ---
 name: xdd-git-commit
-description: >
+description: |
   生成 Conventional Commits 规范的 git commit 并提交. 分析已暂存(staged)的改动,
   自动推断 type/scope/描述, 组装规范的 commit message, 然后执行 git commit.
   触发: 提交代码、commit、写个 commit、帮我提交、生成 commit message、
@@ -9,6 +9,8 @@ description: >
 ---
 
 # Git Commit — Conventional Commits 规范提交助手
+
+## 何时用
 
 > **何时用本 skill**：用户想提交代码（已 `git add` 或让我一起暂存），需要一条规范的 commit message。
 > **何时不该用**：用户只是想看 diff 不提交（直接 `git diff` 即可）；或想撤销/回滚提交（那是另一个动作）。
@@ -196,7 +198,7 @@ chore: bump dependencies and update CI matrix
 - **用户在 Meta 仓库（如本 framework 自身 `cjxdd`）** → 遵守该仓库的 commit 约定。如 `AGENTS.md` 规定的 `Co-Authored-By` footer，按规矩加，不要漏。
 - **husky / pre-commit hook 失败** → 把 hook 输出原样给用户，不要绕过（如 `--no-verify`）。修问题，不是绕检查。
 
-## 自检：平台中立
+## 自检
 
 本 skill 只依赖 `git` 标准命令（`diff` / `status` / `add` / `commit` / `log`），无平台 hook / plugin / 平台专属命令。
 

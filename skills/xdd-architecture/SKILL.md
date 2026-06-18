@@ -206,7 +206,7 @@ description: |
 
 **全局独立产出**（非 colocation，跨业务线）：`aggregate-landscape.md`（聚合全景）+ `event-contract.md`（事件契约）+ `module-landscape.md`（模块全景：base 基础建设 + 业务上下文 + 依赖矩阵，见 §13）。
 
-## 自检（无平台 hook）
+## 自检
 
 ```
 □ 质量属性场景 3-5 个，每个有响应度量？

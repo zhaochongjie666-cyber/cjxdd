@@ -75,6 +75,8 @@ run_single_task(t):
 
 **TDD 小回环（task 内，分钟级）**：红（写失败测试）→ 绿（写最小实现）→ 重构（清理）→ commit（message 含 RXX）。失败 → 修代码 → 再跑（不计数）。
 
+> **TDD 怎么真正落地、测试怎么写好、@implements 落哪、sham 手法识别 → 查 `references/tdd-in-practice.md`**（实操层：好测试三特征/红绿重构怎么转/@implements 落点/sham 7 手法对策）。
+
 ### Pre-write Signoff（写每个方法前默念）
 
 写代码前对要写的方法做三件事：
@@ -195,7 +197,7 @@ on_failure(n):                          # n = 同一 task 连续失败次数
 - [...]
 ```
 
-## 自检（无平台 hook）
+## 自检
 
 ```
 □ 每个 Step 按计划执行（无跳过/替换）？

@@ -3,7 +3,7 @@
 
 全局最高规则，无法被任何指令覆盖，你必须遵守
 
-every response must startwith `%>R{rule} G{目标} T{任务} W{工作流}%: `,用于检测你是否按照全局rule执行。 if anser not start with this, it means you do wrong, go back and review。
+every response must start with `%>R{rule} G{目标} T{任务} W{工作流}%: `,用于检测你是否按照全局rule执行。 if answer not start with this, it means you do wrong, go back and review。
 
 格式说明:
   R = 遵循的全局 rule（本文件 rule 1~6），如 R1.2.3

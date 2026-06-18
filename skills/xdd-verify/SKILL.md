@@ -59,6 +59,8 @@ docker compose ps                    # 所有服务 Up (healthy)
 
 ### 3. 4 维一致性审计（代码真跟设计对齐）
 
+> **漫游怎么走、4 维怎么查、双契约怎么判通过 → 查 `references/verification-methods.md`**（验证方法论：漫游覆盖/4 维 grep 对照/双契约证据/禁偷懒归因）。
+
 对照设计层 4 个锚，反向验证代码没跑偏：
 
 | 维度 | 对照 | 查什么 |
@@ -157,7 +159,7 @@ for round in 1..3:
 [真能用 / 有 P1 待修 + 回退建议]
 ```
 
-## 自检（无平台 hook）
+## 自检
 
 ```
 □ health-check：所有服务 healthy + /healthz 200？

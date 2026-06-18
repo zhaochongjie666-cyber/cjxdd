@@ -56,6 +56,8 @@ work():
 
 ## 任务粒度
 
+> **task 该拆还是合、依赖怎么排不乱、plan 怎么自查质量 → 查 `references/task-decomposition.md`**（拆解法：粒度边界判断/DAG 无环有起点/RXX 全覆盖 M==N/好计划 6 维）。
+
 **一个 task = 一个行为路径**（按行为路径拆，非按组件拆）：
 
 - "用户密码登录成功" — 一个 task
@@ -170,7 +172,7 @@ git add ... && git commit -m "feat(auth): 实现 R01 登录返回JWT"
 - 引用未在任何 task 定义的类型/函数
 - "在 XX 行后插入"而不展示完整上下文
 
-## 自检（写完逐项过）
+## 自检
 
 ```
 □ 规格覆盖：每条 RXX / 每个 Scenario 能指向一个 task？列缺口补上

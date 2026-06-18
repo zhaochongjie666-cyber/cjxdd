@@ -173,7 +173,7 @@ iter-1 完成 → init --iter 2
 # walker 第一步装 xdd-brainstorm 写 design/intent.md + design.md
 ```
 
-## 自检（init 末尾自动跑）
+## 自检
 
 ```
 □ 关键文件/目录都在（current-iteration / WORKFLOW.md / intent.md / design.md / notes/ / runs/iter-N/）？

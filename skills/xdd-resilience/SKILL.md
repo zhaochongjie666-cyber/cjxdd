@@ -157,7 +157,7 @@ Scenario: 网络分区下提交降级
 └── recovery-runbook.md      # 恢复剧本 (运维值班，具体命令)
 ```
 
-## 自检（无平台 hook，纯文字 + 可选 bash chaos-runner）
+## 自检
 
 ```
 □ failure-modes.md 每行 5 字段完整（大项目 8 字段）+ 至少 1 个 RXX/端点引用？

@@ -1,6 +1,6 @@
 ---
 name: xdd-docker-helper
-description: >
+description: |
   Docker 中国区助手 — 配置中国镜像源 (阿里云/腾讯云/中科大/网易云), 通过镜像代理拉 Docker Hub 镜像,
   基于 Ubuntu 官方镜像构建带中国 apt 源的 Dockerfile, 提供常用基础镜像的快速拉取方案.
   触发: Docker 镜像、拉取镜像、docker pull、镜像源、registry mirror、中国 Docker、dockerfile、构建镜像、apt 源、Ubuntu 镜像、基础镜像、docker mirror、docker 代理、拉不到镜像、镜像加速.
@@ -10,8 +10,8 @@ description: >
 # Docker Helper — 中国区 Docker 镜像助手
 
 > **🔗 何时自动加载本 skill**:
-> - **`shadow-scaffold` Step 3.5** — 探测到 `probe-registry.sh` 退出码 = 1 (GFW 阻断 docker.io 但 docker.1ms.run 可达) 时, **强制加载本 skill** 走代理前缀拉镜像
-> - `shadow-l5-impl` / `shadow-l6-deploy` 任何 `docker pull` 失败时
+> - **`xdd-execute` Step 0**（环境准备，docker compose up）探测到 `probe-registry.sh` 退出码 = 1 (GFW 阻断 docker.io 但 docker.1ms.run 可达) 时, 加载本 skill 走代理前缀拉镜像
+> - `xdd-execute` / `xdd-verify` 任何 `docker pull` 失败时
 > - 用户在对话中提到 "Docker 镜像"、"拉不到镜像"、"中国 Docker"、"docker 代理" 时
 
 ## 核心能力
@@ -229,4 +229,14 @@ docker system prune -f
 
 # 深度清理（包括未使用的镜像）
 docker system prune -a -f
+```
+
+## 自检
+
+```
+□ 镜像源/代理配置写进 daemon.json 了（或确定走代理前缀）？
+□ probe-registry.sh 退出码对应正确拉取策略（0 直连 / 1 代理前缀 / 2 Docker 未装 / 3 全断）？
+□ 走代理前缀拉的镜像重新打了 tag（去掉前缀，避免后续引用带前缀）？
+□ Ubuntu 基础镜像 Dockerfile 处理了新旧两种 apt 源格式（sources.list / ubuntu.sources）？
+□ 拉取失败的归因有证据链（docker pull 输出 / 网络探测），不是"网络问题"空话？
 ```

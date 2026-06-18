@@ -168,7 +168,7 @@ Feature: [业务能力] — [核心价值]    @covers-R01
     └── *.feature          ← Gherkin 验收场景，一条 RXX 一个文件
 ```
 
-## 自检（无平台 hook）
+## 自检
 
 ```
 □ 没有 UI 点击流水账？

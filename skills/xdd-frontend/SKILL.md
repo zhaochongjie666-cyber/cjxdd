@@ -28,13 +28,13 @@ work():
   1. 读栈     -> architecture.md §技术栈：前端框架/组件库/构建（如 Vue3+Element Plus+Vite）
   2. 读约定   -> .xdd/rules/frontend.rules（命名/文件结构/600行）+ ui-ux.rules（a11y/动效/设计 token）
   3. 实现     -> 按 wire 线框 + plan task：组件→方法→样式→配置拆分（TDD，commit 含 @implements RXX）
-  4. 栈检查   -> 页面渲染对照 wire 6 操作态（空/载/错/成/删/边界）/ 组件复用 / 设计 token 走 CSS 变量
+  4. 栈检查   -> 页面渲染对照 wire 6 操作态（空/载/错/成/确认/边界）/ 组件复用 / 设计 token 走 CSS 变量
   5. 行数     -> 单文件 ≤600 行；超限按 组件 / 方法 / 样式 / 配置 拆
 ```
 
 ## 前端特定关注点
 
-- **对照 wire 验渲染**：每个 wire 页面的 6 操作态（空/加载/错误/成功/确认删除/边界）都要实现到，无白屏
+- **对照 wire 验渲染**：每个 wire 页面的 6 操作态（空/加载/错误/成功/确认/边界）都要实现到，无白屏
 - **组件结构**：`.vue` 顺序 script→template→style；弹窗严禁与主页面同文件；父子组件父名前缀
 - **设计 token**：颜色/圆角/间距走 CSS 变量（`--accent`/`--radius`/`--space-*`），对照 ui-ux.rules
 - **6 态完整**：空状态、错误态、加载态不能漏（对照 wire review.md 的混淆元素 A/B/C/D 扫零）
@@ -45,7 +45,7 @@ work():
 ```
 □ frontend.rules 的命名/文件结构/600行都遵守了？
 □ 单文件 ≤600 行（超限已按 组件/方法/样式/配置 拆）？
-□ 每个 wire 页面 6 操作态（空/载/错/成/删/边界）都实现到，无白屏？
+□ 每个 wire 页面 6 操作态（空/载/错/成/确认/边界）都实现到，无白屏？
 □ 设计 token 走 CSS 变量，对照 ui-ux.rules？
 □ a11y：语义化标签、无 em-dash、可键盘操作？
 □ 组件/页面 @implements RXX，对照 wire 无混淆元素？

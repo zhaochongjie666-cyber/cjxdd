@@ -1,7 +1,8 @@
 ---
 name: xdd-skill-creator
-description: Create / edit / optimize skills. Use for: create skill from scratch, edit existing skill, run evals, benchmark variance, optimize description for better triggering accuracy.
-version: "1.1.0"
+description: |
+  Create / edit / optimize skills. Use for: create skill from scratch, edit existing skill, run evals, benchmark variance, optimize description for better triggering accuracy.
+  触发：创建 skill、编辑 skill、优化 skill、skill 评估、eval、benchmark、触发准确率、turn into a skill、make a skill、改进 skill、skill creator。
 ---
 
 # Skill Creator
@@ -26,12 +27,6 @@ create_skill():
     until user_satisfied and not has_glaring_flaws
   expand_test_set(); goto repeat                # 放大规模再试一轮
 ```
-
-Your job when using this skill is to figure out where the user is in this process and then jump in and help them progress through these stages. So for instance, maybe they're like "I want to make a skill for X". You can help narrow down what they mean, write a draft, write the test cases, figure out how they want to evaluate, run all the prompts, and repeat.
-
-On the other hand, maybe they already have a draft of the skill. In this case you can go straight to the eval/iterate part of the loop.
-
-Of course, you should always be flexible and if the user is like "I don't need to run a bunch of evaluations, just vibe with me", you can do that instead.
 
 Your job when using this skill is to figure out where the user is in this process and then jump in and help them progress through these stages. So for instance, maybe they're like "I want to make a skill for X". You can help narrow down what they mean, write a draft, write the test cases, figure out how they want to evaluate, run all the prompts, and repeat.
 
@@ -495,4 +490,4 @@ Please add steps to your TodoList, if you have such a thing, to make sure you do
 
 Good luck!
 
-> 本技能为通用工具，与 Shadow 项目兼容（不干扰 .shadow/ 工作区，不生成需要溯源的业务产物）。
+> 本技能为通用工具，不依赖 .xdd/ 工作区，不生成需要溯源的业务产物。

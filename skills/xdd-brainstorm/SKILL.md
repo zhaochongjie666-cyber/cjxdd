@@ -248,7 +248,7 @@ DDD 的起点 —— 开发和业务用同一套词，代码类名 = 业务术�
 
 模板见 `templates/intent.md` + `templates/design.md`。
 
-## 自检（无平台 hook，纯文字 + 可选 bash）
+## 自检
 
 ```
 □ intent.md 写了：1 句话定位 + 成功标准 + 非目标

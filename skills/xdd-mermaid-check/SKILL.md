@@ -4,7 +4,6 @@ description: |
   Mermaid 图表渲染验证 — 用 mermaid-cli (mmdc) 验证 .xdd/design/architecture/{bxx-slug}/flow.mermaid 能否正确渲染为 SVG。
   xdd-architecture 的结构锚配套验证工具（流程图画完必跑）。适用任何 Mermaid 语法验证场景。
   触发：检查 mermaid、验证流程图、mermaid 检查、mmdc 验证、mermaid 渲染检查、flow 渲染验证。
-version: "1.2.0"
 ---
 
 # Mermaid Check — 流程图渲染验证
@@ -15,12 +14,9 @@ version: "1.2.0"
 
 不做业务设计、不修改任何文件，只输出 PASS/FAIL 验证结果。
 
-## 前置条件
-
-- 安装 mermaid-cli：`npm install -g @mermaid-js/mermaid-cli`
-- 或通过环境变量指定：`MMDC=/path/to/mmdc`
-
 ## 怎么做
+
+> 前置：需 mermaid-cli（`npm install -g @mermaid-js/mermaid-cli`），或用环境变量 `MMDC=/path/to/mmdc` 指定。
 
 ### 首次执行
 
