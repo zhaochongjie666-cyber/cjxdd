@@ -18,7 +18,7 @@ description: |
 |---|---|
 | **上游** | `xdd-brainstorm` 的 design.md（意图 + 决策） |
 | **我产出** | `spec/_landscape.md` + `{bxx-slug}/business.md` + `{bxx-slug}/rules.md`(RXX) + `{bxx-slug}/*.feature` |
-| **下游消费者** | `xdd-architecture`（每条规则映射到层/端点）、`xdd-plan`（规则拆 task）、`xdd-verify`（Gherkin 验收） |
+| **下游消费者** | `xdd-architecture`（每条规则映射到层/端点）、`xdd-wire`（Feature 里的页面名/交互/角色）、`xdd-resilience`（.feature 行为基线，找反面）、`xdd-plan`（规则拆 task）、`xdd-verify`（Gherkin 验收） |
 | **回溯锚** | RXX 规则编号 —— plan 的每个 task、代码的每处 `@implements RXX` 都指回这里 |
 
 > **怎么把意图拆成规则、规则粒度多大、异常路径怎么穷举 → 查 `references/rule-design.md`**（规则设计方法）。Gherkin 语法 → `xdd-gherkin-plus`。

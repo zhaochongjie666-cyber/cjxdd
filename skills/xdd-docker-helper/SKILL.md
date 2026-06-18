@@ -9,12 +9,14 @@ description: |
 
 # Docker Helper — 中国区 Docker 镜像助手
 
-> **🔗 何时自动加载本 skill**:
-> - **`xdd-execute` Step 0**（环境准备，docker compose up）探测到 `probe-registry.sh` 退出码 = 1 (GFW 阻断 docker.io 但 docker.1ms.run 可达) 时, 加载本 skill 走代理前缀拉镜像
-> - `xdd-execute` / `xdd-verify` 任何 `docker pull` 失败时
-> - 用户在对话中提到 "Docker 镜像"、"拉不到镜像"、"中国 Docker"、"docker 代理" 时
+## 何时用
 
-## 核心能力
+**何时加载本 skill**：
+- **`xdd-execute` Step 0**（环境准备，docker compose up）探测到 `probe-registry.sh` 退出码 = 1 (GFW 阻断 docker.io 但 docker.1ms.run 可达) 时，走代理前缀拉镜像
+- `xdd-execute` / `xdd-verify` 任何 `docker pull` 失败时
+- 用户提到 "Docker 镜像"、"拉不到镜像"、"中国 Docker"、"docker 代理" 时
+
+本 skill 提供 4 类能力：
 
 1. **镜像源配置** — 检测当前环境，配置最优的中国区 Docker Registry 镜像源
 2. **镜像代理拉取** — 通过可用的镜像代理拉取 Docker Hub 镜像

@@ -17,7 +17,7 @@ description: |
 
 | | |
 |---|---|
-| **上游** | `xdd-execute`（代码 + 测试）+ 全部设计层锚（spec RXX / architecture / wire / resilience） |
+| **上游** | `xdd-execute`（代码 + 测试）+ 全部设计层锚：`xdd-spec`（RXX）、`xdd-architecture`（端点/结构）、`xdd-wire`（页面）、`xdd-resilience`（兜底） |
 | **我产出** | 验证报告（health-check + wander-test + 4 维一致性审计 + chaos-drill + 双契约）|
 | **回溯锚** | 验证对照 spec 的每条 RXX 是否真落进代码、对照 architecture 的端点是否真起来 |
 

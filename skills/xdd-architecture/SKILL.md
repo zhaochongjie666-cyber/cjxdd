@@ -18,7 +18,7 @@ description: |
 |---|---|
 | **上游** | `xdd-brainstorm`(design.md) + `xdd-spec`(RXX 规则) |
 | **我产出** | `{bxx-slug}/architecture.md` + `flow.mermaid` + `docker-compose*.yml`；全局 `aggregate-landscape.md` + `event-contract.md` |
-| **下游消费者** | `xdd-plan`（端点/聚合/事件 → task）、`xdd-execute`（文件清单 + 端点契约）、`xdd-resilience`（ODD 失败模型是韧性种子） |
+| **下游消费者** | `xdd-plan`（端点/聚合/事件 → task）、`xdd-resilience`（ODD 失败模型是韧性种子）、`xdd-verify`（端点清单做 architecture↔code 审计） |
 | **回溯锚** | 每个端点标 `@flow BXX-NYY` + `@rules RXX`，每个技术选型标 `@intent` |
 
 ## ADD 思维链

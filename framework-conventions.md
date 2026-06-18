@@ -28,14 +28,41 @@
 - 旧的 `xdd-walker-pi` 已合并进 `xdd-walker`（hook 删除后差异塌缩）；旧 8 个 phase 子 agent 已归档
 
 ### 2.3 skill 结构约定（「工作方式在前」）
-- 每个 skill 的 SKILL.md 必须有 `## 怎么做` 段，作为**第二位**章节（紧跟定位段「我锚定什么/上游/下游」或「何时用」）
+- 每个 skill 的 SKILL.md 必须有 `## 怎么做` 段，紧跟定位段。定位段后允许跟 **1-2 个**方法论框架段（如 architecture 的「ADD 思维链 / 三面手」、spec 的「BDD 边界 / 输入对齐」——先框定方法论再讲流程），`## 怎么做` 在文档前部即可，不强制第二位。
+- 定位段标题按 skill 类型选：锚 / 数据流 skill 用 `## 我锚定什么 / 上游 / 下游`；带上下游的工具用 `## 我做什么 / 上游 / 下游`；纯工具用 `## 何时用`。
 - `## 怎么做` 先讲**流程/方法**（这个 skill 怎么干活，建议用伪代码 `work(): ...` 或有序步骤），再讲补充
 - 规范 / 参考表 / 自检等是**补充**，放 `## 怎么做` 之后
-- 读者打开任何 SKILL.md，扫到第二个 `##` 就能抓到「怎么干」，不用翻全文
+- 读者打开任何 SKILL.md，扫到前几个 `##` 就能抓到「怎么干」，不用翻全文
 
 ### 2.4 没有平台专属命名
 - **不再有** `xdd-gate-*` hook 命名、`plugins/*.ts` plugin 命名、`commands/*.md` slash command 命名 —— 这些平台层全部归档
 - skill 自带的可移植 bash 自检脚本放 `skills/{name}/scripts/*.sh`（如 `no-stub-check.sh` / `wander-test.sh` / `chaos-runner.sh`），不是平台 hook
+
+### 2.5 上游/下游表语义（数据流图，双向闭合）
+
+主链 skill 的 `## 我锚定什么 / 上游 / 下游` 段有一张上下游表。**语义统一为「直接消费主产物的下一跳 skill」**（数据流，不是「文件被谁碰过」）：
+
+- **上游** = 本 skill 直接读其主产物作为输入的 skill
+- **下游** = 直接读本 skill 主产物作为输入的 skill
+- **双向闭合**：X 在下游列了 Y ⇔ Y 在上游列了 X。改一边必须改另一边
+
+**不算上下游**（特殊关系，写在各自 skill，不进数据流图）：
+- **transitive**：信息经中间 skill 传递（如 execute 经 plan 间接拿到 architecture 的端点清单 → execute 上游只列 plan，不算 architecture 的直接下游）
+- **派发装入**：`xdd-backend` / `xdd-frontend` 由 `xdd-execute` 派发装入（load 关系，不是消费主产物）
+- **被引用**：`xdd-gherkin-plus` 是语法权威，被 spec/resilience 等引用（reference，不是消费主产物）
+
+核心数据流图（按此语义双向闭合）：
+
+```
+brainstorm    → spec, architecture, wire, plan
+spec          → architecture, wire, resilience, plan, verify
+architecture  → resilience, plan, verify
+wire          → plan, verify
+resilience    → plan, verify
+plan          → execute
+execute       → verify
+verify        → （终态）
+```
 
 ## 3. 工件目录
 

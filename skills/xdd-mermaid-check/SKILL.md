@@ -8,7 +8,7 @@ description: |
 
 # Mermaid Check — 流程图渲染验证
 
-## 角色职责
+## 何时用
 
 纯工具 skill，验证 `.xdd/design/architecture/{bxx-slug}/flow.mermaid` 能否通过 mermaid-cli (mmdc) 正确渲染为 SVG 图片。
 

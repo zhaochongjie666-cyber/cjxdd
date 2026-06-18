@@ -18,7 +18,7 @@ description: |
 |---|---|
 | **上游** | `xdd-architecture`（架构 + 运维视图 §失败模型 = 韧性种子）+ `xdd-spec`（行为基线，找它的反面） |
 | **我产出** | `architecture/{bxx-slug}/resilience/` 5 文档 |
-| **下游消费者** | `xdd-plan`（兜底约束 + 失败注入点写进 task）、`xdd-execute`（兜底实现位置）、`xdd-verify`（混沌演练验兜底） |
+| **下游消费者** | `xdd-plan`（兜底约束 + 失败注入点写进 task）、`xdd-verify`（混沌演练验兜底） |
 | **回溯锚** | 每条失败模式 FXX 引用爆炸半径（RXX 规则 / API 端点）；每个兜底策略标实现位置 |
 
 > **失败模式怎么排优先级、兜底模式怎么选、混沌测哪些 → 查 `references/resilience-decisions.md`**（韧性设计决策：爆炸半径×概率排级 / 按失败类型选兜底 / 避免>兜底>接受）。

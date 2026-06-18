@@ -16,9 +16,9 @@ description: |
 
 | | |
 |---|---|
-| **上游** | `design.md`(意图) + `spec/{bxx-slug}/`(RXX 规则 + Feature) + `architecture/{bxx-slug}/`(端点/事件/状态机/文件清单) + `wire/{page}/`(前端) + `architecture/{bxx-slug}/resilience/`(兜底约束) |
+| **上游** | `xdd-brainstorm`(design.md 意图) + `xdd-spec`(spec/{bxx-slug}/ RXX 规则 + Feature) + `xdd-architecture`(architecture/{bxx-slug}/ 端点/事件/状态机/文件清单) + `xdd-wire`(wire/{page}/ 前端) + `xdd-resilience`(architecture/{bxx-slug}/resilience/ 兜底约束) |
 | **我产出** | `.xdd/runs/iter-N/plan/{bxx-slug}/plan.md`（任务 DAG + RXX 回指 + 全局约束） |
-| **下游消费者** | `xdd-execute`（按 task 写代码，每个 commit 回指 RXX）、`xdd-verify`（按 Feature 验收） |
+| **下游消费者** | `xdd-execute`（按 task 写代码，每个 commit 回指 RXX） |
 | **回溯锚** | 每个 task 标 `**回指 RXX:** R01,R03` + `**Feature:** login.feature :: Scenario: 密码登录成功` |
 
 ## 怎么做
@@ -171,6 +171,15 @@ git add ... && git commit -m "feat(auth): 实现 R01 登录返回JWT"
 - 只描述做什么但不展示怎么做
 - 引用未在任何 task 定义的类型/函数
 - "在 XX 行后插入"而不展示完整上下文
+
+## 产出
+
+`.xdd/runs/iter-N/plan/{bxx-slug}/plan.md` —— 零上下文工程师可直接执行的 TDD 任务 DAG：
+
+- **计划头部**：目标 / 架构 / 技术栈 / 验收来源 / 全局约束 / 文件结构 / 依赖表 / RXX 覆盖追踪表
+- **逐 task**：回指 RXX + Stack + Feature + Files + TDD Steps（红→绿→提交）
+
+每个 task 回指 RXX，是下游 execute `@implements RXX` → verify 追溯链的桥梁。多业务线时每业务线一份 `plan/{bxx-slug}/plan.md`（T 编号在各自文件内独立）。
 
 ## 自检
 

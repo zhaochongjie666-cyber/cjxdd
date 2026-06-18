@@ -63,6 +63,24 @@ elif 要补追溯:
   用本 skill 的 Step 3（手动补 @implements + 生成 INDEX）
 ```
 
+## 产出
+
+逆向 = 反向的「代码 → 设计」，产出与正向流程同构的设计层锚（反推版）：
+
+```
+.xdd/design/
+├── intent.md                         # 反推的项目意图（代码行为 + git log 推断）
+├── architecture/{bxx-slug}/
+│   ├── architecture.md               # 反推结构（模块/接口/端点/状态机）
+│   └── flow.mermaid
+├── spec/{bxx-slug}/
+│   ├── rules.md                      # 反推 RXX 规则
+│   └── *.feature                     # 反推 Gherkin 场景
+└── INDEX.md                          # RXX ↔ 代码 双向追溯表（跨业务线，行内带 BXX-RXX）
+```
+
+外加：代码里补的 `@implements RXX` 标注（让 代码 → RXX → design 闭环）。
+
 ## 自检
 
 ```

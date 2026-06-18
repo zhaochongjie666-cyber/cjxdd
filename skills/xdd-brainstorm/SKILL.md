@@ -18,7 +18,7 @@ description: |
 |---|---|
 | **上游** | 用户的原始 prompt（可能模糊） |
 | **我产出** | `.xdd/design/intent.md`（意图）+ `.xdd/design/design.md`（收敛决策） |
-| **下游消费者** | `xdd-spec`（把 design.md 翻译成 RXX 规则）、`xdd-architecture`（技术决策依据） |
+| **下游消费者** | `xdd-spec`（把 design.md 翻译成 RXX 规则）、`xdd-architecture`（技术决策依据）、`xdd-wire`（读 intent.md+design.md 出页面清单）、`xdd-plan`（读 design.md 意图做桥接） |
 | **回溯锚** | 下游每条 RXX 规则、每个架构决策，都应能指向 design.md 的某一段 |
 
 ## 怎么做
