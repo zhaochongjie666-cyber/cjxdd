@@ -32,6 +32,10 @@ prompt → [入口 init]
         [桥接] plan（task 回指 RXX）
           ↓
         [代码层] execute（@implements RXX）→ verify（对照封存契约验）
+
+旁路 · xdd-polish（按需手动调，不进默认流水线）
+  → 带批判/攻击态度质询：架构批判（方案合理性）+ UX 批判（体验流畅度）
+  → 产出 runs/iter-N/polish-report.md；跟 verify 区分（verify 是符合性闸，polish 是质询性评审）
 ```
 
 **动手前默念定位三问**：

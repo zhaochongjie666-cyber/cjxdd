@@ -86,9 +86,9 @@ description: |
 一条条过 spec 的 RXX 规则，确定每条在哪个层/模块实现 + 对应文件类型。用户交互类规则必须同时映射到前端组件。
 
 ```markdown
-| RXX | 后端层 | 文件 | 前端组件 |
-|-----|--------|------|---------|
-| R01 登录返回 JWT | Application | app/services/auth.py | pages/login.vue |
+| RXX | 后端层 | 文件 | 前端组件 | 实现 |
+|-----|--------|------|---------|------|
+| R01 登录返回 JWT | Application | app/services/auth.py | pages/login.vue | - [ ] |
 ```
 
 ### 7. API 端点清单（前后端契约）—— 100% 完整
@@ -99,11 +99,15 @@ description: |
 
 ```markdown
 ## API 端点清单
-| 端点 | 方法 | BXX | RXX | 认证 | 限流 |
-|------|------|-----|-----|------|------|
-| `/api/v1/auth/login` | POST | B01 | R01 | - | 100/min |
-| `/api/v1/urls` | POST | B02 | R05 | JWT | 200/min |
+| 端点 | 方法 | BXX | RXX | 认证 | 限流 | 实现 |
+|------|------|-----|-----|------|------|------|
+| `/api/v1/auth/login` | POST | B01 | R01 | - | 100/min | - [ ] |
+| `/api/v1/urls` | POST | B02 | R05 | JWT | 200/min | - [ ] |
 ```
+
+**「实现」列语义**（§6 规则传导矩阵 / §7 端点清单通用）：
+- `- [x]` = 后端文件有 `@implements RXX`（端点清单另需路由真注册）；`- [ ]` = 未实现
+- 运行时状态，不参与设计内容评审冻结；可由 `xdd-verify/scripts/sync-contract-checkboxes` 半自动翻转
 
 加端点详细契约（每个含 `@flow` / `@rules` / `@auth` / `@request` / `@response` / `@errors`）。
 

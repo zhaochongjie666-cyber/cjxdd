@@ -15,13 +15,13 @@ check() {  # check "描述" <exit>  其中 0 = PASS
 
 echo "=== xdd 三层骨架 smoke ==="
 
-# 1. 17 skill 存在
+# 1. 18 skill 存在
 miss=0
-for s in xdd-init xdd-brainstorm xdd-spec xdd-architecture xdd-wire xdd-resilience xdd-plan xdd-execute xdd-backend xdd-frontend xdd-verify xdd-reverse xdd-mermaid-check xdd-docker-helper xdd-skill-creator xdd-gherkin-plus xdd-git-commit; do
+for s in xdd-init xdd-brainstorm xdd-spec xdd-architecture xdd-wire xdd-resilience xdd-plan xdd-execute xdd-backend xdd-frontend xdd-verify xdd-polish xdd-reverse xdd-mermaid-check xdd-docker-helper xdd-skill-creator xdd-gherkin-plus xdd-git-commit; do
   [ -f "skills/$s/SKILL.md" ] || { echo "  缺 skill: $s"; miss=1; }
 done
 n=$(ls -d skills/*/ 2>/dev/null | wc -l)
-{ [ "$n" -eq 17 ] && [ "$miss" = 0 ]; }; check "1. 正好 17 个 skill (实际 $n)" "$?"
+{ [ "$n" -eq 18 ] && [ "$miss" = 0 ]; }; check "1. 正好 18 个 skill (实际 $n)" "$?"
 
 # 2. 8 agent 存在
 miss=0

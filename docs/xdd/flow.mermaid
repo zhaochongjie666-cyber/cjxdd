@@ -55,6 +55,11 @@ flowchart TD
     %% 追溯闭环：每层 ID 回指上游
     VERIFY -. "代码 @implements RXX → plan task → spec RXX → design 意图" .-> UND
 
+    %% polish：按需手动调的质询性评审旁路（不进默认流水线）
+    POLISH["xdd-polish<br/>质询评审: 架构批判 + UX 批判<br/>(按需手动)"]:::design
+    DESIGN_LAYER -. "按需: 攻击式挑刺 → polish-report" .-> POLISH
+    POLISH -. "P0/P1 建议回退设计层" .-> DESIGN_LAYER
+
     classDef user fill:#3b1a4d,stroke:#a855f7,stroke-width:2px,color:#fff
     classDef entry fill:#1e3a5f,stroke:#3b82f6,stroke-width:2px,color:#fff
     classDef design fill:#1a4d2e,stroke:#22c55e,stroke-width:2px,color:#fff

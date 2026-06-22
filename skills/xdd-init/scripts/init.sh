@@ -81,6 +81,9 @@ fi
 mkdir -p .xdd/design/{spec,architecture,wire,notes}
 mkdir -p ".xdd/runs/iter-$ITER/plan"
 mkdir -p ".xdd/runs/iter-$ITER/audits"
+mkdir -p ".xdd/runs/iter-$ITER/evidence/screenshots"
+mkdir -p ".xdd/runs/iter-$ITER/evidence/snapshots"
+mkdir -p ".xdd/runs/iter-$ITER/evidence/responses"
 
 # === 持久锚占位（仅全新项目写，iter 迁移保留已有）===
 if [ "$NEW_PROJECT" = "true" ]; then

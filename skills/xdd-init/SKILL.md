@@ -70,7 +70,11 @@ bash skills/xdd-init/scripts/init.sh
 │       ├── status.md          ← 本 iter 进度（3 层 × 业务线，✅/⏳）
 │       ├── goals.md           ← 本 iter 高层目标清单（ACK G 区索引源，动态追加）
 │       ├── plan/{bxx-slug}/          ← 本 iter 的 TDD task DAG（xdd-plan 填）
-│       └── audits/            ← 本 iter 的 PoC / arch-audit
+│       ├── audits/            ← 本 iter 的 PoC / arch-audit
+│       └── evidence/          ← 验证证据（verify/polish 留证）
+│           ├── screenshots/   ← 截图（playwright-cli；无则见 responses/）
+│           ├── snapshots/     ← 结构化快照（playwright-cli snapshot，元素 ref）
+│           └── responses/     ← curl 响应体 / HTML 快照（降级证据）
 └── current-iteration          ← "iter-N"（根级指针，找活跃 iter）
 ```
 

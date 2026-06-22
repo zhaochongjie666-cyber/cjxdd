@@ -210,6 +210,7 @@ on_failure(n):                          # n = 同一 task 连续失败次数
 □ 遇阻塞及时上报而非猜？
 □ 全量测试通过？失败按收尾流程？
 □ RXX 覆盖追踪表跟实际一致？
+□ 对应 RXX 的 design 契约「实现」列已翻 `- [x]`（基于本 task 的 `@implements RXX`：rules.md / architecture §6§7 / resilience failsafe）？
 □ 没用 mock 假装真实持久化？
 □ Docker 服务起来 + healthcheck 过？
 ```

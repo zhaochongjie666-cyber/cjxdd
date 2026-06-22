@@ -143,7 +143,11 @@ for round in 1..3:
 ### 健康检查
 [docker compose ps + curl /healthz 输出]
 ### 漫游测试
-[每个关键路径的 curl/截图/DB 查询证据]
+每关键路径的证据（截图 + 结构化快照 + curl 响应体），存 `runs/iter-N/evidence/`：
+- 首页截图: `evidence/screenshots/home.png`（playwright-cli 整页渲染）；结构化快照: `evidence/snapshots/home.yaml`（可访问性树 + 元素 ref）
+- 降级（无 playwright-cli）: `evidence/responses/home.html`（curl HTML 快照）
+- 端点 `/api/xxx`: `evidence/responses/api-xxx.html` · HTTP {code}
+- 内联关键证据（截图直贴报告）：`![](evidence/screenshots/home.png)`
 ### 4 维一致性审计
 | 维度 | 设计数 | 代码数 | 一致? |
 | spec RXX | N | grep @implements M | ✅/❌ |
@@ -164,7 +168,9 @@ for round in 1..3:
 ```
 □ health-check：所有服务 healthy + /healthz 200？
 □ 漫游：核心路径每步有运行证据（非"测试通过"）？
+□ 漫游证据已存 `evidence/`（截图 `screenshots/*.png` + 结构化快照 `snapshots/*.yaml`，或降级 `responses/*.html`），报告引用了路径？
 □ 4 维一致性：spec/wire/architecture/resilience 跟代码对齐？
+□ design 契约「实现/实施」列 checkbox 与代码 `@implements RXX` 一致（无幽灵勾/漏勾）？
 □ 混沌：P0 场景兜底真生效，有 before/after 证据？
 □ 存根扫描：no-stub-check.sh 全项目零命中？
 □ 真实持久化：重启后数据还在？

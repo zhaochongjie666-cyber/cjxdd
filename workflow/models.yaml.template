@@ -1,20 +1,16 @@
 # 模型环境变量配置
-# 每个模型配一段 env（设 API key / base_url 等），run_workflow.py 按 --model 选择
-# 复制本文件为 models.yaml 并填入真实 key（models.yaml 已在 .gitignore，不入库）
+# 每个模型配一段 env(设 API key / base_url 等),run_workflow 按 --model 选择,web 共享。
+# 复制本文件为 models.yaml 并填入真实 key(models.yaml 已在 .gitignore,不入库)。
 #
-# 示例：
+# 示例:
 #   models:
 #     YACC:
 #       env: "export ANTHROPIC_API_KEY=sk-xxx"
 #     GLM:
 #       env: "export ANTHROPIC_API_KEY=sk-xxx ANTHROPIC_BASE_URL=https://xxx"
-#     K25:
-#       env: "export ANTHROPIC_API_KEY=sk-xxx"
 
 models:
   YACC:
     env: ""
   GLM:
-    env: ""
-  K25:
     env: ""

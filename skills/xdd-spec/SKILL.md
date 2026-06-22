@@ -120,12 +120,19 @@ Feature: [业务能力] — [核心价值]    @covers-R01
 ```markdown
 # B01 鉴权 (auth) — 规则
 
-| RXX | 规则一句话 | 覆盖 Feature | 关联端点 |
-|-----|-----------|-------------|---------|
-| R01 | 用户用邮箱密码登录，成功返回 JWT | login.feature | POST /api/auth/login |
-| R02 | 密码连续错 5 次锁定账号 15 分钟 | lockout.feature | POST /api/auth/login |
-| R03 | 未登录访问受保护 API 返回 401 | auth-required.feature | (所有受保护端点) |
+| RXX | 规则一句话 | 覆盖 Feature | 关联端点 | 实现 |
+|-----|-----------|-------------|---------|------|
+| R01 | 用户用邮箱密码登录，成功返回 JWT | login.feature | POST /api/auth/login | - [ ] |
+| R02 | 密码连续错 5 次锁定账号 15 分钟 | lockout.feature | POST /api/auth/login | - [ ] |
+| R03 | 未登录访问受保护 API 返回 401 | auth-required.feature | (所有受保护端点) | - [ ] |
 ```
+
+**「实现」列语义**（状态标记，看有没有落实）：
+- `- [x]` = 该 RXX 在代码有 `@implements RXX` 标注且 verify 4 维审计未标 ❌
+- `- [ ]` = 未实现
+- 此列是运行时状态（由代码 `@implements` 驱动），不参与规则**内容**的评审冻结
+- 可由 `xdd-verify/scripts/sync-contract-checkboxes`（基于 `grep @implements RXX`）半自动翻转
+- 注意区分：本列是「RXX 是否在代码落实」（design 层）；`runs/iter-N/plan/{bxx}/plan.md` 的 RXX 覆盖追踪表状态列是「task 执行进度」（执行层），两层语义勿混
 
 **约束**：
 - 每条 RXX 至少 1 个 `*.feature` 覆盖（空规则 = 漏验收）

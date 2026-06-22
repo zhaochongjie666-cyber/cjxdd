@@ -18,3 +18,7 @@ regression/reports/
 
 # workflow 模型配置（含 API key，不入库）
 workflow/models.yaml
+
+# xdd 设计产物（workflow/ 当 demo 项目跑 xdd 产出，单轮工作记录不入库）
+workflow/.xdd/
+workflow/log/

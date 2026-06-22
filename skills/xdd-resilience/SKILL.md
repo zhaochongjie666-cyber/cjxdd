@@ -97,6 +97,19 @@ description: |
 
 **目标**：至少选 5 个模式，大项目选 8+（必含业务对账 + 业务幂等）。
 
+`failsafe-design.md` 每个失败模式一行（兜底策略 + 实现位置 + 实施状态）：
+
+```markdown
+| 失败模式 FXX | 兜底模式 | 实现位置 | 实施 |
+|-------------|---------|---------|------|
+| F01 Worker 断网 | 重试 w/ backoff | app/workers/queue.py:42 | - [ ] |
+| F12 提交服务超时 | 熔断 Circuit Breaker | app/services/submit.py:88 | - [ ] |
+```
+
+**「实施」列语义**：
+- `- [x]` = 该兜底在代码有 `@failure-mode-FXX` 关联实现且 chaos 演练该场景兜底真生效；`- [ ]` = 未实施
+- 运行时状态，不参与韧性设计内容评审冻结；可由 `xdd-verify/scripts/sync-contract-checkboxes` 半自动翻转
+
 **标签格式规约**：failsafe-design 每个兜底条目用 `@failure-mode-FXX`（**连字符，连写**，与 chaos-scenarios 一致），指向它兜底的失败模式。禁止空格分写（`@failure-mode FXX` ❌ → `@failure-mode-FXX` ✅），否则韧性覆盖率 grep 会漏匹配。
 
 ### 4. 混沌场景（@chaos Gherkin）

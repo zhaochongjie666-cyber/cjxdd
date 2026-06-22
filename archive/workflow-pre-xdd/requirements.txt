@@ -1,0 +1,6 @@
+# xdd workflow 项目依赖(CLI + Web 共享)
+#   CLI(run_workflow.py)只需 pyyaml
+#   Web(web/server.py)需 fastapi + uvicorn[standard]
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pyyaml>=6.0

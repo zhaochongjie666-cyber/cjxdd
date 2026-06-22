@@ -1,0 +1,143 @@
+/* xdd workflow 编排画布样式 */
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; height: 100%;
+  font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+  color: #e8e8e8;
+  background: #1a1a1a;
+}
+body { display: flex; flex-direction: column; }
+
+/* ==================== 顶部工具栏 ==================== */
+.toolbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 14px;
+  background: #242424;
+  border-bottom: 1px solid #333;
+  flex-wrap: wrap;
+}
+.brand { font-weight: 700; font-size: 15px; color: #7ec8e3; margin-right: 8px; }
+.toolbar-group { display: flex; align-items: center; gap: 6px; }
+.toolbar-group label { color: #999; font-size: 12px; }
+
+input[type="text"] {
+  background: #1a1a1a; border: 1px solid #444; color: #e8e8e8;
+  padding: 5px 8px; border-radius: 4px; font-size: 13px;
+}
+input[type="text"]:focus { outline: none; border-color: #7ec8e3; }
+
+button {
+  background: #333; color: #e8e8e8; border: 1px solid #444;
+  padding: 5px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;
+  transition: background 0.15s;
+}
+button:hover:not(:disabled) { background: #444; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+button.primary:hover:not(:disabled) { background: #1d4ed8; }
+button.danger { background: #b91c1c; border-color: #b91c1c; color: #fff; }
+button.danger:hover:not(:disabled) { background: #991b1b; }
+button.toggle.active { background: #b45309; border-color: #b45309; color: #fff; }
+button.tiny { padding: 2px 8px; font-size: 12px; }
+
+.status { margin-left: auto; padding: 4px 10px; border-radius: 4px; font-size: 12px;
+  background: #333; }
+.status.running { background: #b45309; }
+.status.passed { background: #15803d; }
+.status.failed { background: #b91c1c; }
+
+/* ==================== 主区:左面板 + 画布 ==================== */
+.main { flex: 1; display: flex; overflow: hidden; }
+.palette {
+  width: 200px; flex-shrink: 0;
+  background: #1f1f1f; border-right: 1px solid #333;
+  padding: 10px; overflow-y: auto;
+}
+.palette-title { color: #999; font-size: 11px; text-transform: uppercase; margin: 8px 0 6px; letter-spacing: 0.5px; }
+.drag-item {
+  padding: 8px 10px; background: #2a2a2a; border: 1px solid #3a3a3a;
+  border-radius: 4px; margin-bottom: 6px; cursor: grab; user-select: none;
+}
+.drag-item:hover { border-color: #7ec8e3; }
+.drag-item .ico { margin-right: 4px; }
+.drag-item small { display: block; color: #888; font-size: 11px; margin-top: 2px; }
+.palette hr { border: none; border-top: 1px solid #333; margin: 12px 0; }
+.legend { font-size: 12px; color: #aaa; margin: 4px 0; line-height: 1.5; }
+.legend.small { font-size: 11px; color: #888; }
+.legend .dot { display: inline-block; width: 24px; height: 0; vertical-align: middle; margin-right: 6px; }
+.legend .dot.next { border-top: 2px solid #888; }
+.legend .dot.loop { border-top: 2px dashed #e84855; }
+
+/* ==================== 画布(Drawflow 覆盖) ==================== */
+#canvas {
+  flex: 1; height: 100%; background: #1a1a1a;
+}
+.drawflow .drawflow-node {
+  background: #2b2b3f; border: 1px solid #4a4a6a; color: #e8e8e8;
+  border-radius: 6px; width: 220px;
+}
+.drawflow .drawflow-node.selected { border-color: #7ec8e3; box-shadow: 0 0 0 2px rgba(126,200,227,0.3); }
+.drawflow .drawflow-node .input, .drawflow .drawflow-node .output {
+  background: #7ec8e3; width: 12px; height: 12px; border: 2px solid #1a1a1a;
+}
+/* 状态色 */
+.drawflow .drawflow-node.st-running { border-color: #f59e0b; box-shadow: 0 0 8px rgba(245,158,11,0.5); }
+.drawflow .drawflow-node.st-passed { border-color: #22c55e; }
+.drawflow .drawflow-node.st-failed { border-color: #ef4444; }
+.drawflow .drawflow-node.has-loop { border-style: dashed; border-color: #e84855; }
+/* 连线 */
+.drawflow .connection .main-path { stroke: #6a6a8a; stroke-width: 3px; }
+.drawflow .connection .point { fill: #7ec8e3; }
+
+/* 节点内部 HTML */
+.drawflow_content_node { padding: 4px 8px; }
+.nd-head { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 4px; }
+.nd-head .tag { font-size: 10px; background: #b45309; color: #fff; padding: 1px 5px; border-radius: 3px; margin-left: auto; }
+.nd-sub { font-size: 11px; color: #a0a0c0; margin-top: 2px; font-family: ui-monospace, monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nd-meta { font-size: 10px; color: #777; margin-top: 2px; }
+
+/* ==================== 底部日志面板 ==================== */
+.logpanel {
+  height: 200px; flex-shrink: 0;
+  background: #111; border-top: 1px solid #333;
+  display: flex; flex-direction: column;
+}
+.loghead {
+  display: flex; align-items: center; gap: 12px;
+  padding: 4px 12px; background: #1f1f1f; border-bottom: 1px solid #333;
+  font-size: 12px; color: #aaa;
+}
+.loghead .tiny { display: flex; align-items: center; gap: 4px; }
+#log {
+  flex: 1; margin: 0; padding: 6px 12px; overflow-y: auto;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12px;
+  line-height: 1.5; color: #ccc; white-space: pre-wrap; word-break: break-all;
+}
+#log div.ev-node { color: #7ec8e3; }
+#log div.ev-pass { color: #4ade80; }
+#log div.ev-fail { color: #f87171; }
+#log div.ev-loop { color: #fbbf24; font-weight: 600; }
+#log div.ev-run { color: #c084fc; font-weight: 600; }
+
+/* ==================== 节点编辑弹窗 ==================== */
+.modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+.modal.hidden { display: none; }
+.modal-card {
+  background: #242424; border: 1px solid #444; border-radius: 8px;
+  padding: 18px; width: 480px; display: flex; flex-direction: column; gap: 10px;
+}
+.modal-title { font-size: 15px; font-weight: 600; color: #7ec8e3; }
+.modal-card label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: #aaa; }
+.modal-card label.inline { flex-direction: row; align-items: center; gap: 6px; }
+.modal-card input[type="text"], .modal-card textarea, .modal-card select {
+  background: #1a1a1a; border: 1px solid #444; color: #e8e8e8;
+  padding: 5px 8px; border-radius: 4px; font-size: 13px; font-family: inherit;
+}
+.modal-card textarea { font-family: ui-monospace, monospace; resize: vertical; }
+.modal-actions { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.modal-actions .spacer { flex: 1; }

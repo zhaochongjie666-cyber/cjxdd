@@ -14,6 +14,11 @@ MAX_ITER="${XDD_LOOP_MAX_ITER:-3}"
 REPORT=".xdd/reports/wander-loop-$(date +%Y%m%d-%H%M%S).log"
 mkdir -p .xdd/reports
 
+# 证据保留: 截图 (screenshots/) + curl 响应体 (responses/)，供 verify-report.md 引用
+CUR_ITER="$(cat .xdd/current-iteration 2>/dev/null || echo iter-1)"
+EVIDENCE_DIR=".xdd/runs/$CUR_ITER/evidence"
+mkdir -p "$EVIDENCE_DIR/screenshots" "$EVIDENCE_DIR/snapshots" "$EVIDENCE_DIR/responses"
+
 echo "[xdd] === 回环 7 L6 部署验证 wander-test (max iter: $MAX_ITER) ===" | tee "$REPORT"
 
 # 找 base URL
@@ -82,16 +87,25 @@ while [[ $ITER -lt $MAX_ITER ]]; do
     declare -a wander_issues=()
     for ep in "${endpoints[@]}"; do
         url="$BASE_URL$ep"
-        code=$(curl -s -o /dev/null -w "%{http_code}" -m 5 "$url" 2>/dev/null || echo "000")
+        # 响应体存证据（文件名: 端点 path 转 - 去掉斜杠）
+        resp_file="$EVIDENCE_DIR/responses/$(echo "$ep" | tr '/?&=' '----' | sed 's/^-//').html"
+        code=$(curl -s -L -o "$resp_file" -w "%{http_code}" -m 5 "$url" 2>/dev/null || echo "000")
         if [[ "$code" == "000" ]]; then
+            rm -f "$resp_file"
             wander_issues+=("wander: $ep 无响应 (服务未起?)")
         elif [[ "$code" =~ ^(200|201|301|302|401|403|404)$ ]]; then
-            # 期望的 HTTP code
+            # 期望的 HTTP code（响应体已存 resp_file 作证据）
             :
         else
             wander_issues+=("wander: $ep 返回 $code")
         fi
     done
+
+    # 首页取证（截图 + 结构化 snapshot；API 端点是数据不用截图，页面才截）
+    "$SCRIPT_DIR/capture-evidence.sh" "$BASE_URL/" \
+        "$EVIDENCE_DIR/screenshots/home.png" \
+        "$EVIDENCE_DIR/snapshots/home.yaml" \
+        "$EVIDENCE_DIR/responses/home.html" 2>/dev/null | tee -a "$REPORT" || true
 
     # === 汇总 ===
     total_l5=${#l5_issues[@]}
@@ -109,6 +123,16 @@ while [[ $ITER -lt $MAX_ITER ]]; do
     for i in "${wander_issues[@]}"; do
         echo "  ❌ $i" | tee -a "$REPORT"
     done
+
+    # 证据清单（供 verify-report.md 引用）
+    echo "" | tee -a "$REPORT"
+    echo "--- 证据保留 ($EVIDENCE_DIR/) ---" | tee -a "$REPORT"
+    n_resp=$(find "$EVIDENCE_DIR/responses" -type f 2>/dev/null | wc -l)
+    n_shot=$(find "$EVIDENCE_DIR/screenshots" -type f -name '*.png' 2>/dev/null | wc -l)
+    n_snap=$(find "$EVIDENCE_DIR/snapshots" -type f -name '*.yaml' 2>/dev/null | wc -l)
+    echo "  curl 响应体: $n_resp 个 ($EVIDENCE_DIR/responses/)" | tee -a "$REPORT"
+    echo "  截图: $n_shot 个 ($EVIDENCE_DIR/screenshots/) — 无则见 responses/*.html" | tee -a "$REPORT"
+    echo "  结构化快照: $n_snap 个 ($EVIDENCE_DIR/snapshots/) — playwright-cli snapshot (元素 ref)" | tee -a "$REPORT"
 
     if [[ $total_fail -eq 0 ]]; then
         echo "" | tee -a "$REPORT"
