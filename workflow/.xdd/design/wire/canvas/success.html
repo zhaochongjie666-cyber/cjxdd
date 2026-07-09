@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<!--
+  操作态 · success(成功态):全部节点跑完,verify 验收通过
+  规范:成功要庆祝但不过度;给后续行动引导。
+  @covers-B01-R05(验收通过) @covers-B02-R03(图执行完成)
+  @import tokens.css
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>完成 · xdd workflow</title>
+  <style>
+    @import "tokens.css";
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { height: 100%; font-family: var(--font-family); color: var(--text-primary); background: var(--surface-sunken);
+      display: flex; flex-direction: column; }
+    .toolbar { display: flex; align-items: center; gap: var(--space-md); padding: var(--space-sm) var(--space-lg);
+      background: var(--surface-elevated); border-bottom: 1px solid var(--border); }
+    .brand { font-weight: 700; color: var(--accent); }
+    button { background: var(--surface); border: 1px solid var(--border-strong); color: var(--text-primary);
+      padding: var(--space-xs) var(--space-md); border-radius: var(--radius); cursor: pointer; }
+    button.primary { background: var(--success); border-color: var(--success); color: var(--text-on-accent); }
+    .status { margin-left: auto; padding: var(--space-xs) var(--space-sm); background: var(--success-soft);
+      border-radius: var(--radius-sm); font-size: var(--font-sm); color: var(--success); }
+    .state-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-sm); padding: var(--space-xl); }
+    .state-icon { font-size: 56px; }
+    .state-title { font-size: var(--font-lg); font-weight: 600; color: var(--success); }
+    .state-desc { color: var(--text-secondary); text-align: center; max-width: 480px; line-height: 1.6; }
+    .summary { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: var(--space-md); font-size: var(--font-sm); max-width: 520px; width: 100%; }
+    .summary table { width: 100%; }
+    .summary td { padding: var(--space-xs) 0; }
+    .summary td:last-child { text-align: right; color: var(--text-secondary); }
+    .actions { display: flex; gap: var(--space-sm); margin-top: var(--space-md); }
+  </style>
+</head>
+<body>
+  <header class="toolbar">
+    <div class="brand">xdd workflow 编排</div>
+    <div class="status">✅ 完成 · 验收通过</div>
+  </header>
+
+  <div class="state-center">
+    <div class="state-icon">🎉</div>
+    <div class="state-title">八节点全部跑完,验收通过</div>
+    <div class="state-desc">
+      verify 自检清单全部通过。产物已落在 <code>task_dir/.xdd/</code>。
+    </div>
+    <div class="summary">
+      <table>
+        <tr><td>耗时</td><td>12 分 34 秒</td></tr>
+        <tr><td>iter</td><td>iter-2(经 1 次回退修复)</td></tr>
+        <tr><td>节点</td><td>8/8 通过</td></tr>
+        <tr><td>验收报告</td><td>.xdd/runs/iter-2/verify-report.md</td></tr>
+      </table>
+    </div>
+    <div class="actions">
+      <button class="primary">📄 查看验收报告</button>
+      <button>🔄 跑下一个需求</button>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,88 @@
+/*
+ * xdd-wire 标准 design token —— 跨页面一致的设计变量集
+ *
+ * 用法：每个 wire HTML 的 <style> 顶部 @import 或复制 :root 段进来。
+ * 改主题只改这里，所有页面同步变。禁止在单个 HTML 里硬编码颜色/尺寸。
+ *
+ * 旋钮（HTML 注释标，决定整体气质）：
+ *   DESIGN_VARIANCE  1=对称保守 10=非对称艺术（默认 7）
+ *   MOTION_INTENSITY 1=静态 10=动效丰富（默认 6）
+ *   VISUAL_DENSITY   1=留白 10=紧凑（默认 4；运营后台 7；内部系统 8）
+ */
+
+:root {
+  /* === 品牌色 === */
+  --accent: #3b82f6;              /* 主操作色（按钮/链接/选中）*/
+  --accent-hover: #2563eb;        /* 主色 hover */
+  --accent-soft: #dbeafe;         /* 主色浅底（选中行/标签底）*/
+
+  /* === 语义色（状态反馈，跨页面统一）=== */
+  --success: #16a34a;
+  --success-soft: #d1fae5;
+  --success-text: #065f46;
+  --warning: #d97706;
+  --warning-soft: #fef3c7;
+  --warning-text: #92400e;
+  --danger: #dc2626;
+  --danger-soft: #fee2e2;
+  --danger-text: #991b1b;
+  --info: #0891b2;
+  --info-soft: #cffafe;
+
+  /* === 表面/文本 === */
+  --surface: #ffffff;             /* 卡片/表格底 */
+  --surface-elevated: #f9fafb;    /* 页面底/表头/hover */
+  --surface-sunken: #f3f4f6;      /* 输入框/凹陷区 */
+  --text-primary: #1a1a2e;        /* 主文本 */
+  --text-secondary: #6b7280;      /* 次要文本/说明 */
+  --text-disabled: #9ca3af;       /* 禁用文本 */
+  --border: #e5e7eb;              /* 分割线/边框 */
+  --border-strong: #d1d5db;       /* 强边框（输入聚焦前）*/
+
+  /* === 圆角梯度 === */
+  --radius-sm: 4px;               /* 小标签/badge */
+  --radius: 6px;                  /* 按钮/输入框（默认）*/
+  --radius-lg: 10px;              /* 卡片/模态框 */
+  --radius-full: 999px;           /* 胶囊/pill */
+
+  /* === 间距梯度（4 的倍数，DENSITY 调整体缩放）=== */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+
+  /* === 字号梯度 === */
+  --text-xs: 12px;                /* 表头/辅助说明 */
+  --text-sm: 13px;                /* 次要正文 */
+  --text-base: 14px;              /* 默认正文 */
+  --text-md: 16px;                /* 强调正文 */
+  --text-lg: 18px;                /* 副标题 */
+  --text-xl: 22px;                /* 页面标题 */
+  --text-2xl: 28px;               /* 大标题/空状态 */
+
+  /* === 阴影（克制，分层用）=== */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+
+  /* === 响应式断点（CSS 变量记，实际用 @media）===
+   * --bp-mobile: 640px   手机
+   * --bp-tablet: 768px   平板
+   * --bp-desktop: 1024px 桌面
+   * 移动端规则：单列、操作栏折叠成底部固定、表格横向滚动
+   */
+}
+
+/* === DENSITY 旋钮：紧凑模式（运营后台/内部系统）=== */
+/*
+ * 用法：HTML 根元素加 data-density="compact"，下面覆盖间距/字号
+ */
+[data-density="compact"] {
+  --space-xs: 3px;
+  --space-sm: 6px;
+  --space-md: 12px;
+  --space-lg: 18px;
+  --text-base: 13px;
+}

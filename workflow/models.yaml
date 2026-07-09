@@ -1,0 +1,11 @@
+# models.yaml —— 填入真实 key 后 workflow 可真调 claude
+# 本文件已在 .gitignore,不入库。改完无需重启 server(有 /api/models/reload 热刷)。
+#
+# 填法:把 env: "" 改成 env: "export ANTHROPIC_API_KEY=sk-你的key"
+# 若用第三方 base_url,加 ANTHROPIC_BASE_URL=https://xxx
+
+models:
+  YACC:
+    env: ""
+  GLM:
+    env: ""

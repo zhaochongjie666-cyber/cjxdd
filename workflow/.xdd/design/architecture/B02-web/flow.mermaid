@@ -1,0 +1,57 @@
+%%{ init: { 'theme': 'dark' } }%%
+%% B02-web 流程图:浏览器画布 → FastAPI → 图引擎 → claude
+%% 与 spec/B02-web/*.feature 的事件类型、术语 1:1 对齐
+%% 事件契约见 architecture/event-contract.md
+
+flowchart LR
+    subgraph FE["浏览器(纯静态)"]
+        CANVAS["Drawflow 画布<br/>拖拽节点/连线<br/>@B02-R01/R02"]:::fe
+        LOG["日志面板<br/>SSE node_log"]:::fe
+    end
+
+    subgraph API["FastAPI server"]
+        RUN["POST /api/run<br/>start_run"]:::api
+        SSE["GET /api/run/{id}/stream<br/>SSE 推送"]:::api
+        GRAPH["graph_io<br/>graph.json 读写/校验<br/>@B02-R01/R02/R06"]:::api
+    end
+
+    subgraph ENGINE["图引擎(后台线程)"]
+        TOPO["拓扑前进<br/>next 上游全 done 才跑<br/>@B02-R03"]:::engine
+        LOOP["回退边循环<br/>loop 条件→重置重跑<br/>@B02-R03"]:::engine
+        HANDLE["RunHandle<br/>事件队列<br/>@B02-R04"]:::engine
+    end
+
+    subgraph BASE["基础层(import 复用)"]
+        NODES["nodes.py<br/>build_nodes<br/>@B02-R05"]:::base
+        GATE["gate.py<br/>gate_check<br/>@B02-R05"]:::base
+        CLAUDE["claude_runner<br/>subprocess+stream-json"]:::base
+    end
+
+    USER["👤 用户"]:::user
+    CLI["claude CLI"]:::external
+
+    USER -->|拖拽编辑| CANVAS
+    USER -->|点开始| RUN
+    CANVAS -->|保存| GRAPH
+    GRAPH --> RUN
+    RUN --> TOPO
+    TOPO -->|每节点| CLAUDE
+    CLAUDE --> CLI
+    CLI -.->|stream-json| CLAUDE
+    TOPO -->|gate 节点| GATE
+    GATE -->|未过| LOOP
+    LOOP -->|重置目标+下游| TOPO
+    TOPO -->|事件| HANDLE
+    HANDLE -->|推送| SSE
+    SSE -->|EventSource| CANVAS
+    SSE -->|node_log| LOG
+    LOOP -.->|loop_trigger| SSE
+
+    NODES -.-> TOPO
+
+    classDef user fill:#3b1a4d,stroke:#a855f7,color:#fff
+    classDef fe fill:#1e3a5f,stroke:#3b82f6,color:#fff
+    classDef api fill:#4d3a1a,stroke:#f59e0b,color:#fff
+    classDef engine fill:#1a4d2e,stroke:#22c55e,color:#fff
+    classDef base fill:#3a2a1a,stroke:#d97706,color:#fff
+    classDef external fill:#2a2a2a,stroke:#888,color:#ccc

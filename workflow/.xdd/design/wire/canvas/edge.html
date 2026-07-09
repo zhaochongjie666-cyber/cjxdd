@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<!--
+  操作态 · edge(边界态):输入超限 / 回退死循环 / 配置异常
+  规范:就地提示(输入旁)+ 整页提示(死循环),给具体边界值。
+  @covers-B02-R03(回退步数上限)
+  @import tokens.css
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>边界 · xdd workflow</title>
+  <style>
+    @import "tokens.css";
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { height: 100%; font-family: var(--font-family); color: var(--text-primary); background: var(--surface-sunken);
+      display: flex; flex-direction: column; }
+    .toolbar { display: flex; align-items: center; gap: var(--space-md); padding: var(--space-sm) var(--space-lg);
+      background: var(--surface-elevated); border-bottom: 1px solid var(--border); }
+    .brand { font-weight: 700; color: var(--accent); }
+    .status { margin-left: auto; padding: var(--space-xs) var(--space-sm); background: var(--danger-soft);
+      border-radius: var(--radius-sm); font-size: var(--font-sm); color: var(--danger); }
+
+    /* 场景①:节点编辑表单的输入超限(就地) */
+    .form-section { padding: var(--space-lg); max-width: 480px; }
+    .form-section label { display: block; font-size: var(--font-sm); color: var(--text-secondary); margin-bottom: var(--space-xs); }
+    .form-section input { width: 100%; background: var(--surface-sunken); border: 1px solid var(--danger); color: var(--text-primary);
+      padding: var(--space-xs) var(--space-sm); border-radius: var(--radius); font-size: var(--font-base); }
+    .field-error { color: var(--danger); font-size: var(--font-xs); margin-top: var(--space-xs); }
+    .field-hint { color: var(--text-disabled); font-size: var(--font-xs); margin-top: var(--space-xs); }
+    hr { border: none; border-top: 1px solid var(--border); margin: var(--space-lg) 0; }
+    .section-label { font-size: var(--font-xs); color: var(--text-disabled); text-transform: uppercase; }
+
+    /* 场景②:回退死循环(整页) */
+    .state-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-sm); padding: var(--space-xl); }
+    .state-icon { font-size: 48px; }
+    .state-title { font-size: var(--font-lg); font-weight: 600; color: var(--danger); }
+    .state-desc { color: var(--text-secondary); text-align: center; max-width: 480px; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <header class="toolbar">
+    <div class="brand">xdd workflow 编排</div>
+    <div class="status">⚠️ 边界</div>
+  </header>
+
+  <!-- 场景①:产出路径含非法字符(就地,输入框旁) -->
+  <div class="form-section">
+    <div class="section-label">场景① 输入超限(就地提示)</div>
+    <label>产出文档路径 output_doc</label>
+    <input type="text" value=".xdd/design/spec/../etc/passwd">
+    <div class="field-error">❌ 路径含 "..",禁止目录穿越。只能用相对 task_dir 的合法路径。</div>
+    <div class="field-hint">示例:.xdd/design/spec/B01-cli/rules.md</div>
+
+    <hr>
+    <div class="section-label">场景② 节点 id 重复(就地)</div>
+    <label>节点 id</label>
+    <input type="text" value="n_verify">
+    <div class="field-error">❌ id "n_verify" 已存在。节点 id 必须唯一。</div>
+  </div>
+
+  <hr style="margin:0 var(--space-lg)">
+
+  <!-- 场景③:回退死循环(整页) -->
+  <div class="state-center">
+    <div class="state-icon">🌀</div>
+    <div class="state-title">回退边疑似死循环,已停止</div>
+    <div class="state-desc">
+      图引擎达到最大步数上限(200),verify 节点始终未过。<br>
+      可能是验收闸条件永远无法满足,或节点产物无法收敛。<br>
+      检查 verify 的 gate 条件和回退边的指向。
+    </div>
+    <div style="color:var(--text-secondary);font-size:var(--font-sm);font-family:var(--font-mono)">
+      触发的回退边: verify → execute(condition: gate_fail)<br>
+      已重跑: 200 次(达上限)
+    </div>
+  </div>
+</body>
+</html>

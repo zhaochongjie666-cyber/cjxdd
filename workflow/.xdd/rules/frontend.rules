@@ -1,0 +1,69 @@
+# Frontend 开发约定
+
+> 由 xdd-init 生成默认骨架。用户按项目实际情况修改（如换 React / 组件库版本）。
+> AI 写前端代码前必读本文件。
+
+## 一、命名（基础）
+
+- 项目/目录/文件：全小写 + 中划线（kebab-case）。正例 `smart-admin`；反例 `mall_management-system` / `mallManagementSystem`
+- 组件文件名：kebab-case（`role-form.vue`）；用完整单词，别缩写
+- 父子组件：子组件以父名为前缀（`todo-list` / `todo-list-item.vue`）
+- 优先级高的词放前面（`error-text.vue` 优于 `text-error.vue`）
+- JS 变量/方法：lowerCamelCase
+- boolean：is / has / can 前缀（`isLoading` / `hasPermission`）
+- 函数：动词前缀（`getUser` / `fetchList` / `handleSubmit`）；事件处理 on / handle
+- 数据请求：get / fetch / load / query / post / create / update / delete / upload / download
+- Class：PascalCase；常量：大写 + 下划线（`MAX_RETRY`）；枚举：PascalCase
+
+## 二、文件结构（含 600 行硬规则）
+
+- **单文件不得超过 600 行**（含模板 / 脚本 / 样式 / 注释）。超限按维度拆分：
+  - 组件：弹窗 / 表单 / 列表 / 卡片等独立区块拆为子组件；**弹窗严禁与主页面同文件**
+  - 方法：业务逻辑抽到 hooks / utils / api 文件；单函数聚焦单一职责
+  - 样式：大段样式抽独立 `.scss` / `.css` 或组件 `scoped` 块；设计 token 走 CSS 变量
+  - 配置：常量 / 枚举 / 字典 / schema 抽到 `constants.ts` / `config.ts`，与逻辑分离
+- `.vue` 结构顺序固定：`<script>` → `<template>` → `<style>`
+- `template` 表达式保持简单，复杂逻辑移到 computed / 方法
+- setup 语法糖（`<script setup>`），不用显式 `setup()` 返回
+
+## 三、组合式 API
+
+- 模块化组织：相关联的 ref / computed / 方法 / 生命周期放一起，按功能而非类型分组
+- ref 命名以 Ref 结尾（`countRef`）；区分 ref vs reactive 使用场景
+- 变量和方法必须加注释（用途 / 参数 / 返回）
+- 复杂计算属性抽成独立 computed，命名 lowerCamelCase
+
+## 四、组件 Props / 事件
+
+- props：lowerCamelCase；定义类型 + 必填 + 默认值 + 校验
+- 模板里传参用 kebab-case（`<child :user-id="id">`）
+- 属性多时换行写（每行一个属性）
+- 事件命名：动词 / 名词-动词 / 生命周期式（`submit` / `item-click` / `before-save`）
+- 子组件触发事件用对象式 `defineEmits`（带类型 + 注释）
+- directive 统一用简写（`@click` / `:src` / `v-if`），全项目一致
+
+## 五、Vue Router
+
+- path 以 `/` 开头 + kebab-case（`/user-list`）
+- name 与 component 一致（keep-alive 依赖 name）
+- 传参优先 query（url 可分享 / 可回溯），避免大量 params
+- 路由懒加载（`() => import()`）
+
+## 六、项目目录约定
+
+- 按业务模块组织 views，模块名 kebab-case
+- 文件夹用复数（`components` / `utils` / `hooks` / `assets`）
+- api 文件以 `-api.js` 结尾（`user-api.js`）
+- views 文件按职责加后缀：`-list` / `-form` / `-modal` / `-drawer`
+- 公用组件独立 `components/`，业务组件就近放模块内
+- router 与 views 结构保持一致
+
+## 七、引号 / 分号 / 细节
+
+- `template` 属性值：双引号；JS 字符串：单引号
+- 行尾加分号（全项目一致）
+- 避免魔法数字 / 字符串，抽常量
+
+> 参考：
+> - [SmartAdmin · Vue3 前端规范](https://smartadmin.vip/views/doc/standard/front.html)
+> - [掘金 · 浅读 Vue3 10 万行 30 个规范](https://juejin.cn/post/7402811750771851275)

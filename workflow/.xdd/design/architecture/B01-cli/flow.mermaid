@@ -1,0 +1,54 @@
+%%{ init: { 'theme': 'dark' } }%%
+%% B01-cli 流程图:CLI 八节点 + 验收循环(iter 迁移)
+%% 与 spec/B01-cli/*.feature 的节点状态、术语 1:1 对齐
+
+flowchart TD
+    START(["python -m workflow.run_workflow -t dir"]):::entry
+
+    subgraph BASE["基础层(共享)"]
+        NODES["nodes.py<br/>build_nodes / node_prompt<br/>@B01-R01/R02"]:::base
+        GATE["gate.py<br/>gate_check 认 □+检查框<br/>@B01-R03"]:::base
+        ITER["iter_utils.py<br/>current_iter<br/>@B01-R06"]:::base
+        RUNNER["claude_runner.py<br/>subprocess + stream-json"]:::base
+    end
+
+    subgraph SEQ["八节点顺序执行"]
+        N1["brainstorm<br/>design/intent+design.md"]:::node
+        N2["spec<br/>spec/_landscape+{bxx}/*.md+feature"]:::node
+        N3["architecture<br/>architecture/{bxx}/"]:::node
+        N4["wire<br/>(纯后端跳过)"]:::skip
+        N5["resilience<br/>architecture/{bxx}/resilience/"]:::node
+        N6["plan<br/>runs/iter-N/plan/{bxx}/"]:::node
+        N7["execute<br/>代码 @implements RXX<br/>+audits/build.md"]:::node
+        N8["verify<br/>runs/iter-N/verify-report.md"]:::gate
+    end
+
+    GATECHECK{"gate 检查<br/>verify 自检<br/>@B01-R03"}:::gate
+
+    INIT["xdd-init --iter N+1<br/>@B01-R04"]:::bridge
+
+    SHIP(["🎉 完成"]):::done
+    MAX(["达到 max iter<br/>停止报告"]):::fail
+
+    START --> ITER
+    ITER --> N1
+    N1 --> N2 --> N3 --> N4 --> N5 --> N6 --> N7 --> N8
+    N4 -. "纯后端项目跳过" .-> N5
+    N8 --> GATECHECK
+    GATE --> GATECHECK
+    GATECHECK -->|未过| INIT
+    INIT -->|迁移 iter-N+1, design 不动| N6
+    GATECHECK -->|过| SHIP
+    INIT -. "iter 达上限" .-> MAX
+
+    N1 -.-> RUNNER
+    RUNNER -.-> NODES
+
+    classDef entry fill:#1e3a5f,stroke:#3b82f6,color:#fff
+    classDef base fill:#3a2a1a,stroke:#f59e0b,color:#fff
+    classDef node fill:#1a4d2e,stroke:#22c55e,color:#fff
+    classDef skip fill:#2a2a2a,stroke:#666,color:#999,stroke-dasharray:4 3
+    classDef gate fill:#4d2a1a,stroke:#fbbf24,color:#fff
+    classDef bridge fill:#4d3a1a,stroke:#f59e0b,color:#fff
+    classDef done fill:#1a4d2e,stroke:#4ade80,color:#fff
+    classDef fail fill:#4d1a2e,stroke:#ef4444,color:#fff

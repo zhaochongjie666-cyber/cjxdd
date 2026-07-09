@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>xdd workflow 编排画布</title>
+  <link rel="stylesheet" href="/static/vendor/drawflow.min.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <!-- 顶部工具栏 -->
+  <header class="toolbar">
+    <div class="brand">xdd workflow 编排</div>
+    <div class="toolbar-group">
+      <label>任务目录</label>
+      <input id="taskDir" type="text" placeholder="/abs/demo/my-project (须含 prd.md)" style="width:340px">
+    </div>
+    <div class="toolbar-group">
+      <button id="btnLoad" title="加载该任务目录的编排图">📂 加载图</button>
+      <button id="btnSave" title="保存当前画布到 graph.json">💾 保存</button>
+      <button id="btnReset" title="恢复默认 8 节点编排">♻️ 重置默认</button>
+    </div>
+    <div class="toolbar-group">
+      <button id="btnRun" class="primary" title="按当前画布跑">▶ 开始</button>
+      <button id="btnStop" class="danger" disabled title="停止当前执行">⏹ 停止</button>
+      <button id="btnForce" class="toggle" title="勾选=忽略已有产出全重跑">⟳ force</button>
+    </div>
+    <div class="status" id="runStatus">就绪</div>
+  </header>
+
+  <main class="main">
+    <!-- 左侧节点面板(拖拽添加) -->
+    <aside class="palette">
+      <div class="palette-title">拖拽添加节点</div>
+      <div class="drag-item" data-kind="standard" draggable="true">
+        <span class="ico">🔹</span> xdd 标准节点
+        <small>(use skill)</small>
+      </div>
+      <div class="drag-item" data-kind="custom" draggable="true">
+        <span class="ico">🔸</span> 自定义节点
+        <small>(任意命令)</small>
+      </div>
+      <div class="drag-item" data-kind="gate" draggable="true">
+        <span class="ico">🚦</span> 验收闸节点
+        <small>(gate=true)</small>
+      </div>
+      <hr>
+      <div class="palette-title">连线说明</div>
+      <div class="legend"><span class="dot next"></span> next 边(实线,拓扑前进)</div>
+      <div class="legend"><span class="dot loop"></span> loop 边(虚线,回退循环)</div>
+      <div class="legend small">画 next:拖节点输出圆点到另一节点<br>画 loop:按住 Shift 再拖 → 标 loop</div>
+      <hr>
+      <div class="palette-title">说明</div>
+      <div class="legend small">双击节点编辑配置;右键节点删除</div>
+    </aside>
+
+    <!-- 中间画布 -->
+    <section id="canvas"></section>
+  </main>
+
+  <!-- 底部日志面板 -->
+  <footer class="logpanel">
+    <div class="loghead">
+      <span>实时日志</span>
+      <button id="btnClearLog" class="tiny">清空</button>
+      <label class="tiny"><input type="checkbox" id="autoscroll" checked> 自动滚动</label>
+    </div>
+    <pre id="log"></pre>
+  </footer>
+
+  <!-- 节点编辑弹窗 -->
+  <div id="editor" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-title">编辑节点 <span id="edId"></span></div>
+      <label>名称 name<input id="edName" type="text"></label>
+      <label>use skill / 指令<input id="edSkill" type="text" placeholder="use skill: xdd-verify"></label>
+      <label>产出文档 output_doc(相对 task_dir)<input id="edDoc" type="text"></label>
+      <label>模型 model
+        <select id="edModel"></select>
+      </label>
+      <label>额外 prompt 片段 extra<textarea id="edExtra" rows="3"></textarea></label>
+      <label class="inline"><input id="edGate" type="checkbox"> 当作验收闸(跑完统计自检清单)</label>
+      <div class="modal-actions">
+        <button id="edDelete" class="danger">删除节点</button>
+        <span class="spacer"></span>
+        <button id="edCancel">取消</button>
+        <button id="edSave" class="primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/vendor/drawflow.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

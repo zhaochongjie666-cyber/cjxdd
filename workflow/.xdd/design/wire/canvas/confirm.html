@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<!--
+  操作态 · confirm(确认态):破坏性/不可逆操作前
+  两个场景:① 删除节点(连带边) ② run 进行中点停止(丢失进度)
+  规范:说明后果;取消是默认主按钮防误点。
+  copy 主页面做底,在 </body> 前加 modal overlay。
+  @import tokens.css
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>确认 · xdd workflow</title>
+  <style>
+    @import "tokens.css";
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { height: 100%; font-family: var(--font-family); color: var(--text-primary); background: var(--surface-sunken); }
+    .toolbar { display: flex; align-items: center; gap: var(--space-md); padding: var(--space-sm) var(--space-lg);
+      background: var(--surface-elevated); border-bottom: 1px solid var(--border); }
+    .brand { font-weight: 700; color: var(--accent); }
+    .main { padding: var(--space-lg); color: var(--text-disabled); }  /* 底层主页面淡掉 */
+    /* modal overlay */
+    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex;
+      align-items: center; justify-content: center; z-index: 100; }
+    .modal { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg);
+      padding: var(--space-xl); width: 420px; }
+    .modal-icon { font-size: 32px; margin-bottom: var(--space-sm); }
+    .modal-title { font-size: var(--font-md); font-weight: 600; color: var(--danger); margin-bottom: var(--space-sm); }
+    .modal-desc { color: var(--text-secondary); font-size: var(--font-base); line-height: 1.6; margin-bottom: var(--space-md); }
+    .modal-impact { background: var(--danger-soft); border-radius: var(--radius); padding: var(--space-sm);
+      font-size: var(--font-sm); color: var(--danger); margin-bottom: var(--space-md); }
+    .modal-actions { display: flex; gap: var(--space-sm); justify-content: flex-end; }
+    button { padding: var(--space-xs) var(--space-md); border-radius: var(--radius); cursor: pointer; font-size: var(--font-base); border: 1px solid var(--border-strong); }
+    .btn-cancel { background: var(--surface); color: var(--text-primary); }  /* 取消是默认主按钮 */
+    .btn-danger { background: var(--danger); border-color: var(--danger); color: var(--text-on-accent); }
+  </style>
+</head>
+<body>
+  <header class="toolbar"><div class="brand">xdd workflow 编排</div></header>
+  <div class="main">底层画布(被遮罩)...</div>
+
+  <!-- 场景①:删除节点 -->
+  <div class="overlay">
+    <div class="modal">
+      <div class="modal-icon">🗑️</div>
+      <div class="modal-title">删除节点 verify?</div>
+      <div class="modal-desc">这个操作不可撤销。</div>
+      <div class="modal-impact">
+        连带影响:<br>
+        • 删除连到该节点的 2 条边(1 next + 1 loop)<br>
+        • 下游 execute 节点将失去验收闸,不再触发回退循环
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel">取消</button>  <!-- 默认/主按钮,防误点 -->
+        <button class="btn-danger">确认删除</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
