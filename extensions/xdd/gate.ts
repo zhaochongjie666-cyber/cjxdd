@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync, readdirSync, type Stats, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, type Stats, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { promisify } from "node:util";
 import type { XddGateResult } from "./types.ts";
@@ -116,4 +116,61 @@ export async function gitHasChanges(cwd: string): Promise<XddGateResult> {
 	} catch {
 		return { ok: true, soft: true };
 	}
+}
+
+/**
+ * Hard gate: file must exist (via requireGlobs) AND contain at least `minMatches`
+ * of the given keywords. Used for spec/architecture gates that need content
+ * validation beyond mere file existence (P3 Evidence First).
+ */
+export async function requireGlobsWithKeywords(
+	cwd: string,
+	patterns: string[],
+	keywords: string[],
+	minMatches = 2,
+): Promise<XddGateResult> {
+	const base = await requireGlobs(cwd, patterns);
+	if (!base.ok) return base;
+	for (const pattern of patterns) {
+		if (hasGlobMeta(pattern)) continue;
+		const fullPath = join(cwd, pattern);
+		if (!existsSync(fullPath)) continue;
+		const content = readFileSync(fullPath, "utf8");
+		const matches = keywords.filter((k) => content.includes(k));
+		if (matches.length < minMatches) {
+			return {
+				ok: false,
+				reason: `${pattern} 内容缺少关键章节（需含至少 ${minMatches} 项: ${keywords.join(", ")}；实际 ${matches.length} 项）`,
+			};
+		}
+		return { ok: true };
+	}
+	return { ok: true };
+}
+
+/**
+ * Hard gate: file must exist AND have at least `minSize` bytes.
+ * Catches empty / placeholder artifacts.
+ */
+export async function requireGlobsWithMinSize(
+	cwd: string,
+	patterns: string[],
+	minSize = 100,
+): Promise<XddGateResult> {
+	const base = await requireGlobs(cwd, patterns);
+	if (!base.ok) return base;
+	for (const pattern of patterns) {
+		if (hasGlobMeta(pattern)) continue;
+		const fullPath = join(cwd, pattern);
+		if (!existsSync(fullPath)) continue;
+		const stat = statSync(fullPath);
+		if (stat.size < minSize) {
+			return {
+				ok: false,
+				reason: `${pattern} 内容过短（${stat.size} 字节 < ${minSize}），可能缺少必要章节`,
+			};
+		}
+		return { ok: true };
+	}
+	return { ok: true };
 }

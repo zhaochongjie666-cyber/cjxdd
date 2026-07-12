@@ -1,4 +1,4 @@
-import type { InlineExtension } from "../core/extensions/types.ts";
+import type { InlineExtension } from "@earendil-works/pi-coding-agent";
 import { buildActiveStageSystemPrompt } from "./context.ts";
 import { renderReflectEnd, renderReflectStart, renderRollback, renderStageBoundary } from "./renderers.ts";
 import { createXddTools } from "./tools/index.ts";

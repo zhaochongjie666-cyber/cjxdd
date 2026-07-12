@@ -1,14 +1,16 @@
-import type { AgentSession } from "../core/agent-session.ts";
+import { readCheckpoint, removeCheckpoint, writeCheckpoint } from "./checkpoint.ts";
 import { buildReflectSeed, buildSeed, reflectAllowedTools, STAGE_ORCHESTRATION_TOOLS } from "./context.ts";
 import { STAGES } from "./stages.ts";
 import type {
 	ActiveXddRun,
+	XddApprovalEvent,
 	XddEvent,
 	XddEventListener,
 	XddLedgerEntry,
 	XddRunnerState,
 	XddRunOptions,
 	XddRunResult,
+	XddRuntime,
 	XddStageName,
 	XddStageSpec,
 	XddStatus,
@@ -32,12 +34,14 @@ export class XddRunner {
 	private lastFailure: { layer: string; reason: string; at: string } | undefined;
 	private stageStartedAt = new Date();
 	private runStartedAt = new Date();
-	private readonly session: AgentSession;
+	private readonly runtime: XddRuntime;
 	private readonly state: XddRunnerState;
+	private readonly opts: XddRunOptions;
 
-	constructor(session: AgentSession, state: XddRunnerState, opts: XddRunOptions) {
-		this.session = session;
+	constructor(runtime: XddRuntime, state: XddRunnerState, opts: XddRunOptions) {
+		this.runtime = runtime;
 		this.state = state;
+		this.opts = opts;
 		state.maxRollbacksPerStage = opts.maxRollbacksPerStage ?? 2;
 		state.maxSelfHealPerStage = opts.maxSelfHealPerStage ?? 3;
 		state.plan = XddRunner.buildPlan(opts);
@@ -118,13 +122,13 @@ export class XddRunner {
 	}
 
 	private append(customType: string, data: unknown): void {
-		this.session.sessionManager.appendCustomEntry(customType, data);
+		this.runtime.appendCustomEntry(customType, data);
 	}
 
 	private computeTokens(): number {
 		let total = 0;
-		for (const m of this.session.agent.state.messages) {
-			if (m.role === "assistant") {
+		for (const m of this.runtime.getMessages()) {
+			if (m.role === "assistant" && m.usage) {
 				total += m.usage.totalTokens;
 			}
 		}
@@ -136,8 +140,12 @@ export class XddRunner {
 			return this.failResult(undefined, "执行计划为空");
 		}
 		this.runStartedAt = new Date();
-		this.state.startRun();
+		const resumed = this.opts.resumeFromCheckpoint && this.tryResume();
+		if (!resumed) {
+			this.state.startRun();
+		}
 		this.emit({ type: "xdd_run_start", runId: this.state.runId, at: new Date().toISOString() });
+		writeCheckpoint(this.state, "running", this.rollbackCount);
 		const timer = setInterval(() => {
 			const now = Date.now();
 			this.emit({
@@ -175,19 +183,43 @@ export class XddRunner {
 							this.state.advancePlan();
 						}
 					}
+					writeCheckpoint(this.state, "running", this.rollbackCount);
 					// xdd_advance (or the fallback) already advanced state.
 					continue;
 				}
 
-				// Stuck: prompt a reflection turn. The model is expected to call
-				// xdd_rollback (after optionally xdd_diagnose) to recover.
-				this.resetOutcomes();
-				await this.reflectTurn(stage, attempt);
-				if (this.state.rollbackOutcome) {
-					this.applyRollback();
-					continue;
+			// Stuck: check if xdd_advance already set a forced rollback (e.g. group gate failure)
+			if (this.state.rollbackOutcome) {
+				const rolled = await this.applyRollback();
+				if (!rolled) return this.failResult(stage, "人类拒绝组级回退");
+				writeCheckpoint(this.state, "running", this.rollbackCount);
+				continue;
+			}
+
+			// P7 Human Governance: pause for approval at critical junctures
+			if (this.opts.humanApprovalHook) {
+				const signals = this.state.getSignals();
+				const isVerify = stage.exit === "verdict";
+				const event: XddApprovalEvent = isVerify
+					? { type: "verify_verdict", pass: signals.has("verdict_pass"), summary: this.state.submittedArtifacts.get(stage.name)?.join(", ") ?? "" }
+					: { type: "gate_failure", stage: stage.name, reason: this.lastFailure?.reason ?? "Gate 未通过", attempt };
+				const decision = await this.opts.humanApprovalHook(event);
+				if (!decision.approved) {
+					return this.failResult(stage, `人类拒绝继续：${decision.reason}`);
 				}
-				return this.failResult(stage, this.lastFailure?.reason ?? `阶段 ${stage.name} 未通过且反思未回退`);
+			}
+
+			// Stuck: prompt a reflection turn. The model is expected to call
+			// xdd_rollback (after optionally xdd_diagnose) to recover.
+			this.resetOutcomes();
+			await this.reflectTurn(stage, attempt);
+			if (this.state.rollbackOutcome) {
+				const rolled = await this.applyRollback();
+				if (!rolled) return this.failResult(stage, "人类拒绝回退");
+				writeCheckpoint(this.state, "running", this.rollbackCount);
+				continue;
+			}
+			return this.failResult(stage, this.lastFailure?.reason ?? `阶段 ${stage.name} 未通过且反思未回退`);
 			}
 			this.status = "pass";
 			return {
@@ -201,6 +233,11 @@ export class XddRunner {
 			return this.failResult(this.state.currentStage(), err instanceof Error ? err.message : String(err));
 		} finally {
 			clearInterval(timer);
+			if (this.status === "pass") {
+				removeCheckpoint(this.state.cwd);
+			} else {
+				writeCheckpoint(this.state, this.status, this.rollbackCount);
+			}
 			this.emit({
 				type: "xdd_run_end",
 				runId: this.state.runId,
@@ -215,7 +252,7 @@ export class XddRunner {
 		this.state.mode = "stage";
 		this.state.clearSignals();
 		this.state.clearDiagnose();
-		this.state.boundary = this.session.agent.state.messages.length;
+		this.state.boundary = this.runtime.getMessages().length;
 		this.stageStartedAt = new Date();
 
 		this.emit({
@@ -228,7 +265,7 @@ export class XddRunner {
 			stageStartedAt: this.stageStartedAt.toISOString(),
 		});
 
-		this.session.setActiveToolsByName([...stage.allowedTools, ...STAGE_ORCHESTRATION_TOOLS]);
+		this.runtime.setActiveToolsByName([...stage.allowedTools, ...STAGE_ORCHESTRATION_TOOLS]);
 		this.append("xdd_stage_boundary", {
 			runId: this.state.runId,
 			stage: stage.name,
@@ -237,7 +274,7 @@ export class XddRunner {
 			attempt,
 		});
 
-		await this.session.prompt(buildSeed(stage, this.state.userInput), { expandPromptTemplates: false });
+		await this.runtime.prompt(buildSeed(stage, this.state.userInput), { expandPromptTemplates: false });
 
 		const passed = this.state.advanceOutcome?.passed === true || this.completionSignalSet(stage);
 		this.emit({
@@ -266,8 +303,8 @@ export class XddRunner {
 			attempt,
 		});
 
-		this.session.setActiveToolsByName(reflectAllowedTools());
-		await this.session.prompt(buildReflectSeed(stage, reason), { expandPromptTemplates: false });
+		this.runtime.setActiveToolsByName(reflectAllowedTools());
+		await this.runtime.prompt(buildReflectSeed(stage, reason), { expandPromptTemplates: false });
 
 		const rollback = this.state.rollbackOutcome;
 		this.append("xdd_reflect_end", {
@@ -279,11 +316,27 @@ export class XddRunner {
 		});
 	}
 
-	/** Apply bookkeeping/events for a rollback the tool already performed in state. */
-	private applyRollback(): void {
+	/** Apply bookkeeping/events for a rollback the tool already performed in state.
+	 *  Returns false if human governance blocked the rollback. */
+	private async applyRollback(): Promise<boolean> {
 		const rb = this.state.rollbackOutcome;
-		if (!rb) return;
+		if (!rb) return false;
+
+		if (this.opts.humanApprovalHook) {
+			const decision = await this.opts.humanApprovalHook({
+				type: "group_rollback",
+				from: rb.from,
+				to: rb.to,
+				reason: rb.reason,
+			});
+			if (!decision.approved) {
+				this.state.rollbackOutcome = undefined;
+				return false;
+			}
+		}
+
 		this.rollbackCount++;
+		this.state.recordEsgNode("decision", rb.to, `rollback ${rb.from} -> ${rb.to}: ${rb.reason}`);
 		this.lastFailure = { layer: "(rollback)", reason: rb.reason, at: new Date().toISOString() };
 		this.append("xdd_rollback", {
 			runId: this.state.runId,
@@ -299,6 +352,7 @@ export class XddRunner {
 			reason: rb.reason,
 			at: new Date().toISOString(),
 		});
+		return true;
 	}
 
 	private completionSignalSet(stage: XddStageSpec): boolean {
@@ -319,8 +373,20 @@ export class XddRunner {
 			status: passed ? "pass" : "fail",
 			superseded: false,
 			at: new Date().toISOString(),
+			tokensUsed: this.computeTokens(),
+			artifacts: this.state.submittedArtifacts.get(stage) ?? undefined,
 		};
 		this.state.ledger.push(entry);
+		this.state.recordEsgNode("evidence", stage, `${stage} attempt ${attempt}: ${passed ? "pass" : "fail"}`, { artifacts: entry.artifacts, tokensUsed: entry.tokensUsed });
+	}
+
+	/** Attempt to restore run state from <cwd>/.xdd/checkpoint.json (P5). */
+	private tryResume(): boolean {
+		const cp = readCheckpoint(this.state.cwd);
+		if (!cp || cp.runId !== this.state.runId) return false;
+		this.state.restoreFromCheckpoint(cp);
+		this.rollbackCount = cp.rollbackCount;
+		return true;
 	}
 
 	private failResult(stage: XddStageSpec | undefined, reason: string): XddRunResult {

@@ -17,8 +17,8 @@ When you edit framework code (anything NOT under `pi/`), this file applies. When
 | `agents/` | xdd | New/modify agent (`xdd-walker`, `xdd-orchestrator`, `phase-*`) |
 | `skills/` | xdd | New/modify one of the 17 xdd skills |
 | `extensions/xdd/` | xdd → pi | xdd's inline-extension implementation for pi-coding-agent (the rest of `extensions/` mirrors `pi/packages/coding-agent/examples/extensions/`) |
-| `workflow/` | xdd | Python CLI runner (`run_workflow.py`, `gate.py`, `claude_runner.py`, `CLAUDE.md`, `.xdd/`) |
-| `regression/` | xdd | Nightly cron harness — `run-nightly.sh`, `lib/m2cc-env.sh`, `prompts/{trial-e2e,fix-verify}.md` |
+| `workflow/` | xdd | Python CLI runner (`run_workflow.py`, `gate.py`, `claude_runner.py`, `nodes.py`, `iter_utils.py`, `models.py`, `CLAUDE.md`, `.xdd/`, `web/` server + tests) |
+| `regression/` | xdd | Nightly cron harness — `run-nightly.sh`, `lib/m2cc-env.sh`, `prompts/{trial-e2e,fix-verify}.md` (in sibling `/home/zhaocj/ws/cjxdd`) |
 | `pi/` | upstream pi-mono (nested git) | NEVER as part of xdd work — PR upstream |
 | `core.md` | xdd philosophy | **DO NOT EDIT** (locked by `workflow/CLAUDE.md` rule 1) |
 | `install.sh` | xdd | Install flow that symlinks `agents/` + `skills/` into a harness dir |
@@ -34,12 +34,18 @@ bash skills/smoke-xdd-design-anchor.sh
 bash skills/xdd-execute/scripts/no-stub-check.sh [path...]
 
 # Nightly regression: 3 fresh empty-tree trials + auto fix-verify (~40 min/trial)
+# NOTE: regression/ dir lives in sibling repo /home/zhaocj/ws/cjxdd, not here
 bash regression/run-nightly.sh
 TRIALS=1 bash regression/run-nightly.sh          # debug
 TRIAL_TMO=600 TRIALS=1 bash regression/run-nightly.sh   # shorter cap
 
 # Workflow CLI (Python entry from cjpi root)
 python -m workflow.run_workflow --help
+#   -t, --task_dir    项目目录(需含 prd.md)
+#   -m, --model       模型(默认 YACC,可选 OPENAI/ANTHROPIC等)
+#   -b, --bizline     业务线 slug(默认 B01)
+#   -f, --force       忽略已有产物全重跑
+# Max iter loop: MAX_ITER=5 (workflow/run_workflow.py:26)
 
 # First-time install of agents/skills into a harness dir
 ./install.sh                                     # auto-detects ~/.config/opencode / ~/.pi / ~/.claude
@@ -77,6 +83,7 @@ Run in this order; stop on first failure:
 1. `bash skills/smoke-xdd-design-anchor.sh` — fast, deterministic (always)
 2. Read back the file you edited end-to-end; confirm frontmatter/YAML/anchor refs unchanged
 3. If you touched `extensions/xdd/*.ts`: TypeScript-check from `pi/` (`cd pi && npm run check` filtered to that path, or `npx tsc --noEmit` on the specific files)
+4. If you touched `workflow/*.py`: run `python -m pytest workflow/tests/ -v` (focused) or `python -m pytest workflow/ -v` (full)
 
 ## Misc gotchas
 
@@ -85,3 +92,5 @@ Run in this order; stop on first failure:
 - `agents/agents` is a dangling symlink to `/home/zhaocj/ws/cjxdd/agents` (that path no longer exists). It's historical; safe to ignore unless debugging `install.sh`.
 - `regression/runs/<ts>/trial-N/` are residual nightly-run working trees (each has its own `.git/`). Per `regression/README.md` they're auto-cleaned after 7 days, but the cleanup cron appears not to have run lately. To clear: `rm -rf regression/runs/202[5-9]*/`.
 - Regression fix-verify writes to `regression-fix-<YYYYMMDD>` branch, **never** `main`. Review and merge manually.
+- `workflow/web/` contains a FastAPI server + Drawflow-based UI for visualizing workflow graphs. Tests in `workflow/web/tests/`.
+- `extensions/xdd/` provides the pi-coding-agent extension (runner, tools, renderers, context). This is the bridge from xdd framework to pi's agent runtime.

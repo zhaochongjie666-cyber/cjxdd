@@ -1,6 +1,6 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
-import type { ToolDefinition } from "../../core/extensions/types.ts";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { type EmptyDetails, type GetXddState, ok } from "./index.ts";
 
 const schema = Type.Object({});

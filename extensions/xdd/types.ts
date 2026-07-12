@@ -1,4 +1,4 @@
-import type { Skill } from "../core/skills.ts";
+import type { Skill } from "@earendil-works/pi-coding-agent";
 
 /** The 10 xdd software-development stages, in execution order. */
 export type XddStageName =
@@ -61,7 +61,7 @@ export interface XddStageSpec {
 	 */
 	desiredState: readonly string[];
 	/**
-	 * Hard gate executed inside the xdd_goal_complete / xdd_verdict tool. The
+	 * Hard gate executed inside the xdd_submit_artifact tool. The
 	 * stage's desiredState is passed in so the gate can reason against it
 	 * (e.g. phrase its reason in the same vocabulary).
 	 */
@@ -101,6 +101,8 @@ export interface XddLedgerEntry {
 	status: "pass" | "fail";
 	superseded: boolean;
 	at: string;
+	tokensUsed?: number;
+	artifacts?: string[];
 }
 
 export type XddRunnerMode = "stage" | "reflect";
@@ -122,13 +124,26 @@ export const STAGE_ROLES: Readonly<Record<XddStageName, string>> = {
 	verify: "Auditor",
 };
 
+// ============================================================================
+// P7 Human Governance
+// ============================================================================
+
+export type XddApprovalEvent =
+	| { type: "gate_failure"; stage: XddStageName; reason: string; attempt: number }
+	| { type: "group_rollback"; from: XddStageName; to: XddStageName; reason: string }
+	| { type: "verify_verdict"; pass: boolean; summary: string };
+
+export type XddApprovalDecision =
+	| { approved: true }
+	| { approved: false; reason: string };
+
 export interface XddRunOptions {
 	task: string;
 	/** Max rollbacks per single stage before the run fails. */
 	maxRollbacksPerStage?: number;
 	/**
 	 * reconcile-style self-heal budget: max local-fix attempts the model may do at
-	 * the same stage via xdd_goal_complete / xdd_verdict before the runner
+	 * the same stage via xdd_submit_artifact before the runner
 	 * forces reflection + rollback. Default 3.
 	 */
 	maxSelfHealPerStage?: number;
@@ -138,6 +153,14 @@ export interface XddRunOptions {
 	onlyStage?: XddStageName;
 	/** Skip the "wire" stage. */
 	skipWire?: boolean;
+	/** Resume from <cwd>/.xdd/checkpoint.json if it exists (P5 Recoverability). */
+	resumeFromCheckpoint?: boolean;
+	/**
+	 * P7 Human Governance: called at critical junctures (gate failure, group
+	 * rollback, verify verdict). If provided, the run pauses until the hook
+	 * resolves. A denied decision fails the run with the given reason.
+	 */
+	humanApprovalHook?: (event: XddApprovalEvent) => Promise<XddApprovalDecision>;
 }
 
 export interface XddRunResult {
@@ -163,6 +186,8 @@ export class XddRunnerState {
 	/** messages.length captured at stage start; on("context") slices from here. */
 	boundary = 0;
 	ledger: XddLedgerEntry[] = [];
+	/** ESG nodes: chronological graph of decisions, evidence, reviews, findings, tasks, checkpoints. */
+	esg: XddEsgNode[] = [];
 
 	/** Effective ordered stages for this run (after --from/--stage/--skip-wire). */
 	plan: Array<{ stage: XddStageSpec; originalIndex: number }> = [];
@@ -170,7 +195,7 @@ export class XddRunnerState {
 	planIndex = -1;
 	/** Max rollbacks per single stage before the run fails (set at activation). */
 	maxRollbacksPerStage = 2;
-	/** reconcile-style self-heal budget per stage: max xdd_goal_complete / xdd_verdict calls
+	/** reconcile-style self-heal budget per stage: max xdd_submit_artifact calls
 	 *  for the same stage before the runner forces reflection. Set at activation. */
 	maxSelfHealPerStage = 3;
 
@@ -180,6 +205,11 @@ export class XddRunnerState {
 	rollbackOutcome: { from: XddStageName; to: XddStageName; reason: string } | undefined;
 	/** Set by xdd_advance when the final plan stage is passed. */
 	runComplete = false;
+
+	/** Artifacts submitted via xdd_submit_artifact per stage (observability). */
+	submittedArtifacts = new Map<XddStageName, string[]>();
+	/** Self-attack notes submitted via xdd_submit_artifact per stage (evidence). */
+	selfAttackNotes = new Map<XddStageName, string>();
 
 	private _signals = new Set<XddSignal>();
 	private _diagnose: XddDiagnose | null = null;
@@ -294,6 +324,85 @@ export class XddRunnerState {
 	currentAttempt(stage: XddStageName): number {
 		return this._attempts.get(stage) ?? 0;
 	}
+
+	recordArtifact(stage: XddStageName, paths: string[]): void {
+		this.submittedArtifacts.set(stage, paths);
+	}
+
+	recordSelfAttack(stage: XddStageName, note: string): void {
+		this.selfAttackNotes.set(stage, note);
+	}
+
+	recordEsgNode(type: XddEsgNodeType, stage: XddStageName, label: string, data?: unknown, parentId?: string): string {
+		const id = `esg-${this.esg.length + 1}`;
+		this.esg.push({ id, type, stage, label, data, parentId, at: new Date().toISOString() });
+		return id;
+	}
+
+	getSubmittedArtifacts(): Array<{ stage: XddStageName; paths: string[] }> {
+		return [...this.submittedArtifacts.entries()].map(([stage, paths]) => ({ stage, paths }));
+	}
+
+	/** Serialize the full run state for checkpoint persistence (P5 Recoverability). */
+	toCheckpoint(status: XddStatus, rollbackCount: number): XddCheckpointData {
+		const attempts: Record<string, number> = {};
+		for (const [k, v] of this._attempts) attempts[k] = v;
+		const selfHealUsed: Record<string, number> = {};
+		for (const [k, v] of this._selfHealUsed) selfHealUsed[k] = v;
+		const submittedArtifacts: Record<string, string[]> = {};
+		for (const [k, v] of this.submittedArtifacts) submittedArtifacts[k] = v;
+		const selfAttackNotes: Record<string, string> = {};
+		for (const [k, v] of this.selfAttackNotes) selfAttackNotes[k] = v;
+		return {
+			runId: this.runId,
+			userInput: this.userInput,
+			cwd: this.cwd,
+			planIndex: this.planIndex,
+			plan: this.plan.map((e) => ({ stageName: e.stage.name, originalIndex: e.originalIndex })),
+			mode: this.mode,
+			ledger: this.ledger,
+			attempts,
+			selfHealUsed,
+			maxRollbacksPerStage: this.maxRollbacksPerStage,
+			maxSelfHealPerStage: this.maxSelfHealPerStage,
+			rollbackCount,
+			status,
+			submittedArtifacts,
+			selfAttackNotes,
+			esg: this.esg,
+			at: new Date().toISOString(),
+		};
+	}
+
+	/** Restore run state from a previously persisted checkpoint. */
+	static fromCheckpoint(data: XddCheckpointData): XddRunnerState {
+		const state = new XddRunnerState({ runId: data.runId, cwd: data.cwd, userInput: data.userInput });
+		state.planIndex = data.planIndex;
+		state.mode = data.mode;
+		state.ledger = data.ledger;
+		state.maxRollbacksPerStage = data.maxRollbacksPerStage;
+		state.maxSelfHealPerStage = data.maxSelfHealPerStage;
+		for (const [k, v] of Object.entries(data.attempts)) state._attempts.set(k as XddStageName, v);
+		for (const [k, v] of Object.entries(data.selfHealUsed)) state._selfHealUsed.set(k as XddStageName, v);
+		for (const [k, v] of Object.entries(data.submittedArtifacts)) state.submittedArtifacts.set(k as XddStageName, v);
+		for (const [k, v] of Object.entries(data.selfAttackNotes)) state.selfAttackNotes.set(k as XddStageName, v);
+		state.esg = data.esg;
+		return state;
+	}
+
+	/** Restore mutable fields from a checkpoint onto an existing instance (keeps plan/skills). */
+	restoreFromCheckpoint(data: XddCheckpointData): void {
+		this.planIndex = data.planIndex;
+		this.mode = data.mode;
+		this.ledger = data.ledger;
+		this.maxRollbacksPerStage = data.maxRollbacksPerStage;
+		this.maxSelfHealPerStage = data.maxSelfHealPerStage;
+		for (const [k, v] of Object.entries(data.attempts)) this._attempts.set(k as XddStageName, v);
+		for (const [k, v] of Object.entries(data.selfHealUsed)) this._selfHealUsed.set(k as XddStageName, v);
+		for (const [k, v] of Object.entries(data.submittedArtifacts)) this.submittedArtifacts.set(k as XddStageName, v);
+		for (const [k, v] of Object.entries(data.selfAttackNotes)) this.selfAttackNotes.set(k as XddStageName, v);
+		this.esg = data.esg;
+	}
 }
 
 export type XddEvent =
@@ -340,4 +449,98 @@ export interface ActiveXddRun {
 	stageElapsedMs: number;
 	totalElapsedMs: number;
 	tokensUsed: number;
+}
+
+// ============================================================================
+// Controller cycle types (Observe -> Compare -> Reconcile -> Update)
+// ============================================================================
+
+/** xdd_next_task 工具返回的唯一下一步指令 (Reconcile)。 */
+export interface XddTaskInstruction {
+	stage: XddStageName;
+	role: string;
+	desiredState: readonly string[];
+	gaps: string[];
+	action: string;
+	selfHealRemaining: number;
+	groupGatePending: boolean;
+}
+
+/** xdd_submit_artifact 工具提交的产物信息。 */
+export interface XddArtifactSubmission {
+	summary: string;
+	artifacts: string[];
+	selfAttack: string;
+	pass?: boolean;
+}
+
+// ============================================================================
+// Stage groups (Package D - macro Gates)
+// ============================================================================
+
+export type XddStageGroupName = "discovery" | "architecture" | "implementation" | "verification";
+
+export interface XddStageGroup {
+	name: XddStageGroupName;
+	label: string;
+	stages: readonly XddStageName[];
+	gate: XddGate;
+	rollbackTarget: XddStageName;
+	gateLabel: string;
+}
+
+// ============================================================================
+// Checkpoint persistence (Package C - Recoverability)
+// ============================================================================
+
+export interface XddCheckpointData {
+	runId: string;
+	userInput: string;
+	cwd: string;
+	planIndex: number;
+	plan: Array<{ stageName: XddStageName; originalIndex: number }>;
+	mode: XddRunnerMode;
+	ledger: XddLedgerEntry[];
+	attempts: Record<string, number>;
+	selfHealUsed: Record<string, number>;
+	maxRollbacksPerStage: number;
+	maxSelfHealPerStage: number;
+	rollbackCount: number;
+	status: XddStatus;
+	submittedArtifacts: Record<string, string[]>;
+	selfAttackNotes: Record<string, string>;
+	esg: XddEsgNode[];
+	at: string;
+}
+
+// ============================================================================
+// Runtime abstraction (P6 Runtime Independence)
+// ============================================================================
+
+export interface XddRuntimeMessage {
+	role: string;
+	usage?: { totalTokens: number };
+}
+
+export interface XddRuntime {
+	appendCustomEntry(type: string, data: unknown): void;
+	getMessages(): ReadonlyArray<XddRuntimeMessage>;
+	setActiveToolsByName(tools: string[]): void;
+	prompt(seed: string, opts?: { expandPromptTemplates?: boolean }): Promise<void>;
+}
+
+// ============================================================================
+// ESG (Engineering State Graph) - P3 Evidence First
+// ============================================================================
+
+export type XddEsgNodeType = "decision" | "evidence" | "review" | "finding" | "task" | "checkpoint";
+
+export interface XddEsgNode {
+	id: string;
+	type: XddEsgNodeType;
+	stage: XddStageName;
+	label: string;
+	data?: unknown;
+	parentId?: string;
+	at: string;
 }

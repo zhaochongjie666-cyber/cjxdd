@@ -1,6 +1,6 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { type Static, Type } from "typebox";
-import type { ToolDefinition } from "../../core/extensions/types.ts";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { isStageName } from "../diagnosis.ts";
 import type { XddStageName } from "../types.ts";
 import type { EmptyDetails, GetXddState } from "./index.ts";

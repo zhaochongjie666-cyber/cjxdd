@@ -1,42 +1,120 @@
- 保持对通用coding 平台的支持，不要特意开发针对性的代码。 skill + agent 是所有ai coding都支持的。 xdd是啥呢， 就是 用户prompt -> 设计 -> 代码实现，
-  通过中间的设计层，锚定代码开发不会偏离用户
+xdd 流程
+
+输入：用户描述
+
+start
+阶段一
+1. 调研需求，
+2. 编写 user 旅途,
+3. 自我攻击，用户旅途实际是否符合？
+4. 编写详细的 features,  
+5. 自我攻击,  Feature 有无遗漏？有无矛盾？是否偏离了用户旅途？
+6. 编写详细的可靠性，Feature 的可靠性、断点恢复、解耦性。 已知的已知，已知的未知，未知的已知，未知的未知
+7. 自我攻击  是否有纰漏？
+
+输出：用户旅途， Feature 文档。可靠性，测试方法论，
+
+阶段二，
+1. 设计解耦的，模块化的，可单元测试的。
+2. 自我攻击  架构一定要解耦。模块化，单点可测试。 模块化编程，组件抽象为基础能力
+
+阶段三，
+1. 代码实现。
+2. 自我攻击，有无纰漏
+
+阶段四
+1. 验证交付，
+2. 多方检查
+
+end
 
 
-模块化编程,先把要做的东西分成多个模块。开发并测试好模块。再对模块间模块间调通接口。
+State 是唯一事实来源（Single Source of Truth）
+Task 必须由 Difference 推导，而不是人工硬编码
+Gate 决定阶段推进，不允许模型自行宣布完成
+Checkpoint 必须支持 Resume
+Controller 必须保持幂等（Idempotent）
+任何 Runtime 都只能通过 Adapter 接入，不得依赖 XDD Core
 
-xddflow 需要严格控制业务线命名规则，管好上下文在流程中的传递
+while (true):
+observation = observe()
+
+state = buildCurrentState(observation)
+
+diff = compare(desiredState, state)
+
+if diff.isEmpty():
+    break
+
+tasks = scheduler(diff)
+
+execute(tasks)
+
+checkpoint()
 
 
-# XDD 
-按照流程常备角色
-角色兼容skill，以skill方式使用， 只会使用use skill do xxx 工作
-
-角色skill:
-角色中通过context pack传递消息
-research -> add + bdd = arch
-
-通用skill：
-pack context: 打包上下文，在各个agent 间流转，包括， 输入文件， 输出文件， 目标，打包成json file，存储到本地文件系统，skill 包含load 和 dump
-
-sider tool / hook tool：
-sider tool 是执行的过程中，额外做一些数据保存之类的工作，提交给context，并且执行完从context移除
-hook tool 是执行过程中，通过hook自行添加到 context 中的东西
+背景（Why）
+目标（Goal）
+核心概念（Concept）
+数据模型（Data Model）
+生命周期（Lifecycle）
+状态机（State Machine）
+时序图（Mermaid）
+TypeScript Interface
+JSON Schema
+实现要求（MUST / SHOULD / MAY）
 
 
-## 架构模式
+它只问两个问题: 
+1.当前状态是什么？ 
+2.距离目标状态还差什么？ 
+这两个问题回答出来，下一步任务就是推导结果，而不是人为编排的流程。
 
-10 大经典架构模式(分层 / 客户端-服务器 / 主-从 / 管道-过滤器 / 代理 / 对等 / 事件总线 / MVC / 黑板 / 解释器)+ 5 个现代扩展(微服务 / CQRS / 事件溯源 / 六边形 / Space-based)的决策库,含「按质量属性场景选模式」决策矩阵:
+目标定义期望状态；观测重建当前状态；差距生成下一步行动；行动产生事件；事件更新工程状态；控制器持续循环，直到工程状态收敛到目标状态。
 
-→ `skills/xdd-architecture/references/architecture-patterns.md`
+                Human
+                  │
+                  ▼
+               Goal
+                  │
+                  ▼
+           Desired State
+                  │
+                  ▼
+         ┌─────────────────┐
+         │   Controller     │
+         │------------------│
+         │ Observe          │
+         │ Compare          │
+         │ Schedule         │
+         │ Update           │
+         └─────────────────┘
+                  │
+     ┌────────────┴────────────┐
+     ▼                         ▼
 
-选模式不再默认套 4 层分层。原始参考(知乎「软件架构模式」系列,节选标题):
-1. 分层模式 / Layered
-2. 客户端/服务器模式 / Client-Server
-3. 主/从模式 / Primary-Replica (旧称 Master-Slave)
-4. 管道/过滤器模式 / Pipe-Filter
-5. 代理模式 / Broker
-6. 对等模式 / Peer-to-Peer
-7. 事件总线模式 / Event-Bus
-8. 模型/视图/控制器 (MVC) 模式 / Model-View-Controller
-9. 黑板模式 / Blackboard
-10. 解释器模式 / Interpreter
+   Current State              Task Queue
+         │                         │
+         ▼                         ▼
+  Engineering Graph          Agent Runtime
+         ▲                         │
+         └────────────┬────────────┘
+                      ▼
+                    Events
+
+
+
+
+Event
+↓
+Observation
+↓
+State
+↓
+Difference
+↓
+Task
+↓
+Action
+↓
+Event

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import type { Skill } from "../core/skills.ts";
+import type { Skill } from "@earendil-works/pi-coding-agent";
 import { REFLECT_PREAMBLE, XDD_PREAMBLE } from "./preambles.ts";
 import type { XddRunnerState, XddStageSpec } from "./types.ts";
 
@@ -18,30 +18,26 @@ export interface BuildStagePromptArgs {
 	stage: XddStageSpec;
 	userInput: string;
 	skills: Skill[];
+	planIndex: number;
+	planTotal: number;
 }
 
-/**
- * Assemble the fresh per-stage system prompt. Sections (declared in order):
- *  preamble (reconcile-style abstractions) / stage role / abstract action set /
- *  current stage / user goal / cwd / desired state (declarative spec) /
- *  stage skill body / allowed tools (concrete tool names) / completion gate.
- */
 export function buildStageSystemPrompt(args: BuildStagePromptArgs): string {
-	const { cwd, stage, userInput, skills } = args;
+	const { cwd, stage, userInput, skills, planIndex, planTotal } = args;
 	const skillBody = readSkillContent(skills, stage.skill);
 	const sections: string[] = [];
 	sections.push(XDD_PREAMBLE);
-	sections.push(`[阶段角色] ${stage.role}——仅按本角色视角行事`);
+	sections.push(`[阶段角色] ${stage.role}--仅按本角色视角行事`);
 	sections.push(
 		`[抽象动作] 本阶段使用的抽象类别：${[...new Set(stage.allowedTools.map(mapToolToAbstraction))].join(
 			" / ",
-		)}——按抽象类别思考，工具名只是底层工具`,
+		)}--按抽象类别思考，工具名只是底层工具`,
 	);
-	sections.push(`[当前阶段] ${stage.name}（第 ${stageIndexOneBased(stage)} / 10 阶段）`);
+	sections.push(`[当前阶段] ${stage.name}（第 ${planIndex + 1} / ${planTotal} 阶段）`);
 	sections.push(`[用户原始需求] ${userInput}`);
 	sections.push(`[工作目录] ${cwd}`);
 	sections.push(
-		`[期望状态 · desiredState] 本阶段需让以下观察型条件全部为真——完成后请调 xdd_goal_complete / xdd_verdict 触发 gate：\n${stage.desiredState
+		`[期望状态 · desiredState] 本阶段需让以下观察型条件全部为真--完成后请调 xdd_submit_artifact 提交产物与自我攻击结论，触发 gate：\n${stage.desiredState
 			.map((d, i) => `  ${i + 1}. ${d}`)
 			.join("\n")}`,
 	);
@@ -51,11 +47,12 @@ export function buildStageSystemPrompt(args: BuildStagePromptArgs): string {
 		sections.push(`[阶段技能 ${stage.skill}] （未找到 SKILL.md，按阶段名通用指引与 desiredState 执行）`);
 	}
 	sections.push(`[允许工具] ${[...stage.allowedTools, ...STAGE_ORCHESTRATION_TOOLS].join(", ")}`);
-	const gateTool = stage.exit === "verdict" ? "xdd_verdict" : "xdd_goal_complete";
+	const gateHint =
+		stage.exit === "verdict"
+			? "xdd_submit_artifact(summary, artifacts, selfAttack, pass)"
+			: "xdd_submit_artifact(summary, artifacts, selfAttack)";
 	sections.push(
-		`[完成方式 / reconcile] 让所有 desiredState 为真 → 调 ${gateTool}(summary=${
-			stage.exit === "verdict" ? "{pass, summary}" : "summary"
-		}) → gate 通过后调 xdd_advance 推进。闸门失败可重试，预算见状态；预算耗尽后请调 xdd_diagnose 进入反思。`,
+		`[完成方式 / reconcile] 让所有 desiredState 为真 -> 调 ${gateHint} -> gate 通过后调 xdd_advance 推进。闸门失败可重试，预算见状态；预算耗尽后请调 xdd_diagnose 进入反思。`,
 	);
 	return sections.join("\n\n");
 }
@@ -64,19 +61,13 @@ export function buildReflectSystemPrompt(args: { userInput: string; cwd: string 
 	return [REFLECT_PREAMBLE, `[工作目录] ${args.cwd}`, `[用户目标] ${args.userInput}`].join("\n\n");
 }
 
-function stageIndexOneBased(_stage: XddStageSpec): number {
-	// Best-effort ordinal. Source of truth is `state.planIndex`; the runner emits
-	// the precise index in xdd_stage_start events. Without the live plan we can
-	// only guess; report 0 and let the prompt label stage by name.
-	return 0;
-}
-
-export { stageIndexOneBased };
-
 /** Seed user prompt that launches a stage turn. */
 export function buildSeed(stage: XddStageSpec, userInput: string): string {
 	const desired = stage.desiredState.map((d, i) => `  ${i + 1}. ${d}`).join("\n");
-	const gateTool = stage.exit === "verdict" ? "xdd_verdict" : "xdd_goal_complete";
+	const gateHint =
+		stage.exit === "verdict"
+			? "xdd_submit_artifact（summary, artifacts, selfAttack, pass）"
+			: "xdd_submit_artifact（summary, artifacts, selfAttack）";
 	const lines = [
 		`进入 xdd 阶段：${stage.name}。`,
 		`本阶段角色：${stage.role}。`,
@@ -86,7 +77,8 @@ export function buildSeed(stage: XddStageSpec, userInput: string): string {
 		"如需前序阶段产物，先 read 相关文件。",
 		`用户原始需求：${userInput}`,
 		`本阶段 desiredState（让这些条件为真）：\n${desired}`,
-		`完成方式：调 ${gateTool}${stage.exit === "verdict" ? "（pass, summary）" : "（summary）"} → gate 通过 → 调 xdd_advance 推进。闸门未达标可重试（局部修复），自愈预算耗尽后再调 xdd_diagnose 进入反思。`,
+		`完成方式：调 ${gateHint} -> gate 通过 -> 调 xdd_advance 推进。闸门未达标可重试（局部修复），自愈预算耗尽后再调 xdd_diagnose 进入反思。`,
+		`Controller 工具：xdd_observe（观察状态）/ xdd_desired_state（查看目标）/ xdd_difference（计算差距）/ xdd_next_task（获取下一步指令）。`,
 	];
 	return lines.join("\n");
 }
@@ -109,17 +101,15 @@ export function reflectAllowedTools(): string[] {
 		"ls",
 		"xdd_list_skills",
 		"xdd_load_skill",
+		"xdd_observe",
+		"xdd_desired_state",
+		"xdd_difference",
+		"xdd_next_task",
 		"xdd_diagnose",
 		"xdd_rollback",
-		"xdd_status",
 	];
 }
 
-/**
- * reconcile stable abstraction: map concrete tool names to the three semantic
- * action layers model should reason in. Used in stage system prompts and seed
- * to surface abstraction without renaming underlying tool schemas.
- */
 export function mapToolToAbstraction(tool: string): "Understand" | "Modify" | "Verify" | "Orchestrate" {
 	if (
 		tool === "read" ||
@@ -127,14 +117,17 @@ export function mapToolToAbstraction(tool: string): "Understand" | "Modify" | "V
 		tool === "find" ||
 		tool === "ls" ||
 		tool === "xdd_list_skills" ||
-		tool === "xdd_load_skill"
+		tool === "xdd_load_skill" ||
+		tool === "xdd_observe" ||
+		tool === "xdd_desired_state" ||
+		tool === "xdd_difference" ||
+		tool === "xdd_next_task"
 	)
 		return "Understand";
 	if (tool === "write" || tool === "edit") return "Modify";
 	if (
 		tool === "bash" ||
-		tool === "xdd_goal_complete" ||
-		tool === "xdd_verdict" ||
+		tool === "xdd_submit_artifact" ||
 		tool === "xdd_diagnose" ||
 		tool === "xdd_rollback"
 	)
@@ -142,8 +135,13 @@ export function mapToolToAbstraction(tool: string): "Understand" | "Modify" | "V
 	return "Orchestrate";
 }
 
-/** Orchestrator tools appended to every stage's active tool set + display list. */
-export const STAGE_ORCHESTRATION_TOOLS = ["xdd_advance", "xdd_status"] as const;
+export const STAGE_ORCHESTRATION_TOOLS = [
+	"xdd_advance",
+	"xdd_observe",
+	"xdd_desired_state",
+	"xdd_difference",
+	"xdd_next_task",
+] as const;
 
 /** Build the prompt for the currently active stage from shared state. */
 export function buildActiveStageSystemPrompt(state: XddRunnerState): string | undefined {
@@ -157,5 +155,7 @@ export function buildActiveStageSystemPrompt(state: XddRunnerState): string | un
 		stage,
 		userInput: state.userInput,
 		skills: state.skills,
+		planIndex: state.planIndex,
+		planTotal: state.plan.length,
 	});
 }

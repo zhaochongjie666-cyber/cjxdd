@@ -1,5 +1,5 @@
 import { type Component, Text } from "@earendil-works/pi-tui";
-import type { EntryRenderer } from "../core/extensions/types.ts";
+import type { EntryRenderer } from "@earendil-works/pi-coding-agent";
 import type { XddStageName } from "./types.ts";
 
 export interface XddStageBoundaryData {
