@@ -70,6 +70,19 @@ init -> understand -> spec -> architecture -> wire -> resilience
 每阶段重复 ①..⑥；desiredState + gate 在 stages.ts 按阶段定义。
 ```
 
+### 阶段组（4 个宏观 Gate）
+
+组边界与执行顺序连续：discovery(0-2) -> architecture(3-5) -> implementation(6-8) -> verification(9)。
+
+| 组 | 阶段 | 组级 Gate | 回退目标 |
+|---|---|---|---|
+| discovery | init, understand, spec | Gate 1: design.md + spec rules.md + .feature | init |
+| architecture | architecture, wire, **resilience** | Gate 2: architecture.md + resilience/failure-modes.md + git | architecture |
+| implementation | plan, execute, cleanup | Gate 3: plan.md + git | plan |
+| verification | verify | Gate 4: spec rules.md + git | verify |
+
+> **resilience 归属说明**：resilience 在 architecture 组（不在 discovery），因为 `xdd-resilience` skill 依赖 architecture（"韧性是架构的延伸"）。core.md 阶段一.6 的 "Feature 级可靠性" 由 spec 阶段的已知/未知四象限 desiredState 兜底；深度 FMEA + 韧性测试计划在 architecture 组（post-architecture）做。这让组边界与执行顺序连续，Gate 1 不再晚于 Gate 2 触发。
+
 ### 保障（P 系列）
 
 - **P3 Evidence First**：ESG（Engineering State Graph）记 decision/evidence/review/finding/task/checkpoint。

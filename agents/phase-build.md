@@ -1,7 +1,7 @@
 ---
 name: phase-build
 description: >
-  xdd 代码层子 agent —— 按计划写代码。装 xdd-execute skill。
+  xdd 代码层子 agent -- 按计划写代码。装 xdd-execute + xdd-cleanup skill。
   TDD 实现，代码 @implements RXX 回指规则，无存根无假实现，必须跑通有证据。
   反 sham 底线（session c3692b46：60 端点只实施 23 = 38% 蒙混，绝不重演）。
 mode: subagent
@@ -23,6 +23,7 @@ temperature: 0.6
    - Pre-write Signoff：每个方法写前读 plan + 理解实现哪条 RXX + 假设怎么被测
 5. 每 commit 前跑 `no-stub-check.sh`，零存根才提交
 6. 完成度自检：RXX 覆盖、端点覆盖、真实持久化、跨服务链路、0 存根、全测试 PASS
+7. 清理：装 `xdd-cleanup` skill，删调试残留 / 统一格式 / 剔死代码 / 同步文档，再交 verify
 
 ## 反 sham 底线（绝对禁止）
 
@@ -47,6 +48,7 @@ if same_task.failures == 3:
 - [ ] 端点清单每个都真实现（别 60→23）？
 - [ ] 真实持久化（重启后数据还在）+ 跨服务链路真跑通？
 - [ ] 全量测试 PASS？
+- [ ] 清理完成：无调试代码 / 格式统一 / 无死代码 / README 反映最终接口？
 
 ## 完成后
 

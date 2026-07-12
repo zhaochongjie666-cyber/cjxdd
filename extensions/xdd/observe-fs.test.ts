@@ -53,6 +53,31 @@ describe("observeFilesystem - deliverables", () => {
 			rmSync(dir, { recursive: true });
 		}
 	});
+
+	it("resolves glob deliverable patterns to first match", () => {
+		const dir = makeTmpDir();
+		try {
+			mkdirSync(join(dir, ".xdd", "design", "spec", "B01"), { recursive: true });
+			writeFileSync(join(dir, ".xdd", "design", "spec", "B01", "rules.md"), "# rules\n".repeat(5));
+			const snap = observeFilesystem(dir, [".xdd/design/spec/**/rules.md"]);
+			expect(snap.deliverables).toHaveLength(1);
+			expect(snap.deliverables[0].exists).toBe(true);
+			expect(snap.deliverables[0].bytes).toBeGreaterThan(0);
+		} finally {
+			rmSync(dir, { recursive: true });
+		}
+	});
+
+	it("reports glob deliverable as absent when no match", () => {
+		const dir = makeTmpDir();
+		try {
+			const snap = observeFilesystem(dir, [".xdd/design/spec/**/rules.md"]);
+			expect(snap.deliverables[0].exists).toBe(false);
+			expect(snap.deliverables[0].bytes).toBe(0);
+		} finally {
+			rmSync(dir, { recursive: true });
+		}
+	});
 });
 
 describe("observeFilesystem - checkpoint", () => {

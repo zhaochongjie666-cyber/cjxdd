@@ -28,6 +28,10 @@ describe("findStageGroup", () => {
 		expect(findStageGroup("wire")?.name).toBe("architecture");
 	});
 
+	it("finds architecture group for resilience", () => {
+		expect(findStageGroup("resilience")?.name).toBe("architecture");
+	});
+
 	it("finds implementation group for execute", () => {
 		expect(findStageGroup("execute")?.name).toBe("implementation");
 	});
@@ -38,12 +42,12 @@ describe("findStageGroup", () => {
 });
 
 describe("isLastStageInGroup", () => {
-	it("returns true for resilience (last in discovery)", () => {
+	it("returns true for resilience (last in architecture)", () => {
 		expect(isLastStageInGroup("resilience")).toBe(true);
 	});
 
-	it("returns true for wire (last in architecture)", () => {
-		expect(isLastStageInGroup("wire")).toBe(true);
+	it("returns false for wire (not last in architecture, resilience is)", () => {
+		expect(isLastStageInGroup("wire")).toBe(false);
 	});
 
 	it("returns true for cleanup (last in implementation)", () => {
@@ -54,8 +58,8 @@ describe("isLastStageInGroup", () => {
 		expect(isLastStageInGroup("verify")).toBe(true);
 	});
 
-	it("returns false for spec (not last in discovery)", () => {
-		expect(isLastStageInGroup("spec")).toBe(false);
+	it("returns true for spec (last in discovery)", () => {
+		expect(isLastStageInGroup("spec")).toBe(true);
 	});
 
 	it("returns false for init (not last in discovery)", () => {

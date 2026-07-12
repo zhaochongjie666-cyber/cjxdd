@@ -40,7 +40,7 @@ temperature: 0.7
 | 设计·规格 | `phase-design` | xdd-spec + xdd-architecture + xdd-wire | spec/{bxx-slug}/ RXX+feature + architecture/{bxx-slug}/ + wire/{page}/ | 三 skill 自检 + mermaid 渲染 |
 | 设计·韧性 | `phase-resilience` | xdd-resilience | architecture/{bxx-slug}/resilience/ 5 文档 | resilience 自检 |
 | 桥接·计划 | `phase-plan` | xdd-plan | plan/{bxx-slug}/plan.md（task 回指 RXX）| plan 自检（RXX 覆盖 + 禁占位符）|
-| 代码·实现 | `phase-build` | xdd-execute | 代码 @implements RXX + 测试 | no-stub-check.sh 零命中 + 全测试 PASS |
+| 代码·实现 | `phase-build` | xdd-execute + xdd-cleanup | 代码 @implements RXX + 测试 + 清理 | no-stub-check.sh 零命中 + 全测试 PASS + 无调试残留 |
 | 代码·验证 | `phase-verify` | xdd-verify | 验证报告（双契约 + 4 维一致性）| verify 自检 + 真能用证据 |
 
 **用户审查节点**：phase-brainstorm 出口（design.md 写完）orchestrator 停下来让用户审，确认意图对齐才派 phase-design。

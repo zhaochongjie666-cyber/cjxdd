@@ -95,7 +95,8 @@ temperature: 0.8
 
 **代码层**：
 | `xdd-execute` | 按计划写代码（TDD），`@implements RXX` | plan 后 |
-| `xdd-verify` | 真实验证（能跑/数据落地/无存根/双契约）| execute 后 |
+| `xdd-cleanup` | 清理（调试残留/格式/死代码/文档同步）| execute 后、verify 前 |
+| `xdd-verify` | 真实验证（能跑/数据落地/无存根/双契约）| cleanup 后 |
 
 **小工具**（挂在 belt 上随时用）：
 | 工具 | 干什么 |

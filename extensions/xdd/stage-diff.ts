@@ -58,6 +58,10 @@ export function classifyDesiredStateItem(
 		item.includes("剔除") ||
 		item.includes("更新")
 	) {
+		// Stages without deliverablePaths (git-based: wire/execute/cleanup) have
+		// no file deliverable to verify against; their action items are attested
+		// by the gitHasChanges gate, so classify as self-check instead of unmet.
+		if (ctx.fsSnap.deliverables.length === 0) return "self-check";
 		const hasDeliverable = ctx.fsSnap.deliverables.some((d) => d.exists && d.bytes > 0);
 		return hasDeliverable ? "met" : "unmet";
 	}

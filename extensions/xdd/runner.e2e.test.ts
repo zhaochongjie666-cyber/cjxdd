@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { createXddTools } from "./tools/index.ts";
 import { XddRunner } from "./runner.ts";
 import { XddRunnerState, type XddRuntime, type XddRuntimeMessage } from "./types.ts";
@@ -14,14 +14,26 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
  * checkpoint, ledger, ESG) actually runs to completion.
  */
 
-const DELIVERABLES: Record<string, { path: string; content: string }> = {
-	spec: { path: "docs/spec.md", content: "# Spec\n接口: login\nschema: User\n错误码: 401\n示例: curl x\n边界: empty" },
-	architecture: {
-		path: "docs/architecture.md",
-		content: "# Architecture\n模块: auth core\n依赖: db, mq\n数据流: req->svc->db\n失败模式: timeout",
-	},
-	resilience: { path: "docs/resilience.md", content: `# Resilience\n${"a".repeat(120)}` },
-	plan: { path: "docs/plan.md", content: `# Plan\n${"b".repeat(120)}` },
+const DELIVERABLES: Record<string, Array<{ path: string; content: string }>> = {
+	understand: [
+		{ path: ".xdd/design/intent.md", content: "# Intent\n1 句话定位: auth service\n成功标准: login works\n非目标: sso\n" },
+		{ path: ".xdd/design/design.md", content: "# Design\nSelected: email+password login\nAlternatives: oauth (太重)\nAssumptions: postgres\nOut of Scope: sso\nOpen Questions: none\n" },
+	],
+	spec: [
+		{ path: ".xdd/design/spec/B01/rules.md", content: "# Rules\n| RXX | 规则 | Feature | 端点 | 实现 |\n| R01 | 邮箱密码登录 | login.feature | POST /api/auth/login | - [ ] |\n| R02 | 错误5次锁定 | lockout.feature | POST /api/auth/login | - [ ] |\n" },
+		{ path: ".xdd/design/spec/B01/login.feature", content: "Feature: login\n  Scenario: ok\n  Scenario: 拒绝\n" },
+	],
+	architecture: [
+		{ path: ".xdd/design/architecture/B01/architecture.md", content: "# Architecture\n模块: auth core\n依赖: db, mq\n数据流: req->svc->db\n失败模式: timeout\n" },
+	],
+	resilience: [
+		{ path: ".xdd/design/architecture/B01/resilience/failure-modes.md", content: `# Failure Modes\n${"a".repeat(120)}` },
+		{ path: ".xdd/design/architecture/B01/resilience/failsafe-design.md", content: "# Failsafe\n| F01 | 熳断 | app/svc.py |\n" },
+		{ path: ".xdd/design/architecture/B01/resilience/resilience-test-plan.md", content: "# Test Plan\n| F01 | chaos | manual |\n" },
+	],
+	plan: [
+		{ path: ".xdd/runs/iter-1/plan/B01/plan.md", content: `# Plan\n${"b".repeat(120)}` },
+	],
 };
 
 class FakeRuntime implements XddRuntime {
@@ -52,8 +64,10 @@ class FakeRuntime implements XddRuntime {
 		// Simulate the model doing the work: write the stage's deliverable file.
 		const del = DELIVERABLES[stage.name];
 		if (del) {
-			mkdirSync(join(this.cwd, "docs"), { recursive: true });
-			writeFileSync(join(this.cwd, del.path), del.content, "utf8");
+			for (const f of del) {
+				mkdirSync(join(this.cwd, dirname(f.path)), { recursive: true });
+				writeFileSync(join(this.cwd, f.path), f.content, "utf8");
+			}
 		}
 
 		// Simulate the model calling xdd_submit_artifact (triggers the real gate).
@@ -105,9 +119,10 @@ describe("XddRunner end-to-end", () => {
 			expect(state.esg.length).toBeGreaterThan(0);
 
 			// All deliverable files actually landed on disk (the gates checked these).
-			for (const name of ["spec", "architecture", "resilience", "plan"]) {
-				const del = DELIVERABLES[name];
-				expect(existsSync(join(cwd, del.path))).toBe(true);
+			for (const name of ["understand", "spec", "architecture", "resilience", "plan"]) {
+				for (const f of DELIVERABLES[name]) {
+					expect(existsSync(join(cwd, f.path))).toBe(true);
+				}
 			}
 
 			// Checkpoint was cleared on success (P5 Recoverability: removeCheckpoint empties the file).

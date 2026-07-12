@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync, type Stats } from "node:fs";
 import { join } from "node:path";
+import { globToRegExp, hasGlobMeta, walkRel } from "./gate.ts";
 
 /**
  * Filesystem observation for the Controller cycle (core.md: observation = observe()).
@@ -251,7 +252,16 @@ function scanXddPlan(cwd: string): XddPlanTaskCounts {
  * from the active XddStageSpec (the same paths the hard gate checks).
  */
 export function observeFilesystem(cwd: string, deliverablePaths: readonly string[]): XddFsSnapshot {
+	const hasGlob = deliverablePaths.some((p) => hasGlobMeta(p));
+	const walked = hasGlob ? walkRel(cwd) : undefined;
 	const deliverables: XddDeliverableStatus[] = deliverablePaths.map((p) => {
+		if (hasGlobMeta(p) && walked) {
+			const reg = globToRegExp(p);
+			const match = walked.find((f) => reg.test(f.replace(/\\/g, "/")));
+			if (!match) return { path: p, exists: false, bytes: 0 };
+			const st = safeStat(join(cwd, match));
+			return { path: p, exists: !!st && st.isFile(), bytes: st?.size ?? 0 };
+		}
 		const full = join(cwd, p);
 		const st = safeStat(full);
 		return { path: p, exists: !!st && st.isFile(), bytes: st?.size ?? 0 };
