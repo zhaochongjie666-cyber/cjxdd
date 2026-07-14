@@ -100,15 +100,19 @@ export const STAGES: readonly XddStageSpec[] = [
 		],
 		deliverablePaths: [".xdd/design/spec/**/rules.md", ".xdd/design/spec/**/*.feature"],
 			noCodeReading: true,
-		aigateStandard: `审查 spec 阶段（最严格）：
-1. rules.md 的每条RXX规则是否有实质业务语义（不是"系统应正常工作"）
-2. 每条RXX是否可验收（有具体条件和结果，不是模糊的"应处理"）
-3. .feature 文件的 Scenario 是否有具体 Given/When/Then（不是占位符）
-4. Then 断言是否有具体值/状态（不是"系统正常运行"）
-5. 每个 Feature 是否至少有1个异常 Scenario（异常有具体原因，不是"失败"敷衍）
-6. When/Then 是否含实现细节词（调度器/线程池/锁/CAS/重试 -> 不通过）
-7. RXX规则是否跟intent.md意图一致（不偏离）
-8. RXX是否关联了角色PX（没角色的规则=没人用=不通过）`,
+		aigateStandard: `审查 spec 阶段（最严格，可开发性审查）：
+1. 是否先提取了业务事实再写 Gherkin（角色/对象/状态/前置/成功结果/失败结果/副作用）-- 直接写 Gherkin = 不通过
+2. 是否建立了场景覆盖矩阵，八类逐类判断（主路径/权限/状态转换/边界/幂等/并发/外部失败/审计）-- 只有主路径 = 不通过
+3. 是否规则优先（先写 Rule 再写 Scenario）-- UI 操作脚本 = 不通过
+4. Scenario 是否用具体角色/对象ID/状态/数字 -- "用户""相关权限""超过限制" = 不通过
+5. Then 是否写外部可观察结果（状态变化/负责人/审计/通知）-- "操作成功""系统正确处理" = 不通过
+6. 失败场景是否写了"原状态不变""不产生副作用" -- 没写 = 不通过
+7. 并发场景是否写了"只能一次成功""失败方收到提示" -- 没写 = 不通过
+8. 是否有假装精确（未经确认的时间/数量/错误码，没标@待确认）= 不通过
+9. 是否有实现细节冒充业务规则（数据库字段/assignee_id）= 不通过
+10. 每条 RXX 是否关联角色 PX 且跟 personas 一致 -- 没角色 = 不通过
+11. When/Then 是否含实现细节词（调度器/线程池/锁/CAS/重试）= 不通过
+12. 可开发性五问：开发能否看出规则？测试能否构造数据？产品能否判断验收？失败后不变化的数据写清了？删了步骤代码还是完整业务规范？`,
 				gate: async ({ cwd }) => {
 			const rulesOk = await requireGlobsWithMinSize(cwd, [".xdd/design/spec/**/rules.md"], 100);
 			if (!rulesOk.ok) return { ok: false, reason: "spec Gate: 缺少或过短的 .xdd/design/spec/**/rules.md（RXX 规则目录）" };
