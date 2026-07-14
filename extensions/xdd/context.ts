@@ -33,11 +33,32 @@ export const NO_CODE_CONSTRAINT =
 	"只关注设计（做成什么样 / 系统怎么设计），不关注现有实现（代码怎么写的）。" +
 	"wire 阶段可写新的脚手架文件，但不应读现有源码。";
 
+export const ANTI_AI_CONSTRAINT =
+	"[去AI味] 所有文档产物必须像真人写的，不许有 AI 味。\n" +
+	"禁止的 AI 痕迹：\n" +
+	"  - 开头'随着...不断发展'、'在当今...背景下'\n" +
+	"  - '首先/其次/再次/最后'的机械列举\n" +
+	"  - '值得注意的是''综上所述''由此可见'等过渡套话\n" +
+	"  - '高效/智能/全面/赋能/闭环/生态/深度融合/多维度协同'等营销词\n" +
+	"  - '各有优缺点，应根据实际情况选择'这种没立场的废话\n" +
+	"  - 每段结构过于整齐（长度/句式一模一样）\n" +
+	"  - 结尾重复总结全文，没有新增价值\n" +
+	"  - 正确但没信息量的常识补充（删了读者不会少知道任何事实）\n" +
+	"必须做到：\n" +
+	"  - 抽象词改具体事实：谁做了什么、什么场景、解决了什么具体问题、什么数量\n" +
+	"  - 有明确判断和取舍：什么最重要、什么暂时不重要、哪种方案更好、为什么\n" +
+	"  - 加真实语境：团队人数、已有系统限制、历史问题、已尝试但失败的方案、时间成本约束\n" +
+	"  - 营销词换动作词：'赋能业务'->'减少人工审核'、'构建生态'->'自动分配任务'\n" +
+	"  - 保留诚实的不确定性：'这部分还没最终答案''现阶段不值得提前优化'比强行完整更自然\n" +
+	"  - 句式有节奏：长句接短句、重要结论单独成段、不必每节都写三点\n" +
+	"判断标准：有具体细节 + 有明确取舍 + 有真实限制 + 有作者自己的判断 = 没有 AI 味。";
+
 export function buildStageSystemPrompt(args: BuildStagePromptArgs): string {
 	const { cwd, stage, userInput, skills, planIndex, planTotal } = args;
 	const skillBody = readSkillContent(skills, stage.skill);
 	const sections: string[] = [];
 	sections.push(XDD_PREAMBLE);
+	sections.push(ANTI_AI_CONSTRAINT);
 	if (NO_CODE_STAGES.has(stage.name)) {
 		sections.push(NO_CODE_CONSTRAINT);
 	}
