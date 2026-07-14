@@ -13,6 +13,8 @@ import { XddRunnerState } from "./types.ts";
 import { activateXddExtension, getState } from "./extension.ts";
 import { loadXddSkills } from "./skill-loader.ts";
 import { readCheckpoint, writeCheckpoint } from "./checkpoint.ts";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { archiveRun } from "./archive.ts";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
@@ -28,11 +30,18 @@ export async function runXdd(args: string, cwd: string, pi: ExtensionAPI): Promi
 	state.skills = loadXddSkills(cwd);
 	state.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
 	state.startRun();
+	// Skip init if .xdd/ skeleton already exists (re-run or resumed project).
+	const xddExists = existsSync(join(cwd, ".xdd", "design")) && existsSync(join(cwd, ".xdd", "runs"));
+	if (xddExists) {
+		state.planIndex = 1; // jump to understand
+	}
 	activateXddExtension(state);
 	writeCheckpoint(state, "running", 0);
 	const n = state.skills.length;
+	const stageName = state.currentStageName();
+	const skipMsg = xddExists ? "检测到 .xdd/ 已存在，跳过 init，" : "";
 	await pi.sendUserMessage(
-		`${task}\n\n[xdd] run ${runId} 启动。加载了 ${n} 个 xdd 技能。当前阶段: init。用 xdd_list_skills 查看，xdd_load_skill 加载，xdd_submit_artifact 提交产物。`,
+		`${task}\n\n[xdd] run ${runId} 启动。${skipMsg}加载了 ${n} 个 xdd 技能。当前阶段: ${stageName}。用 xdd_list_skills 查看，xdd_load_skill 加载，xdd_submit_artifact 提交产物。`,
 	);
 }
 

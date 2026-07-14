@@ -173,13 +173,17 @@ export const STAGES: readonly XddStageSpec[] = [
 			"运行一次空实现，确认模块图能加载（避免架构性错误）",
 			"已自我攻击：检查模块图是否有循环依赖、接口是否真能 import 通、是否漏了 spec 规则涉及的模块，并记录结论",
 		],
-		deliverablePaths: [],
+		deliverablePaths: [".xdd/design/wire/*.md"],
 		noCodeReading: true,
 		aigateStandard: `审查 wire 阶段：
-1. 项目骨架是否可运行（有package.json/go.mod等，不是空目录）
-2. 是否有基础配置（tsconfig/eslint/CI配置等，至少1个）
-3. 是否有占位代码（空函数/空类/TODO -> 不通过）
-4. 目录结构是否跟architecture的模块划分对应`,
+1. 每个页面一个 .md 文件（不是一堆 HTML）
+2. 每页有 ASCII 布局（desktop + mobile），不是空壳
+3. 元素清单标了 @covers-RXX（每个元素有来源规则）
+4. 6 操作态全覆盖（空/加载/错误/成功/确认/边界），每态有 ASCII + 说明
+5. 每态的内容不是模板敷衍（空状态有行动引导，错误态有人话+重试，确认态有后果说明）
+6. 每页底部有 Review（Q1-Q5 逐条回答，不是"无问题"敷衍）
+7. 页面清单跟 spec 的 RXX 对应（不能漏页面、不能多页面）
+8. 混淆元素 A/B/C/D 四类有扫描记录`,
 				gate: async ({ cwd }) => gitHasChanges(cwd),
 	},
 	{
