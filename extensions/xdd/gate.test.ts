@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
 	gitHasChanges,
 	requireGlobs,
+	requirePatternInSource,
 	requireGlobsWithKeywords,
 	requireGlobsWithMinSize,
 	softPass,
@@ -160,6 +161,47 @@ describe("requireGlobsWithMinSize", () => {
 			writeFileSync(join(dir, ".xdd", "design", "architecture", "B01", "resilience", "failure-modes.md"), "# FM\n".repeat(20));
 			const result = await requireGlobsWithMinSize(dir, [".xdd/design/architecture/**/resilience/failure-modes.md"], 100);
 			expect(result.ok).toBe(true);
+		} finally {
+			rmSync(dir, { recursive: true });
+		}
+	});
+});
+
+describe("requirePatternInSource", () => {
+	it("passes when source file has @implements RXX", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "xdd-"));
+		try {
+			mkdirSync(join(dir, "src"), { recursive: true });
+			writeFileSync(join(dir, "src", "auth.ts"), "// @implements R01\nexport function login() {}\n");
+			const result = await requirePatternInSource(dir, /@implements\s+R\d/i, 1);
+			expect(result.ok).toBe(true);
+		} finally {
+			rmSync(dir, { recursive: true });
+		}
+	});
+
+	it("fails when no @implements annotation in source", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "xdd-"));
+		try {
+			mkdirSync(join(dir, "src"), { recursive: true });
+			writeFileSync(join(dir, "src", "auth.ts"), "export function login() {}\n");
+			const result = await requirePatternInSource(dir, /@implements\s+R\d/i, 1);
+			expect(result.ok).toBe(false);
+		} finally {
+			rmSync(dir, { recursive: true });
+		}
+	});
+
+	it("ignores .xdd/ design docs when scanning", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "xdd-"));
+		try {
+			mkdirSync(join(dir, ".xdd", "design", "spec", "B01"), { recursive: true });
+			// @implements in a .feature file (under .xdd/) should NOT count
+			writeFileSync(join(dir, ".xdd", "design", "spec", "B01", "login.feature"), "# @implements R01\nFeature: x\n");
+			mkdirSync(join(dir, "src"), { recursive: true });
+			writeFileSync(join(dir, "src", "auth.ts"), "export function login() {}\n");
+			const result = await requirePatternInSource(dir, /@implements\s+R\d/i, 1);
+			expect(result.ok).toBe(false);
 		} finally {
 			rmSync(dir, { recursive: true });
 		}

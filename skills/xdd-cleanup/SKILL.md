@@ -2,7 +2,7 @@
 name: xdd-cleanup
 description: |
   xdd 执行层 -- 代码实现后的清理收尾。删调试残留/占位符/待办标记、统一格式、剔除死代码死文件、同步文档。
-  不是重构（不改行为），是让代码从"能跑"变成"能交付"。无独立产物文件，gate 用 gitHasChanges（有清理改动即可）。
+  不是重构（不改行为），是让代码从"能跑"变成"能交付"。无独立硬产物，gate softPass（清理质量由 verify 验收 + skill 自检保障）。
   与 xdd-polish 区分：polish 是质询性评审（设计/体验好不好，离线手动调），cleanup 是实现后的机械清理（在流水线内）。
   触发：清理、cleanup、收尾、打扫、死代码、dead code、占位符、TODO、格式统一、lint、文档同步、交付前清理。
 ---
@@ -85,7 +85,7 @@ files=$(git diff --name-only --diff-filter=AM | grep -E '\.(t|j)sx?$|\.py$|\.go$
 
 ## 产出
 
-无独立产物文件。清理改动通过 `git diff` 体现，gate（`gitHasChanges`）校验"有清理改动"。verify 阶段看到的是清理后的代码。
+无独立产物文件。清理改动通过 `git diff` 体现。Gate 为 softPass（cleanup 无独立硬产物："无可清理"是合法结果，gitHasChanges 无法区分 cleanup 改动与 execute 遗留改动，故不设硬 gate；清理质量由 verify 验收 + 下方自检保障）。verify 阶段看到的是清理后的代码。
 
 ## 自检
 

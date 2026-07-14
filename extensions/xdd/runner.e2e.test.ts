@@ -18,6 +18,10 @@ const DELIVERABLES: Record<string, Array<{ path: string; content: string }>> = {
 	understand: [
 		{ path: ".xdd/design/intent.md", content: "# Intent\n1 句话定位: auth service\n成功标准: login works\n非目标: sso\n" },
 		{ path: ".xdd/design/design.md", content: "# Design\nSelected: email+password login\nAlternatives: oauth (太重)\nAssumptions: postgres\nOut of Scope: sso\nOpen Questions: none\n" },
+		{ path: ".xdd/runs/iter-1/goals.md", content: "# Goals\n| G1 | login works | B01 |\n" },
+		{ path: ".xdd/design/personas/_index.md", content: "# 用户角色全景\n## 角色清单\n| PX | 角色 | 定位 | 使用频率 | 系统产出 |\n|----|------|------|---------|---------|\n| P1 | 普通用户 | 登录 | 每日 | JWT |\n| P2 | 管理员 | 管权 | 按需 | 审计日志 |\n\n## 角色发散方法论记录（7 类逐一考量）\n1. 主用户: P1 普通用户\n2. 管理用户: P2 管理员\n3. 间接用户: 已考量，本系统无\n4. 外部系统: 已考量，本系统无\n5. 审计合规: 已考量，本系统无\n6. 开发运维: 已考量，本系统无\n7. 边缘角色: 已考量，本系统无\n" },
+		{ path: ".xdd/design/personas/P1-普通用户.md", content: "# P1 普通用户\n## 1. 画像\n普通登录用户\n## 2. 目标与动机\n登录系统\n## 3. 使用频率与触发\n每日\n## 4. 典型工作流\n打开登录页 -> 输入账号密码 -> 登录\n## 5. 痛点\n无\n## 6. 系统产出\nJWT\n## 7. 权限范围\n只能登录\n## 8. 协作关系\n无\n## 9. 异常期望\n密码错提示\n## 10. 体验要求\n<1s 响应\n" },
+		{ path: ".xdd/design/personas/P2-管理员.md", content: "# P2 管理员\n## 1. 画像\n系统管理员\n## 2. 目标与动机\n管理用户权限\n## 3. 使用频率与触发\n按需\n## 4. 典型工作流\n登录 -> 查看用户列表 -> 改权限\n## 5. 痛点\n无\n## 6. 系统产出\n权限变更审计\n## 7. 权限范围\n全部\n## 8. 协作关系\n管理 P1\n## 9. 异常期望\n操作日志\n## 10. 体验要求\n<2s 响应\n" },
 	],
 	spec: [
 		{ path: ".xdd/design/spec/B01/rules.md", content: "# Rules\n| RXX | 规则 | Feature | 端点 | 实现 |\n| R01 | 邮箱密码登录 | login.feature | POST /api/auth/login | - [ ] |\n| R02 | 错误5次锁定 | lockout.feature | POST /api/auth/login | - [ ] |\n" },
@@ -25,6 +29,9 @@ const DELIVERABLES: Record<string, Array<{ path: string; content: string }>> = {
 	],
 	architecture: [
 		{ path: ".xdd/design/architecture/B01/architecture.md", content: "# Architecture\n模块: auth core\n依赖: db, mq\n数据流: req->svc->db\n失败模式: timeout\n" },
+		{ path: ".xdd/design/architecture/module-landscape.md", content: "# Module Landscape\nbase: notify/storage/auth\n业务: B01/B02/B03\n反向依赖空\n" },
+		{ path: ".xdd/design/architecture/event-contract.md", content: "# Event Contract\nE01 ProbeCompleted\nE02 AlertTriggered\n" },
+		{ path: ".xdd/design/architecture/aggregate-landscape.md", content: "# Aggregate Landscape\nB01 Check / B02 AlertRule / B03 DashboardView\n" },
 	],
 	resilience: [
 		{ path: ".xdd/design/architecture/B01/resilience/failure-modes.md", content: `# Failure Modes\n${"a".repeat(120)}` },
@@ -33,6 +40,12 @@ const DELIVERABLES: Record<string, Array<{ path: string; content: string }>> = {
 	],
 	plan: [
 		{ path: ".xdd/runs/iter-1/plan/B01/plan.md", content: `# Plan\n${"b".repeat(120)}` },
+	],
+	execute: [
+		{ path: "src/auth.ts", content: "// @implements R01\nexport function login(email: string, pw: string) { return { token: \"x\" }; }\n" },
+	],
+	verify: [
+		{ path: ".xdd/runs/iter-1/verify-report.md", content: "# Verify Report\n## 健康检查\nGET /healthz -> 200\n## 漫游\n注册->登录->token: ok\n## 4维审计\n| spec RXX | 1 | 1 | ✅ |\n## 双契约\n真实可用: ✅\n生产接受: ✅\n## 结论\n真能用\n" },
 	],
 };
 
@@ -119,7 +132,7 @@ describe("XddRunner end-to-end", () => {
 			expect(state.esg.length).toBeGreaterThan(0);
 
 			// All deliverable files actually landed on disk (the gates checked these).
-			for (const name of ["understand", "spec", "architecture", "resilience", "plan"]) {
+			for (const name of ["understand", "spec", "architecture", "resilience", "plan", "execute", "verify"]) {
 				for (const f of DELIVERABLES[name]) {
 					expect(existsSync(join(cwd, f.path))).toBe(true);
 				}

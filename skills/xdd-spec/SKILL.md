@@ -36,8 +36,9 @@ description: |
 所有状态名、产物名、角色名、错误原因必须与以下来源一致，未知标"待确认"，不编造：
 
 1. `.xdd/design/design.md` + `intent.md`（意图锚，字段映射见下）
-2. `.xdd/design/architecture/{bxx-slug}/flow.mermaid`（组件名、外部系统、产物流向；**仅 iter-2+ 变更回读**，首次全链路此文件不存在）
-3. 当前代码 / 用户材料（API 名、状态枚举、错误码、存储对象）
+2. `.xdd/design/personas/`（用户角色档案，**每条 RXX 必须关联至少一个 PX**，没角色的规则 = 没人用 = 不该做）
+3. `.xdd/design/architecture/{bxx-slug}/flow.mermaid`（组件名、外部系统、产物流向；**仅 iter-2+ 变更回读**，首次全链路此文件不存在）
+4. 当前代码 / 用户材料（API 名、状态枚举、错误码、存储对象）
 
 ## 怎么做
 
@@ -54,6 +55,7 @@ work():
      GATE:  find .xdd/design/spec/{bxx-slug} -name '*.feature' | wc -l >= RXX 数（每 RXX ≥1 文件）
   4. ACT:   断言具体可观察（Then 写前端/后端/存储/通知/审计，给具体字段值；笼统→具体见 xdd-gherkin-plus）
      GATE:  每个 Feature 至少 1 个含"应"或"应返回"或"应拒绝"的 Then（无空泛"系统正常运行"）
+     GATE:  每个 Feature 的 When/Then 不含实现细节词（调度器/线程池/协程/事务/锁/CAS/重试退避/连接池/后台循环）-- BDD 只写可观察结果，实现归 architecture
   5. ACT:   输入对齐（状态名/产物名/角色名/错误码与 design + architecture 一致，未知标"待确认"）
   6. ACT:   自检（见文末清单，逐项过）
      GATE:  每个 Feature 含 ≥1 个异常 Scenario（Scenario 名含"拒绝/失败/不存在/无权限/冲突"之一）
@@ -118,14 +120,17 @@ Feature: [业务能力] — [核心价值]    @covers-R01
 `rules.md` 是规则目录：
 
 ```markdown
-# B01 鉴权 (auth) — 规则
+# B01 鉴权 (auth) - 规则
 
-| RXX | 规则一句话 | 覆盖 Feature | 关联端点 | 实现 |
-|-----|-----------|-------------|---------|------|
-| R01 | 用户用邮箱密码登录，成功返回 JWT | login.feature | POST /api/auth/login | - [ ] |
-| R02 | 密码连续错 5 次锁定账号 15 分钟 | lockout.feature | POST /api/auth/login | - [ ] |
-| R03 | 未登录访问受保护 API 返回 401 | auth-required.feature | (所有受保护端点) | - [ ] |
+| RXX | 规则一句话 | 角色 | 覆盖 Feature | 关联端点 | 实现 |
+|-----|-----------|------|-------------|---------|------|
+| R01 | 用户用邮箱密码登录，成功返回 JWT | P1 普通用户 | login.feature | POST /api/auth/login | - [ ] |
+| R02 | 密码连续错 5 次锁定账号 15 分钟 | P1 普通用户 | lockout.feature | POST /api/auth/login | - [ ] |
+| R03 | 未登录访问受保护 API 返回 401 | P1/P2 | auth-required.feature | (所有受保护端点) | - [ ] |
+| R04 | 管理员能查看所有用户登录日志 | P3 管理员 | audit-log.feature | GET /api/admin/audit | - [ ] |
 ```
+
+**角色列（PX）来自 understand 阶段的 `personas/_index.md`**，不能编造角色名。每条 RXX 至少关联一个角色。
 
 **「实现」列语义**（状态标记，看有没有落实）：
 - `- [x]` = 该 RXX 在代码有 `@implements RXX` 标注且 verify 4 维审计未标 ❌
@@ -185,8 +190,10 @@ Feature: [业务能力] — [核心价值]    @covers-R01
 □ 每个 Feature 至少一个异常路径？
 □ 多类型/状态用 Scenario Outline + Examples？
 □ 前端展示 vs 后端可观察状态分清了？
-□ 没把架构细节（锁/事务/线程）写进 BDD？
+□ 没把架构细节（锁/事务/线程/调度器）写进 BDD？
+□ When/Then 没有实现细节词（调度器/线程池/事务/锁/CAS/重试/连接池/后台循环）？
 □ 每条 RXX 至少 1 个 Feature 覆盖？
+□ 每条 RXX 关联至少一个角色（PX），角色名来自 understand 的 personas/_index.md？
 □ 状态名/角色名/错误码跟 design.md / flow.mermaid / 代码一致，未知标"待确认"？
 □ RXX 规则术语全部来自 understand 的 glossary.md（通用语言），无新造同义词？
 □ _landscape.md 每条业务线标了子域类型（核心/支撑/通用）？

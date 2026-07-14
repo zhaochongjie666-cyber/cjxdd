@@ -79,9 +79,26 @@ init -> understand -> spec -> architecture -> wire -> resilience
 | discovery | init, understand, spec | Gate 1: design.md + spec rules.md + .feature | init |
 | architecture | architecture, wire, **resilience** | Gate 2: architecture.md + resilience/failure-modes.md + git | architecture |
 | implementation | plan, execute, cleanup | Gate 3: plan.md + git | plan |
-| verification | verify | Gate 4: spec rules.md + git | verify |
+| verification | verify | Gate 4: spec rules.md + verify-report.md | verify |
 
 > **resilience 归属说明**：resilience 在 architecture 组（不在 discovery），因为 `xdd-resilience` skill 依赖 architecture（"韧性是架构的延伸"）。core.md 阶段一.6 的 "Feature 级可靠性" 由 spec 阶段的已知/未知四象限 desiredState 兜底；深度 FMEA + 韧性测试计划在 architecture 组（post-architecture）做。这让组边界与执行顺序连续，Gate 1 不再晚于 Gate 2 触发。
+
+### 两种执行模型的颗粒度映射
+
+xdd 有两种执行模型，颗粒度不同但流程对齐：
+
+| core.md Phase | extension 组（10 阶段，程序化 gate） | agents phase（6 phase，checklist 自检） |
+|---|---|---|
+| Phase 1 需求研究/规格收敛 | discovery: init / understand / spec | brainstorm(understand) + design(spec 部分) |
+| Phase 2 架构设计+系统韧性 | architecture: architecture / wire / resilience | design(architecture/wire 部分) + resilience |
+| Phase 3 代码实现+清理 | implementation: plan / execute / cleanup | plan + build(execute+cleanup) |
+| Phase 4 验证交付 | verification: verify | verify |
+
+**颗粒度差异是模型适配的**：
+- **extension**（细粒度）：10 阶段每阶段有程序化 gate，自动化控制循环需细粒度截断（spec gate 不过不进 architecture）。
+- **agents**（粗粒度）：6 phase 每 phase 有 checklist，LLM 驱动用 phase 级自检（phase-design 合并 spec+architecture+wire 一次产出全部 BXX）。
+- **spec 归属**：extension 放 discovery(Phase 1)，agents 放 phase-design(跨 Phase 1+2)——agents 把 spec+architecture+wire 合并设计，phase 内顺序仍 spec->architecture->wire，仅缺组间硬 gate（由 phase 末 checklist 兜底）。
+- **cleanup 归属**：extension 独立阶段（softPass gate），agents 折进 phase-build（装 xdd-execute + xdd-cleanup，实现后即清理）。
 
 ### 保障（P 系列）
 

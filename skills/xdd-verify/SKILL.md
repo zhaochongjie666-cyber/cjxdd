@@ -136,7 +136,9 @@ for round in 1..3:
 
 同一 P1 连续 3 试没修好 → 不硬扛，回设计层找根因（跟 execute 的 3 试 HALT 一致）。
 
-## 产出：验证报告
+## 产出
+
+`.xdd/runs/iter-N/verify-report.md`（验证报告）+ `runs/iter-N/evidence/`（截图/快照/响应）。Gate 校验 verify-report.md 存在（min 100 字节）。
 
 ```markdown
 ## 验证报告

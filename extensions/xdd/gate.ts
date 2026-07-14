@@ -113,7 +113,7 @@ async function isGitRepo(cwd: string): Promise<boolean> {
 }
 
 /**
- * Gate for implementation stages: passes when there is at least one tracked change.
+ * Gate for implementation stages: passes when there is at least one tracked code change (excluding .xdd/).
  * - Non-git directory → soft pass (cannot verify).
  * - Git directory with no changes → fail.
  * - Git directory with changes → pass.
@@ -124,8 +124,14 @@ export async function gitHasChanges(cwd: string): Promise<XddGateResult> {
 	}
 	try {
 		const { stdout } = await execFileAsync("git", ["status", "--porcelain"], { cwd });
-		const hasChanges = stdout.trim().length > 0;
-		return hasChanges ? { ok: true } : { ok: false, reason: "git 工作区无改动，未见实现产物" };
+		const codeChanges = stdout
+			.trim()
+			.split("\n")
+			.filter(Boolean)
+			.filter((line) => !line.includes(".xdd/"));
+		return codeChanges.length > 0
+			? { ok: true }
+			: { ok: false, reason: "git 工作区无代码改动（已排除 .xdd/ 设计文档），未见实现产物" };
 	} catch {
 		return { ok: true, soft: true };
 	}
@@ -143,6 +149,70 @@ function resolveFirstMatch(cwd: string, pattern: string, walked?: string[]): str
 	const tree = walked ?? walkRel(cwd);
 	const reg = globToRegExp(pattern);
 	return tree.find((f) => reg.test(f.replace(/\\/g, "/")));
+}
+
+/**
+ * Hard gate: at least `minCount` occurrences of `pattern` across source files
+ * (excluding .xdd/ design docs, node_modules, .git, build output). Used by the
+ * execute stage to verify code carries @implements RXX traceability annotations.
+ */
+const SOURCE_EXCLUDE_RE = /^(?:\.xdd[/\\]|node_modules[/\\]|\.git[/\\]|dist[/\\]|build[/\\]|vendor[/\\]|\.next[/\\]|target[/\\])/;
+const SOURCE_EXT_RE = /\.(?:ts|tsx|js|jsx|mjs|cjs|py|go|java|rs|rb|php|c|cpp|cc|h|hpp|cs|kt|swift|scala|clj|ex|exs|erl|sh)$/;
+
+export async function requirePatternInSource(
+	cwd: string,
+	pattern: RegExp,
+	minCount = 1,
+): Promise<XddGateResult> {
+	const files = walkRel(cwd).filter(
+		(f) => SOURCE_EXT_RE.test(f) && !SOURCE_EXCLUDE_RE.test(f.replace(/\\\\/g, "/")),
+	);
+	let count = 0;
+	for (const rel of files) {
+		try {
+			const content = readFileSync(join(cwd, rel), "utf8");
+			const m = content.match(pattern);
+			if (m) count += m.length;
+		} catch {
+			/* skip unreadable */
+		}
+		if (count >= minCount) return { ok: true };
+	}
+	return {
+		ok: false,
+		reason: `源码中未找到足够匹配 (${pattern.source}，需 ${minCount} 处，实际 ${count} 处)`,
+	};
+}
+
+/**
+ * Hard gate: runs the project's test command and requires exit code 0.
+ * Auto-detects: package.json -> npm test, go.mod -> go test, Makefile -> make test.
+ * Soft-passes when no test command is found (no tests to run).
+ * This is the REAL quality enforcement for the verify stage -- not just "report
+ * exists" but "tests actually pass". CI=true is set to keep tests non-interactive.
+ */
+export async function requireTestsPass(cwd: string): Promise<XddGateResult> {
+	let cmd: string[] | null = null;
+	if (existsSync(join(cwd, "package.json"))) cmd = ["npm", "test"];
+	else if (existsSync(join(cwd, "go.mod"))) cmd = ["go", "test", "./..."];
+	else if (existsSync(join(cwd, "Makefile"))) cmd = ["make", "test"];
+	if (!cmd) return { ok: true, soft: true };
+	try {
+		await execFileAsync(cmd[0], cmd.slice(1), {
+			cwd,
+			timeout: 180000,
+			maxBuffer: 1024 * 1024,
+			env: { ...process.env, CI: "true" },
+		});
+		return { ok: true };
+	} catch (e) {
+		const err = e as { code?: number; stderr?: string | Buffer; stdout?: string | Buffer };
+		const stderr = (err.stderr ?? "").toString().slice(0, 800);
+		return {
+			ok: false,
+			reason: `测试命令 ${cmd.join(" ")} 失败（退出码 ${err.code ?? "?"}）${stderr ? "\n" + stderr : ""}`,
+		};
+	}
 }
 
 /**
@@ -202,6 +272,48 @@ export async function requireGlobsWithMinSize(
 			};
 		}
 		return { ok: true };
+	}
+	return { ok: true };
+}
+
+/**
+ * Hard gate: personas directory must exist with _index.md + at least 2 persona
+ * files. Each persona file must be >= minSize bytes (deep persona, not a stub).
+ * Checks that the 7-category role发散 methodology is recorded in _index.md.
+ */
+export async function requirePersonas(
+	cwd: string,
+	minPersonas = 2,
+	minSize = 200,
+): Promise<XddGateResult> {
+	const personasDir = join(cwd, ".xdd/design/personas");
+	if (!existsSync(personasDir)) {
+		return { ok: false, reason: "understand Gate: 缺少 .xdd/design/personas/ 目录（用户角色模拟产出）" };
+	}
+	const indexOk = await requireGlobsWithMinSize(cwd, [".xdd/design/personas/_index.md"], minSize);
+	if (!indexOk.ok) {
+		return { ok: false, reason: "understand Gate: 缺少或过短的 .xdd/design/personas/_index.md（角色全景 + 发散方法论记录）" };
+	}
+	// Count persona files (PXX-*.md, excluding _index.md)
+	const walked = walkRel(cwd);
+	const personaFiles = walked.filter(
+		(rel) => rel.startsWith(".xdd/design/personas/P") && rel.endsWith(".md"),
+	);
+	if (personaFiles.length < minPersonas) {
+		return {
+			ok: false,
+			reason: `understand Gate: personas/ 下只有 ${personaFiles.length} 个角色档案（PXX-*.md），需至少 ${minPersonas} 个（用户角色要全面布全）`,
+		};
+	}
+	// Check _index.md records the 7-category发散 methodology
+	const indexContent = readFileSync(join(cwd, ".xdd/design/personas/_index.md"), "utf8");
+	const categories = ["主用户", "管理用户", "间接用户", "外部系统", "审计合规", "开发运维", "边缘角色"];
+	const missingCategories = categories.filter((c) => !indexContent.includes(c));
+	if (missingCategories.length > 2) {
+		return {
+			ok: false,
+			reason: `_index.md 缺少角色发散方法论记录（需考量 7 类：${categories.join("/")}，缺失 ${missingCategories.length} 类）`,
+		};
 	}
 	return { ok: true };
 }

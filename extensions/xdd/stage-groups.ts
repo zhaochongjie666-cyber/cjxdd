@@ -1,4 +1,4 @@
-import { gitHasChanges, requireGlobs } from "./gate.ts";
+import { gitHasChanges, requireGlobs, requireGlobsWithMinSize } from "./gate.ts";
 import type { XddStageGroup, XddStageName } from "./types.ts";
 
 /**
@@ -70,8 +70,8 @@ export const STAGE_GROUPS: readonly XddStageGroup[] = [
 		gate: async ({ cwd }) => {
 			const specOk = await requireGlobs(cwd, [".xdd/design/spec/**/rules.md"]);
 			if (!specOk.ok) return { ok: false, reason: "Gate 4: 缺少 spec rules.md，无法验证验收标准" };
-			const changesOk = await gitHasChanges(cwd);
-			if (!changesOk.ok) return { ok: false, reason: "Gate 4: 无代码改动可验证" };
+			const reportOk = await requireGlobsWithMinSize(cwd, [".xdd/runs/*/verify-report.md"], 100);
+			if (!reportOk.ok) return { ok: false, reason: "Gate 4: 缺少验证报告 verify-report.md（健康检查+漫游+4维审计+双契约）" };
 			return { ok: true };
 		},
 		rollbackTarget: "verify",

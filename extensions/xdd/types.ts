@@ -66,6 +66,8 @@ export interface XddStageSpec {
 	 * (e.g. phrase its reason in the same vocabulary).
 	 */
 	gate: XddGate;
+	/** AIGate 审查标准（死标准，每阶段写死）。硬 Gate 通过后由 AI 审查产物质量。 */
+	aigateStandard: string;
 }
 
 export type XddSignal = "complete" | "verdict_pass" | "verdict_fail";
@@ -205,6 +207,15 @@ export class XddRunnerState {
 	rollbackOutcome: { from: XddStageName; to: XddStageName; reason: string } | undefined;
 	/** Set by xdd_advance when the final plan stage is passed. */
 	runComplete = false;
+	/** Set by xdd_advance when a group gate passes; cleared by /xdd continue. */
+	pendingGroupApproval?: { group: string; gateLabel: string };
+	/** Auto-continue circuit breaker: tracks consecutive agent_end with no progress. */
+	consecutiveStalls = 0;
+	lastAgentEndPlanIndex = 0;
+	lastSubmitAt = 0;
+	lastAgentEndAt = 0;
+	/** Set by run-completion auto-archive (or /xdd-archive command) to prevent re-archive. */
+	archived = false;
 
 	/** Artifacts submitted via xdd_submit_artifact per stage (observability). */
 	submittedArtifacts = new Map<XddStageName, string[]>();

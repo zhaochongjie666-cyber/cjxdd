@@ -3,6 +3,9 @@ import {
 	requireGlobs,
 	requireGlobsWithKeywords,
 	requireGlobsWithMinSize,
+	requirePatternInSource,
+	requirePersonas,
+	requireTestsPass,
 	softPass,
 } from "./gate.ts";
 import type { XddStageName, XddStageSpec } from "./types.ts";
@@ -25,9 +28,15 @@ export const STAGES: readonly XddStageSpec[] = [
 			"已读仓库现有文档（README / docs/ / .xdd/design/ 如存在），对项目目标有 3-5 句话的总结",
 			"已与用户确认或在 prompt 中明示了本次 run 的目标边界（在 init 末尾向用户复述一遍即可）",
 			"已选好本次用到的 xdd 技能子集（xdd_list_skills -> xdd_load_skill）",
+			"已自我攻击：检查是否遗漏了仓库现有约束/技术债/目标边界模糊，并记录结论",
 		],
 		deliverablePaths: [],
-		gate: async () => softPass(),
+		noCodeReading: true,
+		aigateStandard: `审查 init 阶段：
+1. .xdd/ 目录结构是否完整（runs/ design/ archive/）
+2. 是否有占位符或空壳（不能只有目录没有 README/说明）
+3. goals.md 占位是否合理（待 brainstorm 替换）`,
+				gate: async () => softPass(),
 	},
 	{
 		name: "understand",
@@ -39,14 +48,40 @@ export const STAGES: readonly XddStageSpec[] = [
 			"已读完前序产物（init 阶段总结、仓库 README / docs/）",
 			"已向用户输出一份 '需求 clarification'：用户原始需求 + 显式/隐式假设 + 待澄清问题",
 			"已梳理用户旅途（主线/分支/迂回/意外/探索 5 层次），写入 .xdd/design/notes/ 或向用户复述确认",
-			"已产出意图锚（.xdd/design/design.md 5 段收敛决策：Selected/Alternatives/Assumptions/Out of Scope/Open Questions）",
+			"已做用户角色模拟：按 7 类（主用户/管理用户/间接用户/外部系统/审计合规/开发运维/边缘角色）自主发散布全角色，每角色产出深度档案（10 维度），写入 .xdd/design/personas/",
+			"已产出意图锚对（.xdd/design/intent.md 定位+成功标准+非目标 + .xdd/design/design.md 5 段收敛决策：Selected/Alternatives/Assumptions/Out of Scope/Open Questions）",
+			"已产出本 iter 高层目标（.xdd/runs/iter-N/goals.md，分配 G 编号供 plan 回指）",
 			"已与用户就最关键 2-3 个模糊点达成一致，或在 prompt 中明确声明无法澄清时的合理默认",
 			"已自我攻击：检查是否有遗漏的隐含假设或异常路径，并记录结论",
 		],
-		deliverablePaths: [".xdd/design/design.md"],
-		gate: async ({ cwd }) => {
-			const designOk = await requireGlobs(cwd, [".xdd/design/design.md"]);
-			if (!designOk.ok) return { ok: false, reason: "understand Gate: 缺少 .xdd/design/design.md（意图锚，spec 的上游）" };
+		deliverablePaths: [".xdd/design/design.md", ".xdd/design/intent.md", ".xdd/runs/*/goals.md", ".xdd/design/personas/_index.md"],
+		noCodeReading: true,
+		aigateStandard: `审查 understand 阶段（最严格）：
+1. intent.md 的"1句话定位"是否有实质业务语义（不是"做一个系统"这种废话）
+2. intent.md 的"成功标准"是否可验证（有具体数字/事实，不是"好用了""流畅了"）
+3. design.md 5段是否每段有实质内容：
+   - Selected: 选了什么方案，1-3句话（不是"待定"）
+   - Alternatives: 至少1个被否方案 + 否定理由（不是"无"）
+   - Assumptions: 具体假设（如"用PostgreSQL"），不是空
+   - Out of Scope: 至少1项 + 为什么不做
+   - Open Questions: 真关键决策（不是"无"敷衍）
+4. personas/ 每个角色档案10维度是否都有实质内容：
+   - 画像：有具体特征（年龄/技能/场景），不是"普通用户"
+   - 工作流：有时间轴和具体步骤，不是"使用系统"
+   - 痛点：有具体浪费/困难，不是"无"
+   - 产出：有具体交付物名称，不是"结果"
+   - 其他维度不能是模板化的一句话
+5. personas/_index.md 的7类发散是否逐一考量（不能只写"已考量无"敷衍，要说明为什么无）
+6. goals.md 的G编号是否有实质目标（不是"完成功能"这种废话）`,
+				gate: async ({ cwd }) => {
+			const intentOk = await requireGlobs(cwd, [".xdd/design/intent.md"]);
+			if (!intentOk.ok) return { ok: false, reason: "understand Gate: 缺少 .xdd/design/intent.md（定位+成功标准+非目标）" };
+			const designOk = await requireGlobsWithKeywords(cwd, [".xdd/design/design.md"], ["Selected", "Alternatives", "Assumptions", "Out of Scope", "Open Questions"], 4);
+			if (!designOk.ok) return { ok: false, reason: "understand Gate: .xdd/design/design.md 缺少收敛决策 5 段（Selected/Alternatives/Assumptions/Out of Scope/Open Questions，至少 3 段）" };
+			const goalsOk = await requireGlobs(cwd, [".xdd/runs/*/goals.md"]);
+			if (!goalsOk.ok) return { ok: false, reason: "understand Gate: 缺少 .xdd/runs/*/goals.md（G 编号，plan 的上游）" };
+			const personasOk = await requirePersonas(cwd);
+			if (!personasOk.ok) return personasOk;
 			return { ok: true };
 		},
 	},
@@ -64,7 +99,17 @@ export const STAGES: readonly XddStageSpec[] = [
 			"已自我攻击：检查真实场景是否成立、遗漏异常路径与反例，并记录结论",
 		],
 		deliverablePaths: [".xdd/design/spec/**/rules.md", ".xdd/design/spec/**/*.feature"],
-		gate: async ({ cwd }) => {
+			noCodeReading: true,
+		aigateStandard: `审查 spec 阶段（最严格）：
+1. rules.md 的每条RXX规则是否有实质业务语义（不是"系统应正常工作"）
+2. 每条RXX是否可验收（有具体条件和结果，不是模糊的"应处理"）
+3. .feature 文件的 Scenario 是否有具体 Given/When/Then（不是占位符）
+4. Then 断言是否有具体值/状态（不是"系统正常运行"）
+5. 每个 Feature 是否至少有1个异常 Scenario（异常有具体原因，不是"失败"敷衍）
+6. When/Then 是否含实现细节词（调度器/线程池/锁/CAS/重试 -> 不通过）
+7. RXX规则是否跟intent.md意图一致（不偏离）
+8. RXX是否关联了角色PX（没角色的规则=没人用=不通过）`,
+				gate: async ({ cwd }) => {
 			const rulesOk = await requireGlobsWithMinSize(cwd, [".xdd/design/spec/**/rules.md"], 100);
 			if (!rulesOk.ok) return { ok: false, reason: "spec Gate: 缺少或过短的 .xdd/design/spec/**/rules.md（RXX 规则目录）" };
 			const featOk = await requireGlobs(cwd, [".xdd/design/spec/**/*.feature"]);
@@ -85,14 +130,36 @@ export const STAGES: readonly XddStageSpec[] = [
 			"识别至少 1 个失败模式 / 风险点（与 resilience 阶段的关注点对接）",
 			"已自我攻击：检查耦合泄漏、循环依赖、隐藏单点，并记录结论",
 		],
-		deliverablePaths: [".xdd/design/architecture/**/architecture.md"],
-		gate: async ({ cwd }) =>
-			requireGlobsWithKeywords(
+		deliverablePaths: [
+			".xdd/design/architecture/**/architecture.md",
+			".xdd/design/architecture/module-landscape.md",
+			".xdd/design/architecture/event-contract.md",
+			".xdd/design/architecture/aggregate-landscape.md",
+		],
+			noCodeReading: true,
+		aigateStandard: `审查 architecture 阶段：
+1. architecture.md 是否有实质模块划分（有模块名+职责，不是"模块1""模块2"）
+2. 数据流是否描述了具体的数据走向（有源/目标/数据名，不是"数据流转"）
+3. 失败模型是否有具体失败场景+retry策略（不是"失败时重试"）
+4. module-landscape.md 是否有真实的模块依赖关系（不是空壳）
+5. event-contract.md 的事件是否有具体字段（不是"事件A""事件B"）
+6. 架构决策是否跟spec的RXX规则对应（不能漏RXX）`,
+				gate: async ({ cwd }) => {
+			const archOk = await requireGlobsWithKeywords(
 				cwd,
 				[".xdd/design/architecture/**/architecture.md"],
 				["模块", "依赖", "数据流", "失败"],
-				2,
-			),
+				3,
+			);
+			if (!archOk.ok) return { ok: false, reason: "architecture Gate: architecture.md 缺少关键章节（模块/依赖/数据流/失败，至少 3 项）" };
+			const modOk = await requireGlobs(cwd, [".xdd/design/architecture/module-landscape.md"]);
+			if (!modOk.ok) return { ok: false, reason: "architecture Gate: 缺少 module-landscape.md（模块全景，plan 的上游）" };
+			const eventOk = await requireGlobs(cwd, [".xdd/design/architecture/event-contract.md"]);
+			if (!eventOk.ok) return { ok: false, reason: "architecture Gate: 缺少 event-contract.md（事件契约，plan/resilience 的上游）" };
+			const aggOk = await requireGlobs(cwd, [".xdd/design/architecture/aggregate-landscape.md"]);
+			if (!aggOk.ok) return { ok: false, reason: "architecture Gate: 缺少 aggregate-landscape.md（聚合全景，plan/verify 的上游）" };
+			return { ok: true };
+		},
 	},
 	{
 		name: "wire",
@@ -104,9 +171,16 @@ export const STAGES: readonly XddStageSpec[] = [
 			"已创建 spec 规则涉及的所有模块骨架（文件存在且可被 import / require）",
 			"模块间接口已按 architecture 文档的依赖连起来（至少能 import 通）",
 			"运行一次空实现，确认模块图能加载（避免架构性错误）",
+			"已自我攻击：检查模块图是否有循环依赖、接口是否真能 import 通、是否漏了 spec 规则涉及的模块，并记录结论",
 		],
 		deliverablePaths: [],
-		gate: async ({ cwd }) => gitHasChanges(cwd),
+		noCodeReading: true,
+		aigateStandard: `审查 wire 阶段：
+1. 项目骨架是否可运行（有package.json/go.mod等，不是空目录）
+2. 是否有基础配置（tsconfig/eslint/CI配置等，至少1个）
+3. 是否有占位代码（空函数/空类/TODO -> 不通过）
+4. 目录结构是否跟architecture的模块划分对应`,
+				gate: async ({ cwd }) => gitHasChanges(cwd),
 	},
 	{
 		name: "resilience",
@@ -126,7 +200,14 @@ export const STAGES: readonly XddStageSpec[] = [
 			".xdd/design/architecture/**/resilience/failsafe-design.md",
 			".xdd/design/architecture/**/resilience/resilience-test-plan.md",
 		],
-		gate: async ({ cwd }) => {
+			noCodeReading: true,
+		aigateStandard: `审查 resilience 阶段：
+1. failure-modes.md 的每个失败模式是否有具体场景（不是"网络错误"敷衍）
+2. failsafe.md 的兜底策略是否可操作（有具体动作，不是"降级处理"）
+3. test-plan.md 的测试是否有具体步骤（不是"测试失败场景"）
+4. 失败模式是否覆盖了architecture的失败模型（不能漏）
+5. 每个失败模式是否关联了RXX规则`,
+				gate: async ({ cwd }) => {
 			const fmOk = await requireGlobsWithMinSize(cwd, [".xdd/design/architecture/**/resilience/failure-modes.md"], 100);
 			if (!fmOk.ok) return fmOk;
 			const fsOk = await requireGlobs(cwd, [".xdd/design/architecture/**/resilience/failsafe-design.md"]);
@@ -147,9 +228,16 @@ export const STAGES: readonly XddStageSpec[] = [
 			"计划按阶段组织：spec -> architecture -> wire -> resilience -> execute 每段至少一项具体工作项",
 			"每项工作项标明：依赖前序产出、预计产物、改动文件范围",
 			"识别关键路径与可并行项（不强制并行，但能标注）",
+			"已自我攻击：检查是否有遗漏的依赖、被标并行却实际串行的项、task 粒度过大或过小，并记录结论",
 		],
 		deliverablePaths: [".xdd/runs/**/plan.md"],
-		gate: async ({ cwd }) => requireGlobsWithMinSize(cwd, [".xdd/runs/**/plan.md"], 100),
+		aigateStandard: `审查 plan 阶段：
+1. plan.md 的每个task是否有具体描述（不是"实现R01"敷衍，要有步骤）
+2. task是否覆盖了所有RXX规则（不能漏RXX）
+3. task粒度是否合理（不能一个task覆盖10个RXX，也不能太碎）
+4. task是否有优先级/依赖关系（不是无序列表）
+5. 每个task是否关联了G编号（goal回指）`,
+				gate: async ({ cwd }) => requireGlobsWithMinSize(cwd, [".xdd/runs/**/plan.md"], 100),
 	},
 	{
 		name: "execute",
@@ -164,7 +252,19 @@ export const STAGES: readonly XddStageSpec[] = [
 			"已自我攻击：检查越界修改、重复实现、脆弱耦合，并记录结论",
 		],
 		deliverablePaths: [],
-		gate: async ({ cwd }) => gitHasChanges(cwd),
+		aigateStandard: `审查 execute 阶段（最严格）：
+1. 代码是否有 @implements RXX 标注（每条RXX都有对应实现）
+2. @implements RXX 的代码是否真的实现了RXX规则（不是假标注）
+3. 测试是否覆盖了异常路径（不能只测happy path）
+4. 测试断言是否有具体值（不能是 expect(true).toBe(true) 这种 trivial）
+5. 代码是否跟spec的BDD场景对应（When/Then有代码实现）
+6. 有无TODO/占位/FIXME未完成（不通过）
+7. 代码是否跟architecture的模块划分一致`,
+				gate: async ({ cwd }) => {
+			const r = await requirePatternInSource(cwd, /@implements\s+R\d/i, 1);
+			if (!r.ok) return { ok: false, reason: "execute Gate: 源码中未见 @implements RXX 标注（每条 RXX 实现须回指规则编号，衔接 spec→code→verify 追溯链）" };
+			return { ok: true };
+		},
 	},
 	{
 		name: "cleanup",
@@ -177,9 +277,15 @@ export const STAGES: readonly XddStageSpec[] = [
 			"已统一格式（参考 plan 约定的风格 / linter）",
 			"已剔除未被引用的死代码 / 死文件",
 			"已更新 README / docs 反映最终接口与使用方式",
+			"已自我攻击：检查是否误删了 @implements RXX 追溯锚、是否越界改了无关文件、是否留了模糊 TODO，并记录结论",
 		],
 		deliverablePaths: [],
-		gate: async ({ cwd }) => gitHasChanges(cwd),
+		aigateStandard: `审查 cleanup 阶段：
+1. 是否有调试代码残留（console.log/print/debugger -> 不通过）
+2. 是否有未使用的import/依赖（-> 不通过）
+3. 是否有死代码（注释掉的大段代码 -> 不通过）
+4. 代码格式是否一致（import顺序/命名风格）`,
+				gate: async () => softPass(),
 	},
 	{
 		name: "verify",
@@ -193,12 +299,21 @@ export const STAGES: readonly XddStageSpec[] = [
 			"未在 verify 阶段改动契约或架构（仅验证，不修改）",
 			"已自我攻击：检查是否真正满足原始用户旅途、是否有未验证假设，并记录结论",
 		],
-		deliverablePaths: [],
-		gate: async ({ cwd }) => {
+		deliverablePaths: [".xdd/runs/*/verify-report.md"],
+		aigateStandard: `审查 verify 阶段（最严格）：
+1. verify-report.md 是否逐条验证了RXX规则（不能只写"全部通过"）
+2. 每条验证是否有具体证据（测试名/测试结果/代码位置，不是"已测试"敷衍）
+3. 测试是否真的跑了（不能是trivial测试骗通过）
+4. 异常路径测试是否覆盖（不能只测正常流程）
+5. 有无未通过的测试被忽略/跳过（-> 不通过）
+6. verify-report是否跟intent.md的成功标准对应（不能漏验收标准）`,
+				gate: async ({ cwd }) => {
 			const specOk = await requireGlobs(cwd, [".xdd/design/spec/**/rules.md"]);
-			if (!specOk.ok) return { ok: false, reason: "Gate 4: 缺少 spec rules.md，无法验证验收标准" };
-			const changesOk = await gitHasChanges(cwd);
-			if (!changesOk.ok) return { ok: false, reason: "Gate 4: 无代码改动可验证" };
+			if (!specOk.ok) return { ok: false, reason: "verify Gate: 缺少 spec rules.md，无法验证验收标准" };
+			const reportOk = await requireGlobsWithMinSize(cwd, [".xdd/runs/*/verify-report.md"], 100);
+			if (!reportOk.ok) return { ok: false, reason: "verify Gate: 缺少验证报告 .xdd/runs/iter-N/verify-report.md（含健康检查+漫游+4维审计+双契约）" };
+			const testsOk = await requireTestsPass(cwd);
+			if (!testsOk.ok) return testsOk;
 			return { ok: true };
 		},
 	},

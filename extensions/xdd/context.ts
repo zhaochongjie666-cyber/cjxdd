@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import { REFLECT_PREAMBLE, XDD_PREAMBLE } from "./preambles.ts";
-import type { XddRunnerState, XddStageSpec } from "./types.ts";
+import type { XddRunnerState, XddStageName, XddStageSpec } from "./types.ts";
 
 function readSkillContent(skills: Skill[], skillName: string): string | undefined {
 	const skill = skills.find((s) => s.name === skillName);
@@ -22,11 +22,25 @@ export interface BuildStagePromptArgs {
 	planTotal: number;
 }
 
+export const NO_CODE_STAGES = new Set<XddStageName>([
+	"init", "understand", "spec",
+	"architecture", "wire", "resilience",
+]);
+
+export const NO_CODE_CONSTRAINT =
+	"[约束] 此阶段不允许读取源代码文件（*.ts/*.tsx/*.js/*.jsx/*.py/*.go/*.java/*.rs 等）。" +
+	"只允许读取 .xdd/design/ 设计文件、文档（README, docs/）、配置文件（package.json, tsconfig.json 等）。" +
+	"只关注设计（做成什么样 / 系统怎么设计），不关注现有实现（代码怎么写的）。" +
+	"wire 阶段可写新的脚手架文件，但不应读现有源码。";
+
 export function buildStageSystemPrompt(args: BuildStagePromptArgs): string {
 	const { cwd, stage, userInput, skills, planIndex, planTotal } = args;
 	const skillBody = readSkillContent(skills, stage.skill);
 	const sections: string[] = [];
 	sections.push(XDD_PREAMBLE);
+	if (NO_CODE_STAGES.has(stage.name)) {
+		sections.push(NO_CODE_CONSTRAINT);
+	}
 	sections.push(`[阶段角色] ${stage.role}--仅按本角色视角行事`);
 	sections.push(
 		`[抽象动作] 本阶段使用的抽象类别：${[...new Set(stage.allowedTools.map(mapToolToAbstraction))].join(

@@ -1,5 +1,11 @@
 export { isDiagnoseLayer, isStageName } from "./diagnosis.ts";
+import { xddInlineExtension } from "./extension.ts";
 export { activateXddExtension, deactivateXddExtension, xddInlineExtension } from "./extension.ts";
+// pi ExtensionAPI expects a default-exported factory function.
+export default xddInlineExtension.factory;
+export { runXdd, continueXdd, resumeXdd, xddStatus, archiveXdd } from "./run.ts";
+export { archiveRun } from "./archive.ts";
+export { loadXddSkills } from "./skill-loader.ts";
 export {
 	gitHasChanges,
 	requireGlobs,
