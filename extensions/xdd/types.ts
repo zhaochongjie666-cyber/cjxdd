@@ -312,6 +312,11 @@ export class XddRunnerState {
 	/** reconcile-style self-heal budget tracking. Increments on each gate call for the
 	 *  same stage; resets (to 0) when advance / rollback moves the cursor. */
 	private _selfHealUsed = new Map<XddStageName, number>();
+	/** Disk fingerprint from the last xdd_submit_artifact call per stage.
+	 *  Used to detect zero-change retries (agent resubmits without modifying
+	 *  any artifact files). Runtime-only: NOT serialized to checkpoint --
+	 *  a restart should allow a fresh attempt. */
+	private _lastSubmitFingerprint = new Map<XddStageName, string>();
 	beginSelfHealAttempt(stage: XddStageName): number {
 		const used = this._selfHealUsed.get(stage) ?? 0;
 		// Cap at maxSelfHealPerStage. Without this cap, the counter keeps
@@ -331,6 +336,19 @@ export class XddRunnerState {
 	}
 	resetSelfHealBudget(stage: XddStageName): void {
 		this._selfHealUsed.set(stage, 0);
+		this._lastSubmitFingerprint.delete(stage);
+	}
+
+	/**
+	 * Disk fingerprint guard (Bug 2). Compares the given fingerprint with
+	 * the last one recorded for this stage. Returns true if different (or
+	 * first call), false if identical (zero-change retry). Always stores
+	 * the new fingerprint so the NEXT call is compared against THIS one.
+	 */
+	checkAndRecordSubmitFingerprint(stage: XddStageName, fingerprint: string): boolean {
+		const last = this._lastSubmitFingerprint.get(stage);
+		this._lastSubmitFingerprint.set(stage, fingerprint);
+		return last !== fingerprint;
 	}
 
 	clearSignals(): void {

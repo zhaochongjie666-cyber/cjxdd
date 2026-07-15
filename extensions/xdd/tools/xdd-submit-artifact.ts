@@ -5,7 +5,7 @@ import type { XddRunnerState } from "../types.ts";
 import { type EmptyDetails, type GetXddState, ok } from "./index.ts";
 import { runAIGate } from "../aigate.ts";
 import { getAIGateLLM } from "../llm-ref.ts";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const schema = Type.Object({
@@ -44,6 +44,41 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					`[xdd_submit_artifact] selfAttack 内容无效（"${selfAttack.trim()}"）：必须记录具体检查了哪些反例/风险/边界及结论`,
 				);
 			}
+			// Bug 1: verify declared artifacts exist on disk before recording them.
+			// Gives the agent immediate, specific feedback instead of a vague gate
+			// failure later. Throws (no terminate) so the agent can create the file
+			// and retry within the same turn.
+			if (artifacts.length > 0) {
+				const missing = artifacts.filter((p) => !existsSync(join(state.cwd, p)));
+				if (missing.length > 0) {
+					throw new Error(
+						`[xdd_submit_artifact] 声明的产物在磁盘上不存在：${missing.join(", ")}。请先创建产物文件再提交，不要盲目重试。`,
+					);
+				}
+			}
+			// Bug 2: disk fingerprint guard. If the agent retries submit with zero
+			// disk changes (same files, same mtime/size), refuse -- don't waste
+			// self-heal budget on identical retries. Must run BEFORE
+			// beginSelfHealAttempt so no-change retries don't consume budget.
+			if (artifacts.length > 0) {
+				const fingerprint = artifacts
+					.map((p) => {
+						try {
+							const st = statSync(join(state.cwd, p));
+							return `${p}:${st.mtimeMs}:${st.size}`;
+						} catch {
+							return `${p}:missing`;
+						}
+					})
+					.sort()
+					.join("|");
+				const changed = state.checkAndRecordSubmitFingerprint(stage.name, fingerprint);
+				if (!changed) {
+					throw new Error(
+						`[xdd_submit_artifact] 上次提交后磁盘产物未变化。请先产出/修改产物文件再重试，不要盲目重试相同内容。`,
+					);
+				}
+			}
 			state.recordArtifact(stage.name, artifacts);
 			state.recordSelfAttack(stage.name, selfAttack);
 			state.recordEsgNode("review", stage.name, `self-attack: ${selfAttack.slice(0, 100)}`);
@@ -65,13 +100,21 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 								"\nAIGate: 跳过（软通过模式）",
 						);
 					}
-					throw new Error(
-						`[xdd_submit_artifact] ${stage.name} 自愈预算耗尽（${used}/${state.maxSelfHealPerStage}）：${gate.reason ?? "未知"}。请调 xdd_diagnose 进入反思。`,
-					);
+					// Layer 2: terminate the turn so the runner can trigger reflectTurn.
+					// Returning (not throwing) with terminate:true prevents the agent
+					// from blindly retrying within the same turn.
+					return {
+						content: [{ type: "text", text: `❌ [xdd_submit_artifact] ${stage.name} 自愈预算耗尽（${used}/${state.maxSelfHealPerStage}）：${gate.reason ?? "未知"}\n本轮提交失败，turn 结束。下轮将进入反思，请诊断并修复后重新提交。` }],
+						details: {},
+						terminate: true,
+					};
 				}
-				throw new Error(
-					`[gate ${used}/${state.maxSelfHealPerStage}] ${stage.name} 未达标：${gate.reason ?? "未知"}\n剩余自愈预算：${remaining}。`,
-				);
+				// Layer 2: gate failed with budget remaining -- terminate the turn.
+				return {
+					content: [{ type: "text", text: `❌ [gate ${used}/${state.maxSelfHealPerStage}] ${stage.name} 未达标：${gate.reason ?? "未知"}\n剩余自愈预算：${remaining}\n本轮提交失败，turn 结束。请诊断问题并修复产物，下轮重新提交。` }],
+					details: {},
+					terminate: true,
+				};
 			}
 			// --- AIGate: AI 语义审查（硬 Gate 通过后叠加） ---
 			const llmInfo = await getAIGateLLM();
@@ -109,13 +152,19 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 									"\n（软通过模式：未达标但放行）",
 							);
 						}
-						throw new Error(
-							`[AIGate ${used}/${state.maxSelfHealPerStage}] ${stage.name} 偷工减料（自愈预算耗尽）：\n${issueText}${suggText}\n请调 xdd_diagnose 进入反思。`,
-						);
+						// Layer 2: terminate the turn.
+						return {
+							content: [{ type: "text", text: `❌ [AIGate ${used}/${state.maxSelfHealPerStage}] ${stage.name} 偷工减料（自愈预算耗尽）：\n${issueText}${suggText}\n本轮提交失败，turn 结束。请诊断并修复后重新提交。` }],
+							details: {},
+							terminate: true,
+						};
 					}
-					throw new Error(
-						`[AIGate ${used}/${state.maxSelfHealPerStage}] ${stage.name} 偷工减料：\n${issueText}${suggText}\n剩余自愈预算：${remaining}。`,
-					);
+					// Layer 2: AIGate failed with budget remaining -- terminate the turn.
+					return {
+						content: [{ type: "text", text: `❌ [AIGate ${used}/${state.maxSelfHealPerStage}] ${stage.name} 偷工减料：\n${issueText}${suggText}\n剩余自愈预算：${remaining}\n本轮提交失败，turn 结束。请诊断问题并修复产物，下轮重新提交。` }],
+						details: {},
+						terminate: true,
+					};
 				}
 			}
 			// All gates passed -- mark "real progress" only here. Setting lastSubmitAt
