@@ -185,7 +185,7 @@ export const xddInlineExtension: InlineExtension = {
 						? `[xdd] 已连续 ${stalls} 轮无进展。请改变策略：调 xdd_diagnose 诊断根因，或 xdd_rollback 回退。不要重复之前的做法。`
 						: `[xdd] 已连续 ${stalls} 轮无进展，严重卡住。必须 xdd_rollback 回退，或直接向用户提问求助。`;
 				try {
-					await pi.sendUserMessage(msg);
+					await pi.sendUserMessage(msg, { deliverAs: "followUp" });
 				} catch {
 					// ignore send errors (e.g., session shutting down)
 				}
@@ -199,6 +199,7 @@ export const xddInlineExtension: InlineExtension = {
 				try {
 					await pi.sendUserMessage(
 						`[xdd] 阶段 ${advanced?.name ?? "?"} 完成，进 ${stage.name}。输入 /xdd-commit 可把 ${advanced?.name ?? "当前"} 摘要 commit 到 session tree（/tree 查看）。`,
+						{ deliverAs: "followUp" },
 					);
 				} catch { /* ignore */ }
 			}
@@ -235,9 +236,13 @@ export const xddInlineExtension: InlineExtension = {
 				const result = archiveRun(process.cwd());
 				await pi.sendUserMessage(
 					`[xdd 自动归档] run ${stateRef.runId} 完成。写入 ${result.archivePath}（删 ${result.deletedPaths.length} 个 runs/ 文件，design/ 仅读取不改，记录 ${result.keptPaths.length} 项读取）。`,
+					{ deliverAs: "followUp" },
 				);
 			} catch (e) {
-				await pi.sendUserMessage(`[xdd 归档失败] ${e instanceof Error ? e.message : String(e)}`);
+				await pi.sendUserMessage(
+					`[xdd 归档失败] ${e instanceof Error ? e.message : String(e)}`,
+					{ deliverAs: "followUp" },
+				);
 			}
 		});
 
