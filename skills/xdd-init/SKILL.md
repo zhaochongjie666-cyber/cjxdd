@@ -55,6 +55,7 @@ bash skills/xdd-init/scripts/init.sh
 ├── workflows.md               ← 工作流清单（ACK W 区索引源，首次生成，用户可改）
 ├── rules/                     ← 项目规则模板（首次生成，用户可改）
 │   ├── backend.rules          ← 后端约定（分层/错误码/auth/测试）
+│   ├── frontend.rules         ← 前端约定（命名/文件结构/600行/组件）
 │   └── ui-ux.rules            ← 前端 UI/UX 约定（4 级 + 10 反模式）
 ├── design/                    ← 设计层（持久锚，跨 iter 保留）
 │   ├── intent.md              ← 【项目层】意图锚：项目总意图（跨业务线共享），xdd-brainstorm 填
@@ -102,7 +103,7 @@ bash skills/xdd-init/scripts/init.sh
 | 设计·理解 | ⏳ | xdd-brainstorm | design/intent.md + design.md |
 | 设计·规则 | ⏳ | xdd-spec | design/spec/{bxx-slug}/ |
 | 设计·架构 | ⏳ | xdd-architecture | design/architecture/{bxx-slug}/ |
-| 设计·前端 | ⏳ | xdd-wire | design/wire/{page}/ |
+| 设计·前端 | ⏳ | xdd-wire | design/wire/{page}.md |
 | 设计·韧性 | ⏳ | xdd-resilience | design/architecture/{bxx-slug}/resilience/ |
 | 桥接·计划 | ⏳ | xdd-plan | plan/{bxx-slug}/plan.md |
 | 代码·实现 | ⏳ | xdd-execute | 代码 @implements RXX |

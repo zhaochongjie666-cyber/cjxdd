@@ -3,7 +3,7 @@ name: xdd-polish
 description: |
   xdd 质询性评审 skill（按需手动调，不进默认流水线）。带批判/攻击态度，从两个角度挑刺，不放过、不轻易 PASS：
   ① 架构师视角：读 design/architecture/ + spec/ + design.md，质询架构方案本身是否合理（API 粒度/技术栈选型/替代方案/可部署可运维/事件驱动是否必要）。
-  ② 用户视角：读 design/wire/{page}/ HTML + review.md，质询体验是否流畅、页面是否好看、6 态是否齐全。
+  ② 用户视角：读 design/wire/{page}.md（含嵌入式 HTML 布局 + 6 操作态 + review），质询体验是否流畅、页面是否好看、6 态是否齐全。
   产出 runs/iter-N/polish-report.md，列 P0/P1/P2 攻击项，严重项建议回设计层。
   与 xdd-verify 区分：verify 是符合性闸（代码是否符合契约），polish 是质询性评审（设计/体验本身好不好）。
   触发：打磨、polish、refine、批判、攻击式评审、架构批判、架构是否合理、UX 批判、体验好不好、页面好不好看、挑刺、red team、设计评审、帮我批判这个架构、帮我批判这个设计。
@@ -17,16 +17,16 @@ description: |
 
 | | |
 |---|---|
-| **上游** | `design/` 全套封存契约：`design.md`（意图/决策）、`spec/{bxx}/rules.md`（规则 RXX）、`architecture/{bxx}/architecture.md`（结构/端点/事件/运维）、`wire/{page}/index.html` + `review.md`（页面 + 自审） |
+| **上游** | `design/` 全套封存契约：`design.md`（意图/决策）、`spec/{bxx}/rules.md`（规则 RXX）、`architecture/{bxx}/architecture.md`（结构/端点/事件/运维）、`wire/{page}.md`（页面线框 + 6 操作态 + review，一个文件全含） |
 | **我产出** | `runs/iter-N/polish-report.md`（P0/P1/P2 攻击项 + 严重项建议回退到哪个设计层 skill） |
 | **下游消费者** | 用户（决策：接受 / 回设计层重做）。**不进默认流水线，按需手动调** |
-| **回溯锚** | 每条攻击点引用证据（`architecture.md:行号` / `wire/{page}/index.html:行号`） |
+| **回溯锚** | 每条攻击点引用证据（`architecture.md:行号` / `wire/{page}.md:行号`） |
 
 ## 边界（跟 verify / wire review 不重复）
 
 | 已有机制 | 它做什么 | polish 补什么 |
 |---------|---------|--------------|
-| `xdd-verify` 4 维一致性审计 | 代码**是否符合**封存契约（计数对账） | 设计/体验本身**好不好**（方案合理性、体验流畅度）——两个物种 |
+| `xdd-verify` 全链路一致性审计 | 代码**是否符合**封存契约（计数对账） | 设计/体验本身**好不好**（方案合理性、体验流畅度）——两个物种 |
 | `xdd-wire` 的 `review.md` | design 层**写代码前**的**单页面**自审（Q1-Q5 + L1-L4） | **可跨页面**、**带攻击态度**、**代码前后都能调**的质询。复用 wire 的清单，但载体（质询层）+ 粒度（跨页面全局）不同 |
 | `xdd-architecture` 自检 | 架构产物的**完整性**（13 节齐不齐） | 架构方案的**合理性**（这架构对不对，不是全不全） |
 
@@ -54,7 +54,7 @@ description: |
 1. 读 `design.md` + `design/intent.md`（意图 + 决策项 = 架构批判的判据源头）。
 2. 读 `design/spec/{bxx}/rules.md`（规则 RXX —— 架构有没有覆盖每条规则）。
 3. 读 `design/architecture/{bxx}/architecture.md` + 全局 `aggregate-landscape.md` / `event-contract.md` / `module-landscape.md`。
-4. 读 `design/wire/{page}/index.html` + 每个页面的 `review.md`（UX 批判输入）。
+4. 读 `design/wire/{page}.md`（含嵌入式 HTML 布局 + 6 操作态 + review，UX 批判输入）。
 5. 可选：用户给了**真实渲染 / 截图** → UX 批判优先看真的（比设计稿更准）。没给 → 看设计稿（代码前后都能调）。
 
 > 没有完整 design/？告诉用户「polish 需要封存契约做判据，先跑完设计层锚」。别硬审半成品。
@@ -84,7 +84,7 @@ P0 = 架构级硬伤（交付即返工）；P1 = 设计缺陷（影响质量）�
 
 ### Step 2 · UI/UX 批判（用户视角）
 
-读 `design/wire/{page}/index.html` + `review.md`，逐页面 + 跨页面质询。**完整清单见 [`references/ux-critique-checklist.md`](./references/ux-critique-checklist.md)**（复用 wire 的 Q1-Q5 + L1-L4 + 混淆四类 + 10 反模式 + polish 的跨页面维度）。
+读 `design/wire/{page}.md`（含布局 + 6 态 + review），逐页面 + 跨页面质询。**完整清单见 [`references/ux-critique-checklist.md`](./references/ux-critique-checklist.md)**（复用 wire 的 Q1-Q5 + L1-L4 + 混淆四类 + 10 反模式 + polish 的跨页面维度）。
 
 复用 wire 的清单（**复用不是重复**——wire review 是单页自审，polish 是带攻击态度的质询）：
 - **Q1-Q5 攻击式问题**：按钮存在性 / 数字上下文 / 相似元素一致性 / 术语翻译 / 一次性交互
@@ -102,7 +102,7 @@ P0 = 架构级硬伤（交付即返工）；P1 = 设计缺陷（影响质量）�
 ```
 【P0/P1/P2】{页面} · {维度(L1-L4 或跨页面)} · {攻击点一句话}
 为什么是问题：{用户会怎样受挫}
-证据：wire/{page}/index.html:{行号} + evidence/screenshots/{page}.png
+证据：wire/{page}.md:{行号} + evidence/screenshots/{page}.png
 怎么改：{具体建议，指向 xdd-wire}
 ```
 

@@ -92,7 +92,7 @@ Checking flow.mermaid files under .xdd/design/architecture/...
 | 技能 | 边界说明 |
 |------|----------|
 | xdd-architecture | 产出 `flow.mermaid`；mermaid-check 是它的渲染验证工具，不做流程设计 |
-| xdd-verify | 4 维一致性审计可调用本工具确认图表可渲染 |
+| xdd-verify | 全链路一致性审计可调用本工具确认图表可渲染 |
 
 ## 参考文档
 

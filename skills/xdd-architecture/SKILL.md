@@ -154,6 +154,8 @@ Feature-架构-测试追踪矩阵 → 开发任务
 
 1. **威胁建模**：STRIDE（Spoofing/Tampering/Repudiation/Info Disclosure/DoS/EoP）
 2. **认证授权**：JWT/Session/OAuth2 + RBAC/ABAC + 数据隔离
+   - **操作者身份必须来自认证上下文（authentication.getName()），不能信客户端传入的 operatorId**
+   - 有全局菜单权限不等于能操作所有项目的数据 -- 必须结合 projectId 做项目级校验
 3. **数据保护**：TLS 1.2+ 传输加密、存储加密、密钥管理、日志脱敏
 4. **安全基线**：API 认证、输入校验、输出编码、限流、CORS、依赖扫描
 
@@ -291,7 +293,7 @@ erDiagram
 
 **禁止抽象空话**："高性能高可用" ❌ → "P95 ≤ 500ms，SIGTERM 后 readiness 返回 503" ✅。
 
-**本节 5 问是写"具体怎么做"。动手之前先过一遍 §14 reconcile 审查（slide 三问）——期望状态显式吗、谁检测偏差、失败怎么收敛。**
+**本节 5 问是写"具体怎么做"。动手之前先过一遍 §21 reconcile 审查（slide 三问）——期望状态显式吗、谁检测偏差、失败怎么收敛。**
 
 ### 11. 流程图（flow，吸收自 xdd-flow）
 
@@ -435,31 +437,75 @@ CREATE INDEX idx_task_assignee_status ON annotation_task(assignee_id, status);
 
 **检查**：每个 Feature 场景有架构支持？每个架构模块有需求来源？每个 BR 有测试覆盖？有没有没有需求依据的过度设计？
 
-### 20. 开发任务拆分 + 测试策略
+### 20. 开发任务拆分 + 测试策略 + 推荐目录结构
 
-从架构文档推导开发任务（不是凭空拆）：
+#### 20a. 推荐目录结构（DDD 分层）
 
-```markdown
-TASK-DEV-01：增加任务分配状态转换规则
-TASK-DEV-02：实现项目管理员权限校验
-TASK-DEV-03：实现目标标注员资格校验
-TASK-DEV-04：实现任务负载上限检查
-TASK-DEV-05：增加乐观锁版本字段
-TASK-DEV-06：实现分配审计记录
-TASK-DEV-07：实现 TaskAssigned Outbox 事件
-TASK-DEV-08：实现通知事件消费者
-TASK-DEV-09：增加分配接口和业务错误码
-TASK-DEV-10：增加指标、日志和告警
-TASK-DEV-11：实现对应 Feature 的 Step Definitions
+```
+{module}/
+├── api/              # 接口层：Controller、Request、ExceptionHandler
+├── application/      # 应用层：Command、Result、UseCase（编排，不含业务规则）
+├── domain/           # 领域层：实体、值对象、聚合根、领域事件、策略
+├── port/             # 端口：Repository 接口（领域定义，基础设施实现）
+└── infrastructure/   # 基础设施：持久化、Outbox、通知消费者
 ```
 
-测试策略（按追踪矩阵的测试级别）：
-- 领域单元测试（聚合不变量、状态转换）
-- Repository 集成测试（条件更新、并发冲突）
-- API 测试（错误码、权限）
-- 并发测试（两人同时分配）
-- 消息测试（Outbox 发布、通知消费）
-- Feature 自动化测试（Step Definitions）
+**领域规则住在 domain/，不住 Controller。** Controller 只做请求解析+身份传递+响应转换。
+
+#### 20b. 开发任务拆分（从架构推导，不凭空拆）
+
+```markdown
+DEV-01：增加任务 version 和 assignedAt 字段
+DEV-02：实现 Task.assignTo() 领域方法（状态转换 + 产生事件）
+DEV-03：实现项目管理员权限校验（AssignmentPolicy.verifyOperator）
+DEV-04：实现目标标注员资格校验（AssignmentPolicy.verifyAssignee）
+DEV-05：实现当前进行中任务数量查询（TaskLoadRepository）
+DEV-06：实现项目任务容量策略
+DEV-07：实现条件更新和并发冲突识别（Repository）
+DEV-08：实现任务分配审计记录（append-only）
+DEV-09：实现 TaskAssigned Outbox 事件
+DEV-10：实现通知消费者、重试和死信处理
+DEV-11：实现分配接口和业务错误码
+DEV-12：增加日志、指标和告警
+DEV-13：实现 AC-01 至 AC-XX 自动化测试
+```
+
+每个开发任务必须能追溯到 Feature 或架构决策。
+
+#### 20c. 四层测试架构
+
+| 层级 | 验证什么 | 怎么测 | 对应 BR |
+|------|---------|--------|---------|
+| **领域测试** | 单条业务规则 | 直接调领域方法，不依赖 DB | BR-02(状态)、BR-03(资格)、BR-04(容量) |
+| **应用服务测试** | 完整业务结果 | 调 UseCase，验证 Task+审计+Outbox 都写入 | BR-01~07(全链路) |
+| **Repository 集成测试** | 数据库并发+事务 | 真实 DB，两人同时条件更新，验证只成功一次 | BR-06(并发)、BR-09(失败回滚) |
+| **Feature 验收测试** | 完整业务链路 | **通过公开 API 调用系统**，不绕过应用层直接改 DB | 全部 AC-XX |
+
+**Feature 测试通过公开 API 调用系统，而不是绕过应用层直接修改数据库。**
+
+#### 20d. 推荐开发顺序（17 步）
+
+```
+1. 审查 Feature 是否包含真实业务规则
+2. 为 Rule 和 Scenario 分配编号（AC-XX）
+3. 提取业务规则(BR-XX)和状态转换
+4. 建立 Feature-规则追踪表
+5. 设计领域模型
+6. 设计事务、并发和事件策略
+7. 写领域测试（先写测试）
+8. 实现领域代码
+9. 写应用服务测试
+10. 实现应用服务
+11. 写 Repository 集成测试
+12. 实现数据库条件更新
+13. 实现审计和 Outbox
+14. 实现 API
+15. 实现 Feature 自动化测试
+16. 建立日志、指标和告警
+17. 更新 traceability-matrix.md（填入代码位置和测试列）
+```
+
+**先写测试再实现**（步骤 7 在 8 之前，9 在 10 之前，11 在 12 之前）。
 
 ## 21 · reconcile 审查（slide 三问）
 
@@ -513,7 +559,7 @@ TASK-DEV-11：实现对应 Feature 的 Step Definitions
 
 ## 产出（architecture.md 一份文档含）
 
-Feature→架构映射链 + 质量属性场景 + 安全设计(SDD) + 性能设计(PDD) + 限界上下文 + 技术栈决策 + 分层架构 + **业务规则(BR-XX)** + 规则传导矩阵 + API 端点清单 + **模块职责表** + **事务边界** + 文件清单（后端+前端）+ 质量要点 + 运维视图(ODD含**失败模式表+并发控制+幂等**) + **可观测性** + **ADR** + **Feature追踪矩阵** + **开发任务拆分+测试策略** + **数据设计** + Docker Compose 架构。
+Feature→架构映射链 + 质量属性场景 + 安全设计(SDD) + 性能设计(PDD) + 限界上下文 + 技术栈决策 + 分层架构 + **业务规则(BR-XX)** + 规则传导矩阵 + API 端点清单 + **模块职责表** + **事务边界** + 文件清单（后端+前端）+ 质量要点 + 运维视图(ODD含**失败模式表+并发控制+幂等**) + **可观测性** + **ADR** + **Feature追踪矩阵(traceability-matrix.md，活文档)** + **开发任务拆分+四层测试+17步流程+目录结构** + **数据设计** + Docker Compose 架构。
 
 **全局独立产出**（非 colocation，跨业务线）：`aggregate-landscape.md`（聚合全景）+ `event-contract.md`（事件契约）+ `module-landscape.md`（模块全景：base 基础建设 + 业务上下文 + 依赖矩阵，见 §13）。
 
@@ -539,15 +585,15 @@ Feature→架构映射链 + 质量属性场景 + 安全设计(SDD) + 性能设�
 □ 识别了基础建设上下文（通用/支撑子域下沉为 base），业务上下文没各造一遍认证/存储/通知？
 □ 依赖方向单向（业务→基础），无反向依赖？flow.mermaid 画了 base 层？module-landscape.md 依赖矩阵反向为空？
 □ 复用机制选对（直接调用/依赖注入/事件订阅，按场景，查 references/modular-design.md 常见错误清单）？
-□ §14 reconcile · Q1 desiredState 显式可见？
-□ §14 reconcile · Q1 ·子项·每个状态机/事件流/聚合不变量/失败模式都有"什么是达成"语句？
-□ §14 reconcile · Q1 ·子项·§3 §10 §13 的 desiredState 表述风格统一（用一致术语）？
-□ §14 reconcile · Q2 谁自动检测实际 vs 期望？
-□ §14 reconcile · Q2 ·子项·每个 desiredState 至少配 1 个 gate/observer/healthcheck？
-□ §14 reconcile · Q2 ·子项·检测点输入可获取、输出可比较，不是"差不多"？
-□ §14 reconcile · Q3 失败能重试并收敛？
-□ §14 reconcile · Q3 ·子项·瞬态故障有 retry + backoff + max retries？
-□ §14 reconcile · Q3 ·子项·永久失败有 deadline/convergeTimeBudget（不是无限 retry 也不是立即终止）？
+□ §21 reconcile · Q1 desiredState 显式可见？
+□ §21 reconcile · Q1 ·子项·每个状态机/事件流/聚合不变量/失败模式都有"什么是达成"语句？
+□ §21 reconcile · Q1 ·子项·§3 §10 §13 的 desiredState 表述风格统一（用一致术语）？
+□ §21 reconcile · Q2 谁自动检测实际 vs 期望？
+□ §21 reconcile · Q2 ·子项·每个 desiredState 至少配 1 个 gate/observer/healthcheck？
+□ §21 reconcile · Q2 ·子项·检测点输入可获取、输出可比较，不是"差不多"？
+□ §21 reconcile · Q3 失败能重试并收敛？
+□ §21 reconcile · Q3 ·子项·瞬态故障有 retry + backoff + max retries？
+□ §21 reconcile · Q3 ·子项·永久失败有 deadline/convergeTimeBudget（不是无限 retry 也不是立即终止）？
 □ Feature→架构映射链：从 Feature 提取了架构含义（不是直接生成 Controller/Service/Repository）？
 □ 业务规则 BR-XX 提取了，每条能追溯到 RXX 和 AC-XX？
 □ 领域模型写了核心实体+字段+关系（不是贫血模型只有 getter/setter）？

@@ -4,7 +4,7 @@ description: |
   xdd 代码层 —— 真实验证。穷尽式诊断应用可部署/可启动/可测试（后端+前端），证明代码真做到了设计说的。
   禁偷懒归因（网络/环境问题必须有证据链），失败必穷举 ≥3 假设逐个验证。
   最终满足真实可用契约（真实持久化/认证/跨服务链路/重启数据保留）+ 生产接受契约（真实用户愿在真实工作中依赖）。
-  含 4 维一致性审计（spec↔code / wire↔code / architecture↔code / resilience↔code）+ 漫游测试 + 混沌演练。
+  含全链路一致性审计（spec↔code / wire↔code / architecture↔code / resilience↔code + 追踪矩阵完整性）+ 漫游测试 + 混沌演练。
   吸收旧 xdd-l6 + xdd-scaffold(smoke) + xdd-design-review(一致性)。
   触发：验证、verify、部署、启动、验收、smoke、漫游、wander、真实可用、交付前检查、上线前。
 ---
@@ -18,7 +18,7 @@ description: |
 | | |
 |---|---|
 | **上游** | `xdd-execute`（代码 + 测试）+ 全部设计层锚：`xdd-spec`（RXX）、`xdd-architecture`（端点/结构）、`xdd-wire`（页面）、`xdd-resilience`（兜底） |
-| **我产出** | 验证报告（health-check + wander-test + 4 维一致性审计 + chaos-drill + 双契约）|
+| **我产出** | 验证报告（health-check + wander-test + 全链路一致性审计 + chaos-drill + 双契约）|
 | **回溯锚** | 验证对照 spec 的每条 RXX 是否真落进代码、对照 architecture 的端点是否真起来 |
 
 ## 核心纪律（禁偷懒）
@@ -57,16 +57,16 @@ docker compose ps                    # 所有服务 Up (healthy)
 
 用 `scripts/wander-test.sh` 跑可脚本化的链路，手工补 UI 部分。
 
-### 3. 4 维一致性审计（代码真跟设计对齐）
+### 3. 全链路一致性审计（代码真跟设计对齐 + 链路不断裂）
 
-> **漫游怎么走、4 维怎么查、双契约怎么判通过 → 查 `references/verification-methods.md`**（验证方法论：漫游覆盖/4 维 grep 对照/双契约证据/禁偷懒归因）。
+> **漫游怎么走、全链路怎么查、双契约怎么判通过 → 查 `references/verification-methods.md`**（验证方法论：漫游覆盖/全链路 grep 对照/双契约证据/禁偷懒归因）。
 
 对照设计层 4 个锚，反向验证代码没跑偏：
 
 | 维度 | 对照 | 查什么 |
 |------|------|--------|
 | **spec ↔ code** | `spec/{bxx-slug}/rules.md` RXX | 每条 RXX 有代码 `@implements RXX` + 测试？grep `@implements` 数 ≥ RXX 数 |
-| **wire ↔ code** | `wire/{page}/` | 每个页面真渲染了？每个操作态（空/加载/错误/成功/确认）都实现？ |
+| **wire ↔ code** | `wire/{page}.md` | 每个页面真渲染了？每个操作态（空/加载/错误/成功/确认）都实现？ |
 | **architecture ↔ code** | `architecture/{bxx-slug}/architecture.md` 端点清单 | 端点清单的每个端点都实现了？grep `@app.get/post` 数 = 清单数（别 60→23）|
 | **resilience ↔ code** | `resilience/failsafe-design.md` 兜底 | 每个兜底策略在代码里有实现位置？ |
 
@@ -124,7 +124,7 @@ for round in 1..3:
     if 仍有 P1:                       # 代码层修不动 = 根因在设计层
       rollback(根因):                 # 判定见括号
         规则没写清（spec RXX 含糊/冲突）  → xdd-spec
-        空状态/页面缺（wire/{page}/ 缺该状态）→ xdd-wire
+        空状态/页面缺（wire/{page}.md 缺该状态）→ xdd-wire
         工作流卡点（design.md 该决策缺失）  → xdd-brainstorm
         API/事件错（architecture.md 没覆盖）→ xdd-architecture
         兜底不够/错（resilience/ 没覆盖该失败模式）→ xdd-resilience
@@ -150,7 +150,7 @@ for round in 1..3:
 - 降级（无 playwright-cli）: `evidence/responses/home.html`（curl HTML 快照）
 - 端点 `/api/xxx`: `evidence/responses/api-xxx.html` · HTTP {code}
 - 内联关键证据（截图直贴报告）：`![](evidence/screenshots/home.png)`
-### 4 维一致性审计
+### 全链路一致性审计
 | 维度 | 设计数 | 代码数 | 一致? |
 | spec RXX | N | grep @implements M | ✅/❌ |
 | 端点 | N | M | ✅/❌ |
@@ -171,7 +171,11 @@ for round in 1..3:
 □ health-check：所有服务 healthy + /healthz 200？
 □ 漫游：核心路径每步有运行证据（非"测试通过"）？
 □ 漫游证据已存 `evidence/`（截图 `screenshots/*.png` + 结构化快照 `snapshots/*.yaml`，或降级 `responses/*.html`），报告引用了路径？
-□ 4 维一致性：spec/wire/architecture/resilience 跟代码对齐？
+□ 全链路一致性：spec/wire/architecture/resilience 跟代码对齐？
+□ 追踪矩阵完整：每个 AC-XX 有架构+代码+测试，每个 BR 有测试，无幽灵代码？
+□ 四层测试覆盖：领域/应用服务/Repository集成/Feature验收都有？
+□ Feature 验收测试通过公开 API 调用（不绕过应用层直接改 DB）？
+□ 代码级质量：领域规则不住Controller？DB负责并发？审计append-only？通知不破坏主事务？身份来自认证上下文？
 □ design 契约「实现/实施」列 checkbox 与代码 `@implements RXX` 一致（无幽灵勾/漏勾）？
 □ 混沌：P0 场景兜底真生效，有 before/after 证据？
 □ 存根扫描：no-stub-check.sh 全项目零命中？

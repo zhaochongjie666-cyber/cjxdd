@@ -16,7 +16,7 @@ description: |
 
 | | |
 |---|---|
-| **上游** | `xdd-brainstorm`(design.md 意图) + `xdd-spec`(spec/{bxx-slug}/ RXX 规则 + Feature) + `xdd-architecture`(architecture/{bxx-slug}/ 端点/事件/状态机/文件清单) + `xdd-wire`(wire/{page}/ 前端) + `xdd-resilience`(architecture/{bxx-slug}/resilience/ 兜底约束) |
+| **上游** | `xdd-brainstorm`(design.md 意图) + `xdd-spec`(spec/{bxx-slug}/ RXX 规则 + Feature) + `xdd-architecture`(architecture/{bxx-slug}/ 端点/事件/状态机/文件清单) + `xdd-wire`(wire/{page}.md 前端线框) + `xdd-resilience`(architecture/{bxx-slug}/resilience/ 兜底约束) |
 | **我产出** | `.xdd/runs/iter-N/plan/{bxx-slug}/plan.md`（任务 DAG + RXX 回指 + 全局约束） |
 | **下游消费者** | `xdd-execute`（按 task 写代码，每个 commit 回指 RXX） |
 | **回溯锚** | 每个 task 标 `**回指 RXX:** R01,R03` + `**Feature:** login.feature :: Scenario: 密码登录成功` |
@@ -42,7 +42,7 @@ work():
 1. `.xdd/design/spec/{bxx-slug}/*.feature` —— Feature/Scenario、Then/And 断言、异常路径、Scenario Outline + Examples（语法/具体值写法 → 详见 `xdd-gherkin-plus` skill）
 2. `.xdd/design/architecture/{bxx-slug}/architecture.md` —— 状态机、启动/关闭、并发模型、异常恢复、API 端点契约、文件清单、规则传导矩阵
 3. `.xdd/design/architecture/{bxx-slug}/flow.mermaid` —— 组件名/职责、数据流向、协议、外部依赖
-4. `.xdd/design/wire/{page}/` —— 页面清单、组件交互、设计 token（前端项目）
+4. `.xdd/design/wire/{page}.md` -- 页面线框、组件交互、6 操作态、设计 token（前端项目）
 5. `.xdd/design/architecture/{bxx-slug}/resilience/failsafe-design.md` —— 兜底约束 + 失败注入点
 6. 当前代码/材料 —— 文件路径、入口、数据模型、错误码、测试框架
 

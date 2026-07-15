@@ -45,7 +45,7 @@ const DELIVERABLES: Record<string, Array<{ path: string; content: string }>> = {
 		{ path: "src/auth.ts", content: "// @implements R01\nexport function login(email: string, pw: string) { return { token: \"x\" }; }\n" },
 	],
 	verify: [
-		{ path: ".xdd/runs/iter-1/verify-report.md", content: "# Verify Report\n## 健康检查\nGET /healthz -> 200\n## 漫游\n注册->登录->token: ok\n## 4维审计\n| spec RXX | 1 | 1 | ✅ |\n## 双契约\n真实可用: ✅\n生产接受: ✅\n## 结论\n真能用\n" },
+		{ path: ".xdd/runs/iter-1/verify-report.md", content: "# Verify Report\n## 健康检查\nGET /healthz -> 200\n## 漫游\n注册->登录->token: ok\n## 全链路审计\n| spec RXX | 1 | 1 | ✅ |\n## 双契约\n真实可用: ✅\n生产接受: ✅\n## 结论\n真能用\n" },
 	],
 };
 

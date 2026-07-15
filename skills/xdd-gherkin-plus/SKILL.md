@@ -18,7 +18,7 @@ description: |
 |---|---|
 | **上游** | `xdd-spec` 的 RXX 规则 + 一条规则=一个 Feature 的契约（本 skill 不定义契约，只引用） |
 | **我产出** | Gherkin 语法判断 + 质量自检 checklist（无文件产出，被引用查） |
-| **下游消费者** | `xdd-spec`（写 Feature）、`xdd-resilience`（@chaos Gherkin）、`xdd-reverse`（反推 .feature）、`xdd-plan`/`xdd-wire`（读 Feature）、`agents/phase-design`/`phase-resilience` |
+| **下游消费者** | `xdd-spec`（写 Feature）、`xdd-resilience`（@chaos Gherkin）、`xdd-reverse`（反推 .feature）、`xdd-plan`/`xdd-wire`（读 Feature） |
 | **回溯锚** | RXX（Gherkin 通过 `@covers-RXX` 标签挂回业务规则） |
 
 ## 怎么做

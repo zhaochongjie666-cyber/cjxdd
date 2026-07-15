@@ -68,7 +68,7 @@ xdd 在 `stages.ts` 中明确要求 agent 梳理用户旅途时覆盖 5 个层�
 辅助 skill (11):
   xdd-polish (事后批评) / xdd-reverse (逆向) / xdd-skill-creator / xdd-frontend /
   xdd-backend / xdd-gherkin-plus / xdd-mermaid-check / xdd-docker-helper /
-  xdd-git-commit / smoke-xdd-design-anchor / xdd-reverse
+  xdd-git-commit / xdd-reverse
 ```
 
 ---

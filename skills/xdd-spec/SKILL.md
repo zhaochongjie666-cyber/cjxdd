@@ -133,7 +133,7 @@ Feature: [业务能力] — [核心价值]    @covers-R01
 **角色列（PX）来自 understand 阶段的 `personas/_index.md`**，不能编造角色名。每条 RXX 至少关联一个角色。
 
 **「实现」列语义**（状态标记，看有没有落实）：
-- `- [x]` = 该 RXX 在代码有 `@implements RXX` 标注且 verify 4 维审计未标 ❌
+- `- [x]` = 该 RXX 在代码有 `@implements RXX` 标注且 verify 全链路审计未标 ❌
 - `- [ ]` = 未实现
 - 此列是运行时状态（由代码 `@implements` 驱动），不参与规则**内容**的评审冻结
 - 可由 `xdd-verify/scripts/sync-contract-checkboxes`（基于 `grep @implements RXX`）半自动翻转

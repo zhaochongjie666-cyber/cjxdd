@@ -195,9 +195,9 @@ export const STAGES: readonly XddStageSpec[] = [
 		noCodeReading: true,
 		aigateStandard: `审查 wire 阶段：
 1. 每个页面一个 .md 文件（不是一堆 HTML）
-2. 每页有 ASCII 布局（desktop + mobile），不是空壳
+2. 每页有嵌入式 HTML 布局（desktop + mobile），不是空壳
 3. 元素清单标了 @covers-RXX（每个元素有来源规则）
-4. 6 操作态全覆盖（空/加载/错误/成功/确认/边界），每态有 ASCII + 说明
+4. 6 操作态全覆盖（空/加载/错误/成功/确认/边界），每态有嵌入式 HTML + 说明
 5. 每态的内容不是模板敷衍（空状态有行动引导，错误态有人话+重试，确认态有后果说明）
 6. 每页底部有 Review（Q1-Q5 逐条回答，不是"无问题"敷衍）
 7. 页面清单跟 spec 的 RXX 对应（不能漏页面、不能多页面）
@@ -322,18 +322,22 @@ export const STAGES: readonly XddStageSpec[] = [
 			"已自我攻击：检查是否真正满足原始用户旅途、是否有未验证假设，并记录结论",
 		],
 		deliverablePaths: [".xdd/runs/*/verify-report.md"],
-		aigateStandard: `审查 verify 阶段（最严格）：
+		aigateStandard: `审查 verify 阶段（最严格，全链路不断裂）：
 1. verify-report.md 是否逐条验证了RXX规则（不能只写"全部通过"）
 2. 每条验证是否有具体证据（测试名/测试结果/代码位置，不是"已测试"敷衍）
 3. 测试是否真的跑了（不能是trivial测试骗通过）
 4. 异常路径测试是否覆盖（不能只测正常流程）
 5. 有无未通过的测试被忽略/跳过（-> 不通过）
-6. verify-report是否跟intent.md的成功标准对应（不能漏验收标准）`,
+6. verify-report是否跟intent.md的成功标准对应（不能漏验收标准）
+7. 追踪矩阵是否完整：每个AC-XX有架构+代码+测试，每个BR有测试，无幽灵代码 -- 断裂 -> 不通过
+8. 四层测试是否覆盖：领域/应用服务/Repository集成/Feature验收 -- 缺层 -> 不通过
+9. Feature验收测试是否通过公开API调用（不绕过应用层直接改DB）-- 绕过 -> 不通过
+10. 代码级质量：领域规则不住Controller？DB负责并发（条件更新不是先查后改）？审计append-only？通知不破坏主事务？身份来自认证上下文？-- 任一不达标 -> 不通过`,
 				gate: async ({ cwd }) => {
 			const specOk = await requireGlobs(cwd, [".xdd/design/spec/**/rules.md"]);
 			if (!specOk.ok) return { ok: false, reason: "verify Gate: 缺少 spec rules.md，无法验证验收标准" };
 			const reportOk = await requireGlobsWithMinSize(cwd, [".xdd/runs/*/verify-report.md"], 100);
-			if (!reportOk.ok) return { ok: false, reason: "verify Gate: 缺少验证报告 .xdd/runs/iter-N/verify-report.md（含健康检查+漫游+4维审计+双契约）" };
+			if (!reportOk.ok) return { ok: false, reason: "verify Gate: 缺少验证报告 .xdd/runs/iter-N/verify-report.md（含健康检查+漫游+全链路审计+双契约）" };
 			const testsOk = await requireTestsPass(cwd);
 			if (!testsOk.ok) return testsOk;
 			return { ok: true };
