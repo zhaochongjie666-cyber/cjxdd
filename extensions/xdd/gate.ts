@@ -42,6 +42,15 @@ export function globToRegExp(pattern: string): RegExp {
 	return new RegExp(`${re}$`);
 }
 
+/** Directories to skip during walkRel. These bloat the walk without ever
+ *  containing xdd artifacts -- node_modules alone can hold 20k+ files and
+ *  blow the maxFiles cap before .xdd/ is reached, causing gates to falsely
+ *  report 'file not found'. */
+const WALK_EXCLUDE_DIRS = new Set([
+	"node_modules", ".git", "dist", "build", "vendor",
+	".next", "target", ".cache", ".turbo", "coverage",
+]);
+
 /** Recursively collect file paths under `dir` (relative to `dir`), capped for safety. */
 export function walkRel(dir: string, maxFiles = 5000): string[] {
 	const out: string[] = [];
@@ -56,6 +65,8 @@ export function walkRel(dir: string, maxFiles = 5000): string[] {
 			continue;
 		}
 		for (const name of entries) {
+			// Skip non-source directories that would waste the maxFiles budget.
+			if (WALK_EXCLUDE_DIRS.has(name)) continue;
 			const full = join(current, name);
 			let st: Stats;
 			try {
