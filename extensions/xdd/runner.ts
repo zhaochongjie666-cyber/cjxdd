@@ -29,8 +29,6 @@ const TICK_MS = 1000;
  */
 export class XddRunner {
 	private listeners = new Set<XddEventListener>();
-	private rollbackCount = 0;
-	private status: XddStatus = "running";
 	private lastFailure: { layer: string; reason: string; at: string } | undefined;
 	private stageStartedAt = new Date();
 	private runStartedAt = new Date();
@@ -95,8 +93,8 @@ export class XddRunner {
 			stage: stage.name,
 			index: this.state.planIndex,
 			total: this.state.plan.length,
-			status: this.status,
-			rollbacks: this.rollbackCount,
+			status: this.state.status,
+			rollbacks: this.state.rollbackCount,
 			attempt: this.state.currentAttempt(stage.name),
 			allowedTools: stage.allowedTools,
 			deliverable: stage.deliverablePaths,
@@ -115,7 +113,7 @@ export class XddRunner {
 			userInput: this.state.userInput,
 			status,
 			ledger: this.state.ledger,
-			rollbacks: this.rollbackCount,
+			rollbacks: this.state.rollbackCount,
 			finalStage: this.state.currentStageName(),
 			at: new Date().toISOString(),
 		});
@@ -145,7 +143,7 @@ export class XddRunner {
 			this.state.startRun();
 		}
 		this.emit({ type: "xdd_run_start", runId: this.state.runId, at: new Date().toISOString() });
-		writeCheckpoint(this.state, "running", this.rollbackCount);
+		writeCheckpoint(this.state, "running", this.state.rollbackCount);
 		const timer = setInterval(() => {
 			const now = Date.now();
 			this.emit({
@@ -191,7 +189,7 @@ export class XddRunner {
 							this.state.advancePlan();
 						}
 					}
-					writeCheckpoint(this.state, "running", this.rollbackCount);
+					writeCheckpoint(this.state, "running", this.state.rollbackCount);
 					// xdd_advance (or the fallback) already advanced state.
 					continue;
 				}
@@ -200,7 +198,7 @@ export class XddRunner {
 			if (this.state.rollbackOutcome) {
 				const rolled = await this.applyRollback();
 				if (!rolled) return this.failResult(stage, "人类拒绝组级回退");
-				writeCheckpoint(this.state, "running", this.rollbackCount);
+				writeCheckpoint(this.state, "running", this.state.rollbackCount);
 				continue;
 			}
 
@@ -209,7 +207,7 @@ export class XddRunner {
 				const signals = this.state.getSignals();
 				const isVerify = stage.exit === "verdict";
 				const event: XddApprovalEvent = isVerify
-					? { type: "verify_verdict", pass: signals.has("verdict_pass"), summary: this.state.submittedArtifacts.get(stage.name)?.join(", ") ?? "" }
+					? { type: "verify_verdict", pass: signals.has("verdict_pass"), summary: this.state.getSubmittedArtifactsForStage(stage.name)?.join(", ") ?? "" }
 					: { type: "gate_failure", stage: stage.name, reason: this.lastFailure?.reason ?? "Gate 未通过", attempt };
 				const decision = await this.opts.humanApprovalHook(event);
 				if (!decision.approved) {
@@ -224,39 +222,39 @@ export class XddRunner {
 			if (this.state.rollbackOutcome) {
 				const rolled = await this.applyRollback();
 				if (!rolled) return this.failResult(stage, "人类拒绝回退");
-				writeCheckpoint(this.state, "running", this.rollbackCount);
+				writeCheckpoint(this.state, "running", this.state.rollbackCount);
 				continue;
 			}
 			return this.failResult(stage, this.lastFailure?.reason ?? `阶段 ${stage.name} 未通过且反思未回退`);
 			}
-			this.status = "pass";
+			this.state.status = "pass";
 			return {
 				runId: this.state.runId,
 				status: "ok",
 				finalStage: this.state.plan[this.state.plan.length - 1]?.stage.name,
-				rollbacks: this.rollbackCount,
+				rollbacks: this.state.rollbackCount,
 			};
 		} catch (err) {
-			this.status = "fail";
+			this.state.status = "fail";
 			return this.failResult(this.state.currentStage(), err instanceof Error ? err.message : String(err));
 		} finally {
 			clearInterval(timer);
-			if (this.status === "pass") {
+			if (this.state.status === "pass") {
 				removeCheckpoint(this.state.cwd);
 			} else {
-				writeCheckpoint(this.state, this.status, this.rollbackCount);
+				writeCheckpoint(this.state, this.state.status, this.state.rollbackCount);
 			}
 			this.emit({
 				type: "xdd_run_end",
 				runId: this.state.runId,
-				ok: this.status === "pass",
+				ok: this.state.status === "pass",
 				at: new Date().toISOString(),
 			});
 		}
 	}
 
 	private async runStage(stage: XddStageSpec, attempt: number): Promise<void> {
-		this.status = "running";
+		this.state.status = "running";
 		this.state.mode = "stage";
 		this.state.clearSignals();
 		this.state.clearDiagnose();
@@ -295,7 +293,7 @@ export class XddRunner {
 	}
 
 	private async reflectTurn(stage: XddStageSpec, attempt: number): Promise<void> {
-		this.status = "reflecting";
+		this.state.status = "reflecting";
 		this.state.mode = "reflect";
 		this.state.clearDiagnose();
 		const reason = stage.exit === "verdict" ? "verify verdict: fail 或未通过闸门" : "未产出完成信号或闸门未通过";
@@ -343,7 +341,7 @@ export class XddRunner {
 			}
 		}
 
-		this.rollbackCount++;
+		this.state.rollbackCount++;
 		this.state.flowRollbackCount++;
 		// Layer 2 tier 1: warn at the soft limit.
 		if (this.state.flowRollbackCount === this.state.flowRollbackLimitTier1) {
@@ -390,9 +388,9 @@ export class XddRunner {
 			superseded: false,
 			at: new Date().toISOString(),
 			tokensUsed: this.computeTokens(),
-			artifacts: this.state.submittedArtifacts.get(stage) ?? undefined,
+			artifacts: this.state.getSubmittedArtifactsForStage(stage) ?? undefined,
 		};
-		this.state.ledger.push(entry);
+		this.state.addLedgerEntry(entry);
 		this.state.recordEsgNode("evidence", stage, `${stage} attempt ${attempt}: ${passed ? "pass" : "fail"}`, { artifacts: entry.artifacts, tokensUsed: entry.tokensUsed });
 	}
 
@@ -401,17 +399,17 @@ export class XddRunner {
 		const cp = readCheckpoint(this.state.cwd);
 		if (!cp || cp.runId !== this.state.runId) return false;
 		this.state.restoreFromCheckpoint(cp);
-		this.rollbackCount = cp.rollbackCount;
+		this.state.rollbackCount = cp.rollbackCount;
 		return true;
 	}
 
 	private failResult(stage: XddStageSpec | undefined, reason: string): XddRunResult {
-		this.status = "fail";
+		this.state.status = "fail";
 		return {
 			runId: this.state.runId,
 			status: "failed",
 			finalStage: stage?.name,
-			rollbacks: this.rollbackCount,
+			rollbacks: this.state.rollbackCount,
 			reason,
 		};
 	}

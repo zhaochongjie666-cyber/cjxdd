@@ -33,7 +33,7 @@ export function createXddObserveTool(getState: GetXddState): ToolDefinition {
 				.map((a) => `${a.stage}: [${a.paths.join(", ")}]`)
 				.join(" ") || "(无)";
 			const selfAttacks =
-				[...state.selfAttackNotes.entries()]
+				state.getSelfAttackNotes()
 					.map(([s, n]) => `${s}: ${n.slice(0, 80)}`)
 					.join(" ") || "(无)";
 			const fsSnap = observeFilesystem(state.cwd, stage.deliverablePaths);

@@ -1,4 +1,6 @@
 import type { Skill } from "@earendil-works/pi-coding-agent";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 /** The 10 xdd software-development stages, in execution order. */
 export type XddStageName =
@@ -177,63 +179,19 @@ export interface XddRunResult {
  * Shared mutable state between the orchestrator (XddRunner) and the extension's
  * tools / event handlers. The extension closes over a single module-level
  * instance (`stateRef`); runXdd injects it via activateXddExtension().
+ *
+ * FILE-FIRST: no in-memory Maps or mutable fields. Every read loads from
+ * `.xdd/runtime.json`; every write saves to it. The file IS the state.
+ * Only `cwd`/`runId`/`userInput` (immutable construction params) and
+ * `plan`/`skills` (contain gate/Skill function refs, not serializable)
+ * stay in memory.
  */
 export class XddRunnerState {
 	readonly cwd: string;
 	readonly runId: string;
 	readonly userInput: string;
 	skills: Skill[] = [];
-
-	mode: XddRunnerMode = "stage";
-	/** messages.length captured at stage start; on("context") slices from here. */
-	boundary = 0;
-	ledger: XddLedgerEntry[] = [];
-	/** ESG nodes: chronological graph of decisions, evidence, reviews, findings, tasks, checkpoints. */
-	esg: XddEsgNode[] = [];
-
-	/** Effective ordered stages for this run (after --from/--stage/--skip-wire). */
 	plan: Array<{ stage: XddStageSpec; originalIndex: number }> = [];
-	/** Current position in `plan` (-1 before the run starts). */
-	planIndex = -1;
-	/** Max rollbacks per single stage before the run fails (set at activation). */
-	maxRollbacksPerStage = 2;
-	/** reconcile-style self-heal budget per stage: max xdd_submit_artifact calls
-	 *  for the same stage before the runner soft-passes to the next stage
-	 *  (Layer 1: in-stage self-heal, non-blocking after exhaustion). Default 5. */
-	maxSelfHealPerStage = 5;
-
-	/** Set by xdd_advance when the model transitions to the next stage. */
-	advanceOutcome: { passed: boolean } | undefined;
-	/** Set by xdd_rollback when the model declares a rollback target. */
-	rollbackOutcome: { from: XddStageName; to: XddStageName; reason: string } | undefined;
-	/** Set by xdd_advance when the final plan stage is passed. */
-	runComplete = false;
-	/** Set by xdd_advance when a group gate passes; cleared by /xdd continue. */
-	pendingGroupApproval?: { group: string; gateLabel: string };
-	/** Auto-continue circuit breaker: tracks consecutive agent_end with no progress. */
-	consecutiveStalls = 0;
-	lastAgentEndPlanIndex = 0;
-	lastSubmitAt = 0;
-	lastAgentEndAt = 0;
-	/** Set by run-completion auto-archive (or /xdd-archive command) to prevent re-archive. */
-	archived = false;
-
-	// ── Layer 2: flow-level rollback budget ──────────────────────────────
-	/** Flow-level rollback count (group gate fail / verify verdict fail -> rollback). */
-	flowRollbackCount = 0;
-	/** Tier 1 soft limit: warn but allow. Default 5. */
-	flowRollbackLimitTier1 = 5;
-	/** Tier 2 hard limit: force runComplete. Default 10. */
-	flowRollbackLimitTier2 = 10;
-
-	/** Artifacts submitted via xdd_submit_artifact per stage (observability). */
-	submittedArtifacts = new Map<XddStageName, string[]>();
-	/** Self-attack notes submitted via xdd_submit_artifact per stage (evidence). */
-	selfAttackNotes = new Map<XddStageName, string>();
-
-	private _signals = new Set<XddSignal>();
-	private _diagnose: XddDiagnose | null = null;
-	private _attempts = new Map<string, number>();
 
 	constructor(opts: { runId: string; cwd: string; userInput: string }) {
 		this.runId = opts.runId;
@@ -241,237 +199,225 @@ export class XddRunnerState {
 		this.userInput = opts.userInput;
 	}
 
-	/** Begin the run at the first plan stage. */
-	startRun(): void {
-		this.planIndex = 0;
-	}
+	// ── File I/O ─────────────────────────────────────────────────────────
+	private get rtPath(): string { return join(this.cwd, ".xdd", "runtime.json"); }
 
-	currentStage(): XddStageSpec | undefined {
-		return this.plan[this.planIndex]?.stage;
-	}
-
-	/** STAGES-original index of the current stage (stable across plan filtering). */
-	currentIndex(): number {
-		return this.plan[this.planIndex]?.originalIndex ?? -1;
-	}
-
-	currentStageName(): XddStageName | undefined {
-		return this.plan[this.planIndex]?.stage.name;
-	}
-
-	isLastStage(): boolean {
-		return this.planIndex === this.plan.length - 1;
-	}
-
-	/** Advance to the next plan stage. Returns the new stage, or undefined when the run completes. */
-	advancePlan(): XddStageSpec | undefined {
-		this.planIndex++;
-		if (this.planIndex >= this.plan.length) {
-			this.runComplete = true;
-			return undefined;
+	private loadRt(): XddCheckpointData {
+		for (const name of ["runtime.json", "checkpoint.json"] as const) {
+			const p = join(this.cwd, ".xdd", name);
+			if (existsSync(p)) {
+				try { return { ...defaultRt(), ...JSON.parse(readFileSync(p, "utf8")) }; } catch { /* fall through */ }
+			}
 		}
-		// Explicitly reset self-heal budget for the new stage. The Map key
-		// already isolates stages, so this is belt-and-suspenders for
-		// advance; the real reason it lives here is to keep the contract
-		// symmetric with goToStageName (rollback) -- which MUST reset,
-		// because rollback re-enters the same stage name whose key already
-		// holds a non-zero used count.
-		const newStage = this.plan[this.planIndex].stage;
+		return defaultRt();
+	}
+
+	private saveRt(data: XddCheckpointData): void {
+		const dir = join(this.cwd, ".xdd");
+		mkdirSync(dir, { recursive: true });
+		data.at = new Date().toISOString();
+		writeFileSync(join(dir, "runtime.json"), JSON.stringify(data, null, 2), "utf8");
+	}
+
+	private mutRt<K extends keyof XddCheckpointData>(key: K, value: XddCheckpointData[K]): void {
+		const rt = this.loadRt();
+		rt[key] = value;
+		this.saveRt(rt);
+	}
+
+	// ── File-backed properties ───────────────────────────────────────────
+	get mode(): XddRunnerMode { return this.loadRt().mode ?? "stage"; }
+	set mode(v: XddRunnerMode) { this.mutRt("mode", v); }
+	get boundary(): number { return this.loadRt().boundary ?? 0; }
+	set boundary(v: number) { this.mutRt("boundary", v); }
+	get planIndex(): number { return this.loadRt().planIndex ?? -1; }
+	set planIndex(v: number) { this.mutRt("planIndex", v); }
+	get runComplete(): boolean { return this.loadRt().runComplete ?? false; }
+	set runComplete(v: boolean) { this.mutRt("runComplete", v); }
+	get archived(): boolean { return this.loadRt().archived ?? false; }
+	set archived(v: boolean) { this.mutRt("archived", v); }
+	get consecutiveStalls(): number { return this.loadRt().consecutiveStalls ?? 0; }
+	set consecutiveStalls(v: number) { this.mutRt("consecutiveStalls", v); }
+	get lastAgentEndPlanIndex(): number { return this.loadRt().lastAgentEndPlanIndex ?? 0; }
+	set lastAgentEndPlanIndex(v: number) { this.mutRt("lastAgentEndPlanIndex", v); }
+	get lastSubmitAt(): number { return this.loadRt().lastSubmitAt ?? 0; }
+	set lastSubmitAt(v: number) { this.mutRt("lastSubmitAt", v); }
+	get lastAgentEndAt(): number { return this.loadRt().lastAgentEndAt ?? 0; }
+	set lastAgentEndAt(v: number) { this.mutRt("lastAgentEndAt", v); }
+	get flowRollbackCount(): number { return this.loadRt().flowRollbackCount ?? 0; }
+	set flowRollbackCount(v: number) { this.mutRt("flowRollbackCount", v); }
+	get flowRollbackLimitTier1(): number { return this.loadRt().flowRollbackLimitTier1 ?? 5; }
+	set flowRollbackLimitTier1(v: number) { this.mutRt("flowRollbackLimitTier1", v); }
+	get flowRollbackLimitTier2(): number { return this.loadRt().flowRollbackLimitTier2 ?? 10; }
+	set flowRollbackLimitTier2(v: number) { this.mutRt("flowRollbackLimitTier2", v); }
+	get maxRollbacksPerStage(): number { return this.loadRt().maxRollbacksPerStage ?? 2; }
+	set maxRollbacksPerStage(v: number) { this.mutRt("maxRollbacksPerStage", v); }
+	get maxSelfHealPerStage(): number { return this.loadRt().maxSelfHealPerStage ?? 5; }
+	set maxSelfHealPerStage(v: number) { this.mutRt("maxSelfHealPerStage", v); }
+	get status(): XddStatus { return this.loadRt().status ?? "running"; }
+	set status(v: XddStatus) { this.mutRt("status", v); }
+	get rollbackCount(): number { return this.loadRt().rollbackCount ?? 0; }
+	set rollbackCount(v: number) { this.mutRt("rollbackCount", v); }
+	get advanceOutcome(): { passed: boolean } | undefined { return this.loadRt().advanceOutcome ?? undefined; }
+	set advanceOutcome(v: { passed: boolean } | undefined) { this.mutRt("advanceOutcome", v ?? null); }
+	get rollbackOutcome(): { from: XddStageName; to: XddStageName; reason: string } | undefined { return this.loadRt().rollbackOutcome ?? undefined; }
+	set rollbackOutcome(v: { from: XddStageName; to: XddStageName; reason: string } | undefined) { this.mutRt("rollbackOutcome", v ?? null); }
+	get pendingGroupApproval(): { group: string; gateLabel: string } | undefined { return this.loadRt().pendingGroupApproval ?? undefined; }
+	set pendingGroupApproval(v: { group: string; gateLabel: string } | undefined) { this.mutRt("pendingGroupApproval", v ?? null); }
+
+	// ── Collection accessors ─────────────────────────────────────────────
+	get ledger(): XddLedgerEntry[] { return this.loadRt().ledger ?? []; }
+	get esg(): XddEsgNode[] { return this.loadRt().esg ?? []; }
+
+	// ── Stage navigation ─────────────────────────────────────────────────
+	startRun(): void { this.planIndex = 0; }
+	currentStage(): XddStageSpec | undefined { return this.plan[this.planIndex]?.stage; }
+	currentIndex(): number { return this.plan[this.planIndex]?.originalIndex ?? -1; }
+	currentStageName(): XddStageName | undefined { return this.plan[this.planIndex]?.stage.name; }
+	isLastStage(): boolean { return this.planIndex === this.plan.length - 1; }
+
+	advancePlan(): XddStageSpec | undefined {
+		const rt = this.loadRt();
+		rt.planIndex++;
+		if (rt.planIndex >= this.plan.length) { rt.runComplete = true; this.saveRt(rt); return undefined; }
+		this.saveRt(rt);
+		const newStage = this.plan[rt.planIndex].stage;
 		this.resetSelfHealBudget(newStage.name);
 		return newStage;
 	}
 
-	/** Jump to a named stage strictly before the current one. */
 	goToStageName(name: XddStageName): { ok: true; originalIndex: number } | { ok: false; reason: string } {
 		const idx = this.plan.findIndex((e) => e.stage.name === name);
-		if (idx === -1) {
-			return { ok: false, reason: `目标阶段 ${name} 不在执行计划内` };
-		}
-		if (idx >= this.planIndex) {
-			return { ok: false, reason: `回退目标 ${name} 必须早于当前阶段` };
-		}
-		this.planIndex = idx;
-		// Reset self-heal budget on rollback: rollback re-enters a stage
-		// whose Map key already holds the previous attempt count, so
-		// without this reset the very first submit after rollback would
-		// burn the rest of the budget and immediately trip the exhaustion
-		// error.
+		if (idx === -1) return { ok: false, reason: `目标阶段 ${name} 不在执行计划内` };
+		const rt = this.loadRt();
+		if (idx >= rt.planIndex) return { ok: false, reason: `回退目标 ${name} 必须早于当前阶段` };
+		rt.planIndex = idx;
+		this.saveRt(rt);
 		this.resetSelfHealBudget(name);
 		return { ok: true, originalIndex: this.plan[idx].originalIndex };
 	}
 
-	/** Mark ledger entries at/after `targetOriginalIndex` as superseded. */
 	markSuperseded(targetOriginalIndex: number): void {
-		for (const entry of this.ledger) {
-			if (entry.stageIndex >= targetOriginalIndex && !entry.superseded) {
-				entry.superseded = true;
-			}
-		}
+		const rt = this.loadRt();
+		for (const entry of rt.ledger) { if (entry.stageIndex >= targetOriginalIndex && !entry.superseded) entry.superseded = true; }
+		this.saveRt(rt);
 	}
 
-	/** reconcile-style self-heal budget tracking. Increments on each gate call for the
-	 *  same stage; resets (to 0) when advance / rollback moves the cursor. */
-	private _selfHealUsed = new Map<XddStageName, number>();
-	/** Disk fingerprint from the last xdd_submit_artifact call per stage.
-	 *  Used to detect zero-change retries (agent resubmits without modifying
-	 *  any artifact files). Runtime-only: NOT serialized to checkpoint --
-	 *  a restart should allow a fresh attempt. */
-	private _lastSubmitFingerprint = new Map<XddStageName, string>();
+	addLedgerEntry(entry: XddLedgerEntry): void {
+		const rt = this.loadRt();
+		rt.ledger.push(entry);
+		this.saveRt(rt);
+	}
+
+	// ── Self-heal budget ─────────────────────────────────────────────────
 	beginSelfHealAttempt(stage: XddStageName): number {
-		const used = this._selfHealUsed.get(stage) ?? 0;
-		// Cap at maxSelfHealPerStage. Without this cap, the counter keeps
-		// incrementing past the budget and all subsequent user-visible
-		// messages show nonsense like "自愈预算耗尽（40/3）". Returning
-		// maxSelfHealPerStage (instead of the inflated value) keeps every
-		// `${used}/${state.maxSelfHealPerStage}` display coherent.
-		if (used >= this.maxSelfHealPerStage) {
-			return this.maxSelfHealPerStage;
-		}
-		const next = used + 1;
-		this._selfHealUsed.set(stage, next);
-		return next;
+		const rt = this.loadRt();
+		const used = rt.selfHealUsed[stage] ?? 0;
+		const max = rt.maxSelfHealPerStage ?? 5;
+		if (used >= max) return max;
+		rt.selfHealUsed[stage] = used + 1;
+		this.saveRt(rt);
+		return used + 1;
 	}
 	remainingSelfHealBudget(stage: XddStageName): number {
-		return Math.max(0, this.maxSelfHealPerStage - (this._selfHealUsed.get(stage) ?? 0));
+		const rt = this.loadRt();
+		return Math.max(0, (rt.maxSelfHealPerStage ?? 5) - (rt.selfHealUsed[stage] ?? 0));
 	}
 	resetSelfHealBudget(stage: XddStageName): void {
-		this._selfHealUsed.set(stage, 0);
-		this._lastSubmitFingerprint.delete(stage);
+		const rt = this.loadRt();
+		rt.selfHealUsed[stage] = 0;
+		if (rt.lastSubmitFingerprint) delete rt.lastSubmitFingerprint[stage];
+		this.saveRt(rt);
 	}
-
-	/**
-	 * Disk fingerprint guard (Bug 2). Compares the given fingerprint with
-	 * the last one recorded for this stage. Returns true if different (or
-	 * first call), false if identical (zero-change retry). Always stores
-	 * the new fingerprint so the NEXT call is compared against THIS one.
-	 */
 	checkAndRecordSubmitFingerprint(stage: XddStageName, fingerprint: string): boolean {
-		const last = this._lastSubmitFingerprint.get(stage);
-		this._lastSubmitFingerprint.set(stage, fingerprint);
+		const rt = this.loadRt();
+		if (!rt.lastSubmitFingerprint) rt.lastSubmitFingerprint = {};
+		const last = rt.lastSubmitFingerprint[stage];
+		rt.lastSubmitFingerprint[stage] = fingerprint;
+		this.saveRt(rt);
 		return last !== fingerprint;
 	}
 
-	clearSignals(): void {
-		this._signals.clear();
-	}
-
+	// ── Signals ──────────────────────────────────────────────────────────
+	clearSignals(): void { this.mutRt("signals", []); }
 	recordSignal(signal: XddSignal): void {
-		this._signals.add(signal);
+		const rt = this.loadRt();
+		if (!rt.signals) rt.signals = [];
+		if (!rt.signals.includes(signal)) rt.signals.push(signal);
+		this.saveRt(rt);
 	}
+	getSignals(): ReadonlySet<XddSignal> { return new Set(this.loadRt().signals ?? []); }
 
-	getSignals(): ReadonlySet<XddSignal> {
-		return this._signals;
-	}
+	// ── Diagnose ─────────────────────────────────────────────────────────
+	clearDiagnose(): void { this.mutRt("diagnose", null); }
+	setDiagnose(diagnose: XddDiagnose): void { this.mutRt("diagnose", diagnose); }
+	getDiagnose(): XddDiagnose | null { return this.loadRt().diagnose ?? null; }
 
-	clearDiagnose(): void {
-		this._diagnose = null;
-	}
-
-	setDiagnose(diagnose: XddDiagnose): void {
-		this._diagnose = diagnose;
-	}
-
-	getDiagnose(): XddDiagnose | null {
-		return this._diagnose;
-	}
-
-	/** Start a new attempt for a stage; returns the 1-based attempt number. */
+	// ── Attempts ─────────────────────────────────────────────────────────
 	beginAttempt(stage: XddStageName): number {
-		const next = (this._attempts.get(stage) ?? 0) + 1;
-		this._attempts.set(stage, next);
+		const rt = this.loadRt();
+		const next = (rt.attempts[stage] ?? 0) + 1;
+		rt.attempts[stage] = next;
+		this.saveRt(rt);
 		return next;
 	}
+	currentAttempt(stage: XddStageName): number { return this.loadRt().attempts[stage] ?? 0; }
 
-	currentAttempt(stage: XddStageName): number {
-		return this._attempts.get(stage) ?? 0;
-	}
-
+	// ── Artifacts & ESG ──────────────────────────────────────────────────
 	recordArtifact(stage: XddStageName, paths: string[]): void {
-		this.submittedArtifacts.set(stage, paths);
+		const rt = this.loadRt();
+		if (!rt.submittedArtifacts) rt.submittedArtifacts = {};
+		rt.submittedArtifacts[stage] = paths;
+		this.saveRt(rt);
 	}
-
 	recordSelfAttack(stage: XddStageName, note: string): void {
-		this.selfAttackNotes.set(stage, note);
+		const rt = this.loadRt();
+		if (!rt.selfAttackNotes) rt.selfAttackNotes = {};
+		rt.selfAttackNotes[stage] = note;
+		this.saveRt(rt);
 	}
-
 	recordEsgNode(type: XddEsgNodeType, stage: XddStageName, label: string, data?: unknown, parentId?: string): string {
-		const id = `esg-${this.esg.length + 1}`;
-		this.esg.push({ id, type, stage, label, data, parentId, at: new Date().toISOString() });
+		const rt = this.loadRt();
+		if (!rt.esg) rt.esg = [];
+		const id = `esg-${rt.esg.length + 1}`;
+		rt.esg.push({ id, type, stage, label, data, parentId, at: new Date().toISOString() });
+		this.saveRt(rt);
 		return id;
 	}
-
 	getSubmittedArtifacts(): Array<{ stage: XddStageName; paths: string[] }> {
-		return [...this.submittedArtifacts.entries()].map(([stage, paths]) => ({ stage, paths }));
+		return Object.entries(this.loadRt().submittedArtifacts ?? {}).map(([stage, paths]) => ({ stage: stage as XddStageName, paths }));
+	}
+	getSubmittedArtifactsForStage(stage: XddStageName): string[] | undefined {
+		return this.loadRt().submittedArtifacts?.[stage];
+	}
+	getSelfAttackNoteForStage(stage: XddStageName): string | undefined {
+		return this.loadRt().selfAttackNotes?.[stage];
+	}
+	getSelfAttackNotes(): Array<[XddStageName, string]> {
+		return Object.entries(this.loadRt().selfAttackNotes ?? {}) as Array<[XddStageName, string]>;
 	}
 
-	/** Serialize the full run state for checkpoint persistence (P5 Recoverability). */
+	// ── Checkpoint compat (thin wrappers around load/save) ──────────────
 	toCheckpoint(status: XddStatus, rollbackCount: number): XddCheckpointData {
-		const attempts: Record<string, number> = {};
-		for (const [k, v] of this._attempts) attempts[k] = v;
-		const selfHealUsed: Record<string, number> = {};
-		for (const [k, v] of this._selfHealUsed) selfHealUsed[k] = v;
-		const submittedArtifacts: Record<string, string[]> = {};
-		for (const [k, v] of this.submittedArtifacts) submittedArtifacts[k] = v;
-		const selfAttackNotes: Record<string, string> = {};
-		for (const [k, v] of this.selfAttackNotes) selfAttackNotes[k] = v;
-		return {
-			runId: this.runId,
-			userInput: this.userInput,
-			cwd: this.cwd,
-			planIndex: this.planIndex,
-			plan: this.plan.map((e) => ({ stageName: e.stage.name, originalIndex: e.originalIndex })),
-			mode: this.mode,
-			ledger: this.ledger,
-			attempts,
-			selfHealUsed,
-			maxRollbacksPerStage: this.maxRollbacksPerStage,
-			maxSelfHealPerStage: this.maxSelfHealPerStage,
-			flowRollbackCount: this.flowRollbackCount,
-			flowRollbackLimitTier1: this.flowRollbackLimitTier1,
-			flowRollbackLimitTier2: this.flowRollbackLimitTier2,
-			rollbackCount,
-			status,
-			submittedArtifacts,
-			selfAttackNotes,
-			esg: this.esg,
-			at: new Date().toISOString(),
-		};
+		const rt = this.loadRt();
+		// Merge identity + non-serializable fields from memory (they're not
+		// in the file because they're readonly/functional).
+		rt.runId = this.runId;
+		rt.cwd = this.cwd;
+		rt.userInput = this.userInput;
+		rt.plan = this.plan.map((e) => ({ stageName: e.stage.name, originalIndex: e.originalIndex }));
+		rt.status = status;
+		rt.rollbackCount = rollbackCount;
+		this.saveRt(rt);
+		return rt;
 	}
-
-	/** Restore run state from a previously persisted checkpoint. */
 	static fromCheckpoint(data: XddCheckpointData): XddRunnerState {
 		const state = new XddRunnerState({ runId: data.runId, cwd: data.cwd, userInput: data.userInput });
-		state.planIndex = data.planIndex;
-		state.mode = data.mode;
-		state.ledger = data.ledger;
-		state.maxRollbacksPerStage = data.maxRollbacksPerStage;
-		state.maxSelfHealPerStage = data.maxSelfHealPerStage;
-		state.flowRollbackCount = data.flowRollbackCount ?? 0;
-		state.flowRollbackLimitTier1 = data.flowRollbackLimitTier1 ?? 5;
-		state.flowRollbackLimitTier2 = data.flowRollbackLimitTier2 ?? 10;
-		for (const [k, v] of Object.entries(data.attempts)) state._attempts.set(k as XddStageName, v);
-		for (const [k, v] of Object.entries(data.selfHealUsed)) state._selfHealUsed.set(k as XddStageName, v);
-		for (const [k, v] of Object.entries(data.submittedArtifacts)) state.submittedArtifacts.set(k as XddStageName, v);
-		for (const [k, v] of Object.entries(data.selfAttackNotes)) state.selfAttackNotes.set(k as XddStageName, v);
-		state.esg = data.esg;
+		state.saveRt({ ...defaultRt(), ...data });
 		return state;
 	}
-
-	/** Restore mutable fields from a checkpoint onto an existing instance (keeps plan/skills). */
 	restoreFromCheckpoint(data: XddCheckpointData): void {
-		this.planIndex = data.planIndex;
-		this.mode = data.mode;
-		this.ledger = data.ledger;
-		this.maxRollbacksPerStage = data.maxRollbacksPerStage;
-		this.maxSelfHealPerStage = data.maxSelfHealPerStage;
-		this.flowRollbackCount = data.flowRollbackCount ?? 0;
-		this.flowRollbackLimitTier1 = data.flowRollbackLimitTier1 ?? 5;
-		this.flowRollbackLimitTier2 = data.flowRollbackLimitTier2 ?? 10;
-		for (const [k, v] of Object.entries(data.attempts)) this._attempts.set(k as XddStageName, v);
-		for (const [k, v] of Object.entries(data.selfHealUsed)) this._selfHealUsed.set(k as XddStageName, v);
-		for (const [k, v] of Object.entries(data.submittedArtifacts)) this.submittedArtifacts.set(k as XddStageName, v);
-		for (const [k, v] of Object.entries(data.selfAttackNotes)) this.selfAttackNotes.set(k as XddStageName, v);
-		this.esg = data.esg;
+		this.saveRt({ ...defaultRt(), ...data });
 	}
 }
 
@@ -584,6 +530,41 @@ export interface XddCheckpointData {
 	selfAttackNotes: Record<string, string>;
 	esg: XddEsgNode[];
 	at: string;
+	// ── Runtime-only fields (file-first: persisted to runtime.json, optional
+	//    for backward compat with old checkpoint.json files that lack them) ──
+	signals?: XddSignal[];
+	diagnose?: XddDiagnose | null;
+	lastSubmitFingerprint?: Record<string, string>;
+	consecutiveStalls?: number;
+	lastAgentEndPlanIndex?: number;
+	lastSubmitAt?: number;
+	lastAgentEndAt?: number;
+	advanceOutcome?: { passed: boolean } | null;
+	rollbackOutcome?: { from: XddStageName; to: XddStageName; reason: string } | null;
+	pendingGroupApproval?: { group: string; gateLabel: string } | null;
+	archived?: boolean;
+	boundary?: number;
+	runComplete?: boolean;
+}
+
+/** Default runtime data for a fresh run. */
+function defaultRt(): XddCheckpointData {
+	return {
+		runId: "", userInput: "", cwd: "",
+		planIndex: -1, plan: [], mode: "stage",
+		ledger: [], attempts: {}, selfHealUsed: {},
+		maxRollbacksPerStage: 2, maxSelfHealPerStage: 5,
+		flowRollbackCount: 0, flowRollbackLimitTier1: 5, flowRollbackLimitTier2: 10,
+		rollbackCount: 0, status: "running",
+		submittedArtifacts: {}, selfAttackNotes: {}, esg: [],
+		at: new Date().toISOString(),
+		signals: [], diagnose: null, lastSubmitFingerprint: {},
+		consecutiveStalls: 0, lastAgentEndPlanIndex: 0,
+		lastSubmitAt: 0, lastAgentEndAt: 0,
+		advanceOutcome: null, rollbackOutcome: null,
+		pendingGroupApproval: null, archived: false,
+		boundary: 0, runComplete: false,
+	};
 }
 
 // ============================================================================

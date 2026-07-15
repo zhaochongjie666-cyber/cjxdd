@@ -1,16 +1,25 @@
 import { describe, it, expect } from "vitest";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { STAGES } from "./stages.ts";
 import { XddRunnerState } from "./types.ts";
 
+/** Each state gets its own temp dir so file-backed state doesn't collide. */
+let dirCounter = 0;
+function tmpCwd(): string {
+	return mkdtempSync(join(tmpdir(), `xdd-test-${Date.now()}-${dirCounter++}-`));
+}
+
 function makeState(): XddRunnerState {
-	const state = new XddRunnerState({ runId: "test", cwd: "/tmp", userInput: "test" });
+	const state = new XddRunnerState({ runId: "test", cwd: tmpCwd(), userInput: "test" });
 	state.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
 	return state;
 }
 
 describe("XddRunnerState basics", () => {
 	it("starts at planIndex -1", () => {
-		const state = new XddRunnerState({ runId: "t", cwd: "/tmp", userInput: "u" });
+		const state = new XddRunnerState({ runId: "t", cwd: tmpCwd(), userInput: "u" });
 		expect(state.planIndex).toBe(-1);
 	});
 
@@ -73,9 +82,6 @@ describe("XddRunnerState goToStageName", () => {
 	});
 
 	it("resets self-heal budget of the rollback target (Bug 3)", () => {
-		// Regression: before fix, rollback left the target stage's _selfHealUsed
-		// untouched, so the first submit after rollback would already be at
-		// the previous attempt count and could trip the exhaustion error.
 		const state = makeState();
 		state.maxSelfHealPerStage = 3;
 		state.startRun();
@@ -93,6 +99,15 @@ describe("XddRunnerState goToStageName", () => {
 	});
 });
 
+describe("XddRunnerState flow rollback (Layer 2)", () => {
+	it("defaults: tier1=5, tier2=10", () => {
+		const state = new XddRunnerState({ runId: "t", cwd: tmpCwd(), userInput: "u" });
+		expect(state.flowRollbackCount).toBe(0);
+		expect(state.flowRollbackLimitTier1).toBe(5);
+		expect(state.flowRollbackLimitTier2).toBe(10);
+	});
+});
+
 describe("XddRunnerState self-heal budget", () => {
 	it("increments and tracks remaining", () => {
 		const state = makeState();
@@ -103,8 +118,6 @@ describe("XddRunnerState self-heal budget", () => {
 	});
 
 	it("caps at maxSelfHealPerStage (Bug 2)", () => {
-		// Regression: before fix, beginSelfHealAttempt kept incrementing past
-		// the budget, producing nonsense like "自愈预算耗尽（40/3）".
 		const state = makeState();
 		state.maxSelfHealPerStage = 3;
 		expect(state.beginSelfHealAttempt("spec")).toBe(1);
@@ -127,17 +140,8 @@ describe("XddRunnerState self-heal budget", () => {
 	});
 
 	it("defaults to 5 (Layer 1 budget)", () => {
-		const state = new XddRunnerState({ runId: "t", cwd: "/tmp", userInput: "u" });
+		const state = new XddRunnerState({ runId: "t", cwd: tmpCwd(), userInput: "u" });
 		expect(state.maxSelfHealPerStage).toBe(5);
-	});
-});
-
-describe("XddRunnerState flow rollback (Layer 2)", () => {
-	it("defaults: tier1=5, tier2=10", () => {
-		const state = new XddRunnerState({ runId: "t", cwd: "/tmp", userInput: "u" });
-		expect(state.flowRollbackCount).toBe(0);
-		expect(state.flowRollbackLimitTier1).toBe(5);
-		expect(state.flowRollbackLimitTier2).toBe(10);
 	});
 });
 
@@ -154,7 +158,7 @@ describe("XddRunnerState artifacts and self-attack", () => {
 	it("records self-attack notes", () => {
 		const state = makeState();
 		state.recordSelfAttack("spec", "checked edge cases");
-		expect(state.selfAttackNotes.get("spec")).toBe("checked edge cases");
+		expect(state.getSelfAttackNoteForStage("spec")).toBe("checked edge cases");
 	});
 });
 
@@ -175,7 +179,7 @@ describe("XddRunnerState checkpoint", () => {
 		expect(restored.planIndex).toBe(1);
 		expect(restored.runId).toBe("test");
 		expect(restored.getSubmittedArtifacts()[0].paths).toEqual(["README.md"]);
-		expect(restored.selfAttackNotes.get("init")).toBe("checked edge cases");
+		expect(restored.getSelfAttackNoteForStage("init")).toBe("checked edge cases");
 	});
 
 	it("persists flowRollbackCount across checkpoint (Layer 2)", () => {

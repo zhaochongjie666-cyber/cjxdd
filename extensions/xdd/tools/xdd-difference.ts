@@ -25,8 +25,8 @@ export function createXddDifferenceTool(getState: GetXddState): ToolDefinition {
 			const state = getState();
 			const stage = state.currentStage();
 			if (!stage) return ok("[xdd_difference] 无活跃 run。");
-			const artifacts = state.submittedArtifacts.get(stage.name) ?? [];
-			const selfAttack = state.selfAttackNotes.get(stage.name);
+			const artifacts = state.getSubmittedArtifactsForStage(stage.name) ?? [];
+			const selfAttack = state.getSelfAttackNoteForStage(stage.name);
 			const remaining = state.remainingSelfHealBudget(stage.name);
 
 			const diff = await computeStageDifference(state.cwd, stage, { artifacts, selfAttack });

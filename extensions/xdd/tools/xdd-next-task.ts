@@ -20,8 +20,8 @@ export function createXddNextTaskTool(getState: GetXddState): ToolDefinition {
 			if (!stage) return ok("[xdd_next_task] 无活跃 run。");
 			const signals = state.getSignals();
 			const hasComplete = signals.has("complete") || signals.has("verdict_pass");
-			const artifacts = state.submittedArtifacts.get(stage.name) ?? [];
-			const selfAttack = state.selfAttackNotes.get(stage.name);
+			const artifacts = state.getSubmittedArtifactsForStage(stage.name) ?? [];
+			const selfAttack = state.getSelfAttackNoteForStage(stage.name);
 			const remaining = state.remainingSelfHealBudget(stage.name);
 			const groupGatePending = isLastStageInGroup(stage.name);
 			const gaps: string[] = [];
