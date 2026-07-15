@@ -3,7 +3,7 @@ import { type Static, Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { XddRunnerState } from "../types.ts";
 import { type EmptyDetails, type GetXddState, ok } from "./index.ts";
-import { runAIGate } from "../aigate.ts";
+import { runAIGate, formatAIGateResult } from "../aigate.ts";
 import { getAIGateLLM } from "../llm-ref.ts";
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -137,9 +137,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					intentAnchor,
 				});
 				if (!aiResult.passed) {
-					const issueText = aiResult.issues.length > 0
-						? aiResult.issues.map((i, n) => `${n + 1}. ${i}`).join("\n")
-						: "AIGate 判定不通过（未给出具体问题）";
+					const angleText = formatAIGateResult(aiResult);
 					const suggText = aiResult.suggestions.length > 0
 						? "\n修改建议：\n" + aiResult.suggestions.map((s, n) => `${n + 1}. ${s}`).join("\n")
 						: "";
@@ -149,21 +147,21 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 							state.recordSignal("complete");
 							return ok(
 								`[soft-pass] ${stage.name} AIGate 预算耗尽（${used}/${state.maxSelfHealPerStage}），软通过进下一阶段。` +
-									`\nAIGate 问题：\n${issueText}` +
+									`\n${angleText}` +
 									`${suggText}` +
 									"\n（软通过模式：未达标但放行）",
 							);
 						}
 						// Layer 2: terminate the turn.
 						return {
-							content: [{ type: "text", text: `❌ [AIGate ${used}/${state.maxSelfHealPerStage}] ${stage.name} 偷工减料（自愈预算耗尽）：\n${issueText}${suggText}\n本轮提交失败，turn 结束。请诊断并修复后重新提交。` }],
+							content: [{ type: "text", text: `❌ [AIGate ${used}/${state.maxSelfHealPerStage}] ${stage.name} 多角度攻击未通过（自愈预算耗尽）：\n${angleText}${suggText}\n本轮提交失败，turn 结束。请诊断并修复后重新提交。` }],
 							details: {},
 							terminate: true,
 						};
 					}
 					// Layer 2: AIGate failed with budget remaining -- terminate the turn.
 					return {
-						content: [{ type: "text", text: `❌ [AIGate ${used}/${state.maxSelfHealPerStage}] ${stage.name} 偷工减料：\n${issueText}${suggText}\n剩余自愈预算：${remaining}\n本轮提交失败，turn 结束。请诊断问题并修复产物，下轮重新提交。` }],
+						content: [{ type: "text", text: `❌ [AIGate ${used}/${state.maxSelfHealPerStage}] ${stage.name} 多角度攻击未通过：\n${angleText}${suggText}\n剩余自愈预算：${remaining}\n本轮提交失败，turn 结束。请诊断问题并修复产物，下轮重新提交。` }],
 						details: {},
 						terminate: true,
 					};
