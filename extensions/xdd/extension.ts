@@ -190,6 +190,19 @@ export const xddInlineExtension: InlineExtension = {
 					// ignore send errors (e.g., session shutting down)
 				}
 			}
+			// Layer 3: stall detection hard terminate. After 6 consecutive
+			// stalls the model is truly deadlocked -- force runComplete so the
+			// pipeline stops instead of looping "继续" forever.
+			if (stateRef.consecutiveStalls >= 6) {
+				stateRef.runComplete = true;
+				try {
+					await pi.sendUserMessage(
+						`[xdd] 连续 ${stateRef.consecutiveStalls} 轮僵死，强制终止 run。请人工检查产物后重新 /xdd <任务>。`,
+						{ deliverAs: "followUp" },
+					);
+				} catch { /* ignore */ }
+				return;
+			}
 			// Stage-advance nudge: if planIndex just moved forward this turn,
 			// a stage completed successfully. Tell the user they can commit the
 			// summary into the session tree via /xdd-commit.

@@ -38,6 +38,7 @@ export function createXddAdvanceTool(getState: GetXddState): ToolDefinition {
 					});
 					if (!groupGate.ok) {
 						state.clearSignals();
+						state.flowRollbackCount++; // Layer 2: group gate fail -> flow rollback
 						state.rollbackOutcome = {
 							from: stage.name,
 							to: group.rollbackTarget,

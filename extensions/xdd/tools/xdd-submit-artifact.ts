@@ -52,6 +52,19 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			const gate = await stage.gate({ cwd: state.cwd, summary, desiredState: stage.desiredState });
 			if (!gate.ok) {
 				if (remaining <= 0) {
+					// Layer 1: self-heal budget exhausted -- soft-pass (non-blocking).
+					// For non-verdict stages: record 'complete' so xdd_advance can
+					// proceed to the next stage. "能做多少做多少，别卡住".
+					// For verdict stages: do NOT soft-pass -- verify failure must go
+					// through Layer 2 (flow rollback), so keep throwing.
+					if (stage.exit !== "verdict") {
+						state.recordSignal("complete");
+						return ok(
+							`[soft-pass] ${stage.name} 自愈预算耗尽（${used}/${state.maxSelfHealPerStage}），软通过进下一阶段。` +
+								`\nGate: ${gate.reason ?? "未知"}（未达标但放行）` +
+								"\nAIGate: 跳过（软通过模式）",
+						);
+					}
 					throw new Error(
 						`[xdd_submit_artifact] ${stage.name} 自愈预算耗尽（${used}/${state.maxSelfHealPerStage}）：${gate.reason ?? "未知"}。请调 xdd_diagnose 进入反思。`,
 					);
@@ -86,6 +99,16 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 						? "\n修改建议：\n" + aiResult.suggestions.map((s, n) => `${n + 1}. ${s}`).join("\n")
 						: "";
 					if (remaining <= 0) {
+						// Layer 1: AIGate budget exhausted -- soft-pass for non-verdict stages.
+						if (stage.exit !== "verdict") {
+							state.recordSignal("complete");
+							return ok(
+								`[soft-pass] ${stage.name} AIGate 预算耗尽（${used}/${state.maxSelfHealPerStage}），软通过进下一阶段。` +
+									`\nAIGate 问题：\n${issueText}` +
+									`${suggText}` +
+									"\n（软通过模式：未达标但放行）",
+							);
+						}
 						throw new Error(
 							`[AIGate ${used}/${state.maxSelfHealPerStage}] ${stage.name} 偷工减料（自愈预算耗尽）：\n${issueText}${suggText}\n请调 xdd_diagnose 进入反思。`,
 						);

@@ -145,8 +145,8 @@ export interface XddRunOptions {
 	maxRollbacksPerStage?: number;
 	/**
 	 * reconcile-style self-heal budget: max local-fix attempts the model may do at
-	 * the same stage via xdd_submit_artifact before the runner
-	 * forces reflection + rollback. Default 3.
+	 * the same stage via xdd_submit_artifact before the runner soft-passes to
+	 * the next stage (Layer 1: non-blocking after exhaustion). Default 5.
 	 */
 	maxSelfHealPerStage?: number;
 	/** Start from this stage name (inclusive) instead of "init". */
@@ -198,8 +198,9 @@ export class XddRunnerState {
 	/** Max rollbacks per single stage before the run fails (set at activation). */
 	maxRollbacksPerStage = 2;
 	/** reconcile-style self-heal budget per stage: max xdd_submit_artifact calls
-	 *  for the same stage before the runner forces reflection. Set at activation. */
-	maxSelfHealPerStage = 3;
+	 *  for the same stage before the runner soft-passes to the next stage
+	 *  (Layer 1: in-stage self-heal, non-blocking after exhaustion). Default 5. */
+	maxSelfHealPerStage = 5;
 
 	/** Set by xdd_advance when the model transitions to the next stage. */
 	advanceOutcome: { passed: boolean } | undefined;
@@ -216,6 +217,14 @@ export class XddRunnerState {
 	lastAgentEndAt = 0;
 	/** Set by run-completion auto-archive (or /xdd-archive command) to prevent re-archive. */
 	archived = false;
+
+	// ── Layer 2: flow-level rollback budget ──────────────────────────────
+	/** Flow-level rollback count (group gate fail / verify verdict fail -> rollback). */
+	flowRollbackCount = 0;
+	/** Tier 1 soft limit: warn but allow. Default 5. */
+	flowRollbackLimitTier1 = 5;
+	/** Tier 2 hard limit: force runComplete. Default 10. */
+	flowRollbackLimitTier2 = 10;
 
 	/** Artifacts submitted via xdd_submit_artifact per stage (observability). */
 	submittedArtifacts = new Map<XddStageName, string[]>();
@@ -399,6 +408,9 @@ export class XddRunnerState {
 			selfHealUsed,
 			maxRollbacksPerStage: this.maxRollbacksPerStage,
 			maxSelfHealPerStage: this.maxSelfHealPerStage,
+			flowRollbackCount: this.flowRollbackCount,
+			flowRollbackLimitTier1: this.flowRollbackLimitTier1,
+			flowRollbackLimitTier2: this.flowRollbackLimitTier2,
 			rollbackCount,
 			status,
 			submittedArtifacts,
@@ -416,6 +428,9 @@ export class XddRunnerState {
 		state.ledger = data.ledger;
 		state.maxRollbacksPerStage = data.maxRollbacksPerStage;
 		state.maxSelfHealPerStage = data.maxSelfHealPerStage;
+		state.flowRollbackCount = data.flowRollbackCount ?? 0;
+		state.flowRollbackLimitTier1 = data.flowRollbackLimitTier1 ?? 5;
+		state.flowRollbackLimitTier2 = data.flowRollbackLimitTier2 ?? 10;
 		for (const [k, v] of Object.entries(data.attempts)) state._attempts.set(k as XddStageName, v);
 		for (const [k, v] of Object.entries(data.selfHealUsed)) state._selfHealUsed.set(k as XddStageName, v);
 		for (const [k, v] of Object.entries(data.submittedArtifacts)) state.submittedArtifacts.set(k as XddStageName, v);
@@ -431,6 +446,9 @@ export class XddRunnerState {
 		this.ledger = data.ledger;
 		this.maxRollbacksPerStage = data.maxRollbacksPerStage;
 		this.maxSelfHealPerStage = data.maxSelfHealPerStage;
+		this.flowRollbackCount = data.flowRollbackCount ?? 0;
+		this.flowRollbackLimitTier1 = data.flowRollbackLimitTier1 ?? 5;
+		this.flowRollbackLimitTier2 = data.flowRollbackLimitTier2 ?? 10;
 		for (const [k, v] of Object.entries(data.attempts)) this._attempts.set(k as XddStageName, v);
 		for (const [k, v] of Object.entries(data.selfHealUsed)) this._selfHealUsed.set(k as XddStageName, v);
 		for (const [k, v] of Object.entries(data.submittedArtifacts)) this.submittedArtifacts.set(k as XddStageName, v);
@@ -539,6 +557,9 @@ export interface XddCheckpointData {
 	selfHealUsed: Record<string, number>;
 	maxRollbacksPerStage: number;
 	maxSelfHealPerStage: number;
+	flowRollbackCount: number;
+	flowRollbackLimitTier1: number;
+	flowRollbackLimitTier2: number;
 	rollbackCount: number;
 	status: XddStatus;
 	submittedArtifacts: Record<string, string[]>;

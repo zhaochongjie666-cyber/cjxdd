@@ -43,7 +43,7 @@ export class XddRunner {
 		this.state = state;
 		this.opts = opts;
 		state.maxRollbacksPerStage = opts.maxRollbacksPerStage ?? 2;
-		state.maxSelfHealPerStage = opts.maxSelfHealPerStage ?? 3;
+		state.maxSelfHealPerStage = opts.maxSelfHealPerStage ?? 5;
 		state.plan = XddRunner.buildPlan(opts);
 	}
 
@@ -158,6 +158,14 @@ export class XddRunner {
 
 		try {
 			while (!this.state.runComplete) {
+				// Layer 2 tier 2: flow rollback hard limit -- force terminate.
+				if (this.state.flowRollbackCount >= this.state.flowRollbackLimitTier2) {
+					this.state.runComplete = true;
+					return this.failResult(
+						this.state.currentStage(),
+						`流程回退超过上限（${this.state.flowRollbackCount}/${this.state.flowRollbackLimitTier2}）`,
+					);
+				}
 				const stage = this.state.currentStage();
 				if (!stage) {
 					return this.failResult(undefined, "无活跃阶段（计划越界）");
@@ -336,6 +344,14 @@ export class XddRunner {
 		}
 
 		this.rollbackCount++;
+		this.state.flowRollbackCount++;
+		// Layer 2 tier 1: warn at the soft limit.
+		if (this.state.flowRollbackCount === this.state.flowRollbackLimitTier1) {
+			this.append("xdd_rollback", {
+				runId: this.state.runId,
+				warning: `流程回退达到 tier1 上限（${this.state.flowRollbackCount}/${this.state.flowRollbackLimitTier1}），继续回退将在 tier2（${this.state.flowRollbackLimitTier2}）强制终止`,
+			});
+		}
 		this.state.recordEsgNode("decision", rb.to, `rollback ${rb.from} -> ${rb.to}: ${rb.reason}`);
 		this.lastFailure = { layer: "(rollback)", reason: rb.reason, at: new Date().toISOString() };
 		this.append("xdd_rollback", {

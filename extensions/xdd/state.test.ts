@@ -125,6 +125,20 @@ describe("XddRunnerState self-heal budget", () => {
 		state.resetSelfHealBudget("spec");
 		expect(state.remainingSelfHealBudget("spec")).toBe(3);
 	});
+
+	it("defaults to 5 (Layer 1 budget)", () => {
+		const state = new XddRunnerState({ runId: "t", cwd: "/tmp", userInput: "u" });
+		expect(state.maxSelfHealPerStage).toBe(5);
+	});
+});
+
+describe("XddRunnerState flow rollback (Layer 2)", () => {
+	it("defaults: tier1=5, tier2=10", () => {
+		const state = new XddRunnerState({ runId: "t", cwd: "/tmp", userInput: "u" });
+		expect(state.flowRollbackCount).toBe(0);
+		expect(state.flowRollbackLimitTier1).toBe(5);
+		expect(state.flowRollbackLimitTier2).toBe(10);
+	});
 });
 
 describe("XddRunnerState artifacts and self-attack", () => {
@@ -162,5 +176,15 @@ describe("XddRunnerState checkpoint", () => {
 		expect(restored.runId).toBe("test");
 		expect(restored.getSubmittedArtifacts()[0].paths).toEqual(["README.md"]);
 		expect(restored.selfAttackNotes.get("init")).toBe("checked edge cases");
+	});
+
+	it("persists flowRollbackCount across checkpoint (Layer 2)", () => {
+		const state = makeState();
+		state.startRun();
+		state.flowRollbackCount = 7;
+		const cp = state.toCheckpoint("running", 0);
+		expect(cp.flowRollbackCount).toBe(7);
+		const restored = XddRunnerState.fromCheckpoint(cp);
+		expect(restored.flowRollbackCount).toBe(7);
 	});
 });
