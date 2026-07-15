@@ -71,6 +71,26 @@ describe("XddRunnerState goToStageName", () => {
 		const result = state.goToStageName("unknown" as never);
 		expect(result.ok).toBe(false);
 	});
+
+	it("resets self-heal budget of the rollback target (Bug 3)", () => {
+		// Regression: before fix, rollback left the target stage's _selfHealUsed
+		// untouched, so the first submit after rollback would already be at
+		// the previous attempt count and could trip the exhaustion error.
+		const state = makeState();
+		state.maxSelfHealPerStage = 3;
+		state.startRun();
+		state.advancePlan(); // -> understand
+		state.advancePlan(); // -> spec
+		// burn the budget for "init" before we got here
+		state.beginSelfHealAttempt("init");
+		state.beginSelfHealAttempt("init");
+		state.beginSelfHealAttempt("init");
+		expect(state.remainingSelfHealBudget("init")).toBe(0);
+		// now rollback to init
+		const result = state.goToStageName("init");
+		expect(result.ok).toBe(true);
+		expect(state.remainingSelfHealBudget("init")).toBe(3);
+	});
 });
 
 describe("XddRunnerState self-heal budget", () => {
@@ -80,6 +100,21 @@ describe("XddRunnerState self-heal budget", () => {
 		expect(state.beginSelfHealAttempt("spec")).toBe(1);
 		expect(state.beginSelfHealAttempt("spec")).toBe(2);
 		expect(state.remainingSelfHealBudget("spec")).toBe(1);
+	});
+
+	it("caps at maxSelfHealPerStage (Bug 2)", () => {
+		// Regression: before fix, beginSelfHealAttempt kept incrementing past
+		// the budget, producing nonsense like "自愈预算耗尽（40/3）".
+		const state = makeState();
+		state.maxSelfHealPerStage = 3;
+		expect(state.beginSelfHealAttempt("spec")).toBe(1);
+		expect(state.beginSelfHealAttempt("spec")).toBe(2);
+		expect(state.beginSelfHealAttempt("spec")).toBe(3);
+		// past the cap -- must not grow
+		expect(state.beginSelfHealAttempt("spec")).toBe(3);
+		expect(state.beginSelfHealAttempt("spec")).toBe(3);
+		expect(state.beginSelfHealAttempt("spec")).toBe(3);
+		expect(state.remainingSelfHealBudget("spec")).toBe(0);
 	});
 
 	it("resets budget", () => {

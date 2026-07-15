@@ -33,7 +33,6 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			const summary = String(params.summary ?? "");
 			const artifacts = params.artifacts ?? [];
 			const selfAttack = String(params.selfAttack ?? "");
-			state.lastSubmitAt = Date.now();
 			if (selfAttack.trim().length < 20) {
 				throw new Error(
 					`[xdd_submit_artifact] selfAttack 过短（${selfAttack.trim().length} 字符）：必须记录具体检查了哪些反例/风险/边界及结论（至少 20 字符）`,
@@ -96,6 +95,12 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					);
 				}
 			}
+			// All gates passed -- mark "real progress" only here. Setting lastSubmitAt
+			// before the gate (the old behavior) caused agent_end to mis-detect stalls
+			// as progress and reset consecutiveStalls to 0 on every failed submit,
+			// so the stall counter could climb to 40+ without ever triggering the
+			// 3-turn escalation nudge.
+			state.lastSubmitAt = Date.now();
 			if (stage.exit === "verdict") {
 				const pass = Boolean(params.pass);
 				state.recordSignal(pass ? "verdict_pass" : "verdict_fail");

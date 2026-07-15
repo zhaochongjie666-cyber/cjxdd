@@ -261,7 +261,15 @@ export class XddRunnerState {
 			this.runComplete = true;
 			return undefined;
 		}
-		return this.plan[this.planIndex].stage;
+		// Explicitly reset self-heal budget for the new stage. The Map key
+		// already isolates stages, so this is belt-and-suspenders for
+		// advance; the real reason it lives here is to keep the contract
+		// symmetric with goToStageName (rollback) -- which MUST reset,
+		// because rollback re-enters the same stage name whose key already
+		// holds a non-zero used count.
+		const newStage = this.plan[this.planIndex].stage;
+		this.resetSelfHealBudget(newStage.name);
+		return newStage;
 	}
 
 	/** Jump to a named stage strictly before the current one. */
@@ -274,6 +282,12 @@ export class XddRunnerState {
 			return { ok: false, reason: `回退目标 ${name} 必须早于当前阶段` };
 		}
 		this.planIndex = idx;
+		// Reset self-heal budget on rollback: rollback re-enters a stage
+		// whose Map key already holds the previous attempt count, so
+		// without this reset the very first submit after rollback would
+		// burn the rest of the budget and immediately trip the exhaustion
+		// error.
+		this.resetSelfHealBudget(name);
 		return { ok: true, originalIndex: this.plan[idx].originalIndex };
 	}
 
@@ -290,7 +304,16 @@ export class XddRunnerState {
 	 *  same stage; resets (to 0) when advance / rollback moves the cursor. */
 	private _selfHealUsed = new Map<XddStageName, number>();
 	beginSelfHealAttempt(stage: XddStageName): number {
-		const next = (this._selfHealUsed.get(stage) ?? 0) + 1;
+		const used = this._selfHealUsed.get(stage) ?? 0;
+		// Cap at maxSelfHealPerStage. Without this cap, the counter keeps
+		// incrementing past the budget and all subsequent user-visible
+		// messages show nonsense like "自愈预算耗尽（40/3）". Returning
+		// maxSelfHealPerStage (instead of the inflated value) keeps every
+		// `${used}/${state.maxSelfHealPerStage}` display coherent.
+		if (used >= this.maxSelfHealPerStage) {
+			return this.maxSelfHealPerStage;
+		}
+		const next = used + 1;
 		this._selfHealUsed.set(stage, next);
 		return next;
 	}
