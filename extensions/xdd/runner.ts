@@ -240,7 +240,10 @@ export class XddRunner {
 		} finally {
 			clearInterval(timer);
 			if (this.state.status === "pass") {
-				removeCheckpoint(this.state.cwd);
+				// File-first: don't delete runtime.json -- it holds the ledger/ESG
+				// which callers inspect after run(). The runComplete flag (already
+				// set in state) prevents readCheckpoint from offering resume.
+				// Archive (extension.ts agent_end) handles eventual cleanup.
 			} else {
 				writeCheckpoint(this.state, this.state.status, this.state.rollbackCount);
 			}

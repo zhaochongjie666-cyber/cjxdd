@@ -22,12 +22,19 @@ export function writeCheckpoint(state: XddRunnerState, status: XddStatus, rollba
 /**
  * Read the runtime state file. Tries runtime.json first, falls back to the
  * legacy checkpoint.json for runs started before the file-first refactor.
+ * Returns undefined for completed runs (runComplete=true) so the
+ * session_start handler doesn't offer to resume a finished run.
  */
 export function readCheckpoint(cwd: string): XddCheckpointData | undefined {
 	for (const p of [rtPath(cwd), oldPath(cwd)]) {
 		if (existsSync(p)) {
 			const raw = readFileSync(p, "utf8");
-			if (raw.trim()) return JSON.parse(raw) as XddCheckpointData;
+			if (!raw.trim()) return undefined;
+			try {
+				const data = JSON.parse(raw) as XddCheckpointData;
+				if (data.runComplete) return undefined;
+				return data;
+			} catch { return undefined; }
 		}
 	}
 	return undefined;

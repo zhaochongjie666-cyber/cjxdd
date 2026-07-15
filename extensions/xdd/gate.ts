@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync, type Stats, statSync } from "nod
 import { join, relative } from "node:path";
 import { promisify } from "node:util";
 import type { XddGateResult } from "./types.ts";
+import { readResults, computeOverallVerdict } from "./blind-journey.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -284,6 +285,102 @@ export async function requireGlobsWithMinSize(
 		}
 		return { ok: true };
 	}
+	return { ok: true };
+}
+
+/**
+ * Blind Journey gate: checks that black-box user acceptance reports exist
+ * and meet delivery criteria. Activates ONLY when role definitions exist
+ * under .xdd/runs/iter-N/blind-journey/roles/ -- pure backend projects or
+ * projects without deployed UI soft-pass.
+ *
+ * Gate rules (from Blind Journey design spec §16):
+ * - Block on: any P0, any P1, any FAIL, any BLOCKED, insufficient evidence
+ * - Allow with backlog: P3, P4
+ * - P2 / PASS_WITH_FRICTION: warn but don't block (require human approval)
+ */
+export async function requireBlindJourneyReports(cwd: string): Promise<XddGateResult> {
+	// Check if blind journey roles are defined (activates the gate)
+	const runsDir = join(cwd, ".xdd", "runs");
+	let rolesExist = false;
+	try {
+		const entries = readdirSync(runsDir, { withFileTypes: true });
+		const iters = entries
+			.filter((e) => e.isDirectory() && e.name.startsWith("iter-"))
+			.sort()
+			.reverse();
+		for (const iter of iters) {
+			const rolesDir = join(runsDir, iter.name, "blind-journey", "roles");
+			if (existsSync(rolesDir)) {
+				const roleFiles = readdirSync(rolesDir).filter((f) => f.endsWith(".yaml") || f.endsWith(".yml") || f.endsWith(".md"));
+				if (roleFiles.length > 0) {
+					rolesExist = true;
+					break;
+				}
+			}
+		}
+	} catch { /* no runs dir */ }
+
+	// No roles defined -> soft pass (backend-only or not yet deployed)
+	if (!rolesExist) {
+		return { ok: true, soft: true };
+	}
+
+	const results = readResults(cwd);
+	if (results.length === 0) {
+		return {
+			ok: false,
+			reason: "Blind Journey Gate: 已定义角色但无验收结果。请用 xdd_blind_journey 工具执行盲测用户验收。",
+		};
+	}
+
+	// Check for blocking conditions
+	const p0p1 = results.flatMap((r) =>
+		(r.issues ?? [])
+			.filter((i) => i.severity === "P0" || i.severity === "P1")
+			.map((i) => ({ ...i, scenarioId: r.scenarioId, roleId: r.roleId })),
+	);
+	if (p0p1.length > 0) {
+		return {
+			ok: false,
+			reason: `Blind Journey Gate: ${p0p1.length} 个 P0/P1 问题阻止发布:\n${p0p1.map((i) => `  - [${i.severity}] ${i.scenarioId}/${i.roleId}: ${i.actual} @ ${i.location}`).join("\n")}`,
+		};
+	}
+
+	const fails = results.filter((r) => r.verdict === "FAIL");
+	if (fails.length > 0) {
+		return {
+			ok: false,
+			reason: `Blind Journey Gate: ${fails.length} 个场景 FAIL:\n${fails.map((r) => `  - ${r.roleId}/${r.scenarioId}: ${r.verdict}`).join("\n")}`,
+		};
+	}
+
+	const blocked = results.filter((r) => r.verdict === "BLOCKED");
+	if (blocked.length > 0) {
+		return {
+			ok: false,
+			reason: `Blind Journey Gate: ${blocked.length} 个场景 BLOCKED（用户无法完成）:\n${blocked.map((r) => `  - ${r.roleId}/${r.scenarioId}`).join("\n")}`,
+		};
+	}
+
+	const inconclusive = results.filter((r) => r.verdict === "INCONCLUSIVE");
+	if (inconclusive.length > 0) {
+		return {
+			ok: false,
+			reason: `Blind Journey Gate: ${inconclusive.length} 个场景 INCONCLUSIVE（证据不足）:\n${inconclusive.map((r) => `  - ${r.roleId}/${r.scenarioId}`).join("\n")}`,
+		};
+	}
+
+	// P2 / PASS_WITH_FRICTION: warn but don't block
+	const friction = results.filter((r) => r.verdict === "PASS_WITH_FRICTION");
+	const p2 = results.flatMap((r) => (r.issues ?? []).filter((i) => i.severity === "P2"));
+	if (friction.length > 0 || p2.length > 0) {
+		return {
+			ok: true,
+			reason: `Blind Journey: ${friction.length} 个场景 PASS_WITH_FRICTION，${p2.length} 个 P2 问题（需产品负责人确认豁免）。`,
+		};
+	}
+
 	return { ok: true };
 }
 

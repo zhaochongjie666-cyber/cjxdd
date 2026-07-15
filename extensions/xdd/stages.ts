@@ -1,5 +1,6 @@
 import {
 	gitHasChanges,
+	requireBlindJourneyReports,
 	requireGlobs,
 	requireGlobsWithKeywords,
 	requireGlobsWithMinSize,
@@ -314,12 +315,13 @@ export const STAGES: readonly XddStageSpec[] = [
 		role: roleFor("verify"),
 		skill: "xdd-verify",
 		exit: "verdict",
-		allowedTools: [...READ_TOOLS, "bash", ...CONTROLLER_TOOLS],
+		allowedTools: [...READ_TOOLS, "bash", ...CONTROLLER_TOOLS, "xdd_blind_journey"],
 		desiredState: [
 			"已对 spec 的每条 RXX 规则至少跑一次验证（手动 / 单元 / 集成 / 端到端之一）",
 			"验证结果可复现（命令或脚本有据可查）",
 			"未在 verify 阶段改动契约或架构（仅验证，不修改）",
 			"已自我攻击：检查是否真正满足原始用户旅途、是否有未验证假设，并记录结论",
+			"已执行盲测用户验收（Blind Journey）：定义角色、用 xdd_blind_journey 工具执行 Actor/Judge 两阶段、记录结果、生成覆盖报告（纯后端项目跳过）",
 		],
 		deliverablePaths: [".xdd/runs/*/verify-report.md"],
 		aigateStandard: `审查 verify 阶段（最严格，全链路不断裂）：
@@ -332,7 +334,8 @@ export const STAGES: readonly XddStageSpec[] = [
 7. 追踪矩阵是否完整：每个AC-XX有架构+代码+测试，每个BR有测试，无幽灵代码 -- 断裂 -> 不通过
 8. 四层测试是否覆盖：领域/应用服务/Repository集成/Feature验收 -- 缺层 -> 不通过
 9. Feature验收测试是否通过公开API调用（不绕过应用层直接改DB）-- 绕过 -> 不通过
-10. 代码级质量：领域规则不住Controller？DB负责并发（条件更新不是先查后改）？审计append-only？通知不破坏主事务？身份来自认证上下文？-- 任一不达标 -> 不通过`,
+10. 代码级质量：领域规则不住Controller？DB负责并发（条件更新不是先查后改）？审计append-only？通知不破坏主事务？身份来自认证上下文？-- 任一不达标 -> 不通过
+11. Blind Journey（如已定义角色）：Actor 是否真按用户视角操作（不查看代码/DOM/API）？Judge 是否有完整 Feature + 证据对照？每个 Then 是否有可见证据？PASS_WITH_FRICTION 是否列了具体体验问题？BLOCKED/INCONCLUSIVE 是否给了具体原因？覆盖报告是否列了所有角色？`,
 				gate: async ({ cwd }) => {
 			const specOk = await requireGlobs(cwd, [".xdd/design/spec/**/rules.md"]);
 			if (!specOk.ok) return { ok: false, reason: "verify Gate: 缺少 spec rules.md，无法验证验收标准" };
@@ -340,6 +343,8 @@ export const STAGES: readonly XddStageSpec[] = [
 			if (!reportOk.ok) return { ok: false, reason: "verify Gate: 缺少验证报告 .xdd/runs/iter-N/verify-report.md（含健康检查+漫游+全链路审计+双契约）" };
 			const testsOk = await requireTestsPass(cwd);
 			if (!testsOk.ok) return testsOk;
+			const bjOk = await requireBlindJourneyReports(cwd);
+			if (!bjOk.ok) return bjOk;
 			return { ok: true };
 		},
 	},

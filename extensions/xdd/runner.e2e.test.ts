@@ -138,11 +138,13 @@ describe("XddRunner end-to-end", () => {
 				}
 			}
 
-			// Checkpoint was cleared on success (P5 Recoverability: removeCheckpoint empties the file).
-			const cpPath = join(cwd, ".xdd", "checkpoint.json");
-			if (existsSync(cpPath)) {
-				const { statSync } = await import("node:fs");
-				expect(statSync(cpPath).size).toBe(0);
+			// File-first: runtime.json persists after success (holds ledger/ESG).
+			// runComplete=true prevents readCheckpoint from offering resume.
+			const rtPath = join(cwd, ".xdd", "runtime.json");
+			if (existsSync(rtPath)) {
+				const { readFileSync } = await import("node:fs");
+				const rt = JSON.parse(readFileSync(rtPath, "utf8"));
+				expect(rt.runComplete).toBe(true);
 			}
 		} finally {
 			rmSync(cwd, { recursive: true });

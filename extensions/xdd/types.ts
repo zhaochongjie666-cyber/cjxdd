@@ -260,6 +260,8 @@ export class XddRunnerState {
 	set rollbackCount(v: number) { this.mutRt("rollbackCount", v); }
 	get advanceOutcome(): { passed: boolean } | undefined { return this.loadRt().advanceOutcome ?? undefined; }
 	set advanceOutcome(v: { passed: boolean } | undefined) { this.mutRt("advanceOutcome", v ?? null); }
+	get blindJourneyVerdict(): "pass" | "fail" | "pending" | "skipped" { return this.loadRt().blindJourneyVerdict ?? "pending"; }
+	set blindJourneyVerdict(v: "pass" | "fail" | "pending" | "skipped") { this.mutRt("blindJourneyVerdict", v); }
 	get rollbackOutcome(): { from: XddStageName; to: XddStageName; reason: string } | undefined { return this.loadRt().rollbackOutcome ?? undefined; }
 	set rollbackOutcome(v: { from: XddStageName; to: XddStageName; reason: string } | undefined) { this.mutRt("rollbackOutcome", v ?? null); }
 	get pendingGroupApproval(): { group: string; gateLabel: string } | undefined { return this.loadRt().pendingGroupApproval ?? undefined; }
@@ -449,6 +451,54 @@ export type XddEventListener = (event: XddEvent) => void;
 
 export type XddStatus = "running" | "reflecting" | "pass" | "fail";
 
+// ============================================================================
+// Blind Journey Validation (black-box user acceptance)
+// ============================================================================
+
+export type XddBlindJourneyVerdict =
+	| "PASS"
+	| "PASS_WITH_FRICTION"
+	| "FAIL"
+	| "BLOCKED"
+	| "INCONCLUSIVE";
+
+export type XddBlindJourneySeverity = "P0" | "P1" | "P2" | "P3" | "P4";
+
+export interface XddBlindJourneyIssue {
+	id: string;
+	severity: XddBlindJourneySeverity;
+	role: string;
+	location: string;
+	expected: string;
+	actual: string;
+	impact: string;
+	evidence: string[];
+}
+
+export interface XddBlindJourneyResult {
+	scenarioId: string;
+	featurePath: string;
+	roleId: string;
+	roleName: string;
+	verdict: XddBlindJourneyVerdict;
+	severity: XddBlindJourneySeverity | null;
+	confidence: "High" | "Medium" | "Low";
+	issues: XddBlindJourneyIssue[];
+	evidencePaths: string[];
+	reportPath: string;
+	at: string;
+}
+
+/** Parsed Gherkin scenario -- Given/When/Then split for actor/judge isolation. */
+export interface XddParsedScenario {
+	featureName: string;
+	scenarioName: string;
+	tags: string[];
+	given: string[];
+	when: string[];
+	then: string[];
+}
+
 /** Snapshot of an in-flight xdd run, consumed by the TUI footer. */
 export interface ActiveXddRun {
 	runId: string;
@@ -545,6 +595,7 @@ export interface XddCheckpointData {
 	archived?: boolean;
 	boundary?: number;
 	runComplete?: boolean;
+	blindJourneyVerdict?: "pass" | "fail" | "pending" | "skipped";
 }
 
 /** Default runtime data for a fresh run. */
@@ -564,6 +615,7 @@ function defaultRt(): XddCheckpointData {
 		advanceOutcome: null, rollbackOutcome: null,
 		pendingGroupApproval: null, archived: false,
 		boundary: 0, runComplete: false,
+		blindJourneyVerdict: "pending",
 	};
 }
 

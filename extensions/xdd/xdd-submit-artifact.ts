@@ -48,8 +48,10 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			// Gives the agent immediate, specific feedback instead of a vague gate
 			// failure later. Throws (no terminate) so the agent can create the file
 			// and retry within the same turn.
+			// Skip glob patterns (containing * or ?) -- the gate resolves those via
+			// walkRel; only check literal file paths here.
 			if (artifacts.length > 0) {
-				const missing = artifacts.filter((p) => !existsSync(join(state.cwd, p)));
+				const missing = artifacts.filter((p) => !/[*?]/.test(p) && !existsSync(join(state.cwd, p)));
 				if (missing.length > 0) {
 					throw new Error(
 						`[xdd_submit_artifact] 声明的产物在磁盘上不存在：${missing.join(", ")}。请先创建产物文件再提交，不要盲目重试。`,

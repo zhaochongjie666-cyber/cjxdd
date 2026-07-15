@@ -2,7 +2,7 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { findStageGroup, isLastStageInGroup } from "../stage-groups.ts";
-import { removeCheckpoint, writeCheckpoint } from "../checkpoint.ts";
+import { writeCheckpoint } from "../checkpoint.ts";
 import { type EmptyDetails, type GetXddState, ok } from "./index.ts";
 
 const schema = Type.Object({});
@@ -55,10 +55,14 @@ export function createXddAdvanceTool(getState: GetXddState): ToolDefinition {
 			state.advanceOutcome = { passed: true };
 			state.clearSignals();
 			const next = state.advancePlan();
-			writeCheckpoint(state, "running", 0);
+			// Sync identity fields (runId/cwd/plan) into the runtime file.
+			// Don't call removeCheckpoint here -- with file-first state, deleting
+			// runtime.json resets runComplete to false (from defaults), causing
+			// the runner to loop back and hit currentStage() === undefined.
+			// The runner's finally block handles checkpoint removal.
+			writeCheckpoint(state, "running", state.rollbackCount);
 			if (!next) {
 				state.runComplete = true;
-				removeCheckpoint(state.cwd);
 				const prefix = groupGateLabel ? `${groupGateLabel} 通过 ✅，` : "";
 				return { content: [{ type: "text", text: `[xdd_advance] ${prefix}最终阶段 ${stage.name} 通过，xdd run 完成 ✅。` }], details: {}, terminate: true };
 			}
