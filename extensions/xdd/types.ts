@@ -262,6 +262,8 @@ export class XddRunnerState {
 	set advanceOutcome(v: { passed: boolean } | undefined) { this.mutRt("advanceOutcome", v ?? null); }
 	get blindJourneyVerdict(): "pass" | "fail" | "pending" | "skipped" { return this.loadRt().blindJourneyVerdict ?? "pending"; }
 	set blindJourneyVerdict(v: "pass" | "fail" | "pending" | "skipped") { this.mutRt("blindJourneyVerdict", v); }
+	get stopRequested(): boolean { return this.loadRt().stopRequested ?? false; }
+	set stopRequested(v: boolean) { this.mutRt("stopRequested", v); }
 	get rollbackOutcome(): { from: XddStageName; to: XddStageName; reason: string } | undefined { return this.loadRt().rollbackOutcome ?? undefined; }
 	set rollbackOutcome(v: { from: XddStageName; to: XddStageName; reason: string } | undefined) { this.mutRt("rollbackOutcome", v ?? null); }
 	get pendingGroupApproval(): { group: string; gateLabel: string } | undefined { return this.loadRt().pendingGroupApproval ?? undefined; }
@@ -596,6 +598,7 @@ export interface XddCheckpointData {
 	boundary?: number;
 	runComplete?: boolean;
 	blindJourneyVerdict?: "pass" | "fail" | "pending" | "skipped";
+	stopRequested?: boolean;
 }
 
 /** Default runtime data for a fresh run. */
@@ -616,6 +619,7 @@ function defaultRt(): XddCheckpointData {
 		pendingGroupApproval: null, archived: false,
 		boundary: 0, runComplete: false,
 		blindJourneyVerdict: "pending",
+		stopRequested: false,
 	};
 }
 

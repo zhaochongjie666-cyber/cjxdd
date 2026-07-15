@@ -122,6 +122,21 @@ export const xddInlineExtension: InlineExtension = {
 				await ctx.waitForIdle();
 			},
 		});
+		pi.registerCommand("xdd-stop", {
+			description: "中断当前 xdd run（支持 Esc Esc 后恢复）",
+			handler: async (_args, ctx) => {
+				if (!stateRef) {
+					await pi.sendUserMessage("[xdd] 无活跃 xdd run。");
+					return;
+				}
+				stateRef.stopRequested = true;
+				// Abort the current turn if the agent is streaming.
+				ctx.abort();
+				await pi.sendUserMessage(
+					`[xdd] 用户中断。run 已暂停在 ${stateRef.currentStageName() ?? "?"} 阶段。输入 /xdd-resume 恢复。`,
+				);
+			},
+		});
 
 		// registerEntryRenderer is only in newer pi (>=0.81 dev); guard so xdd
 		// works on the published 0.80.3 too. TUI extras degrade gracefully.
@@ -164,9 +179,23 @@ export const xddInlineExtension: InlineExtension = {
 		// the next turn so the pipeline NEVER stalls. After 3 consecutive turns
 		// with no progress, escalate the nudge (diagnose/rollback/ask-user)
 		// instead of blindly repeating "继续" -- never stop, always continue.
-		pi.on("agent_end", async () => {
+		//
+		// INTERRUPT SUPPORT: if the user pressed Esc Esc (ctx.signal.aborted) or
+		// ran /xdd-stop (stateRef.stopRequested), do NOT queue a followUp -- this
+		// breaks the auto-continue loop so the user regains control.
+		pi.on("agent_end", async (_event, ctx) => {
 			if (!stateRef) return;
 			if (stateRef.runComplete) return;
+			// Detect user interrupt: Esc Esc (abort signal) or /xdd-stop command.
+			if (stateRef.stopRequested || ctx.signal?.aborted) {
+				stateRef.stopRequested = true;
+				try {
+					await pi.sendUserMessage(
+						`[xdd] 用户中断。run 已暂停在 ${stateRef.currentStageName() ?? "?"} 阶段。输入 /xdd-resume 恢复，或继续对话做其他事。`,
+					);
+				} catch { /* ignore */ }
+				return;
+			}
 			const idx = stateRef.planIndex;
 			const submittedSinceLastEnd = stateRef.lastSubmitAt > stateRef.lastAgentEndAt;
 			if (idx !== stateRef.lastAgentEndPlanIndex || submittedSinceLastEnd) {
@@ -247,9 +276,12 @@ export const xddInlineExtension: InlineExtension = {
 		});
 
 		// Run completion: auto-archive (first time only -- `archived` flag prevents re-run).
+		// Skip archiving when the user interrupted (stopRequested) -- the run is
+		// paused, not finished; the user may /xdd-resume to continue.
 		pi.on("agent_end", async () => {
 			if (!stateRef) return;
 			if (!stateRef.runComplete) return;
+			if (stateRef.stopRequested) return;
 			if (stateRef.archived) return;
 			stateRef.archived = true;
 			try {
