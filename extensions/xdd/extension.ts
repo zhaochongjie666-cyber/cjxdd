@@ -205,14 +205,18 @@ export const xddInlineExtension: InlineExtension = {
 		});
 
 		// Checkpoint detection: if pi restarts with an unfinished xdd run,
-		// notify the user they can resume.
-		pi.on("session_start", async (event) => {
+		// notify the user they can resume. Use ctx.ui.notify (UI only,
+		// does NOT inject a user message or trigger a turn) -- do NOT use
+		// pi.sendUserMessage here: it always triggers a turn and the agent
+		// would auto-restore the run, which the user does not want.
+		pi.on("session_start", async (event, ctx) => {
 			if (event.reason !== "startup" && event.reason !== "reload") return;
 			try {
 				const cp = readCheckpoint(process.cwd());
 				if (cp) {
-					await pi.sendUserMessage(
+					ctx.ui.notify(
 						`[xdd] 检测到未完成的 xdd run（${cp.runId}）。输入 /xdd-resume 恢复，或忽略开始新对话。`,
+						"info",
 					);
 				}
 			} catch {
