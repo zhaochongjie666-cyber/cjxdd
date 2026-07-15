@@ -2,13 +2,11 @@
  * Skill loader: discovers `xdd-*` skills from ALL standard locations and
  * populates `state.skills` so that `xdd_list_skills` / `xdd_load_skill` work.
  *
- * Scans three directories (dedup by name, first found wins):
- *   1. `<cwd>/skills/`         -- project root (xdd's own convention)
- *   2. `<cwd>/.pi/skills/`     -- pi project-local convention
- *   3. `~/.agents/skills/`     -- pi global/user convention
- *
- * This mirrors pi's built-in `loadSkills` discovery (which scans #2 and #3)
- * but also includes #1 so the xdd project's own `skills/` dir is covered.
+ * Scans four directories (dedup by name, first found wins):
+ *   1. `<cwd>/skills/`             -- project root (xdd's own convention)
+ *   2. `<cwd>/.pi/skills/`         -- pi project-local convention
+ *   3. `~/.pi/agent/skills/`       -- pi agent scope (AGENTS.md ln target)
+ *   4. `~/.agents/skills/`         -- pi global/user convention
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -20,6 +18,7 @@ export function loadXddSkills(cwd: string): Skill[] {
 	const dirs = [
 		join(cwd, "skills"), // project root (xdd convention)
 		join(cwd, ".pi", "skills"), // pi project-local
+		join(homedir(), ".pi", "agent", "skills"), // pi agent scope (AGENTS.md ln target)
 		join(homedir(), ".agents", "skills"), // pi global/user
 	];
 	const seen = new Map<string, Skill>();
