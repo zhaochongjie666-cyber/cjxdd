@@ -185,12 +185,12 @@ export const STAGES: readonly XddStageSpec[] = [
 		role: roleFor("wire"),
 		skill: "xdd-wire",
 		exit: "goal_complete",
-		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, "bash", ...CONTROLLER_TOOLS],
+		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, ...CONTROLLER_TOOLS],
 		desiredState: [
-			"已创建 spec 规则涉及的所有模块骨架（文件存在且可被 import / require）",
-			"模块间接口已按 architecture 文档的依赖连起来（至少能 import 通）",
-			"运行一次空实现，确认模块图能加载（避免架构性错误）",
-			"已自我攻击：检查模块图是否有循环依赖、接口是否真能 import 通、是否漏了 spec 规则涉及的模块，并记录结论",
+			"已产出页面线框（.xdd/design/wire/{page}.md），每页含布局 + 元素清单 + 6 操作态 + review",
+			"页面清单跟 spec 的 RXX 规则一一对应（不多不少）",
+			"每个元素标了 @covers-RXX（有存在意义，无混淆）",
+			"已自我攻击：检查是否有遗漏页面/状态、混淆元素四类（视觉/语义/交互/内容）、元素无来源规则，并记录结论",
 		],
 		deliverablePaths: [".xdd/design/wire/*.md"],
 		noCodeReading: true,
@@ -203,7 +203,7 @@ export const STAGES: readonly XddStageSpec[] = [
 6. 每页底部有 Review（Q1-Q5 逐条回答，不是"无问题"敷衍）
 7. 页面清单跟 spec 的 RXX 对应（不能漏页面、不能多页面）
 8. 混淆元素 A/B/C/D 四类有扫描记录`,
-				gate: async ({ cwd }) => gitHasChanges(cwd),
+			gate: async ({ cwd }) => requireGlobs(cwd, [".xdd/design/wire/*.md"]),
 	},
 	{
 		name: "resilience",
@@ -270,9 +270,10 @@ export const STAGES: readonly XddStageSpec[] = [
 		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, "bash", ...CONTROLLER_TOOLS],
 		desiredState: [
 			"已按 plan 工作项完成实现",
+			"先创建模块骨架文件（可被 import），再填充实现逻辑（脚手架从 wire 整合到此）",
 			"代码改动落在 plan 标注的文件范围内（无未授权改动）",
-			"每个新模块至少含 1 个最小可运行入口（main/index/handler），可被 wire 阶段的 import 通过",
-			"已自我攻击：检查越界修改、重复实现、脆弱耦合，并记录结论",
+			"每个新模块至少含 1 个最小可运行入口（main/index/handler）",
+			"已自我攻击：检查越界修改、重复实现、脆弱耦合、循环依赖，并记录结论",
 		],
 		deliverablePaths: [],
 		aigateStandard: `审查 execute 阶段（最严格）：

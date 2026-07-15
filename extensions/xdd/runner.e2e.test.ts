@@ -38,6 +38,9 @@ const DELIVERABLES: Record<string, Array<{ path: string; content: string }>> = {
 		{ path: ".xdd/design/architecture/B01/resilience/failsafe-design.md", content: "# Failsafe\n| F01 | 熳断 | app/svc.py |\n" },
 		{ path: ".xdd/design/architecture/B01/resilience/resilience-test-plan.md", content: "# Test Plan\n| F01 | chaos | manual |\n" },
 	],
+	wire: [
+		{ path: ".xdd/design/wire/login.md", content: "# Login Page\n## 布局\n[登录表单]\n## 6态\n- 空: 输入框空\n- 加载: 提交中\n- 错误: 密码错\n- 成功: 跳转\n- 确认: 记住我\n- 边界: 超长输入\n## Review\nQ1: 按钮存在 ✅\n" },
+	],
 	plan: [
 		{ path: ".xdd/runs/iter-1/plan/B01/plan.md", content: `# Plan\n${"b".repeat(120)}` },
 	],

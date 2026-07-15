@@ -42,8 +42,8 @@ export const STAGE_GROUPS: readonly XddStageGroup[] = [
 			if (!archOk.ok) return { ok: false, reason: "Gate 2: 缺少 architecture.md 产物" };
 			const resOk = await requireGlobs(cwd, [".xdd/design/architecture/**/resilience/failure-modes.md"]);
 			if (!resOk.ok) return { ok: false, reason: "Gate 2: 缺少 resilience/failure-modes.md 产物" };
-			const changesOk = await gitHasChanges(cwd);
-			if (!changesOk.ok) return { ok: false, reason: "Gate 2: wire 阶段无代码骨架改动" };
+			// Wire is optional (skipped for backend projects via --skip-wire).
+			// If wire files exist, they're checked by the wire stage gate.
 			return { ok: true };
 		},
 		rollbackTarget: "architecture",
