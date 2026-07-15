@@ -141,13 +141,21 @@ export const STAGES: readonly XddStageSpec[] = [
 			".xdd/design/architecture/aggregate-landscape.md",
 		],
 			noCodeReading: true,
-		aigateStandard: `审查 architecture 阶段：
-1. architecture.md 是否有实质模块划分（有模块名+职责，不是"模块1""模块2"）
-2. 数据流是否描述了具体的数据走向（有源/目标/数据名，不是"数据流转"）
-3. 失败模型是否有具体失败场景+retry策略（不是"失败时重试"）
-4. module-landscape.md 是否有真实的模块依赖关系（不是空壳）
-5. event-contract.md 的事件是否有具体字段（不是"事件A""事件B"）
-6. 架构决策是否跟spec的RXX规则对应（不能漏RXX）`,
+		aigateStandard: `审查 architecture 阶段（可开发性 + 可追踪性）：
+1. 是否从 Feature 提取了架构含义（Feature->架构映射链），不是直接生成 Controller/Service/Repository -- 不通过
+2. 是否提取了业务规则 BR-XX，每条能追溯到 RXX 和 AC-XX -- 没提取 -> 不通过
+3. 领域模型是否有核心实体+字段+关系（不是贫血模型只有getter/setter）-- 不通过
+4. 状态机是否跟 spec 的 Scenario Outline 一致（哪些状态允许/禁止操作）-- 不一致 -> 不通过
+5. 模块职责表是否写了"不负责"列 -- 只有类名清单 -> 不通过
+6. 事务边界是否明确（什么在事务内/外，通知失败不回滚主业务）-- 没写 -> 不通过
+7. 并发控制是否写了具体方案+理由 -- 只写"系统需要防止并发" -> 不通过
+8. 失败模式表是否结构化（失败点->主业务结果->处理），不是散文 -- 散文 -> 不通过
+9. Feature追踪矩阵是否完整（场景->BR->用例->模块->数据->测试）-- 没写 -> 不通过
+10. 可观测性是否定义了日志/指标/告警 -- 只写"系统应记录" -> 不通过
+11. ADR 是否写了关键决策的背景/选择/原因/放弃方案 -- 没写 -> 不通过
+12. API错误码是否来自业务规则（不是随意发明）-- 随意发明 -> 不通过
+13. 质量属性有具体响应度量（不是"高性能"），性能取舍有具体理由 -- 空泛 -> 不通过
+14. module-landscape.md 有真实模块依赖关系，event-contract.md 事件有具体字段`,
 				gate: async ({ cwd }) => {
 			const archOk = await requireGlobsWithKeywords(
 				cwd,

@@ -41,6 +41,47 @@ description: |
 
 ## 怎么做
 
+### 0. Feature → 架构映射链（先理解再动手）
+
+**架构文档不是 Feature 的复述，是回答：谁来负责、怎么实现、怎么保持正确、异常怎么收敛。**
+
+Feature 回答：什么条件下，发生什么行为，产生什么业务结果。
+架构回答：哪些模块协作，怎么保存状态，怎么保证权限/一致性/并发/失败恢复，从而实现这些业务结果。
+
+映射链（Gherkin 是最后一步的反面 -- 架构是从 Feature 反推的第一步）：
+
+```
+Feature/Rule/Scenario
+  ↓ 提取业务能力与约束
+业务规则 (BR-XX)
+  ↓ 推导
+领域模型与状态机
+  ↓ 落地
+应用服务与模块职责
+  ↓ 定义
+接口、数据、事件和事务
+  ↓ 保障
+并发、安全、失败恢复、可观测性
+  ↓ 追踪
+Feature-架构-测试追踪矩阵 → 开发任务
+```
+
+**不要直接从 Scenario 生成代码结构**（TaskController/TaskService/TaskRepository 只是技术分层，不是架构设计）。先提取 Feature 的架构含义：
+
+| Feature 信息 | 架构含义 |
+|-------------|---------|
+| "项目管理员"操作 | 需要角色 + 项目范围权限校验 |
+| "待分配"状态 | 任务存在状态机，操作只允许特定状态 |
+| "当前项目成员" | 需要项目成员关系模型 |
+| "7个进行中任务" | 需要查询当前工作负载 |
+| "最多10个" | 存在项目级分配策略 |
+| "状态变为进行中" | 需要事务内完成状态转换 |
+| "负责人变为小王" | 任务需要负责人字段 |
+| "记录分配人和时间" | 需要审计记录 |
+| "发送通知" | 需要领域事件或异步消息 |
+| "同时分配只能成功一次" | 需要并发控制 |
+| "通知失败不影响主业务" | 需要事务与异步副作用解耦 |
+
 ### 1. 质量属性场景（ADD）
 
 3-5 个关键场景，每个写：刺激源 → 刺激 → 环境 → 响应 → 响应度量。
@@ -81,14 +122,34 @@ description: |
 - 选了**六边形** → 领域核心 + 端口(接口)+ 适配器(技术实现)
 - 多模式组合常见,如实写出各模式的边界
 
-### 6. 规则传导矩阵
+### 6. 业务规则 (BR-XX) + 规则传导矩阵
+
+#### 6a. 提取业务规则（BR-XX）
+
+从 spec 的 RXX 和 Scenario 提炼业务不变量，写成 BR-XX。**BR 是架构设计的输入，不应只存在于代码实现中。**
+
+```markdown
+## 业务规则
+BR-01：只有当前项目的项目管理员可以手动分配任务。
+BR-02：只有处于 UNASSIGNED 状态的任务可以被分配。
+BR-03：目标用户必须是任务所属项目中已启用的标注员。
+BR-04：目标标注员进行中的任务数必须小于项目任务上限。
+BR-05：分配成功后，任务负责人和任务状态必须原子更新。
+BR-06：同一个任务的并发分配最多允许一个请求成功。
+BR-07：通知发送失败不回滚任务分配结果。
+BR-08：每次成功分配都必须生成不可修改的审计记录。
+```
+
+每条 BR 必须能追溯到 RXX 规则和 Scenario（AC-XX）。
+
+#### 6b. 规则传导矩阵
 
 一条条过 spec 的 RXX 规则，确定每条在哪个层/模块实现 + 对应文件类型。用户交互类规则必须同时映射到前端组件。
 
 ```markdown
-| RXX | 后端层 | 文件 | 前端组件 | 实现 |
-|-----|--------|------|---------|------|
-| R01 登录返回 JWT | Application | app/services/auth.py | pages/login.vue | - [ ] |
+| RXX | BR | 后端层 | 文件 | 前端组件 | 实现 |
+|-----|-----|--------|------|---------|------|
+| R01 登录返回 JWT | BR-01 | Application | app/services/auth.py | pages/login.vue | - [ ] |
 ```
 
 ### 7. API 端点清单（前后端契约）—— 100% 完整
@@ -117,11 +178,41 @@ description: |
 - 事件清单汇总表（事件 ID、名、来源聚合、传递方式、订阅方、流程节点）
 - 每个事件详细契约（载荷 + 约束 + 重试策略 + 传递方式）
 
-### 9. 聚合全景（全局独立产出）
+### 9. 领域模型 + 聚合全景（全局独立产出）
 
 **聚合设计是 DDD 战术核心**。划分前必读 `references/ddd.md § 聚合划分决策法`（4 步法 + 「聚合尽量小」+ 跨聚合只引 ID）。核心原则:聚合根保护业务不变量;聚合尽量小;跨聚合只用 ID 引用 + 领域事件最终一致。
 
 `.xdd/design/architecture/aggregate-landscape.md`：
+
+**领域模型**（每聚合写出核心实体 + 字段 + 关系，不是贫血模型）：
+
+```markdown
+### 核心实体
+AnnotationTask
+- id, projectId, status, assigneeId, version, assignedAt, updatedAt
+
+ProjectMember
+- projectId, userId, role, status
+
+TaskAssignmentRecord（审计记录，不可修改）
+- id, taskId, previousAssigneeId, newAssigneeId, operatorId, assignedAt, reason
+```
+
+**ER 关系**（Mermaid erDiagram）：
+```mermaid
+erDiagram
+  PROJECT ||--o{ ANNOTATION_TASK : contains
+  PROJECT ||--o{ PROJECT_MEMBER : has
+  USER ||--o{ PROJECT_MEMBER : joins
+  ANNOTATION_TASK ||--o{ TASK_ASSIGNMENT_RECORD : produces
+```
+
+**聚合边界**（明确什么在事务内、什么不在）：
+- Task 是分配操作的聚合根，状态转换 + 负责人更新 + 审计记录在同一事务
+- TaskAssignmentRecord 不能绕过 UseCase 单独创建
+- ProjectMember 不属于 Task 聚合，分配时通过只读查询
+
+还需含：
 - 聚合清单（按业务线）：聚合根、实体/值对象、一致性边界、发布事件、**子域类型**、**不变量**
 - 聚合间关系（ID 引用 + 事件驱动，不持有对象引用）
 - 一致性边界：强一致（单聚合事务）vs 最终一致（跨聚合事件）
@@ -189,7 +280,108 @@ description: |
 - 业务上下文清单（core：核心子域 + 依赖哪些基础模块）
 - 依赖矩阵（业务上下文 × 基础上下文，✓=依赖；**反向依赖必须为空**）
 
-## 14 · reconcile 审查（slide 三问）
+### 14. 模块职责表
+
+**不要只列类名清单**（TaskController/TaskService/TaskManager/TaskUtils/TaskDAO 没有职责边界不算架构）。每个模块写清负责什么 + 不负责什么：
+
+```markdown
+| 模块 | 职责 | 不负责 |
+|------|------|--------|
+| TaskAssignmentController | 接收请求、解析身份、返回结果 | 不含业务规则 |
+| AssignTaskUseCase | 编排分配流程和事务 | 不直接发通知 |
+| TaskAssignmentPolicy | 判断任务是否允许分配 | 不访问 UI |
+| AssigneeEligibilityService | 校验成员、状态和工作负载 | 不修改任务 |
+| TaskRepository | 加载和保存任务聚合 | 不决定业务规则 |
+| AssignmentRecordRepository | 保存审计记录 | 不发送消息 |
+| OutboxRepository | 保存领域事件 | 不执行通知 |
+| NotificationConsumer | 消费事件并发送通知 | 不回滚任务分配 |
+```
+
+### 15. 事务边界
+
+**明确什么在事务内、什么在事务外**（不能出现"负责人已更新但状态仍是待分配"的中间结果）：
+
+```markdown
+同一本地事务内：
+1. 条件更新任务负责人和状态
+2. 创建任务分配审计记录
+3. 创建 TaskAssigned Outbox 事件
+
+事务外（最终一致）：
+1. 发送站内通知
+2. 发送邮件/短信
+3. 刷新工作负载统计缓存
+
+通知失败策略：任务分配不回滚；消息进入重试队列；达最大重试进死信队列；产生告警；管理员可人工重放。
+```
+
+### 16. 可观测性
+
+**Feature 中的"系统应记录"不能只理解为数据库审计。** 至少定义：
+
+```markdown
+日志：taskId, projectId, operatorId, assigneeId, oldStatus, newStatus, requestId, traceId, result, errorCode, duration
+指标：task_assignment_requests_total, task_assignment_success_total, task_assignment_failure_total{reason}, task_assignment_conflict_total, task_assignment_duration_seconds
+告警：分配失败率异常升高、并发冲突率升高、Outbox 积压超阈值、通知死信超阈值
+```
+
+### 17. 架构决策记录（ADR）
+
+对存在明显选项的关键决策写 ADR（不是所有决策都要写，只写有取舍的）：
+
+```markdown
+### ADR-001：使用乐观锁处理任务并发分配
+背景：同一任务可能被多个管理员同时分配。
+选择：通过 version 字段 + 状态条件更新实现乐观并发控制。
+原因：并发冲突概率低；不需要长事务锁；实现简单。
+放弃方案：分布式锁（额外依赖）、悲观锁（高并发 DB 等待）、纯应用层检查（竞争窗口）。
+后果：客户端冲突时需刷新任务状态后重新操作。
+```
+
+### 18. Feature 追踪矩阵
+
+**最关键的最终产物之一** -- 映射 Scenario → 业务规则 → 用例 → 模块 → 数据变化 → 测试级别：
+
+```markdown
+| Feature 场景 | 业务规则 | 应用用例 | 核心模块 | 数据变化 | 测试级别 |
+|-------------|---------|---------|---------|---------|---------|
+| AC-01 正常分配 | BR-01~05 | AssignTaskUseCase | Task,Member,Outbox | Task,Record,Outbox | API+集成 |
+| AC-02 普通用户分配 | BR-01 | AssignTaskUseCase | Authorization | 无 | API |
+| AC-03 非项目成员 | BR-03 | AssignTaskUseCase | Eligibility | 无 | 集成 |
+| AC-04 达到上限 | BR-04 | AssignTaskUseCase | CapacityPolicy | 无 | 领域+集成 |
+| AC-05 非法状态 | BR-02 | Task.assignTo() | Task聚合 | 无 | 领域 |
+| AC-06 并发分配 | BR-06 | AssignTaskUseCase | Repository | 仅一个请求更新 | 并发集成 |
+```
+
+**检查**：每个 Feature 场景有架构支持？每个架构模块有需求来源？每个 BR 有测试覆盖？有没有没有需求依据的过度设计？
+
+### 19. 开发任务拆分 + 测试策略
+
+从架构文档推导开发任务（不是凭空拆）：
+
+```markdown
+TASK-DEV-01：增加任务分配状态转换规则
+TASK-DEV-02：实现项目管理员权限校验
+TASK-DEV-03：实现目标标注员资格校验
+TASK-DEV-04：实现任务负载上限检查
+TASK-DEV-05：增加乐观锁版本字段
+TASK-DEV-06：实现分配审计记录
+TASK-DEV-07：实现 TaskAssigned Outbox 事件
+TASK-DEV-08：实现通知事件消费者
+TASK-DEV-09：增加分配接口和业务错误码
+TASK-DEV-10：增加指标、日志和告警
+TASK-DEV-11：实现对应 Feature 的 Step Definitions
+```
+
+测试策略（按追踪矩阵的测试级别）：
+- 领域单元测试（聚合不变量、状态转换）
+- Repository 集成测试（条件更新、并发冲突）
+- API 测试（错误码、权限）
+- 并发测试（两人同时分配）
+- 消息测试（Outbox 发布、通知消费）
+- Feature 自动化测试（Step Definitions）
+
+## 20 · reconcile 审查（slide 三问）
 
 任何架构方案写完后过一遍这三问——能直接挡掉一批"听起来合理但没有 reconcile 路径"的方案。来源：slide《学习架构思想：声明式 / 控制循环 / 稳定抽象 / 自愈 / 职责解耦》。
 
@@ -241,7 +433,7 @@ description: |
 
 ## 产出（architecture.md 一份文档含）
 
-质量属性场景 + 安全设计(SDD) + 性能设计(PDD) + 限界上下文 + 技术栈决策 + 分层架构 + 规则传导矩阵 + API 端点清单 + 文件清单（后端+前端）+ 质量要点 + 运维视图(ODD) + Docker Compose 架构。
+Feature→架构映射链 + 质量属性场景 + 安全设计(SDD) + 性能设计(PDD) + 限界上下文 + 技术栈决策 + 分层架构 + **业务规则(BR-XX)** + 规则传导矩阵 + API 端点清单 + **模块职责表** + **事务边界** + 文件清单（后端+前端）+ 质量要点 + 运维视图(ODD含**失败模式表+并发控制+幂等**) + **可观测性** + **ADR** + **Feature追踪矩阵** + **开发任务拆分+测试策略** + Docker Compose 架构。
 
 **全局独立产出**（非 colocation，跨业务线）：`aggregate-landscape.md`（聚合全景）+ `event-contract.md`（事件契约）+ `module-landscape.md`（模块全景：base 基础建设 + 业务上下文 + 依赖矩阵，见 §13）。
 
@@ -276,4 +468,20 @@ description: |
 □ §14 reconcile · Q3 失败能重试并收敛？
 □ §14 reconcile · Q3 ·子项·瞬态故障有 retry + backoff + max retries？
 □ §14 reconcile · Q3 ·子项·永久失败有 deadline/convergeTimeBudget（不是无限 retry 也不是立即终止）？
+□ Feature→架构映射链：从 Feature 提取了架构含义（不是直接生成 Controller/Service/Repository）？
+□ 业务规则 BR-XX 提取了，每条能追溯到 RXX 和 AC-XX？
+□ 领域模型写了核心实体+字段+关系（不是贫血模型只有 getter/setter）？
+□ 状态机跟 spec 的 Scenario Outline 一致（哪些状态允许/禁止操作）？
+□ 模块职责表写了"不负责"列（不是类名清单）？
+□ 事务边界明确（什么在事务内、什么在事务外、通知失败不回滚主业务）？
+□ 并发控制策略写了具体方案+SQL+理由（不是"系统需要防止并发问题"）？
+□ 失败模式表结构化（失败点→主业务结果→系统处理，不是散文）？
+□ 幂等策略写了（如果有重复请求风险）？
+□ 可观测性定义了日志/指标/告警（不是只写"系统应记录"）？
+□ ADR 写了关键决策的背景/选择/原因/放弃方案/后果？
+□ Feature追踪矩阵完整（场景→BR→用例→模块→数据→测试级别，每个场景有架构支持，每个模块有需求来源）？
+□ 开发任务从架构推导（不是凭空拆），测试策略按追踪矩阵的测试级别？
+□ API 错误码来自业务规则（不是随意为每个 Scenario 发明一套）？
+□ 权限写了数据范围（有全局菜单权限不等于能操作所有项目的数据）？
+□ 性能写了具体取舍（"第一阶段用DB索引查询，P95超50ms再评估Redis"不是"高性能高扩展"）？
 ```
