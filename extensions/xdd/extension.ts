@@ -11,6 +11,7 @@ import { join, basename } from "node:path";
 import type { XddRunnerState, XddStageSpec } from "./types.ts";
 import { decideFollowUp } from "./followup.ts";
 import { sliceByEpoch, EPOCH_MARKER_PREFIX } from "./epoch-slicer.ts";
+import { resolveGlobs, hasGlobMeta } from "./glob-resolver.ts";
 
 /**
  * Module-level shared state. The InlineExtension factory registers tools and
@@ -81,11 +82,26 @@ function buildStageSummary(cwd: string, state: XddRunnerState, stage: XddStageSp
 	lines.push(`Role: ${stage.role}`);
 	lines.push("");
 	lines.push("## Deliverables");
+	// Phase 8 (H.3): use the shared glob resolver so glob patterns in
+	// deliverablePaths expand to all matching files, not just one.
+	// (Previously existsSync on a glob literal returned false.)
+	const allPaths = resolveGlobs(cwd, stage.deliverablePaths);
+	const seen = new Set<string>();
 	for (const p of stage.deliverablePaths) {
 		const abs = join(cwd, p);
-		if (existsSync(abs)) {
+		if (existsSync(abs) && statSync(abs).isFile()) {
 			const size = statSync(abs).size;
 			lines.push(`- ✅ ${p} (${size} bytes)`);
+			seen.add(p);
+		} else if (hasGlobMeta(p)) {
+			// Glob pattern -- check if any matches found
+			const matches = allPaths.filter((m) => m === p || allPaths.includes(m));
+			if (matches.length > 0) {
+				lines.push(`- ✅ ${p} → ${matches.length} file(s)`);
+				matches.forEach((m) => seen.add(m));
+			} else {
+				lines.push(`- ⬜ ${p} (no files match)`);
+			}
 		} else {
 			lines.push(`- ⬜ ${p} (missing)`);
 		}
@@ -202,6 +218,75 @@ export const xddInlineExtension: InlineExtension = {
 			pi.registerEntryRenderer("xdd_rollback", renderRollback);
 		}
 		// xdd_ledger intentionally not rendered (audit only).
+
+		// Phase 7 (G.1 + G.2): bash tool guard.
+		// G.1: inject a default 300s timeout (5 min) when the LLM doesn't
+		// set one. pi's bash tool uses this timeout to call killProcessTree
+		// (SIGTERM, then SIGKILL after grace) -- so the entire child
+		// process group is reaped on timeout, not just the shell.
+		// G.2: block forbidden patterns (`find /`, `rm -rf /`, etc.)
+		// before they run. These don't have a meaningful timeout -- a
+		// 12-hour `find /` will keep burning wall-clock even if killed,
+		// and `rm -rf /` should never run regardless.
+		pi.on("tool_call", async (event) => {
+			if (event.toolName !== "bash" || !event.input) return;
+			const input = event.input as {
+				timeout?: number;
+				command?: string;
+				description?: string;
+			};
+			// G.1: default timeout
+			if (input.timeout === undefined || input.timeout <= 0) {
+				input.timeout = 300;
+			}
+			// G.2: forbidden patterns. These commands are dangerous enough
+			// that the agent should be told to scope them, not just timed out.
+			const cmd = String(input.command ?? "");
+			const forbidden: Array<{ pattern: RegExp; reason: string }> = [
+				{ pattern: /\bfind\s+\/\s*(?!-)/, reason: "find / 会扫描整个文件系统" },
+				{ pattern: /\bfind\s+\/\s*-/, reason: "find /<args> 会扫描整个文件系统" },
+				{ pattern: /\brm\s+(-[a-zA-Z]*\s+)*\/\s*(?:-|$|\.)/, reason: "rm -rf / 会删除整个系统" },
+				{ pattern: /\bdd\s+if=\/dev\/(zero|urandom)\s+of=\/dev\//, reason: "dd 到设备会清空磁盘" },
+				{ pattern: /\bmkfs(\.\w+)?\s+\/dev\//, reason: "mkfs 会格式化磁盘" },
+			];
+			for (const f of forbidden) {
+				if (f.pattern.test(cmd)) {
+					throw new Error(
+						`[xdd] 禁止的 bash 命令 (${f.reason}): ${cmd.slice(0, 120)}${cmd.length > 120 ? "..." : ""}。请限定到 cwd 子目录或明确白名单根。`,
+					);
+				}
+			}
+		});
+
+		// Phase 7 (G.3): bash tool result telemetry. Record exit status,
+		// timeout, and error info into the ESG for post-mortem analysis.
+		// isError=true means the command failed (non-zero exit, timeout,
+		// or abort). The content text tells us which; we record both.
+		pi.on("tool_result", (event) => {
+			if (event.type !== "tool_result" || event.toolName !== "bash") return;
+			if (!stateRef) return;
+			const input = event.input as { command?: string; timeout?: number };
+			const cmd = String(input.command ?? "").slice(0, 200);
+			const cmdShort = cmd.length > 80 ? cmd.slice(0, 77) + "..." : cmd;
+			if (event.isError) {
+				// Detect timeout vs other errors. Pi's error text on timeout
+				// is "timeout:N". We surface the failure reason in the ESG
+				// node so the audit trail shows "this command timed out"
+				// rather than just "error".
+				const errText = event.content
+					.filter((c: { type?: string; text?: string }) => c.type === "text")
+					.map((c: { text?: string }) => c.text ?? "")
+					.join(" ");
+				const isTimeout = /timeout:\d+/.test(errText);
+				const stageName = stateRef.currentStageName() ?? "?";
+				stateRef.recordEsgNode("evidence", stageName,
+					isTimeout
+						? `bash timeout: ${cmdShort}`
+						: `bash failed: ${cmdShort}`,
+					{ command: cmd, timeout: input.timeout, error: errText.slice(0, 500) },
+				);
+			}
+		});
 
 		// xdd uses per-stage context slicing (on "context" event) to keep only
 		// the current stage's messages. Runtime state is in runtime.json, not in
@@ -351,6 +436,9 @@ export const xddInlineExtension: InlineExtension = {
 						// onComplete / onError are sync (() => void). Fire-and-
 						// forget the sendUserMessage; the P26 lock prevents
 						// double-queueing if a re-entrant agent_end sneaks in.
+						// Phase 8 (H.2): send failures are NOT silently swallowed
+						// -- surface them via ui.notify so the user knows
+						// the followUp didn't land and can intervene.
 						ctx.compact({
 							onComplete: () => {
 								if (stateRef.paused) return;
@@ -359,7 +447,13 @@ export const xddInlineExtension: InlineExtension = {
 									stateRef.continuationQueued = true;
 									stateRef.continuationReason = `compacted:${outcome}`;
 									pi.sendUserMessage(pendingText, { deliverAs: "followUp" })
-										.catch(() => { stateRef.continuationQueued = false; });
+										.catch((err) => {
+											stateRef.continuationQueued = false;
+											ctx.ui.notify(
+												`[xdd] 自动推进消息发送失败: ${err instanceof Error ? err.message : String(err)}。可能 run 卡住，需人工干预。`,
+												"error",
+											);
+										});
 								}
 							},
 							onError: () => {
@@ -371,7 +465,13 @@ export const xddInlineExtension: InlineExtension = {
 								if (pendingText) {
 									stateRef.continuationQueued = true;
 									pi.sendUserMessage(pendingText, { deliverAs: "followUp" })
-										.catch(() => { stateRef.continuationQueued = false; });
+										.catch((err) => {
+											stateRef.continuationQueued = false;
+											ctx.ui.notify(
+												`[xdd] 压缩失败后回退 followUp 发送失败: ${err instanceof Error ? err.message : String(err)}。run 可能卡住。`,
+												"error",
+											);
+										});
 								}
 							},
 						});
