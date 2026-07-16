@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { activateXddExtension, deactivateXddExtension, xddInlineExtension } from "../extension.ts";
 import { STAGES } from "../stages.ts";
 import { XddRunnerState } from "../types.ts";
+import { ControllerTestFixture } from "./controller-fixture.ts";
 
 type Handler = (event?: any, ctx?: any) => any;
 
@@ -21,6 +22,7 @@ export class FakePiAdapterHarness {
 	readonly notifications: FakeNotification[] = [];
 	readonly registeredRenderers: Array<{ type: string; renderer: unknown }> = [];
 	state: XddRunnerState;
+	controller: ControllerTestFixture;
 	idle = true;
 	pendingMessages = false;
 	aborted = false;
@@ -33,7 +35,8 @@ export class FakePiAdapterHarness {
 		this.cwd = mkdtempSync(join(tmpdir(), "xdd-pi-adapter-"));
 		this.state = new XddRunnerState({ runId: "harness", cwd: this.cwd, userInput: "test" });
 		this.state.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
-		this.state.startRun();
+		this.controller = new ControllerTestFixture(this.state);
+		this.controller.startAt("init");
 		activateXddExtension(this.state);
 		xddInlineExtension.factory(this.pi as never);
 	}

@@ -59,7 +59,7 @@ describe("production pi adapter lifecycle", () => {
 	});
 
 	it("normal agent_end queues exactly one continuation", async () => {
-		harness.state.stageOutcome = "gate_passed";
+		harness.controller.submitGatePassed();
 		await harness.emit("agent_end", {
 			messages: [{ role: "assistant", stopReason: "stop" }],
 		});
@@ -72,8 +72,7 @@ describe("production pi adapter lifecycle", () => {
 	});
 
 	it("advanced agent_end starts the next stage instead of idling", async () => {
-		harness.state.stageOutcome = "advanced";
-		harness.state.planIndex = 2; // architecture
+		harness.controller.startAdvancedAt("architecture");
 		await harness.emit("agent_end", {
 			messages: [{ role: "assistant", stopReason: "stop" }],
 		});
@@ -99,7 +98,7 @@ describe("production pi adapter lifecycle", () => {
 
 	it("shows the same structured verify failure in difference, submit, and status", async () => {
 		writeVerifyTraceGapFixture(harness.cwd);
-		harness.state.planIndex = harness.state.plan.findIndex(({ stage }) => stage.name === "verify");
+		harness.controller.startAt("verify");
 
 		const { evaluateVerifyEvidenceGateFull } = await import("../evidence/verify-gate.ts");
 		const failure = (await evaluateVerifyEvidenceGateFull(harness.cwd)).failure;
@@ -156,7 +155,7 @@ describe("production pi adapter lifecycle", () => {
 
 	it("high context usage compacts before sending a single continuation", async () => {
 		harness.contextUsage = { percent: 0.72 };
-		harness.state.stageOutcome = "gate_passed";
+		harness.controller.submitGatePassed();
 		await harness.emit("agent_end", {
 			messages: [{ role: "assistant", stopReason: "stop" }],
 		});
@@ -170,7 +169,7 @@ describe("production pi adapter lifecycle", () => {
 
 
 	it("session_compact completion resumes through one controller continuation", async () => {
-		harness.state.stageOutcome = "gate_passed";
+		harness.controller.submitGatePassed();
 		await harness.emit("session_compact", { success: true });
 		expect(harness.sentMessages).toHaveLength(1);
 		expect(harness.sentMessages[0]?.text).toContain("xdd_advance");
@@ -182,7 +181,7 @@ describe("production pi adapter lifecycle", () => {
 
 	it("compaction failure releases back to a single continuation instead of stalling", async () => {
 		harness.contextUsage = { percent: 0.9 };
-		harness.state.stageOutcome = "gate_passed";
+		harness.controller.submitGatePassed();
 		harness.ctx.compact = () => { throw new Error("compactor unavailable"); };
 
 		await harness.emit("agent_end", {
