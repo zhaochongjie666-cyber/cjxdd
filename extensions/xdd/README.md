@@ -134,4 +134,4 @@ const result = headless.dispatch({ type: "START", task, options: { cwd, runId } 
 
 覆盖：gate.ts（文件系统 gate）、observe-fs.ts（磁盘观测 + 追溯覆盖）、stage-diff.ts
 （真实 gate diff）、core/controller.ts（唯一状态转换）、adapters/headless-controller.ts（测试适配器）、stage-groups.ts（组级 Gate）、
-diagnosis.ts（根因分类）、xdd-trace.ts（追溯链工具）。
+diagnosis.ts（根因分类）、xdd-trace.ts（追溯链工具）。T13 回归还覆盖空仓库/遗留仓库启动、understand 人审、provider error、verify 写保护、runtime 重启恢复、暂停恢复和 continuation lock 释放。

@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { STAGES } from "./stages.ts";
 import { XddRunnerState } from "./types.ts";
+import { createStateFixture, startStateFixture } from "./test/state-fixture.ts";
 import { controllerInitScaffold, hasInitializedXddSkeleton } from "./init-scaffold.ts";
 
 let cwd = "";
@@ -62,9 +63,8 @@ describe("F.3 activate-time static validation", () => {
 		// activateXddExtension throws on the first violation. The default
 		// STAGES have no writeScopes declared, so the validator skips
 		// every stage -- this test verifies the default is sane.
-		const state = new XddRunnerState({ runId: "f3", cwd, userInput: "t" });
-		state.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
-		state.startRun();
+		const state = createStateFixture({ runId: "f3", cwd, userInput: "t" });
+		startStateFixture(state);
 		// We can't import activateXddExtension directly (it pulls in
 		// extension.ts -> pi-tui). Instead, we exercise the validation
 		// surface indirectly: validateStageContracts is module-private

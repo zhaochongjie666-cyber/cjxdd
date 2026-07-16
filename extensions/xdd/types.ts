@@ -394,7 +394,6 @@ export class XddRunnerState {
 	get esg(): XddEsgNode[] { return this.loadRt().esg ?? []; }
 
 	// ── Stage navigation ─────────────────────────────────────────────────
-	startRun(): void { this.planIndex = 0; }
 	currentStage(): XddStageSpec | undefined { return this.plan[this.planIndex]?.stage; }
 	currentIndex(): number { return this.plan[this.planIndex]?.originalIndex ?? -1; }
 	currentStageName(): XddStageName | undefined { return this.plan[this.planIndex]?.stage.name; }

@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { STAGES } from "./stages.ts";
 import { XddRunnerState } from "./types.ts";
+import { createStateFixture, setStateFixturePlanIndex, startStateFixture } from "./test/state-fixture.ts";
 
 /** Each state gets its own temp dir so file-backed state doesn't collide. */
 let dirCounter = 0;
@@ -12,9 +12,7 @@ function tmpCwd(): string {
 }
 
 function makeState(): XddRunnerState {
-	const state = new XddRunnerState({ runId: "test", cwd: tmpCwd(), userInput: "test" });
-	state.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
-	return state;
+	return createStateFixture({ runId: "test", cwd: tmpCwd(), userInput: "test" });
 }
 
 describe("XddRunnerState basics", () => {
@@ -23,17 +21,17 @@ describe("XddRunnerState basics", () => {
 		expect(state.planIndex).toBe(-1);
 	});
 
-	it("startRun sets planIndex to 0", () => {
+	it("Controller fixture starts at init", () => {
 		const state = makeState();
-		state.startRun();
+		startStateFixture(state);
 		expect(state.planIndex).toBe(0);
 		expect(state.currentStage()?.name).toBe("init");
 	});
 
 	it("isLastStage detects final plan entry", () => {
 		const state = makeState();
-		state.startRun();
-		state.planIndex = state.plan.length - 1;
+		startStateFixture(state);
+		setStateFixturePlanIndex(state, state.plan.length - 1);
 		expect(state.isLastStage()).toBe(true);
 	});
 });
@@ -112,8 +110,8 @@ describe("XddRunnerState artifacts and self-attack", () => {
 describe("XddRunnerState checkpoint", () => {
 	it("serializes to checkpoint and back", () => {
 		const state = makeState();
-		state.startRun();
-		state.planIndex = 1;
+		startStateFixture(state);
+		setStateFixturePlanIndex(state, 1);
 		state.recordArtifact("init", ["README.md"]);
 		state.recordSelfAttack("init", "checked edge cases");
 		const cp = state.toCheckpoint("running", 0);
@@ -131,7 +129,7 @@ describe("XddRunnerState checkpoint", () => {
 
 	it("persists flowRollbackCount across checkpoint (Layer 2)", () => {
 		const state = makeState();
-		state.startRun();
+		startStateFixture(state);
 		state.flowRollbackCount = 7;
 		const cp = state.toCheckpoint("running", 0);
 		expect(cp.flowRollbackCount).toBe(7);
