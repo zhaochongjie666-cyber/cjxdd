@@ -25,6 +25,11 @@ export function createXddAdvanceTool(getState: GetXddState): ToolDefinition {
 					`[xdd_advance] 当前阶段 ${stage.name} 尚未声明完成：请先调用 xdd_submit_artifact 并通过闸门，再调用 xdd_advance。`,
 				);
 			}
+			// Phase 2 (B): mark the stage as "passed, pending advance". agent_end
+			// will set this to "advanced" only after the planIndex actually moves
+			// (or to a different outcome if xdd_advance fails the group gate).
+			// Resetting stageOutcome here would be wrong -- we don't know yet
+			// whether the advance will succeed (group gate may fail).
 			// Group gate check at group boundary. Failure -> rollback.
 			// Success -> fall through to normal advance (auto, no human pause).
 			let groupGateLabel: string | null = null;
@@ -54,7 +59,15 @@ export function createXddAdvanceTool(getState: GetXddState): ToolDefinition {
 			// Normal advance (group gate passed or non-boundary).
 			state.advanceOutcome = { passed: true };
 			state.clearSignals();
+			const prevStageName = stage.name;
 			const next = state.advancePlan();
+			// Phase 2 (B): planIndex moved -- mark "advanced" so agent_end knows
+			// the run progressed and should NOT re-nudge. The new stage starts
+			// in "idle" (waiting for the agent to begin work); agent_end will
+			// send a continuation only if outcome remains "advanced" for too
+			// long without the new stage going "working".
+			state.stageOutcome = "advanced";
+			state.lastStageError = undefined;
 			// Sync identity fields (runId/cwd/plan) into the runtime file.
 			// Don't call removeCheckpoint here -- with file-first state, deleting
 			// runtime.json resets runComplete to false (from defaults), causing
@@ -63,6 +76,7 @@ export function createXddAdvanceTool(getState: GetXddState): ToolDefinition {
 			writeCheckpoint(state, "running", state.rollbackCount);
 			if (!next) {
 				state.runComplete = true;
+				state.stageOutcome = "completed";
 				const prefix = groupGateLabel ? `${groupGateLabel} 通过 ✅，` : "";
 				return { content: [{ type: "text", text: `[xdd_advance] ${prefix}最终阶段 ${stage.name} 通过，xdd run 完成 ✅。` }], details: {}, terminate: true };
 			}

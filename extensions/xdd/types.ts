@@ -264,6 +264,23 @@ export class XddRunnerState {
 	set blindJourneyVerdict(v: "pass" | "fail" | "pending" | "skipped") { this.mutRt("blindJourneyVerdict", v); }
 	get stopRequested(): boolean { return this.loadRt().stopRequested ?? false; }
 	set stopRequested(v: boolean) { this.mutRt("stopRequested", v); }
+	// ── Phase 2 (B): explicit stage outcome ────────────────────────────
+	// Written by tools (xdd_submit_artifact, xdd_advance) and by agent_end
+	// for provider_error / paused. Replaces "guess from selfHealUsed".
+	get stageOutcome(): XddStageOutcome { return this.loadRt().stageOutcome ?? "idle"; }
+	set stageOutcome(v: XddStageOutcome) { this.mutRt("stageOutcome", v); }
+	// lastStageError: when outcome is *_failed or provider_error, capture
+	// the reason so agent_end can include it in the followUp. Cleared on
+	// transition to working.
+	get lastStageError(): string | undefined { return this.loadRt().lastStageError; }
+	set lastStageError(v: string | undefined) { this.mutRt("lastStageError", v ?? null); }
+	// continuationReason / continuationStage: P26 audit fields. Recorded
+	// whenever the auto-continue scheduler queues a followUp so we can
+	// inspect "why was this message sent" in retrospect.
+	get continuationReason(): string | undefined { return this.loadRt().continuationReason; }
+	set continuationReason(v: string | undefined) { this.mutRt("continuationReason", v ?? null); }
+	get continuationStage(): XddStageName | undefined { return this.loadRt().continuationStage ?? undefined; }
+	set continuationStage(v: XddStageName | undefined) { this.mutRt("continuationStage", v ?? null); }
 	// ── Phase 0 (P20-23): stop-message storm prevention ──────────────────
 	// `paused` is the SINGLE source of truth for "run is paused". When true,
 	// agent_end / turn_end / auto-continue paths MUST be silent. `stopRequested`
@@ -627,7 +644,41 @@ export interface XddCheckpointData {
 	pauseNotified?: boolean;
 	continuationEpoch?: number;
 	continuationQueued?: boolean;
+	// Phase 2 (B): explicit stage outcome
+	stageOutcome?: XddStageOutcome;
+	lastStageError?: string;
+	continuationReason?: string;
+	continuationStage?: XddStageName;
 }
+
+/**
+ * Phase 2 (B): explicit StageOutcome. Replaces "guessing what happened from
+ * self-heal budget" with a single typed value written by the tool that just
+ * ran. agent_end reads this to decide what followUp to send.
+ *
+ * Transitions:
+ *   idle          -> working  (when stage starts)
+ *   working       -> hard_gate_failed | ai_gate_failed | gate_passed
+ *   gate_passed   -> advanced  (when xdd_advance runs)
+ *   *             -> provider_error (when LLM call fails, set by agent_end)
+ *   *             -> paused (user interrupt)
+ *   advanced      -> idle  (next stage begins; reset on planIndex change)
+ *   working/gate_*
+ *                  -> completed (final stage passed)
+ *   working/gate_*
+ *                  -> failed (budget exhausted, no rollback taken)
+ */
+export type XddStageOutcome =
+	| "idle"
+	| "working"
+	| "hard_gate_failed"
+	| "ai_gate_failed"
+	| "gate_passed"
+	| "advanced"
+	| "provider_error"
+	| "paused"
+	| "completed"
+	| "failed";
 
 /** Default runtime data for a fresh run. */
 function defaultRt(): XddCheckpointData {
@@ -650,6 +701,8 @@ function defaultRt(): XddCheckpointData {
 		stopRequested: false,
 		paused: false, pauseNotified: false,
 		continuationEpoch: 0, continuationQueued: false,
+		stageOutcome: "idle", lastStageError: null,
+		continuationReason: null, continuationStage: null,
 	};
 }
 

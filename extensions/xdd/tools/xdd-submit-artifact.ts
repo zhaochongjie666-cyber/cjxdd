@@ -84,10 +84,17 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			state.recordArtifact(stage.name, artifacts);
 			state.recordSelfAttack(stage.name, selfAttack);
 			state.recordEsgNode("review", stage.name, `self-attack: ${selfAttack.slice(0, 100)}`);
+			// Phase 2 (B): mark "working" so the agent_end scheduler knows the
+			// stage is mid-flight. The outcome will be re-written below based
+			// on gate / AIGate results.
+			state.stageOutcome = "working";
+			state.lastStageError = undefined;
 			const used = state.beginSelfHealAttempt(stage.name);
 			const remaining = state.remainingSelfHealBudget(stage.name);
 			const gate = await stage.gate({ cwd: state.cwd, summary, desiredState: stage.desiredState });
 			if (!gate.ok) {
+				state.stageOutcome = "hard_gate_failed";
+				state.lastStageError = gate.reason ?? "未知";
 				if (remaining <= 0) {
 					// Layer 1: self-heal budget exhausted -- soft-pass (non-blocking).
 					// For non-verdict stages: record 'complete' so xdd_advance can
@@ -96,6 +103,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					// through Layer 2 (flow rollback), so keep throwing.
 					if (stage.exit !== "verdict") {
 						state.recordSignal("complete");
+						state.stageOutcome = "gate_passed"; // soft-pass = passed
 						return ok(
 							`[soft-pass] ${stage.name} 自愈预算耗尽（${used}/${state.maxSelfHealPerStage}），软通过进下一阶段。` +
 								`\nGate: ${gate.reason ?? "未知"}（未达标但放行）` +
@@ -137,6 +145,8 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					intentAnchor,
 				});
 				if (!aiResult.passed) {
+					state.stageOutcome = "ai_gate_failed";
+					state.lastStageError = aiResult.angles.filter((a) => !a.passed).map((a) => a.angle).join(", ") || "AIGate 多角度未通过";
 					const angleText = formatAIGateResult(aiResult);
 					const suggText = aiResult.suggestions.length > 0
 						? "\n修改建议：\n" + aiResult.suggestions.map((s, n) => `${n + 1}. ${s}`).join("\n")
@@ -173,6 +183,8 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			// so the stall counter could climb to 40+ without ever triggering the
 			// 3-turn escalation nudge.
 			state.lastSubmitAt = Date.now();
+			state.stageOutcome = "gate_passed";
+			state.lastStageError = undefined;
 			if (stage.exit === "verdict") {
 				const pass = Boolean(params.pass);
 				state.recordSignal(pass ? "verdict_pass" : "verdict_fail");

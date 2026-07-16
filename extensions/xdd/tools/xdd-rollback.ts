@@ -49,6 +49,12 @@ export function createXddRollbackTool(getState: GetXddState): ToolDefinition {
 			}
 			state.markSuperseded(moved.originalIndex);
 			state.rollbackOutcome = { from, to: target, reason: String(params.reason ?? "") };
+			// Phase 2 (B): record outcome so agent_end can see "this stage is
+			// now failed; the next stage starts fresh". Don't keep the old
+			// gate_passed/hard_gate_failed -- those describe the *current*
+			// stage (the rolled-back one), not the rolled-back-to target.
+			state.stageOutcome = "advanced";
+			state.lastStageError = undefined;
 			return {
 				content: [{ type: "text", text: `[xdd_rollback] ${from} → ${target}：${params.reason}` }],
 				details: {},
