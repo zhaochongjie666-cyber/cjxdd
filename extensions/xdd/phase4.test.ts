@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { STAGES } from "./stages.ts";
 import { XddRunnerState } from "./types.ts";
-import { controllerInitScaffold } from "./init-scaffold.ts";
+import { controllerInitScaffold, hasInitializedXddSkeleton } from "./init-scaffold.ts";
 
 let cwd = "";
 
@@ -92,6 +92,12 @@ describe("F.5 controllerInitScaffold", () => {
 		expect(existsSync(join(cwd, ".xdd/design/wire"))).toBe(true);
 		expect(existsSync(join(cwd, ".xdd/runs"))).toBe(true);
 		expect(existsSync(join(cwd, ".xdd/archive"))).toBe(true);
+	});
+
+	it("detects pre-existing initialization before scaffold mutates a new project", () => {
+		expect(hasInitializedXddSkeleton(cwd)).toBe(false);
+		controllerInitScaffold(cwd);
+		expect(hasInitializedXddSkeleton(cwd)).toBe(true);
 	});
 
 	it("is idempotent: second call skips all dirs", () => {

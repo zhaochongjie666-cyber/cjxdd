@@ -3,6 +3,8 @@ import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { findStageGroup, isLastStageInGroup } from "../stage-groups.ts";
 import { computeStageDifference, renderStageDifference } from "../stage-diff.ts";
+import { XddController } from "../core/controller.ts";
+import { RuntimeStore } from "../storage/runtime-store.ts";
 import { type EmptyDetails, type GetXddState, ok } from "./index.ts";
 
 const schema = Type.Object({});
@@ -60,7 +62,12 @@ export function createXddNextTaskTool(getState: GetXddState): ToolDefinition {
 				action = `调 xdd_diagnose 诊断根因，或 xdd_rollback 回退到设计层修复后重跑`;
 			}
 			const group = findStageGroup(stage.name);
-			state.recordEsgNode("task", stage.name, `next task: ${action}（diff met=${diff.metCount} unmet=${diff.unmetCount}）`);
+			new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage: plannedStage }) => plannedStage)).dispatch({
+				type: "RECORD_ESG",
+				nodeType: "task",
+				stage: stage.name,
+				label: `next task: ${action}（diff met=${diff.metCount} unmet=${diff.unmetCount}）`,
+			});
 			const lines = [
 				"[Controller 指令]",
 				`阶段: ${stage.name}（${stage.role}）`,

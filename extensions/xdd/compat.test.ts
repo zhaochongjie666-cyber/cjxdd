@@ -111,7 +111,7 @@ describe("Compat: state machine invariants", () => {
 	});
 
 	it("Stage contract validation runs at activate time", () => {
-		expect(EXT_SRC).toMatch(/validateStageContracts/);
+		expect(EXT_SRC).toMatch(/compileStageContracts/);
 	});
 });
 

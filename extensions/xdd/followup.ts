@@ -39,6 +39,8 @@ export function decideFollowUp(
 			return `[xdd 自动推进] ${stageName} 闸门已通过。调 xdd_advance 推进到下一阶段。`;
 
 		case "advanced":
+			return `[xdd 自动推进] 已进入 ${stageName} 阶段。请调 xdd_observe、xdd_desired_state、xdd_difference，按差距完成阶段产物。`;
+
 		case "provider_error":
 		case "paused":
 		case "completed":

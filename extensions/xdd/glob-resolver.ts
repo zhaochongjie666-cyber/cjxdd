@@ -69,7 +69,7 @@ export function hasGlobMeta(pattern: string): boolean {
  *  Brace expansion / extglob are intentionally NOT supported -- if a
  *  future caller needs them, swap to minimatch or add support here.
  */
-function globToRegExp(pattern: string): RegExp {
+export function globToRegExp(pattern: string): RegExp {
 	const segments = pattern.split("/");
 	let re = "^";
 	let prevWasGlobstar = false;
@@ -92,6 +92,13 @@ function globToRegExp(pattern: string): RegExp {
 		prevWasGlobstar = false;
 	}
 	return new RegExp(`${re}$`);
+}
+
+/** True when a normalized relative path is matched by a glob pattern.
+ *  Shared by contract/static checks and runtime glob resolution so scope
+ *  validation does not drift into ad-hoc `* -> .*` regexes. */
+export function matchesGlob(pattern: string, relPath: string): boolean {
+	return globToRegExp(pattern).test(relPath.replace(/\\/g, "/"));
 }
 
 /** Recursively collect file paths under `dir` (relative to `dir`), capped

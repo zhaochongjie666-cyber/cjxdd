@@ -18,6 +18,114 @@ const CONTROLLER_TOOLS = ["xdd_submit_artifact", "xdd_list_skills", "xdd_load_sk
 const READ_TOOLS = ["read", "grep", "find", "ls"] as const;
 const WRITE_TOOLS = ["write", "edit"] as const;
 
+
+const input = (pattern: string, description: string) => ({ pattern, required: true, description });
+const output = (pattern: string, description: string) => ({ pattern, required: true, description });
+
+const CONTRACT_META: Record<XddStageName, {
+	inputs: ReturnType<typeof input>[];
+	readScopes: string[];
+	writeScopes: string[];
+	gatePolicy: "hard" | "explicit-soft";
+	rollbackTarget: XddStageName | "none";
+}> = {
+	init: {
+		inputs: [input("README*", "仓库 README/说明文档（如存在）"), input("docs/**", "仓库文档（如存在）")],
+		readScopes: ["README*", "docs/**", "package.json", "pyproject.toml", "Cargo.toml", ".xdd/**"],
+		writeScopes: [".xdd/**"],
+		gatePolicy: "explicit-soft",
+		rollbackTarget: "none",
+	},
+	understand: {
+		inputs: [input("README*", "仓库 README/说明文档"), input("docs/**", "仓库文档"), input(".xdd/**", "既有 XDD 设计与运行状态")],
+		readScopes: ["README*", "docs/**", ".xdd/**", "package.json", "pyproject.toml", "Cargo.toml", "src/**", "lib/**", "app/**", "tests/**"],
+		writeScopes: [".xdd/design/**", ".xdd/runs/**"],
+		gatePolicy: "hard",
+		rollbackTarget: "init",
+	},
+	spec: {
+		inputs: [input(".xdd/design/design.md", "收敛设计决策"), input(".xdd/design/intent.md", "意图锚与成功标准")],
+		readScopes: [".xdd/design/**", ".xdd/runs/**"],
+		writeScopes: [".xdd/design/spec/**"],
+		gatePolicy: "hard",
+		rollbackTarget: "understand",
+	},
+	architecture: {
+		inputs: [input(".xdd/design/spec/**", "业务规则与验收场景")],
+		readScopes: [".xdd/design/**", "README*", "docs/**", "package.json", "pyproject.toml", "Cargo.toml"],
+		writeScopes: [".xdd/design/architecture/**"],
+		gatePolicy: "hard",
+		rollbackTarget: "spec",
+	},
+	wire: {
+		inputs: [input(".xdd/design/spec/**", "页面/交互来源规则"), input(".xdd/design/architecture/**", "架构约束")],
+		readScopes: [".xdd/design/**"],
+		writeScopes: [".xdd/design/wire/**"],
+		gatePolicy: "hard",
+		rollbackTarget: "architecture",
+	},
+	resilience: {
+		inputs: [input(".xdd/design/spec/**", "规则与异常路径"), input(".xdd/design/architecture/**", "架构与失败模式")],
+		readScopes: [".xdd/design/spec/**", ".xdd/design/architecture/**"],
+		writeScopes: [".xdd/design/architecture/**/resilience/**"],
+		gatePolicy: "hard",
+		rollbackTarget: "architecture",
+	},
+	plan: {
+		inputs: [input(".xdd/design/**", "完整设计输入")],
+		readScopes: [".xdd/design/**", "README*", "docs/**", "package.json", "pyproject.toml", "Cargo.toml", "src/**", "lib/**", "app/**", "tests/**"],
+		writeScopes: [".xdd/runs/**/plan/**", ".xdd/runs/**/plan.md"],
+		gatePolicy: "hard",
+		rollbackTarget: "resilience",
+	},
+	execute: {
+		inputs: [input(".xdd/runs/**/plan.md", "当前迭代执行计划"), input(".xdd/design/**", "设计契约")],
+		readScopes: ["**"],
+		writeScopes: ["**"],
+		gatePolicy: "hard",
+		rollbackTarget: "plan",
+	},
+	cleanup: {
+		inputs: [input(".xdd/runs/**/plan.md", "当前迭代执行计划"), input(".xdd/design/**", "设计契约")],
+		readScopes: ["**"],
+		writeScopes: ["**"],
+		gatePolicy: "explicit-soft",
+		rollbackTarget: "execute",
+	},
+	verify: {
+		inputs: [input(".xdd/runs/**/plan.md", "当前迭代计划"), input(".xdd/design/spec/**", "业务验收规则"), input(".xdd/design/wire/**", "UI/Wire 证据要求")],
+		readScopes: ["**"],
+		writeScopes: [".xdd/runs/**/verify-report.md", ".xdd/runs/**/evidence/**"],
+		gatePolicy: "hard",
+		rollbackTarget: "execute",
+	},
+};
+
+function withStageContract(stage: XddStageSpec): XddStageSpec {
+	const meta = CONTRACT_META[stage.name];
+	const outputs = stage.deliverablePaths.map((pattern) => output(pattern, `${stage.name} 必需产物 ${pattern}`));
+	return {
+		...stage,
+		inputs: meta.inputs,
+		outputs,
+		readScopes: meta.readScopes,
+		writeScopes: meta.writeScopes,
+		gatePolicy: meta.gatePolicy,
+		hardGate: stage.gate,
+		aiGate: {
+			enabled: stage.name !== "init",
+			requiredAngles: ["completeness", "traceability", "failure-modes"],
+			artifactPatterns: outputs.map((rule) => rule.pattern),
+			contextPatterns: meta.inputs.map((rule) => rule.pattern),
+			unavailablePolicy: "degraded-require-human",
+		},
+		rollbackPolicy: {
+			target: meta.rollbackTarget,
+			reason: meta.rollbackTarget === "none" ? "init has no earlier rollback target" : `${stage.name} 默认回退到 ${meta.rollbackTarget}`,
+		},
+	};
+}
+
 export const STAGES: readonly XddStageSpec[] = [
 	{
 		name: "init",
@@ -366,4 +474,4 @@ export const STAGES: readonly XddStageSpec[] = [
 			return { ok: true };
 		},
 	},
-];
+].map(withStageContract);

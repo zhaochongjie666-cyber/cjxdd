@@ -9,9 +9,10 @@ import { archiveRun } from "./archive.ts";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, basename } from "node:path";
 import type { XddRunnerState, XddStageSpec } from "./types.ts";
-import { decideFollowUp } from "./followup.ts";
 import { sliceByEpoch, EPOCH_MARKER_PREFIX } from "./epoch-slicer.ts";
 import { resolveGlobs, hasGlobMeta } from "./glob-resolver.ts";
+import { compileStageContracts } from "./core/stage-contract.ts";
+import { agentEndCommandFromPi, PiControllerAdapter } from "./adapters/pi-controller.ts";
 
 /**
  * Module-level shared state. The InlineExtension factory registers tools and
@@ -22,35 +23,8 @@ import { resolveGlobs, hasGlobMeta } from "./glob-resolver.ts";
  */
 let stateRef: XddRunnerState | null = null;
 
-/**
- * Phase 4 (F.3): static validation of stage contracts. At activation
- * time, walk the planned stages and assert that every deliverable path
- * is reachable (no impossible writes). Throws on the first violation
- * so the failure surfaces before any model turn starts.
- */
-function validateStageContracts(state: XddRunnerState): void {
-	for (const { stage } of state.plan) {
-		if (!stage.writeScopes || stage.writeScopes.length === 0) continue;
-		// If writeScopes are declared, all deliverable paths must be
-		// covered by some writeScope. (Glob match; we don't open files
-		// here -- just pattern check.)
-		const reCache: RegExp[] = stage.writeScopes.map((p) => {
-			const escaped = p.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
-			return new RegExp(`^${escaped}$`);
-		});
-		for (const dp of stage.deliverablePaths) {
-			const covered = reCache.some((re) => re.test(dp));
-			if (!covered) {
-				throw new Error(
-					`[xdd] 阶段 ${stage.name} 契约不一致：deliverablePaths "${dp}" 不在 writeScopes 覆盖范围 (${stage.writeScopes.join(", ")})`,
-				);
-			}
-		}
-	}
-}
-
 export function activateXddExtension(state: XddRunnerState): void {
-	validateStageContracts(state);
+	compileStageContracts(state.plan.map(({ stage }) => stage));
 	stateRef = state;
 }
 
@@ -139,6 +113,12 @@ export const xddInlineExtension: InlineExtension = {
 		pi.registerCommand("xdd-continue", {
 			description: "确认组级 Gate 通过，推进到下一阶段组",
 			handler: async (_args, ctx) => {
+				if (stateRef?.pendingGroupApproval) {
+					const adapter = new PiControllerAdapter({ pi, ctx, getState: () => stateRef });
+					await adapter.dispatch({ type: "APPROVE", approvalId: stateRef.pendingGroupApproval.group });
+					await ctx.waitForIdle();
+					return;
+				}
 				const { continueXdd } = await import("./run.ts");
 				await continueXdd(_args, ctx.cwd, pi);
 				await ctx.waitForIdle();
@@ -147,6 +127,12 @@ export const xddInlineExtension: InlineExtension = {
 		pi.registerCommand("xdd-resume", {
 			description: "从 checkpoint 恢复中断的 xdd run",
 			handler: async (_args, ctx) => {
+				if (stateRef?.paused) {
+					const adapter = new PiControllerAdapter({ pi, ctx, getState: () => stateRef });
+					await adapter.dispatch({ type: "RESUME" });
+					await ctx.waitForIdle();
+					return;
+				}
 				const { resumeXdd } = await import("./run.ts");
 				await resumeXdd(_args, ctx.cwd, pi);
 				await ctx.waitForIdle();
@@ -171,40 +157,8 @@ export const xddInlineExtension: InlineExtension = {
 		pi.registerCommand("xdd-stop", {
 			description: "中断当前 xdd run（支持 Esc Esc 后恢复）",
 			handler: async (_args, ctx) => {
-				// Phase 0 P20: /xdd-stop is an IDEMPOTENT control op. Calling it
-				// 5 times in a row must produce ONE notification and ZERO new
-				// LLM turns. Rules:
-				//   - stateRef is null          → ui.notify only, no sendUserMessage
-				//   - stateRef.paused already   → return silently (no abort, no notify)
-				//   - running → paused          → set paused+stopRequested FIRST
-				//                                   (so a racing agent_end sees paused),
-				//                                   then ctx.abort, then ui.notify.
-				// NEVER call pi.sendUserMessage here: it always triggers a turn,
-				// and ctx.abort() leaves the agent in "processing" state, so
-				// the message collides with "Agent is already processing"
-				// and can re-enter agent_end → re-send pause message → loop.
-				if (!stateRef) {
-					ctx.ui.notify("[xdd] 无活跃 xdd run。", "warning");
-					return;
-				}
-				if (stateRef.paused) {
-					// Already paused -- idempotent no-op.
-					return;
-				}
-				// Flip paused BEFORE abort so the next agent_end sees the
-				// signal and returns silently (P21).
-				stateRef.paused = true;
-				stateRef.stopRequested = true;
-				stateRef.pauseNotified = false;
-				// Abort only when the agent is actually streaming. If idle,
-				// abort() is a no-op anyway but skipping saves a race window.
-				if (!ctx.isIdle()) {
-					ctx.abort();
-				}
-				ctx.ui.notify(
-					`[xdd] run 已暂停在 ${stateRef.currentStageName() ?? "?"} 阶段。输入 /xdd-resume 恢复。`,
-					"warning",
-				);
+				const adapter = new PiControllerAdapter({ pi, ctx, getState: () => stateRef });
+				await adapter.dispatch({ type: "STOP", source: "command" });
 				return;
 			},
 		});
@@ -342,167 +296,19 @@ export const xddInlineExtension: InlineExtension = {
 			return { messages: sliced };
 		});
 
-		// Auto-continue: when the agent finishes a turn and the run is still
-		// active (not complete, not pending group approval), automatically drive
-		// the next turn so the pipeline NEVER stalls. After 3 consecutive turns
-		// with no progress, escalate the nudge (diagnose/rollback/ask-user)
-		// instead of blindly repeating "继续" -- never stop, always continue.
-		//
-		// INTERRUPT SUPPORT: if the user ran /xdd-stop (stateRef.stopRequested),
-		// do NOT queue a followUp -- this breaks the auto-continue loop so the
-		// user regains control. Esc detection via ctx.signal?.aborted is wrapped
-		// in try/catch because ctx.signal is a getter that can throw if the
-		// extension runner context is stale -- an uncaught throw here would
-		// break the entire agent_end flow (no followUp -> no auto-continue).
+		// Auto-continue: route Pi lifecycle into the Controller Core.
+		// The adapter is now the single place that turns pi agent_end into an
+		// XddCommand and executes returned effects (followUp / notify / abort).
 		pi.on("agent_end", async (event, ctx) => {
 			if (!stateRef) return;
 			if (stateRef.runComplete) return;
-			// Phase 0 P21: paused / stopRequested path is SILENT.
-			let signalAborted = false;
-			try {
-				signalAborted = ctx.signal?.aborted ?? false;
-			} catch { /* ctx.signal getter can throw on stale context */ }
-			if (stateRef.paused || stateRef.stopRequested || signalAborted) {
-				if (!stateRef.paused) {
-					stateRef.paused = true;
-					stateRef.stopRequested = true;
-				}
-				// Phase 2 (B): record the pause so post-mortem tools can see
-				// why the run stopped. Don't overwrite a terminal "completed".
-				if (stateRef.stageOutcome !== "completed") {
-					stateRef.stageOutcome = "paused";
-				}
-				if (!stateRef.pauseNotified) {
-					stateRef.pauseNotified = true;
-					ctx.ui.notify(
-						`[xdd] 用户中断。run 已暂停在 ${stateRef.currentStageName() ?? "?"} 阶段。输入 /xdd-resume 恢复，或继续对话做其他事。`,
-						"warning",
-					);
-				}
-				return;
+			const command = agentEndCommandFromPi(event);
+			if (!command) return;
+			if (typeof ctx.hasPendingMessages === "function") {
+				command.hasPendingMessages = ctx.hasPendingMessages();
 			}
-
-			// Phase 1 P25: classify the end of this turn by reading the last
-			// assistant message's stopReason. Provider errors and aborts are
-			// pi-internal -- we MUST NOT treat them as a gate failure.
-			const messages = event.messages ?? [];
-			const lastMsg = messages[messages.length - 1];
-			const lastAssistant =
-				lastMsg && lastMsg.role === "assistant" ? (lastMsg as { stopReason?: string; errorMessage?: string }) : null;
-			const stopReason = lastAssistant?.stopReason;
-			if (stopReason === "error") {
-				// LLM call failed (network, auth, rate limit, etc.). Don't
-				// pretend the gate ran; don't burn a self-heal attempt. Just
-				// mark provider_error and let pi's built-in retry / compaction
-				// handle the situation. We do NOT queue a followUp here.
-				stateRef.stageOutcome = "provider_error";
-				stateRef.lastStageError = lastAssistant?.errorMessage ?? "LLM provider error";
-				stateRef.consecutiveStalls = 0; // not a stall, just a transient
-				return;
-			}
-			if (stopReason === "aborted") {
-				// User pressed Esc / aborted the turn but didn't yet go through
-				// the paused path (rare race). Treat as paused silently.
-				stateRef.stageOutcome = "paused";
-				return;
-			}
-			// stopReason in {stop, length, toolUse} -- normal end of turn.
-			// length = output truncated; toolUse = agent called a tool (no
-			// followUp needed). For "stop" we consult stageOutcome to decide.
-
-			// Phase 1 P26: continuation idempotency lock. NEVER queue if
-			// another followUp is already pending or one was just queued.
-			if (stateRef.continuationQueued) return;
-			if (typeof ctx.hasPendingMessages === "function" && ctx.hasPendingMessages()) return;
-
-			// Phase 3 (C) P29: proactive compaction at >= 70% context usage.
-			// Below threshold -> queue followUp directly.
-			// At/above threshold -> trigger compaction; on completion, queue
-			// the followUp. The followUp text is computed up-front so the
-			// decision is stable across the async gap.
-			const usage = typeof ctx.getContextUsage === "function" ? ctx.getContextUsage() : undefined;
-			if (usage && usage.percent !== null && usage.percent >= 0.7) {
-				if (stateRef.lastCompactionAt && Date.now() - stateRef.lastCompactionAt < 30_000) {
-					// Already compacted within the last 30s; don't loop.
-					// Fall through to normal followUp dispatch.
-				} else {
-					stateRef.lastCompactionAt = Date.now();
-					if (typeof ctx.compact === "function") {
-						// Compute the followUp text NOW (before the async
-						// gap) so the decision is stable.
-						const stage = stateRef.currentStage();
-						const outcome = stateRef.stageOutcome;
-						const pendingText = stage ? decideFollowUp(outcome, stage.name, stateRef) : null;
-						// onComplete / onError are sync (() => void). Fire-and-
-						// forget the sendUserMessage; the P26 lock prevents
-						// double-queueing if a re-entrant agent_end sneaks in.
-						// Phase 8 (H.2): send failures are NOT silently swallowed
-						// -- surface them via ui.notify so the user knows
-						// the followUp didn't land and can intervene.
-						ctx.compact({
-							onComplete: () => {
-								if (stateRef.paused) return;
-								if (stateRef.continuationQueued) return;
-								if (pendingText) {
-									stateRef.continuationQueued = true;
-									stateRef.continuationReason = `compacted:${outcome}`;
-									pi.sendUserMessage(pendingText, { deliverAs: "followUp" })
-										.catch((err) => {
-											stateRef.continuationQueued = false;
-											ctx.ui.notify(
-												`[xdd] 自动推进消息发送失败: ${err instanceof Error ? err.message : String(err)}。可能 run 卡住，需人工干预。`,
-												"error",
-											);
-										});
-								}
-							},
-							onError: () => {
-								// Compaction failed (rare -- e.g. disk full).
-								// Fall back to a followUp anyway so the run
-								// doesn't silently stall.
-								if (stateRef.paused) return;
-								if (stateRef.continuationQueued) return;
-								if (pendingText) {
-									stateRef.continuationQueued = true;
-									pi.sendUserMessage(pendingText, { deliverAs: "followUp" })
-										.catch((err) => {
-											stateRef.continuationQueued = false;
-											ctx.ui.notify(
-												`[xdd] 压缩失败后回退 followUp 发送失败: ${err instanceof Error ? err.message : String(err)}。run 可能卡住。`,
-												"error",
-											);
-										});
-								}
-							},
-						});
-						return; // followUp will be sent by onComplete / onError
-					}
-				}
-			}
-
-			// Phase 2 (B): read stageOutcome to decide what to send. No more
-			// guessing from healBudget / consecutiveStalls.
-			const stage = stateRef.currentStage();
-			if (!stage) return;
-			const outcome = stateRef.stageOutcome;
-			const stageName = stage.name;
-
-			// Decide the followUp text + whether to queue.
-			const decision = decideFollowUp(outcome, stageName, stateRef);
-			if (decision === null) return; // no followUp needed
-
-			// P26: set the lock BEFORE queuing so a re-entrant agent_end
-			// (rare but possible) will see it and bail.
-			stateRef.continuationQueued = true;
-			stateRef.continuationReason = outcome;
-			stateRef.continuationStage = stageName;
-			try {
-				await pi.sendUserMessage(decision, { deliverAs: "followUp" });
-			} catch {
-				// Send failed (e.g. session shutting down). Clear the lock
-				// so the next agent_end can retry.
-				stateRef.continuationQueued = false;
-			}
+			const adapter = new PiControllerAdapter({ pi, ctx, getState: () => stateRef });
+			await adapter.dispatch(command);
 		});
 
 		// Checkpoint detection: if pi restarts with an unfinished xdd run,
@@ -540,7 +346,7 @@ export const xddInlineExtension: InlineExtension = {
 			if (event.source !== "extension") return { action: "continue" };
 			const text = event.text ?? "";
 			// Recognize xdd continuation messages by their distinguishing
-			// prefix. (P25/P26: the prefixes are emitted by decideFollowUp().)
+			// prefix. (P25/P26: the prefixes are emitted by controller scheduler text).
 			const isXddContinuation =
 				text.startsWith("[xdd 自动推进]") ||
 				text.startsWith("[xdd] 阶段") || // stage-advance nudge (kept for legacy)

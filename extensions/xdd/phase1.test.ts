@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { STAGES } from "./stages.ts";
 import { XddRunnerState } from "./types.ts";
 import { decideFollowUp } from "./followup.ts";
+import { FakePiAdapterHarness } from "./test/pi-adapter-harness.ts";
 
 let cwd = "";
 let state: XddRunnerState;
@@ -69,9 +70,13 @@ describe("Phase 2 stageOutcome", () => {
 // ── P25: decideFollowUp returns null for terminal/transient states ─────
 
 describe("P25 decideFollowUp terminal states", () => {
-	it("advanced -> null (xdd_advance already moved planIndex)", () => {
+	it("advanced -> starts the newly advanced stage", () => {
 		state.stageOutcome = "advanced";
-		expect(decideFollowUp("advanced", "spec", state)).toBeNull();
+		const msg = decideFollowUp("advanced", "architecture", state);
+		expect(msg).toContain("已进入 architecture 阶段");
+		expect(msg).toContain("xdd_observe");
+		expect(msg).toContain("xdd_desired_state");
+		expect(msg).toContain("xdd_difference");
 	});
 
 	it("provider_error -> null (pi's built-in retry handles it)", () => {
@@ -181,25 +186,18 @@ describe("P26 continuation lock", () => {
 // ── P24: turn_end is now a no-op (no message dispatch) ─────────────────
 
 describe("P24 turn_end is a no-op", () => {
-	it("does not modify state or set continuationQueued", () => {
-		// We don't import pi here (transitive TUI dep). Instead, document
-		// the contract: the only state mutations the turn_end handler
-		// performs are none. If a future refactor adds state writes here
-		// without updating this test, it's a regression of P24.
-		//
-		// What we can verify: the handler is registered as
-		// `pi.on("turn_end", (_event) => { ... })` with no await/return.
-		// See extension.ts: turn_end is ~5 lines and has no followUp send.
-		const stageBefore = state.currentStageName();
-		// Simulate "fire" by reading the source via grep
-		// (lightweight; vitest itself doesn't import extension.ts)
-		const src = readFileSync(join(import.meta.dirname, "extension.ts"), "utf8");
-		const m = src.match(/pi\.on\("turn_end",[^)]*?\)\s*=>\s*\{([\s\S]*?)\}\);/);
-		expect(m).not.toBeNull();
-		// The body should NOT contain sendUserMessage
-		expect(m?.[1]).not.toContain("sendUserMessage");
-		expect(m?.[1]).not.toContain("followUp");
-		expect(state.currentStageName()).toBe(stageBefore);
+	it("does not modify state or dispatch followUp", async () => {
+		const adapter = new FakePiAdapterHarness();
+		try {
+			adapter.state.continuationQueued = false;
+			const stageBefore = adapter.state.currentStageName();
+			await adapter.emit("turn_end", { messages: [{ role: "assistant", stopReason: "stop" }] });
+			expect(adapter.state.currentStageName()).toBe(stageBefore);
+			expect(adapter.state.continuationQueued).toBe(false);
+			expect(adapter.sentMessages).toHaveLength(0);
+		} finally {
+			adapter.dispose();
+		}
 	});
 });
 

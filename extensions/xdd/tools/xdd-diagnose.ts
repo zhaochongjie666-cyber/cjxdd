@@ -2,6 +2,8 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { type Static, Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { isDiagnoseLayer } from "../diagnosis.ts";
+import { XddController } from "../core/controller.ts";
+import { RuntimeStore } from "../storage/runtime-store.ts";
 import type { XddDiagnose } from "../types.ts";
 import { type EmptyDetails, type GetXddState, ok } from "./index.ts";
 
@@ -36,10 +38,16 @@ export function createXddDiagnoseTool(getState: GetXddState): ToolDefinition {
 				layer: params.layer,
 				reason: String(params.reason ?? ""),
 			};
-			state.setDiagnose(diagnose);
+			const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
+			controller.dispatch({ type: "DIAGNOSE", diagnosis: diagnose });
 			const stageName = state.currentStageName();
 			if (stageName) {
-				state.recordEsgNode("finding", stageName, `diagnose: ${diagnose.layer} - ${diagnose.reason}`);
+				new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage }) => stage)).dispatch({
+					type: "RECORD_ESG",
+					nodeType: "finding",
+					stage: stageName,
+					label: `diagnose: ${diagnose.layer} - ${diagnose.reason}`,
+				});
 			}
 			return ok(`诊断记录：layer=${diagnose.layer}`);
 		},

@@ -1,6 +1,8 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { type Static, Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { XddController } from "../core/controller.ts";
+import { RuntimeStore } from "../storage/runtime-store.ts";
 import type { XddRunnerState } from "../types.ts";
 import { type EmptyDetails, type GetXddState, ok } from "./index.ts";
 import { runAIGate, formatAIGateResult } from "../aigate.ts";
@@ -19,6 +21,11 @@ const schema = Type.Object({
 
 export type XddSubmitArtifactInput = Static<typeof schema>;
 
+function dispatchToController(state: XddRunnerState, command: Parameters<XddController["dispatch"]>[0]): void {
+	const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
+	controller.dispatch(command);
+}
+
 export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefinition {
 	return {
 		name: "xdd_submit_artifact",
@@ -33,11 +40,6 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			const summary = String(params.summary ?? "");
 			const artifacts = params.artifacts ?? [];
 			const selfAttack = String(params.selfAttack ?? "");
-			// Phase 3 (C) P28: bump stageEpoch on every artifact submit. This
-			// is the signal to the context hook that a new "logical session"
-			// has begun -- any context before this point is safe to drop.
-			const attempt = state.currentAttempt(stage.name);
-			state.stageEpoch = state.makeStageEpoch(stage.name, attempt);
 			// Phase 4 (F.6): verify stage is read-only by contract. Reject
 			// any artifact write that touches source code (src/, lib/,
 			// tests/, etc.) -- the model must only write report/evidence.
@@ -92,20 +94,12 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					);
 				}
 			}
-			state.recordArtifact(stage.name, artifacts);
-			state.recordSelfAttack(stage.name, selfAttack);
-			state.recordEsgNode("review", stage.name, `self-attack: ${selfAttack.slice(0, 100)}`);
-			// Phase 2 (B): mark "working" so the agent_end scheduler knows the
-			// stage is mid-flight. The outcome will be re-written below based
-			// on gate / AIGate results.
-			state.stageOutcome = "working";
-			state.lastStageError = undefined;
+			dispatchToController(state, { type: "RECORD_ARTIFACT_REVIEW", stage: stage.name, artifacts, selfAttack });
 			const used = state.beginSelfHealAttempt(stage.name);
 			const remaining = state.remainingSelfHealBudget(stage.name);
 			const gate = await stage.gate({ cwd: state.cwd, summary, desiredState: stage.desiredState });
 			if (!gate.ok) {
-				state.stageOutcome = "hard_gate_failed";
-				state.lastStageError = gate.reason ?? "未知";
+				dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error: gate.reason ?? "未知" } });
 				if (remaining <= 0) {
 					// Layer 1: self-heal budget exhausted -- soft-pass (non-blocking).
 					// For non-verdict stages: record 'complete' so xdd_advance can
@@ -113,8 +107,8 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					// For verdict stages: do NOT soft-pass -- verify failure must go
 					// through Layer 2 (flow rollback), so keep throwing.
 					if (stage.exit !== "verdict") {
-						state.recordSignal("complete");
-						state.stageOutcome = "gate_passed"; // soft-pass = passed
+						dispatchToController(state, { type: "RECORD_SIGNAL", signal: "complete" });
+						dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
 						return ok(
 							`[soft-pass] ${stage.name} 自愈预算耗尽（${used}/${state.maxSelfHealPerStage}），软通过进下一阶段。` +
 								`\nGate: ${gate.reason ?? "未知"}（未达标但放行）` +
@@ -162,8 +156,8 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					intentAnchor,
 				});
 				if (!aiResult.passed) {
-					state.stageOutcome = "ai_gate_failed";
-					state.lastStageError = aiResult.angles.filter((a) => a.passed === false).map((a) => a.name).join(", ") || "AIGate 多角度未通过";
+					const aiError = aiResult.angles.filter((a) => a.passed === false).map((a) => a.name).join(", ") || "AIGate 多角度未通过";
+					dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error: aiError } });
 					const angleText = formatAIGateResult(aiResult);
 					const suggText = aiResult.suggestions.length > 0
 						? "\n修改建议：\n" + aiResult.suggestions.map((s, n) => `${n + 1}. ${s}`).join("\n")
@@ -201,11 +195,10 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			// so the stall counter could climb to 40+ without ever triggering the
 			// 3-turn escalation nudge.
 			state.lastSubmitAt = Date.now();
-			state.stageOutcome = "gate_passed";
-			state.lastStageError = undefined;
+			dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
 			if (stage.exit === "verdict") {
 				const pass = Boolean(params.pass);
-				state.recordSignal(pass ? "verdict_pass" : "verdict_fail");
+				dispatchToController(state, { type: "RECORD_SIGNAL", signal: pass ? "verdict_pass" : "verdict_fail" });
 				if (!pass) {
 					return ok(
 						`${stage.name} verdict: FAIL - ${summary}\n` +
@@ -218,7 +211,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					`${stage.name} verdict: pass - ${summary}\n剩余自愈预算：${remaining}/${state.maxSelfHealPerStage}${llmInfo ? "\nAIGate: 通过 ✅" : ""}`,
 				);
 			}
-			state.recordSignal("complete");
+			dispatchToController(state, { type: "RECORD_SIGNAL", signal: "complete" });
 			return ok(
 				`${stage.name} 完成${gate.soft ? "（软通过）" : ""}：${summary}\n剩余自愈预算：${remaining}/${state.maxSelfHealPerStage}${llmInfo ? "\nAIGate: 通过 ✅" : ""}`,
 			);
