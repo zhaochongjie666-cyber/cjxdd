@@ -13,9 +13,13 @@
  *
  * 失败安全：LLM 调用失败（网络/API/解析）时 soft-pass，不阻塞流水线。
  */
-import { existsSync, readFileSync, statSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { glob } from "tinyglobby";
 import type { Model } from "@earendil-works/pi-ai/compat";
+
+/** Default AIGate LLM call timeout: 60s. Configurable per call. */
+const DEFAULT_LLM_TIMEOUT_MS = 60_000;
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -364,40 +368,44 @@ function readContextFiles(cwd: string, stageName: string): string[] {
 		}
 	}
 
-	function tryReadDir(dirRel: string, pattern: RegExp): void {
+	function tryReadDir(dirRel: string, pattern: string): void {
 		const dir = join(cwd, dirRel);
 		if (!existsSync(dir)) return;
 		try {
-			for (const f of readdirSync(dir)) {
-				if (pattern.test(f)) tryRead(join(dirRel, f));
+			// tinyglobby: brace expansion + recursive via **, much safer than
+			// manual readdirSync + pattern test (which doesn't recurse and
+			// silently misses nested files like .xdd/design/spec/*/rules.md).
+			const matches = glob.sync(pattern, { cwd: dir, absolute: false, onlyFiles: true });
+			for (const rel of matches) {
+				tryRead(join(dirRel, rel));
 			}
 		} catch { /* skip */ }
 	}
 
 	switch (stageName) {
 		case "spec":
-			// Read personas for traceability attack
-			tryReadDir(".xdd/design/personas", /\.md$/);
+			// Read personas for traceability attack (recursive)
+			tryReadDir(".xdd/design/personas", "**/*.md");
 			break;
 		case "architecture":
-			// Read spec rules for consistency attack
-			tryReadDir(".xdd/design/spec", /rules\.md$/);
+			// Read spec rules for consistency attack (recursive -- spec/<bxx>/rules.md)
+			tryReadDir(".xdd/design/spec", "**/rules.md");
 			tryRead(".xdd/design/spec/_landscape.md");
 			break;
 		case "execute":
-			// Read spec rules + architecture for implementation attack
-			tryReadDir(".xdd/design/spec", /rules\.md$/);
-			tryReadDir(".xdd/design/architecture", /architecture\.md$/);
+			// Read spec rules + architecture for implementation attack (recursive)
+			tryReadDir(".xdd/design/spec", "**/rules.md");
+			tryReadDir(".xdd/design/architecture", "**/architecture.md");
 			break;
 		case "verify":
-			// Read spec + architecture + plan for consistency attack
-			tryReadDir(".xdd/design/spec", /rules\.md$/);
-			tryReadDir(".xdd/design/architecture", /architecture\.md$/);
-			tryReadDir(".xdd/design/wire", /\.md$/);
+			// Read spec + architecture + plan for consistency attack (recursive)
+			tryReadDir(".xdd/design/spec", "**/rules.md");
+			tryReadDir(".xdd/design/architecture", "**/architecture.md");
+			tryReadDir(".xdd/design/wire", "**/*.md");
 			break;
 		case "resilience":
-			// Read architecture for failure mode coverage check
-			tryReadDir(".xdd/design/architecture", /architecture\.md$/);
+			// Read architecture for failure mode coverage check (recursive)
+			tryReadDir(".xdd/design/architecture", "**/architecture.md");
 			break;
 	}
 
@@ -537,53 +545,67 @@ async function callLLM(
 	extraHeaders: Record<string, string> | undefined,
 	systemPrompt: string,
 	userMessage: string,
+	timeoutMs: number = DEFAULT_LLM_TIMEOUT_MS,
 ): Promise<string> {
 	if (!apiKey) throw new Error("无 API key（modelRegistry 未解析到凭证）");
 
 	const api = model.api;
 	const baseUrl = model.baseUrl.replace(/\/$/, "");
 
-	if (api === "anthropic-messages") {
-		const res = await fetch(`${baseUrl}/messages`, {
+	// AbortController + timeout: without this, a stuck LLM call would
+	// hang the entire xdd run forever (LLM hangs at 99%+ context are
+	// the most common stall source). 60s default is generous for AIGate
+	// attacks which are small (a few KB of context, max 4096 tokens out).
+	const ac = new AbortController();
+	const timer = setTimeout(() => ac.abort(new Error(`AIGate LLM call timeout after ${timeoutMs}ms`)), timeoutMs);
+
+	try {
+		if (api === "anthropic-messages") {
+			const res = await fetch(`${baseUrl}/messages`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					"x-api-key": apiKey,
+					"anthropic-version": "2023-06-01",
+					...(extraHeaders ?? {}),
+				},
+				body: JSON.stringify({
+					model: model.id,
+					max_tokens: 4096,
+					system: systemPrompt,
+					messages: [{ role: "user", content: userMessage }],
+				}),
+				signal: ac.signal,
+			});
+			if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${await res.text()}`);
+			const data = await res.json();
+			return data.content?.map((c: any) => c.text).join("") ?? "";
+		}
+
+		const res = await fetch(`${baseUrl}/chat/completions`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
-				"x-api-key": apiKey,
-				"anthropic-version": "2023-06-01",
+				Authorization: `Bearer ${apiKey}`,
 				...(extraHeaders ?? {}),
 			},
 			body: JSON.stringify({
 				model: model.id,
+				messages: [
+					{ role: "system", content: systemPrompt },
+					{ role: "user", content: userMessage },
+				],
+				temperature: 0,
 				max_tokens: 4096,
-				system: systemPrompt,
-				messages: [{ role: "user", content: userMessage }],
 			}),
+			signal: ac.signal,
 		});
-		if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${await res.text()}`);
+		if (!res.ok) throw new Error(`LLM API ${res.status}: ${await res.text()}`);
 		const data = await res.json();
-		return data.content?.map((c: any) => c.text).join("") ?? "";
+		return data.choices?.[0]?.message?.content ?? "";
+	} finally {
+		clearTimeout(timer);
 	}
-
-	const res = await fetch(`${baseUrl}/chat/completions`, {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			Authorization: `Bearer ${apiKey}`,
-			...(extraHeaders ?? {}),
-		},
-		body: JSON.stringify({
-			model: model.id,
-			messages: [
-				{ role: "system", content: systemPrompt },
-				{ role: "user", content: userMessage },
-			],
-			temperature: 0,
-			max_tokens: 4096,
-		}),
-	});
-	if (!res.ok) throw new Error(`LLM API ${res.status}: ${await res.text()}`);
-	const data = await res.json();
-	return data.choices?.[0]?.message?.content ?? "";
 }
 
 // ── Verdict formatting ─────────────────────────────────────────────────
