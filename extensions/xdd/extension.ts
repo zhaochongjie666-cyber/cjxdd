@@ -28,6 +28,19 @@ let stateRef: XddRunnerState | null = null;
  * is reachable (no impossible writes). Throws on the first violation
  * so the failure surfaces before any model turn starts.
  */
+
+function sendFollowUpFireAndForget(
+	pi: { sendUserMessage: (text: string, options?: unknown) => Promise<unknown> | unknown },
+	text: string,
+	onFailure: (err: unknown) => void,
+): void {
+	try {
+		void Promise.resolve(pi.sendUserMessage(text, { deliverAs: "followUp" })).catch(onFailure);
+	} catch (err) {
+		onFailure(err);
+	}
+}
+
 function validateStageContracts(state: XddRunnerState): void {
 	for (const { stage } of state.plan) {
 		if (!stage.writeScopes || stage.writeScopes.length === 0) continue;
@@ -446,14 +459,13 @@ export const xddInlineExtension: InlineExtension = {
 								if (pendingText) {
 									stateRef.continuationQueued = true;
 									stateRef.continuationReason = `compacted:${outcome}`;
-									pi.sendUserMessage(pendingText, { deliverAs: "followUp" })
-										.catch((err) => {
-											stateRef.continuationQueued = false;
-											ctx.ui.notify(
-												`[xdd] 自动推进消息发送失败: ${err instanceof Error ? err.message : String(err)}。可能 run 卡住，需人工干预。`,
-												"error",
-											);
-										});
+									sendFollowUpFireAndForget(pi, pendingText, (err) => {
+										stateRef.continuationQueued = false;
+										ctx.ui.notify(
+											`[xdd] 自动推进消息发送失败: ${err instanceof Error ? err.message : String(err)}。可能 run 卡住，需人工干预。`,
+											"error",
+										);
+									});
 								}
 							},
 							onError: () => {
@@ -464,14 +476,13 @@ export const xddInlineExtension: InlineExtension = {
 								if (stateRef.continuationQueued) return;
 								if (pendingText) {
 									stateRef.continuationQueued = true;
-									pi.sendUserMessage(pendingText, { deliverAs: "followUp" })
-										.catch((err) => {
-											stateRef.continuationQueued = false;
-											ctx.ui.notify(
-												`[xdd] 压缩失败后回退 followUp 发送失败: ${err instanceof Error ? err.message : String(err)}。run 可能卡住。`,
-												"error",
-											);
-										});
+									sendFollowUpFireAndForget(pi, pendingText, (err) => {
+										stateRef.continuationQueued = false;
+										ctx.ui.notify(
+											`[xdd] 压缩失败后回退 followUp 发送失败: ${err instanceof Error ? err.message : String(err)}。run 可能卡住。`,
+											"error",
+										);
+									});
 								}
 							},
 						});
