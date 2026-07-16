@@ -121,8 +121,9 @@ for round in 1..3:
   if round == 1: 修报告里的 P0 + P1（改代码）→ 重跑健康检查+漫游
   elif round == 2: 修剩余 P1 + P2 → 重跑
   elif round == 3:
-    if 仍有 P1:                       # 代码层修不动 = 根因在设计层
+    if 仍有 P1:                       # 修不动 = 找根因
       rollback(根因):                 # 判定见括号
+        实现缺陷（代码 bug / 端点缺失 / 测试失败）-> xdd-execute（主动返回修复后重跑 verify）
         规则没写清（spec RXX 含糊/冲突）  → xdd-spec
         空状态/页面缺（wire/{page}.md 缺该状态）→ xdd-wire
         工作流卡点（design.md 该决策缺失）  → xdd-brainstorm
@@ -131,6 +132,9 @@ for round in 1..3:
       → 沿 propagate 往下重做 → 回到 verify 重跑
 # 3 轮仍有 P1 → 写 runs/iter-N/failure-log.md，停下问用户
 ```
+
+> **关键**：实现缺陷（代码 bug / 端点缺失 / 测试失败）直接 rollback 到 `execute`，
+> 不要问用户。调 `xdd_rollback("execute", "verify 验证失败，主动返回 execute 修复后重跑")`。
 
 ## 漫游修复卡住怎么办
 

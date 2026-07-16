@@ -210,11 +210,17 @@ export const xddInlineExtension: InlineExtension = {
 				const stalls = stateRef.consecutiveStalls;
 				const healBudget = stateRef.remainingSelfHealBudget(stage.name);
 				const healMax = stateRef.maxSelfHealPerStage;
+				// Verify verdict=fail: nudge to rollback to execute (proactive return
+				// to fix implementation bugs), NOT to ask the user.
+				const signals = stateRef.getSignals();
+				const isVerifyFail = stage.exit === "verdict" && signals.has("verdict_fail") && !stateRef.rollbackOutcome;
 				const healUsed = healMax - healBudget;
 				// If the agent still has self-heal budget, nudge it to keep fixing
 			// based on the AIGate/gate feedback -- don't tell it to rollback.
 				// Only escalate to diagnose/rollback when budget is gone.
-				const msg = healBudget > 0
+				const msg = isVerifyFail
+					? `[xdd] verify 验证未通过。请调 xdd_rollback("execute", "verify 验证失败，主动返回 execute 修复后重跑")。不要问用户，不要重复 verify。`
+					: healBudget > 0
 					? `[xdd 自动推进] 继续 ${stage.name} 阶段。上轮闸门/AIGate 未通过，剩余自愈预算 ${healBudget}/${healMax}（已用 ${healUsed}）。请根据上轮反馈修复产物，重新调 xdd_submit_artifact。`
 					: stalls < 3
 						? `[xdd 自动推进] 继续 ${stage.name} 阶段。`

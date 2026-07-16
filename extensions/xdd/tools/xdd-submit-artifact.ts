@@ -176,8 +176,16 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			if (stage.exit === "verdict") {
 				const pass = Boolean(params.pass);
 				state.recordSignal(pass ? "verdict_pass" : "verdict_fail");
+				if (!pass) {
+					return ok(
+						`${stage.name} verdict: FAIL - ${summary}\n` +
+							`⚠️ 验证未通过。如果是实现缺陷（代码 bug / 端点缺失 / 测试失败），请立即调 xdd_rollback("execute", "verify 验证失败，主动返回 execute 修复后重跑")。\n` +
+							`如果是设计缺陷（规则不清 / 架构缺失 / 兜底不够），调 xdd_diagnose 诊断根因后回退到对应设计层。\n` +
+							`不要问用户 -- 实现缺陷应回 execute 修复后重跑 verify。`,
+					);
+				}
 				return ok(
-					`${stage.name} verdict: ${pass ? "pass" : "fail"} - ${summary}\n剩余自愈预算：${remaining}/${state.maxSelfHealPerStage}${llmInfo ? "\nAIGate: 通过 ✅" : ""}`,
+					`${stage.name} verdict: pass - ${summary}\n剩余自愈预算：${remaining}/${state.maxSelfHealPerStage}${llmInfo ? "\nAIGate: 通过 ✅" : ""}`,
 				);
 			}
 			state.recordSignal("complete");
