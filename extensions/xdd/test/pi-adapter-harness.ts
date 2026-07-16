@@ -24,6 +24,7 @@ export class FakePiAdapterHarness {
 	idle = true;
 	pendingMessages = false;
 	aborted = false;
+	sendUserMessageMode: "async" | "sync" = "async";
 	contextUsage: { percent: number | null } | undefined;
 	compactCalls: any[] = [];
 	model: unknown = null;
@@ -53,8 +54,10 @@ export class FakePiAdapterHarness {
 		registerEntryRenderer: (type: string, renderer: unknown) => {
 			this.registeredRenderers.push({ type, renderer });
 		},
-		sendUserMessage: async (text: string, options?: any) => {
+		sendUserMessage: (text: string, options?: any) => {
 			this.sentMessages.push({ text, options });
+			if (this.sendUserMessageMode === "async") return Promise.resolve();
+			return undefined;
 		},
 	};
 
