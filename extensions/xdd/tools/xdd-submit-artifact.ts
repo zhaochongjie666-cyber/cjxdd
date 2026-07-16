@@ -67,18 +67,12 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			// disk changes (same files, same mtime/size), refuse -- don't waste
 			// self-heal budget on identical retries. Must run BEFORE
 			// beginSelfHealAttempt so no-change retries don't consume budget.
+			// Phase 5 (E.3): expand glob patterns to all matching files first
+			// so the fingerprint reflects the actual expanded set, not the
+			// pattern literal (which statSync would silently fail on).
 			if (artifacts.length > 0) {
-				const fingerprint = artifacts
-					.map((p) => {
-						try {
-							const st = statSync(join(state.cwd, p));
-							return `${p}:${st.mtimeMs}:${st.size}`;
-						} catch {
-							return `${p}:missing`;
-						}
-					})
-					.sort()
-					.join("|");
+				const { computeArtifactFingerprint } = await import("./artifact-fingerprint.ts");
+				const fingerprint = computeArtifactFingerprint(state.cwd, artifacts);
 				const changed = state.checkAndRecordSubmitFingerprint(stage.name, fingerprint);
 				if (!changed) {
 					throw new Error(
@@ -139,6 +133,12 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 				if (existsSync(intentPath)) {
 					intentAnchor = readFileSync(intentPath, "utf8");
 				}
+				// Phase 5 (E.2): AIGate has its own budget counter, independent
+				// of the hard-Gate budget. A failed AIGate now only burns
+				// AIGate budget, leaving hard-Gate budget untouched (and vice
+				// versa).
+				const aiUsed = state.beginAiGateAttempt(stage.name);
+				const aiRemaining = state.remainingAiGateBudget(stage.name);
 				const aiResult = await runAIGate({
 					model: llmInfo.model,
 					apiKey: llmInfo.apiKey,
@@ -151,32 +151,33 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 				});
 				if (!aiResult.passed) {
 					state.stageOutcome = "ai_gate_failed";
-					state.lastStageError = aiResult.angles.filter((a) => !a.passed).map((a) => a.angle).join(", ") || "AIGate 多角度未通过";
+					state.lastStageError = aiResult.angles.filter((a) => a.passed === false).map((a) => a.name).join(", ") || "AIGate 多角度未通过";
 					const angleText = formatAIGateResult(aiResult);
 					const suggText = aiResult.suggestions.length > 0
 						? "\n修改建议：\n" + aiResult.suggestions.map((s, n) => `${n + 1}. ${s}`).join("\n")
 						: "";
-					if (remaining <= 0) {
-						// Layer 1: AIGate budget exhausted -- soft-pass for non-verdict stages.
-						if (stage.exit !== "verdict") {
-							state.recordSignal("complete");
-							return ok(
-								`[soft-pass] ${stage.name} AIGate 预算耗尽（${used}/${state.maxSelfHealPerStage}），软通过进下一阶段。` +
-									`\n${angleText}` +
-									`${suggText}` +
-									"\n（软通过模式：未达标但放行）",
-							);
+					if (aiRemaining <= 0) {
+						// Layer 1: AIGate budget exhausted -- hard-fail (E.1).
+						// Per P5 plan: "硬 Gate 永不 soft-pass; 预算耗尽 →
+						// diagnose/rollback/fail". No more soft-pass escape hatch.
+						if (stage.exit === "verdict") {
+							return {
+								content: [{ type: "text", text: `❌ [AIGate ${aiUsed}/${state.maxSelfHealPerStage}] ${stage.name} 多角度攻击未通过（自愈预算耗尽）：\n${angleText}${suggText}\n本轮提交失败。请调 xdd_diagnose 诊断根因，或 xdd_rollback 回退。` }],
+								details: {},
+								terminate: true,
+							};
 						}
-						// Layer 2: terminate the turn.
+						// Non-verdict: still hard-fail (P5 E.1); agent must
+						// diagnose/rollback rather than soft-pass.
 						return {
-							content: [{ type: "text", text: `❌ [AIGate ${used}/${state.maxSelfHealPerStage}] ${stage.name} 多角度攻击未通过（自愈预算耗尽）：\n${angleText}${suggText}\n本轮提交失败，turn 结束。请诊断并修复后重新提交。` }],
+							content: [{ type: "text", text: `❌ [AIGate ${aiUsed}/${state.maxSelfHealPerStage}] ${stage.name} 多角度攻击未通过（自愈预算耗尽）：\n${angleText}${suggText}\n本轮提交失败。请调 xdd_diagnose 诊断根因，或 xdd_rollback 回退。` }],
 							details: {},
 							terminate: true,
 						};
 					}
 					// Layer 2: AIGate failed with budget remaining -- terminate the turn.
 					return {
-						content: [{ type: "text", text: `❌ [AIGate ${used}/${state.maxSelfHealPerStage}] ${stage.name} 多角度攻击未通过：\n${angleText}${suggText}\n剩余自愈预算：${remaining}\n本轮提交失败，turn 结束。请诊断问题并修复产物，下轮重新提交。` }],
+						content: [{ type: "text", text: `❌ [AIGate ${aiUsed}/${state.maxSelfHealPerStage}] ${stage.name} 多角度攻击未通过：\n${angleText}${suggText}\n剩余 AIGate 预算：${aiRemaining}\n本轮提交失败，turn 结束。请诊断问题并修复产物，下轮重新提交。` }],
 						details: {},
 						terminate: true,
 					};

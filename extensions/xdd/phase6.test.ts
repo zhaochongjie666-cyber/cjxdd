@@ -16,7 +16,6 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { globSync } from "tinyglobby";
 import {
 	hasGlobMeta,
 	resolveGlobs,
@@ -229,14 +228,16 @@ describe("D AIGate failure semantics: parse failure hard-fails", () => {
 	});
 });
 
-// ── tinyglobby still resolves the same way (regression) ──────────────
+// ── glob-resolver still finds nested files (regression) ─────────────
 
-describe("D tinyglobby regression", () => {
-	// Sanity: our new glob-resolver uses the same tinyglobby import.
-	it("tinyglobby resolves nested files via **/*.md", () => {
+describe("D glob-resolver regression", () => {
+	// Sanity: resolveGlobs picks up files at any depth via **/*.md.
+	// Phase X: previously delegated to tinyglobby; now uses the
+	// in-house walker. This test pins the contract.
+	it("resolveGlobs finds deeply nested files via **/*.md", () => {
 		mkdirSync(join(cwd, "a/b/c"), { recursive: true });
 		writeFileSync(join(cwd, "a/b/c/deep.md"), "x");
-		const out = globSync("**/*.md", { cwd, onlyFiles: true });
+		const out = resolveGlobs(cwd, ["a/b/c/**/*.md"]);
 		expect(out).toContain("a/b/c/deep.md");
 	});
 });

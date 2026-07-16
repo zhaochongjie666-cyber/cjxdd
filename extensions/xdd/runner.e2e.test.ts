@@ -109,6 +109,14 @@ describe("XddRunner end-to-end", () => {
 	it("runs all 10 stages to completion with every gate passing", async () => {
 		const cwd = mkdtempSync(join(tmpdir(), "xdd-e2e-"));
 		try {
+			// Phase 5 (E.6): requireTestsPass and the new runBuild now run
+			// real commands. The E2E fixture must provide a passing test
+			// command so Gate 3 / verify's tests actually run.
+			writeFileSync(join(cwd, "package.json"), JSON.stringify({
+				name: "xdd-e2e",
+				version: "0.0.0",
+				scripts: { test: "echo ok", build: "echo ok" },
+			}));
 			const state = new XddRunnerState({ runId: "e2e", cwd, userInput: "build me a tiny auth service" });
 			const toolsArray = createXddTools(() => state);
 			const tools = new Map(toolsArray.map((t) => [t.name, t]));

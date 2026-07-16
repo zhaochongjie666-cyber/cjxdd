@@ -6,9 +6,9 @@ import type { XddStageName } from "../types.ts";
 import type { EmptyDetails, GetXddState } from "./index.ts";
 
 const schema = Type.Object({
-	targetStage: Type.String({
-		description: "回退目标阶段名（须早于当前阶段且在执行计划内）",
-	}),
+	targetStage: Type.Optional(Type.String({
+		description: "回退目标阶段名（须早于当前阶段且在执行计划内）。可选：不传则按当前阶段默认（verify→execute、execute/cleanup/plan→execute、resilience/architecture/wire→architecture、spec→spec、其它→understand）",
+	})),
 	reason: Type.String({ description: "回退根因（具体、可操作）" }),
 });
 
@@ -35,10 +35,31 @@ export function createXddRollbackTool(getState: GetXddState): ToolDefinition {
 			if (!from) {
 				throw new Error("[xdd_rollback] 无活跃阶段");
 			}
-			if (!isStageName(params.targetStage)) {
-				throw new Error(`[xdd_rollback] 未知阶段名: ${params.targetStage}`);
+			// Phase 5 (E.5): default the rollback target based on the current
+			// stage. Verify -> execute is the most common pattern (the
+			// spec/architecture was correct; it's the implementation that's
+			// wrong). The agent can still override with an explicit
+			// targetStage if they need a different destination.
+			let target: XddStageName;
+			if (params.targetStage) {
+				if (!isStageName(params.targetStage)) {
+					throw new Error(`[xdd_rollback] 未知阶段名: ${params.targetStage}`);
+				}
+				target = params.targetStage as XddStageName;
+			} else {
+				// Default by current stage
+				if (from === "verify") {
+					target = "execute";
+				} else if (from === "execute" || from === "cleanup" || from === "plan") {
+					target = "execute";
+				} else if (from === "resilience" || from === "architecture" || from === "wire") {
+					target = "architecture";
+				} else if (from === "spec") {
+					target = "spec";
+				} else {
+					target = "understand";
+				}
 			}
-			const target = params.targetStage as XddStageName;
 			// Enforce the attempt cap BEFORE mutating any state.
 			if (state.currentAttempt(target) >= state.maxRollbacksPerStage) {
 				throw new Error(`[xdd_rollback] ${target} 已达回退上限 ${state.maxRollbacksPerStage}，无法再次回退`);

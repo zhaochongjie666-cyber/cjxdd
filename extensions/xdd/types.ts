@@ -295,6 +295,27 @@ export class XddRunnerState {
 	// P29: track when compaction last fired (for telemetry + dedup).
 	get lastCompactionAt(): number { return this.loadRt().lastCompactionAt ?? 0; }
 	set lastCompactionAt(v: number) { this.mutRt("lastCompactionAt", v); }
+	// Phase 5 (E.2): AIGate budget, independent of hard-Gate budget.
+	get aiGateUsed(): Record<string, number> { return this.loadRt().aiGateUsed ?? {}; }
+	aiGateUsedFor(stage: XddStageName): number { return this.aiGateUsed[stage] ?? 0; }
+	beginAiGateAttempt(stage: XddStageName): number {
+		const rt = this.loadRt();
+		const used = rt.aiGateUsed?.[stage] ?? 0;
+		const next = used + 1;
+		if (!rt.aiGateUsed) rt.aiGateUsed = {};
+		rt.aiGateUsed[stage] = next;
+		this.saveRt(rt);
+		return next;
+	}
+	remainingAiGateBudget(stage: XddStageName): number {
+		return Math.max(0, (this.loadRt().maxSelfHealPerStage ?? 5) - this.aiGateUsedFor(stage));
+	}
+	resetAiGateBudget(stage: XddStageName): void {
+		const rt = this.loadRt();
+		if (!rt.aiGateUsed) rt.aiGateUsed = {};
+		rt.aiGateUsed[stage] = 0;
+		this.saveRt(rt);
+	}
 	// ── Phase 0 (P20-23): stop-message storm prevention ──────────────────
 	// `paused` is the SINGLE source of truth for "run is paused". When true,
 	// agent_end / turn_end / auto-continue paths MUST be silent. `stopRequested`
@@ -368,6 +389,7 @@ export class XddRunnerState {
 	}
 
 	// ── Self-heal budget ─────────────────────────────────────────────────
+	// Phase 5 (E.2): split hard-Gate attempts from AIGate attempts.
 	beginSelfHealAttempt(stage: XddStageName): number {
 		const rt = this.loadRt();
 		const used = rt.selfHealUsed[stage] ?? 0;
@@ -384,6 +406,11 @@ export class XddRunnerState {
 	resetSelfHealBudget(stage: XddStageName): void {
 		const rt = this.loadRt();
 		rt.selfHealUsed[stage] = 0;
+		// Phase 5 (E.2): also reset the AIGate budget when we re-enter
+		// the stage. Otherwise rolling back to a stage would leave the
+		// AIGate budget from the prior visit, making the second visit
+		// artificially constrained.
+		if (rt.aiGateUsed) rt.aiGateUsed[stage] = 0;
 		if (rt.lastSubmitFingerprint) delete rt.lastSubmitFingerprint[stage];
 		this.saveRt(rt);
 	}
@@ -667,6 +694,8 @@ export interface XddCheckpointData {
 	stageEpoch?: string;
 	// Phase 3 (C) P29: compaction telemetry
 	lastCompactionAt?: number;
+	// Phase 5 (E.2): AIGate attempts (independent of hard-Gate)
+	aiGateUsed?: Record<string, number>;
 }
 
 /**
@@ -725,6 +754,7 @@ function defaultRt(runId: string = ""): XddCheckpointData {
 		// `?:0` segment is a sentinel meaning "no real stage yet";
 		// the context hook (sliceByEpoch) treats it as passthrough.
 		stageEpoch: runId ? `${runId}:?:0` : "", lastCompactionAt: 0,
+		aiGateUsed: {},
 	};
 }
 

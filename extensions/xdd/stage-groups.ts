@@ -1,4 +1,4 @@
-import { gitHasChanges, requireGlobs, requireGlobsWithMinSize } from "./gate.ts";
+import { gitHasChanges, requireGlobs, requireGlobsWithMinSize, requireTestsPass, runBuild } from "./gate.ts";
 import type { XddStageGroup, XddStageName } from "./types.ts";
 
 /**
@@ -58,6 +58,16 @@ export const STAGE_GROUPS: readonly XddStageGroup[] = [
 			if (!planOk.ok) return { ok: false, reason: "Gate 3: 缺少 plan.md 产物" };
 			const changesOk = await gitHasChanges(cwd);
 			if (!changesOk.ok) return { ok: false, reason: "Gate 3: 无实现代码改动" };
+			// Phase 5 (E.6): Gate 3's label is "构建与单测全部通过" -- live up
+			// to it. Run build + tests, fail if either fails. Lint is optional
+			// (only run if a lint script exists in package.json, to avoid
+			// forcing projects without linters to add one).
+			const buildResult = await runBuild(cwd);
+			if (!buildResult.ok) return buildResult;
+			const testResult = await requireTestsPass(cwd);
+			if (!testResult.ok) {
+				return { ok: false, reason: `Gate 3: 单测未通过 -- ${testResult.reason ?? "未知"}` };
+			}
 			return { ok: true };
 		},
 		rollbackTarget: "plan",

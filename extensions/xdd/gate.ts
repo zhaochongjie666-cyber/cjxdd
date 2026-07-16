@@ -12,6 +12,41 @@ export function softPass(): XddGateResult {
 	return { ok: true, soft: true };
 }
 
+/**
+ * Phase 5 (E.6): run the project's build command. Auto-detects npm
+ * "build" script, go build, make. Hard-fails on no command or failure.
+ * Optional (skipped) when the project has no build command.
+ */
+export async function runBuild(cwd: string): Promise<XddGateResult> {
+	let cmd: string[] | null = null;
+	if (existsSync(join(cwd, "package.json"))) {
+		try {
+			const pkg = JSON.parse(readFileSync(join(cwd, "package.json"), "utf8"));
+			if (pkg.scripts?.build) cmd = ["npm", "run", "build"];
+		} catch { /* parse error -- fall through to next detector */ }
+	}
+	if (!cmd && existsSync(join(cwd, "go.mod"))) cmd = ["go", "build", "./..."];
+	if (!cmd && existsSync(join(cwd, "Makefile"))) cmd = ["make", "build"];
+	if (!cmd) return { ok: true };
+	try {
+		await execFileAsync(cmd[0], cmd.slice(1), {
+			cwd,
+			timeout: 180_000,
+			maxBuffer: 1024 * 1024,
+			env: { ...process.env, CI: "true" },
+		});
+		return { ok: true };
+	} catch (e) {
+		const err = e as { code?: number; stderr?: string | Buffer; stdout?: string | Buffer };
+		const stderr = (err.stderr ?? "").toString().slice(0, 800);
+		return {
+			ok: false,
+			reason: `构建命令 ${cmd.join(" ")} 失败（退出码 ${err.code ?? "?"}）${stderr ? "\n" + stderr : ""}`,
+		};
+	}
+	return { ok: true, soft: true };
+}
+
 export function hasGlobMeta(pattern: string): boolean {
 	return /[*?]/.test(pattern);
 }
@@ -208,7 +243,14 @@ export async function requireTestsPass(cwd: string): Promise<XddGateResult> {
 	if (existsSync(join(cwd, "package.json"))) cmd = ["npm", "test"];
 	else if (existsSync(join(cwd, "go.mod"))) cmd = ["go", "test", "./..."];
 	else if (existsSync(join(cwd, "Makefile"))) cmd = ["make", "test"];
-	if (!cmd) return { ok: true, soft: true };
+	// Phase 5 (E.1): hard gate NEVER soft-passes. If no test command is
+	// detectable, the gate fails with a clear reason -- the self-heal
+	// budget will then burn down and the run will eventually fail or
+	// rollback. This is the right failure mode: a project with no tests
+	// is a project that hasn't been bootstrapped (run /xdd init first).
+	if (!cmd) {
+		return { ok: false, reason: "未检测到测试命令（需 package.json/npm test、go.mod/go test、Makefile/make test 之一）。请先在 init 阶段创建项目骨架。" };
+	}
 	try {
 		await execFileAsync(cmd[0], cmd.slice(1), {
 			cwd,

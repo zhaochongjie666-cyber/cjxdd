@@ -44,11 +44,25 @@ export function createXddAdvanceTool(getState: GetXddState): ToolDefinition {
 					if (!groupGate.ok) {
 						state.clearSignals();
 						state.flowRollbackCount++; // Layer 2: group gate fail -> flow rollback
+						// Phase 5 (E.4): atomically call goToStageName so the
+						// rollback lands even if the agent never calls
+						// xdd_rollback. We mark superseded ledger entries,
+						// move planIndex, and stamp the new epoch -- all in one
+						// step. The rollbackOutcome is also recorded for
+						// downstream audit/notify.
+						const from = stage.name;
+						const to = group.rollbackTarget;
+						const moved = state.goToStageName(to);
+						if (moved.ok) {
+							state.markSuperseded(moved.originalIndex);
+						}
 						state.rollbackOutcome = {
-							from: stage.name,
-							to: group.rollbackTarget,
+							from,
+							to,
 							reason: `${group.gateLabel} 未通过：${groupGate.reason ?? "未知"}`,
 						};
+						state.stageOutcome = "advanced"; // post-rollback, the new stage starts fresh
+						state.stageEpoch = state.makeStageEpoch(to, state.currentAttempt(to));
 						return ok(
 							`[xdd_advance] 组级 ${group.gateLabel} 未通过，强制回退 ${stage.name} -> ${group.rollbackTarget}：${groupGate.reason ?? "未知"}`,
 						);

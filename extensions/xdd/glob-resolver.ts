@@ -17,9 +17,9 @@
  * Phase X (zero-dep refactor): the original implementation used
  * `tinyglobby` for glob expansion. tinyglobby is no longer a runtime
  * dep of this plugin -- we now do the recursion ourselves with
- * `node:fs` only. The pattern set we actually use is small (mostly
- * `**/*.md`), so a hand-rolled walker + RegExp is simpler, smaller,
- * and removes a transitive-install surface.
+ * node fs only. The pattern set we actually use is small (mostly
+ * recursive star-dot-md), so a hand-rolled walker + RegExp is
+ * simpler, smaller, and removes a transitive-install surface.
  */
 import { existsSync, readFileSync, readdirSync, type Stats, statSync } from "node:fs";
 import { realpathSync } from "node:fs";
@@ -54,7 +54,7 @@ export interface ResolvedFile {
 }
 
 /** True when the pattern contains glob metacharacters.
- *  Recognizes *, ?, [, ], { -- the standard set tinyglobby/glob handle.
+ *  Recognizes *, ?, [, ], { -- the standard set that tinyglobby/glob handle.
  *  Square-bracket classes are uncommon in xdd patterns but cheap to detect. */
 export function hasGlobMeta(pattern: string): boolean {
 	return /[*?[\]{}]/.test(pattern);
@@ -62,9 +62,9 @@ export function hasGlobMeta(pattern: string): boolean {
 
 /** Convert a glob pattern into a RegExp anchored to the whole path.
  *  Supports the subset the plugin actually uses:
- *    - `**`     zero or more complete path segments
- *    - `*`      zero or more chars within a single segment
- *    - `?`      exactly one char within a single segment
+ *    - double-star   zero or more complete path segments
+ *    - single-star   zero or more chars within a single segment
+ *    - question-mark exactly one char within a single segment
  *    - everything else is taken literally
  *  Brace expansion / extglob are intentionally NOT supported -- if a
  *  future caller needs them, swap to minimatch or add support here.
@@ -144,7 +144,7 @@ export function resolveGlobs(cwd: string, patterns: readonly string[]): string[]
 		}
 		// Glob: walk the tree once, filter via RegExp. We walk from cwd
 		// (not from the pattern's directory prefix) so that anchored
-		// patterns like `.xdd/**/*.md` keep their prefix semantics.
+		// patterns like .xdd recursive star-dot-md keep their prefix semantics.
 		const reg = globToRegExp(pattern);
 		for (const rel of walkRel(cwd)) {
 			const normalized = rel.replace(/\\/g, "/");
