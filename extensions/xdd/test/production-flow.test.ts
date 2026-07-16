@@ -114,14 +114,17 @@ describe("production pi adapter lifecycle", () => {
 		expect(diffText).toContain(failure!.code);
 		expect(diffText).toContain(failure!.message);
 
-		const submitText = toolText(await submit!.execute("submit-call", {
+		const submitResult = await submit!.execute("submit-call", {
 			summary: "verify trace gap fixture",
 			artifacts: [],
 			selfAttack: "checked trace consistency and found the expected gap",
 			pass: false,
-		}));
+		});
+		const submitText = toolText(submitResult);
 		expect(submitText).toContain(failure!.code);
 		expect(submitText).toContain(failure!.message);
+		expect(submitText).toContain("本 turn 继续");
+		expect(submitResult.terminate).toBeUndefined();
 		expect(harness.state.lastStageError ?? "").toContain(failure!.code);
 		expect(harness.state.lastStageError ?? "").toContain(failure!.message);
 

@@ -148,6 +148,18 @@ describe("AIGate retry loop", () => {
 	});
 });
 
+describe("Hard Gate retry loop", () => {
+	it("hard Gate failure with remaining budget keeps the current turn alive", () => {
+		const submitSrc = readFileSync(join(SRC_DIR, "tools", "xdd-submit-artifact.ts"), "utf8");
+		const keepAliveBlock = submitSrc.slice(
+			submitSrc.indexOf("Layer 2: gate failed with budget remaining"),
+			submitSrc.indexOf("// --- AIGate"),
+		);
+		expect(keepAliveBlock).toContain("本轮提交失败，但本 turn 继续");
+		expect(keepAliveBlock).not.toContain("terminate: true");
+	});
+});
+
 describe("Compat: backward-compatible stage fields preserved", () => {
 	it("XddStageSpec still has all 8 original fields", () => {
 		const typesSrc = readFileSync(join(SRC_DIR, "types.ts"), "utf8");
