@@ -33,6 +33,11 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			const summary = String(params.summary ?? "");
 			const artifacts = params.artifacts ?? [];
 			const selfAttack = String(params.selfAttack ?? "");
+			// Phase 3 (C) P28: bump stageEpoch on every artifact submit. This
+			// is the signal to the context hook that a new "logical session"
+			// has begun -- any context before this point is safe to drop.
+			const attempt = state.currentAttempt(stage.name);
+			state.stageEpoch = state.makeStageEpoch(stage.name, attempt);
 			if (selfAttack.trim().length < 20) {
 				throw new Error(
 					`[xdd_submit_artifact] selfAttack 过短（${selfAttack.trim().length} 字符）：必须记录具体检查了哪些反例/风险/边界及结论（至少 20 字符）`,

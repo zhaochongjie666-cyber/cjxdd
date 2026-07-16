@@ -49,6 +49,9 @@ export function createXddRollbackTool(getState: GetXddState): ToolDefinition {
 			}
 			state.markSuperseded(moved.originalIndex);
 			state.rollbackOutcome = { from, to: target, reason: String(params.reason ?? "") };
+			// Phase 3 (C) P28: stamp the rolled-back-to target's epoch so the
+			// context hook knows to slice on the next before_agent_start.
+			state.stageEpoch = state.makeStageEpoch(target, state.currentAttempt(target));
 			// Phase 2 (B): record outcome so agent_end can see "this stage is
 			// now failed; the next stage starts fresh". Don't keep the old
 			// gate_passed/hard_gate_failed -- those describe the *current*

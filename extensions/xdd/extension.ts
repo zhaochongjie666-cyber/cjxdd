@@ -10,6 +10,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, basename } from "node:path";
 import type { XddRunnerState, XddStageSpec } from "./types.ts";
 import { decideFollowUp } from "./followup.ts";
+import { sliceByEpoch, EPOCH_MARKER_PREFIX } from "./epoch-slicer.ts";
 
 /**
  * Module-level shared state. The InlineExtension factory registers tools and
@@ -193,23 +194,39 @@ export const xddInlineExtension: InlineExtension = {
 		});
 
 		// Fresh per-stage system prompt. Group gates auto-advance (no human pause).
+		// Phase 3 (C) P28: also inject the current stageEpoch marker so the
+		// context hook (and the model itself) can identify which messages
+		// belong to the current stage. The marker is a special user message
+		// that pi sees as a normal user turn but the slicer recognizes by
+		// its EPOCH_MARKER_PREFIX.
 		pi.on("before_agent_start", async (_event, ctx) => {
 			// Capture model + modelRegistry for AIGate LLM calls.
 			setLLMRef(ctx.model ?? null, ctx.modelRegistry ?? null);
 			if (!stateRef) return undefined;
 			const systemPrompt = buildActiveStageSystemPrompt(stateRef);
-			return systemPrompt === undefined ? undefined : { systemPrompt };
+			const epoch = stateRef.stageEpoch;
+			// Inject a user message with the epoch marker so the context
+			// hook can find it on the next compaction. We append to the
+			// system prompt instead of sending a separate user message --
+			// a user message would change the conversation flow; the marker
+			// is a system-only annotation.
+			const finalPrompt = systemPrompt
+				? `${systemPrompt}\n\n${EPOCH_MARKER_PREFIX} ${epoch}`
+				: undefined;
+			return finalPrompt === undefined ? undefined : { systemPrompt: finalPrompt };
 		});
 
-		// Fresh per-stage context: drop messages before the stage boundary.
-		// During reflection this keeps the failed stage's own context (seed +
-		// assistant + tool results), which is exactly what the model needs to
-		// diagnose — instead of the entire run transcript.
+		// Fresh per-stage context: drop messages before the stage epoch.
+		// Phase 3 (C) P28: replaced the numeric boundary (which broke
+		// under compaction because message indices shift) with a string
+		// stageEpoch marker. The slicer finds the marker in the message
+		// stream and keeps only messages from that point forward, plus
+		// the most recent compaction summary if it postdates the marker.
 		pi.on("context", async (event) => {
 			if (!stateRef) return undefined;
-			const start = Math.min(stateRef.boundary, event.messages.length);
-			if (start <= 0) return undefined;
-			return { messages: event.messages.slice(start) };
+			const sliced = sliceByEpoch(event.messages, stateRef.stageEpoch);
+			if (sliced === event.messages) return undefined;
+			return { messages: sliced };
 		});
 
 		// Auto-continue: when the agent finishes a turn and the run is still
@@ -284,6 +301,56 @@ export const xddInlineExtension: InlineExtension = {
 			// another followUp is already pending or one was just queued.
 			if (stateRef.continuationQueued) return;
 			if (typeof ctx.hasPendingMessages === "function" && ctx.hasPendingMessages()) return;
+
+			// Phase 3 (C) P29: proactive compaction at >= 70% context usage.
+			// Below threshold -> queue followUp directly.
+			// At/above threshold -> trigger compaction; on completion, queue
+			// the followUp. The followUp text is computed up-front so the
+			// decision is stable across the async gap.
+			const usage = typeof ctx.getContextUsage === "function" ? ctx.getContextUsage() : undefined;
+			if (usage && usage.percent !== null && usage.percent >= 0.7) {
+				if (stateRef.lastCompactionAt && Date.now() - stateRef.lastCompactionAt < 30_000) {
+					// Already compacted within the last 30s; don't loop.
+					// Fall through to normal followUp dispatch.
+				} else {
+					stateRef.lastCompactionAt = Date.now();
+					if (typeof ctx.compact === "function") {
+						// Compute the followUp text NOW (before the async
+						// gap) so the decision is stable.
+						const stage = stateRef.currentStage();
+						const outcome = stateRef.stageOutcome;
+						const pendingText = stage ? decideFollowUp(outcome, stage.name, stateRef) : null;
+						// onComplete / onError are sync (() => void). Fire-and-
+						// forget the sendUserMessage; the P26 lock prevents
+						// double-queueing if a re-entrant agent_end sneaks in.
+						ctx.compact({
+							onComplete: () => {
+								if (stateRef.paused) return;
+								if (stateRef.continuationQueued) return;
+								if (pendingText) {
+									stateRef.continuationQueued = true;
+									stateRef.continuationReason = `compacted:${outcome}`;
+									pi.sendUserMessage(pendingText, { deliverAs: "followUp" })
+										.catch(() => { stateRef.continuationQueued = false; });
+								}
+							},
+							onError: () => {
+								// Compaction failed (rare -- e.g. disk full).
+								// Fall back to a followUp anyway so the run
+								// doesn't silently stall.
+								if (stateRef.paused) return;
+								if (stateRef.continuationQueued) return;
+								if (pendingText) {
+									stateRef.continuationQueued = true;
+									pi.sendUserMessage(pendingText, { deliverAs: "followUp" })
+										.catch(() => { stateRef.continuationQueued = false; });
+								}
+							},
+						});
+						return; // followUp will be sent by onComplete / onError
+					}
+				}
+			}
 
 			// Phase 2 (B): read stageOutcome to decide what to send. No more
 			// guessing from healBudget / consecutiveStalls.

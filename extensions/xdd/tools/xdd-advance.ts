@@ -68,6 +68,11 @@ export function createXddAdvanceTool(getState: GetXddState): ToolDefinition {
 			// long without the new stage going "working".
 			state.stageOutcome = "advanced";
 			state.lastStageError = undefined;
+			// Phase 3 (C) P28: stamp the new stage's epoch so the context
+			// hook knows to slice on the next before_agent_start.
+			if (next) {
+				state.stageEpoch = state.makeStageEpoch(next.name, state.currentAttempt(next.name));
+			}
 			// Sync identity fields (runId/cwd/plan) into the runtime file.
 			// Don't call removeCheckpoint here -- with file-first state, deleting
 			// runtime.json resets runComplete to false (from defaults), causing

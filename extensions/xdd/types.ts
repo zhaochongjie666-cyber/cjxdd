@@ -206,10 +206,10 @@ export class XddRunnerState {
 		for (const name of ["runtime.json", "checkpoint.json"] as const) {
 			const p = join(this.cwd, ".xdd", name);
 			if (existsSync(p)) {
-				try { return { ...defaultRt(), ...JSON.parse(readFileSync(p, "utf8")) }; } catch { /* fall through */ }
+				try { return { ...defaultRt(this.runId), ...JSON.parse(readFileSync(p, "utf8")) }; } catch { /* fall through */ }
 			}
 		}
-		return defaultRt();
+		return defaultRt(this.runId);
 	}
 
 	private saveRt(data: XddCheckpointData): void {
@@ -281,6 +281,20 @@ export class XddRunnerState {
 	set continuationReason(v: string | undefined) { this.mutRt("continuationReason", v ?? null); }
 	get continuationStage(): XddStageName | undefined { return this.loadRt().continuationStage ?? undefined; }
 	set continuationStage(v: XddStageName | undefined) { this.mutRt("continuationStage", v ?? null); }
+	// Phase 3 (C) P28: stageEpoch replaces the numeric boundary. Format is
+	// "runId:stage:attempt". A new value means "context must be sliced here":
+	// the context hook keeps only messages AFTER the latest epoch marker (or
+	// the most recent compaction summary, whichever is more recent). Stable
+	// across compaction because it's a string, not a numeric index.
+	get stageEpoch(): string { return this.loadRt().stageEpoch ?? `${this.runId}:?:0`; }
+	set stageEpoch(v: string) { this.mutRt("stageEpoch", v); }
+	// Helper: build the epoch string for a stage+attempt pair.
+	makeStageEpoch(stage: XddStageName, attempt: number): string {
+		return `${this.runId}:${stage}:${attempt}`;
+	}
+	// P29: track when compaction last fired (for telemetry + dedup).
+	get lastCompactionAt(): number { return this.loadRt().lastCompactionAt ?? 0; }
+	set lastCompactionAt(v: number) { this.mutRt("lastCompactionAt", v); }
 	// ── Phase 0 (P20-23): stop-message storm prevention ──────────────────
 	// `paused` is the SINGLE source of truth for "run is paused". When true,
 	// agent_end / turn_end / auto-continue paths MUST be silent. `stopRequested`
@@ -457,11 +471,11 @@ export class XddRunnerState {
 	}
 	static fromCheckpoint(data: XddCheckpointData): XddRunnerState {
 		const state = new XddRunnerState({ runId: data.runId, cwd: data.cwd, userInput: data.userInput });
-		state.saveRt({ ...defaultRt(), ...data });
+		state.saveRt({ ...defaultRt(data.runId), ...data });
 		return state;
 	}
 	restoreFromCheckpoint(data: XddCheckpointData): void {
-		this.saveRt({ ...defaultRt(), ...data });
+		this.saveRt({ ...defaultRt(this.runId), ...data });
 	}
 }
 
@@ -649,6 +663,10 @@ export interface XddCheckpointData {
 	lastStageError?: string;
 	continuationReason?: string;
 	continuationStage?: XddStageName;
+	// Phase 3 (C) P28: stageEpoch replaces numeric boundary
+	stageEpoch?: string;
+	// Phase 3 (C) P29: compaction telemetry
+	lastCompactionAt?: number;
 }
 
 /**
@@ -681,7 +699,7 @@ export type XddStageOutcome =
 	| "failed";
 
 /** Default runtime data for a fresh run. */
-function defaultRt(): XddCheckpointData {
+function defaultRt(runId: string = ""): XddCheckpointData {
 	return {
 		runId: "", userInput: "", cwd: "",
 		planIndex: -1, plan: [], mode: "stage",
@@ -703,6 +721,10 @@ function defaultRt(): XddCheckpointData {
 		continuationEpoch: 0, continuationQueued: false,
 		stageOutcome: "idle", lastStageError: null,
 		continuationReason: null, continuationStage: null,
+		// P28: default epoch is the placeholder "runId:?:0". The
+		// `?:0` segment is a sentinel meaning "no real stage yet";
+		// the context hook (sliceByEpoch) treats it as passthrough.
+		stageEpoch: runId ? `${runId}:?:0` : "", lastCompactionAt: 0,
 	};
 }
 
