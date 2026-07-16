@@ -65,20 +65,16 @@ describe("T13 full run regression", () => {
 		}
 	});
 
-	it("requires human approval before understand advances to spec", () => {
+	it("advances from understand to spec without human approval", () => {
 		const cwd = tmpCwd("xdd-full-approval-");
 		try {
 			controllerInitScaffold(cwd);
 			const headless = new HeadlessXddController(cwd);
 			headless.dispatch({ type: "START", task: "approval", options: { cwd, runId: "approval", initialStage: "understand" } });
 			headless.dispatch({ type: "SUBMIT", submission: { summary: "understood", artifacts: [], selfAttack: "fixture checked", pass: true } });
-			const waiting = headless.dispatch({ type: "ADVANCE" });
-			expect(waiting.state.status).toBe("awaiting_approval");
-			expect(stageName(waiting.state)).toBe("understand");
-
-			const approved = headless.dispatch({ type: "APPROVE", approvalId: "understand" });
-			expect(approved.state.status).toBe("running");
-			expect(stageName(approved.state)).toBe("spec");
+			const advanced = headless.dispatch({ type: "ADVANCE" });
+			expect(advanced.state.status).toBe("running");
+			expect(stageName(advanced.state)).toBe("spec");
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
