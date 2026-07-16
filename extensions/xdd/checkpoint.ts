@@ -1,48 +1,32 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, unlinkSync } from "node:fs";
 import type { XddCheckpointData, XddRunnerState, XddStatus } from "./types.ts";
-
-const DIR = ".xdd";
-const RT_FILE = "runtime.json";
-const OLD_FILE = "checkpoint.json";
-
-function rtPath(cwd: string): string { return join(cwd, DIR, RT_FILE); }
-function oldPath(cwd: string): string { return join(cwd, DIR, OLD_FILE); }
+import { RuntimeStore } from "./storage/runtime-store.ts";
 
 /**
- * Write checkpoint. With file-first state, the runtime.json is kept current
- * by every state mutation; this call just syncs `status` and `rollbackCount`
- * (runner-owned fields that aren't mutated through state setters) and writes
- * a snapshot to runtime.json.
+ * Write checkpoint. With file-first state, runtime.json is kept current by
+ * state mutations; this facade now delegates persistence to RuntimeStore so
+ * writes are schema-stamped and atomic.
  */
 export function writeCheckpoint(state: XddRunnerState, status: XddStatus, rollbackCount: number): void {
-	state.toCheckpoint(status, rollbackCount); // saves to runtime.json internally
+	const data = state.toCheckpoint(status, rollbackCount);
+	new RuntimeStore(state.cwd).save(data);
 }
 
 /**
- * Read the runtime state file. Tries runtime.json first, falls back to the
- * legacy checkpoint.json for runs started before the file-first refactor.
- * Returns undefined for completed runs (runComplete=true) so the
- * session_start handler doesn't offer to resume a finished run.
+ * Read the runtime state file. RuntimeStore prefers runtime.json, falls back to
+ * legacy checkpoint.json, migrates v1/no-version runtime to v2, and rejects
+ * unsupported future schema versions.
  */
 export function readCheckpoint(cwd: string): XddCheckpointData | undefined {
-	for (const p of [rtPath(cwd), oldPath(cwd)]) {
-		if (existsSync(p)) {
-			const raw = readFileSync(p, "utf8");
-			if (!raw.trim()) return undefined;
-			try {
-				const data = JSON.parse(raw) as XddCheckpointData;
-				if (data.runComplete) return undefined;
-				return data;
-			} catch { return undefined; }
-		}
-	}
-	return undefined;
+	const data = new RuntimeStore(cwd).load();
+	if (!data || data.runComplete) return undefined;
+	return data;
 }
 
-/** Remove the runtime state file (run completed successfully). */
+/** Remove runtime files (run completed successfully). */
 export function removeCheckpoint(cwd: string): void {
-	for (const p of [rtPath(cwd), oldPath(cwd)]) {
+	const store = new RuntimeStore(cwd);
+	for (const p of [store.runtimePath, store.legacyCheckpointPath]) {
 		if (existsSync(p)) {
 			try { unlinkSync(p); } catch { /* ignore */ }
 		}

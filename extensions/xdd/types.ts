@@ -1,6 +1,5 @@
 import type { Skill } from "@earendil-works/pi-coding-agent";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { RuntimeStore } from "./storage/runtime-store.ts";
 
 /** The 10 xdd software-development stages, in execution order. */
 export type XddStageName =
@@ -257,23 +256,12 @@ export class XddRunnerState {
 	}
 
 	// ── File I/O ─────────────────────────────────────────────────────────
-	private get rtPath(): string { return join(this.cwd, ".xdd", "runtime.json"); }
-
 	private loadRt(): XddCheckpointData {
-		for (const name of ["runtime.json", "checkpoint.json"] as const) {
-			const p = join(this.cwd, ".xdd", name);
-			if (existsSync(p)) {
-				try { return { ...defaultRt(this.runId), ...JSON.parse(readFileSync(p, "utf8")) }; } catch { /* fall through */ }
-			}
-		}
-		return defaultRt(this.runId);
+		return new RuntimeStore(this.cwd).load(defaultRt(this.runId)) ?? defaultRt(this.runId);
 	}
 
 	private saveRt(data: XddCheckpointData): void {
-		const dir = join(this.cwd, ".xdd");
-		mkdirSync(dir, { recursive: true });
-		data.at = new Date().toISOString();
-		writeFileSync(join(dir, "runtime.json"), JSON.stringify(data, null, 2), "utf8");
+		new RuntimeStore(this.cwd).save(data);
 	}
 
 	private mutRt<K extends keyof XddCheckpointData>(key: K, value: XddCheckpointData[K]): void {
@@ -570,7 +558,6 @@ export class XddRunnerState {
 		rt.plan = this.plan.map((e) => ({ stageName: e.stage.name, originalIndex: e.originalIndex }));
 		rt.status = status;
 		rt.rollbackCount = rollbackCount;
-		this.saveRt(rt);
 		return rt;
 	}
 	static fromCheckpoint(data: XddCheckpointData): XddRunnerState {
@@ -720,6 +707,7 @@ export interface XddStageGroup {
 // ============================================================================
 
 export interface XddCheckpointData {
+	schemaVersion?: number;
 	runId: string;
 	userInput: string;
 	cwd: string;
@@ -807,6 +795,7 @@ export type XddStageOutcome =
 /** Default runtime data for a fresh run. */
 function defaultRt(runId: string = ""): XddCheckpointData {
 	return {
+		schemaVersion: 2,
 		runId: "", userInput: "", cwd: "",
 		planIndex: -1, plan: [], mode: "stage",
 		ledger: [], attempts: {}, selfHealUsed: {},
