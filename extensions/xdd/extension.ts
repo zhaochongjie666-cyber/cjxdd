@@ -148,6 +148,19 @@ export const xddInlineExtension: InlineExtension = {
 		}
 		// xdd_ledger intentionally not rendered (audit only).
 
+		// P15: bash tool default timeout -- prevent runaway commands (e.g.
+		// `find /` scanning the entire filesystem for 12 hours). The bash tool's
+		// timeout parameter is optional with no default. We intercept tool_call
+		// and inject timeout=300 (5 min) when the LLM didn't provide one.
+		pi.on("tool_call", async (event) => {
+			if (event.toolName === "bash" && event.input) {
+				const input = event.input as { timeout?: number };
+				if (input.timeout === undefined || input.timeout <= 0) {
+					input.timeout = 300;
+				}
+			}
+		});
+
 		// xdd uses per-stage context slicing (on "context" event) to keep only
 		// the current stage's messages. Runtime state is in runtime.json, not in
 		// the conversation. So compaction is safe -- do NOT cancel it. Cancelling

@@ -115,6 +115,12 @@ export function buildSeed(stage: XddStageSpec, userInput: string): string {
 		`完成方式：调 ${gateHint} -> gate 通过 -> 调 xdd_advance 推进。闸门未达标可重试（局部修复），自愈预算耗尽后再调 xdd_diagnose 进入反思。`,
 		`Controller 工具：xdd_observe（观察状态）/ xdd_desired_state（查看目标）/ xdd_difference（计算差距）/ xdd_next_task（获取下一步指令）。`,
 	];
+	// P16: bash timeout hint for stages that use bash
+	if (stage.allowedTools.includes("bash")) {
+		lines.push(
+			"bash 命令默认超时 300s。长时间操作（安装依赖/构建/全盘搜索）请显式传 timeout=N，避免卡死。禁用 find / 等全盘扫描。",
+		);
+	}
 	return lines.join("\n");
 }
 
