@@ -1,6 +1,5 @@
 import type { Skill } from "@earendil-works/pi-coding-agent";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { RuntimeStore } from "./storage/runtime-store.ts";
 
 /** The 10 xdd software-development stages, in execution order. */
 export type XddStageName =
@@ -17,6 +16,36 @@ export type XddStageName =
 
 /** How a stage signals completion. */
 export type XddStageExit = "goal_complete" | "verdict";
+
+export interface ArtifactRule {
+	pattern: string;
+	required: boolean;
+	minimumBytes?: number;
+	minimumMatches?: number;
+	description: string;
+}
+
+export interface AiGateContract {
+	enabled: boolean;
+	requiredAngles: readonly string[];
+	artifactPatterns: readonly string[];
+	contextPatterns: readonly string[];
+	unavailablePolicy: "block" | "degraded-require-human";
+}
+
+export interface SkipPredicate {
+	/** Human-readable reason, e.g. "backend-only project has no UI wireframes". */
+	reason: string;
+	/** True only when the Controller can observe the condition from files/runtime state. */
+	observable: boolean;
+}
+
+export interface RollbackPolicy {
+	target: XddStageName | "none";
+	reason: string;
+}
+
+export type XddGatePolicy = "hard" | "explicit-soft";
 
 export interface XddGateResult {
 	ok: boolean;
@@ -56,6 +85,10 @@ export interface XddStageSpec {
 	allowedTools: string[];
 	/** Artifact paths the hard gate looks for (any-of). */
 	deliverablePaths: string[];
+	/** Controller-observable input artifact contract. */
+	inputs?: readonly ArtifactRule[];
+	/** Controller-observable output artifact contract. */
+	outputs?: readonly ArtifactRule[];
 	/**
 	 * reconcile-style declarative API: human-readable desired state observations for
 	 * this stage. Injected into the stage system prompt and seed so the model
@@ -70,6 +103,12 @@ export interface XddStageSpec {
 	gate: XddGate;
 	/** AIGate 审查标准（死标准，每阶段写死）。硬 Gate 通过后由 AI 审查产物质量。 */
 	aigateStandard: string;
+	/** Machine-readable AIGate artifact contract. */
+	aiGate?: AiGateContract;
+	/** Whether the hard gate is truly blocking or an explicit scaffold/cleanup soft pass. */
+	gatePolicy?: XddGatePolicy;
+	/** Alias of gate for StageContract wording; defaults to gate during migration. */
+	hardGate?: XddGate;
 	// ── Phase 4 (F): StageContract extensions ──────────────────────
 	/** Path globs this stage READS from (other than its own outputs).
 	 *  Used to constrain the agent's reads for static verification. */
@@ -77,12 +116,16 @@ export interface XddStageSpec {
 	/** Path globs this stage WRITES to. MUST cover all deliverablePaths.
 	 *  Used for the "必需输出必须可写" startup check. */
 	writeScopes?: readonly string[];
+	/** Legacy prompt-only flag: stage should not read source code. Replaced by readScopes in V2. */
+	noCodeReading?: boolean;
 	/** Phase 4 (F.6): true when the stage must NOT modify source code.
 	 *  Used to enforce "verify stage" only writes report/evidence. */
 	noCodeModification?: boolean;
 	/** Phase 4 (F.9): true when the stage requires human approval before
 	 *  advancing to the next stage (e.g. understand -> spec confirmation). */
 	requiresHumanApproval?: boolean;
+	skippableWhen?: SkipPredicate;
+	rollbackPolicy?: RollbackPolicy;
 }
 
 export type XddSignal = "complete" | "verdict_pass" | "verdict_fail";
@@ -213,23 +256,12 @@ export class XddRunnerState {
 	}
 
 	// ── File I/O ─────────────────────────────────────────────────────────
-	private get rtPath(): string { return join(this.cwd, ".xdd", "runtime.json"); }
-
 	private loadRt(): XddCheckpointData {
-		for (const name of ["runtime.json", "checkpoint.json"] as const) {
-			const p = join(this.cwd, ".xdd", name);
-			if (existsSync(p)) {
-				try { return { ...defaultRt(this.runId), ...JSON.parse(readFileSync(p, "utf8")) }; } catch { /* fall through */ }
-			}
-		}
-		return defaultRt(this.runId);
+		return new RuntimeStore(this.cwd).load(defaultRt(this.runId)) ?? defaultRt(this.runId);
 	}
 
 	private saveRt(data: XddCheckpointData): void {
-		const dir = join(this.cwd, ".xdd");
-		mkdirSync(dir, { recursive: true });
-		data.at = new Date().toISOString();
-		writeFileSync(join(dir, "runtime.json"), JSON.stringify(data, null, 2), "utf8");
+		new RuntimeStore(this.cwd).save(data);
 	}
 
 	private mutRt<K extends keyof XddCheckpointData>(key: K, value: XddCheckpointData[K]): void {
@@ -506,7 +538,6 @@ export class XddRunnerState {
 		rt.plan = this.plan.map((e) => ({ stageName: e.stage.name, originalIndex: e.originalIndex }));
 		rt.status = status;
 		rt.rollbackCount = rollbackCount;
-		this.saveRt(rt);
 		return rt;
 	}
 	static fromCheckpoint(data: XddCheckpointData): XddRunnerState {
@@ -656,6 +687,7 @@ export interface XddStageGroup {
 // ============================================================================
 
 export interface XddCheckpointData {
+	schemaVersion?: number;
 	runId: string;
 	userInput: string;
 	cwd: string;
@@ -743,6 +775,7 @@ export type XddStageOutcome =
 /** Default runtime data for a fresh run. */
 function defaultRt(runId: string = ""): XddCheckpointData {
 	return {
+		schemaVersion: 2,
 		runId: "", userInput: "", cwd: "",
 		planIndex: -1, plan: [], mode: "stage",
 		ledger: [], attempts: {}, selfHealUsed: {},
