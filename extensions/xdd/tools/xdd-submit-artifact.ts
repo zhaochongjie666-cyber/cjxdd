@@ -150,8 +150,10 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					apiKey: llmInfo.apiKey,
 					headers: llmInfo.headers,
 					stageName: stage.name,
+					skillName: stage.skill,
 					aigateStandard: stage.aigateStandard,
 					artifactPaths: artifacts.length > 0 ? artifacts : stage.deliverablePaths,
+					outputContract: stage.outputs,
 					cwd: state.cwd,
 					intentAnchor,
 				});

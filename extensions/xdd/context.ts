@@ -75,10 +75,14 @@ export function buildStageSystemPrompt(args: BuildStagePromptArgs): string {
 	sections.push(`[工作目录] ${cwd}`);
 	const harness = buildHarnessPromptSection(cwd);
 	if (harness) sections.push(harness);
+	const outputContract = (stage.outputs ?? []).map((o, i) => `  ${i + 1}. ${o.pattern} -- ${o.description}`).join("\n");
 	sections.push(
 		`[期望状态 · desiredState] 本阶段需让以下观察型条件全部为真--完成后请调 xdd_submit_artifact 提交产物与自我攻击结论，触发 gate：\n${stage.desiredState
 			.map((d, i) => `  ${i + 1}. ${d}`)
 			.join("\n")}`,
+	);
+	sections.push(
+		`[先声明产出，再接受检查] 本阶段 skill=${stage.skill}。你必须先产出这些文件/模式，再提交给对应 hard gate + AI Gate 检查；不要提交空产物让 AI Gate 空检查：\n${outputContract || "  （无硬文件产出；必须在 summary/selfAttack 中说明本阶段无文件产出的可观察依据）"}`,
 	);
 	if (skillBody) {
 		sections.push(`[阶段技能 ${stage.skill}]\n${skillBody}`);
@@ -124,6 +128,7 @@ export function buildSeed(stage: XddStageSpec, userInput: string): string {
 		"如需前序阶段产物，先 read 相关文件。",
 		`用户原始需求：${userInput}`,
 		`本阶段 desiredState（让这些条件为真）：\n${desired}`,
+		`本阶段先声明产出，再接受检查（skill=${stage.skill}）：\n${(stage.outputs ?? []).map((o, i) => `  ${i + 1}. ${o.pattern} -- ${o.description}`).join("\n") || "  （无硬文件产出；必须说明可观察依据）"}`,
 		`完成方式：调 ${gateHint} -> gate 通过 -> 调 xdd_advance 推进。闸门未达标可重试（局部修复），自愈预算耗尽后再调 xdd_diagnose 进入反思。`,
 		`Controller 工具：xdd_observe（观察状态）/ xdd_desired_state（查看目标）/ xdd_difference（计算差距）/ xdd_next_task（获取下一步指令）。`,
 	];
