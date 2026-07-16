@@ -36,8 +36,10 @@ describe("verify evidence gate", () => {
 		expect(hasUnfinishedPlanCheckbox("- [ ] real task")).toBe(true);
 	});
 
-	it("extracts only current-style evidence references", () => {
-		expect(extractEvidenceReferences("see [.xdd/runs/iter-1/evidence/out.txt](.xdd/runs/iter-1/evidence/out.txt)")).toContain(".xdd/runs/iter-1/evidence/out.txt");
+	it("extracts current-style evidence references from plain text and Markdown links", () => {
+		const refs = extractEvidenceReferences("see .xdd/runs/iter-1/evidence/out.txt and [runtime log](.xdd/runs/iter-1/evidence/runtime.txt)");
+		expect(refs).toContain(".xdd/runs/iter-1/evidence/out.txt");
+		expect(refs).toContain(".xdd/runs/iter-1/evidence/runtime.txt");
 	});
 
 	it("fails missing and too-short reports", () => {
@@ -67,6 +69,19 @@ describe("verify evidence gate", () => {
 		const cwd = project();
 		try {
 			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "verify-report.md"), longReport(), "utf8");
+			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "evidence", "runtime.txt"), "ok", "utf8");
+			expect(evaluateVerifyEvidenceGate(cwd).ok).toBe(true);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+
+	it("passes report with Markdown link destination evidence reference", () => {
+		const cwd = project();
+		try {
+			const report = longReport("Evidence link: [runtime log](.xdd/runs/iter-1/evidence/runtime.txt)");
+			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "verify-report.md"), report, "utf8");
 			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "evidence", "runtime.txt"), "ok", "utf8");
 			expect(evaluateVerifyEvidenceGate(cwd).ok).toBe(true);
 		} finally {

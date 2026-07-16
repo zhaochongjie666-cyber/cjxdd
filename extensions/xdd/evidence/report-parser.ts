@@ -12,11 +12,19 @@ export function extractEvidenceReferences(markdown: string): string[] {
 	const refs = new Set<string>();
 	const withoutCode = stripFencedCode(markdown);
 	const re = /(?:^|[\s([`'"])(\.xdd\/runs\/iter-[^\s)'"`]+\/evidence\/[^\s)'"`]+)/g;
+	const markdownLinkDestinationRe = /\[[^\]\r\n]+\]\((\.xdd\/runs\/iter-[^\s)'"`]+\/evidence\/[^\s)'"`]+)\)/g;
 	let match: RegExpExecArray | null;
 	while ((match = re.exec(withoutCode))) {
-		refs.add(match[1].replace(/[.,;:]+$/, ""));
+		refs.add(cleanEvidenceReference(match[1]));
+	}
+	while ((match = markdownLinkDestinationRe.exec(withoutCode))) {
+		refs.add(cleanEvidenceReference(match[1]));
 	}
 	return [...refs];
+}
+
+function cleanEvidenceReference(ref: string): string {
+	return ref.replace(/[.,;:]+$/, "");
 }
 
 export type EvidenceCategory = "runtime" | "http" | "ui" | "db" | "auth" | "boundary" | "chaos" | "stub";

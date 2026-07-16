@@ -15,7 +15,7 @@ export function softPass(): XddGateResult {
 
 /**
  * Phase 5 (E.6): run the project's build command. Auto-detects npm
- * "build" script, go build, make. Hard-fails on no command or failure.
+ * "build" script, go build, make. Hard-fails on command failure.
  * Optional (skipped) when the project has no build command.
  */
 export async function runBuild(cwd: string): Promise<XddGateResult> {
@@ -213,7 +213,7 @@ export async function requirePatternInSource(
 	minCount = 1,
 ): Promise<XddGateResult> {
 	const files = walkRel(cwd).filter(
-		(f) => SOURCE_EXT_RE.test(f) && !SOURCE_EXCLUDE_RE.test(f.replace(/\\\\/g, "/")),
+		(f) => SOURCE_EXT_RE.test(f) && !SOURCE_EXCLUDE_RE.test(f.replace(/\\/g, "/")),
 	);
 	let count = 0;
 	for (const rel of files) {

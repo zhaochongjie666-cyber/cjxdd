@@ -12,7 +12,7 @@
  *      applying per-file and total char caps, skipping unsafe paths.
  *
  * Extracted to a standalone module so unit tests can import it without
- * pulling in pi-tui (a transitive dep of extension.ts).
+ * pulling in pi-tui (a transitive dependency of extension.ts).
  *
  * Phase X (zero-dep refactor): the original implementation used
  * `tinyglobby` for glob expansion. tinyglobby is no longer a runtime
