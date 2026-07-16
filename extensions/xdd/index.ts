@@ -15,12 +15,15 @@ export {
 } from "./gate.ts";
 export { XddRunner } from "./runner.ts";
 export { STAGES } from "./stages.ts";
+export { compileStageContracts, StageContractError, scopeCoversPattern } from "./core/stage-contract.ts";
 export { STAGE_GROUPS, findStageGroup, isLastStageInGroup } from "./stage-groups.ts";
 export { writeCheckpoint, readCheckpoint, removeCheckpoint } from "./checkpoint.ts";
 export type {
 	ActiveXddRun,
 	XddApprovalDecision,
 	XddApprovalEvent,
+	AiGateContract,
+	ArtifactRule,
 	XddArtifactSubmission,
 	XddCheckpointData,
 	XddDiagnose,
@@ -28,6 +31,9 @@ export type {
 	XddEsgNode,
 	XddEsgNodeType,
 	XddEvent,
+	RollbackPolicy,
+	SkipPredicate,
+	XddGatePolicy,
 	XddGateResult,
 	XddLedgerEntry,
 	XddRunnerMode,
