@@ -2,8 +2,7 @@
 
 xdd 控制循环（[`core.md`](../../core.md)）作为 **pi coding agent inline extension** 的实现。
 
-控制循环深度集成 pi 的 `ToolDefinition` / `XddRunnerState` / ESG / checkpoint，是
-完整能力：状态机推进、自愈预算、阶段回退、断点续跑。这是 xdd driven 的唯一 runtime。
+控制循环现在由 Controller Core 统一拥有状态转换；pi inline extension 和 headless 测试适配器都只把事件翻译成 `XddCommand` 并执行 `XddEffect`。`XddRunnerState` 保留为运行状态兼容 facade，真实推进/回退不再由独立 runner 状态机负责。
 
 ## 架构
 
@@ -14,14 +13,14 @@ xdd 控制循环（[`core.md`](../../core.md)）作为 **pi coding agent inline 
                                        ▼
               ┌────────────────────────────────────────────┐
               │  pi inline extension                        │
-              │  extension.ts  +  runner.ts  +  context.ts   │
-              │  tools/ (11 工具)  +  checkpoint.ts           │
-              │  深度集成 XddRunnerState（进度/信号/自愈预算/ESG）│
+              │  extension.ts + adapters/pi-* + context.ts │
+              │  adapters/headless-controller.ts + checkpoint.ts │
+              │  统一调 XddController.dispatch(command)          │
               └────────────────────────────────────────────┘
 ```
 
 纯逻辑模块（`observe-fs.ts` / `stage-diff.ts` / `stages.ts` / `gate.ts`）不依赖 pi，
-是观测与 Gate 的核心；extension 在其上加了 runner 状态机，构成完整控制循环。
+是观测与 Gate 的核心；extension 与 headless adapter 在其上共享同一个 Controller Core，避免生产和测试各有一套推进/回退状态机。
 
 ## 工具（11 个）
 
@@ -110,22 +109,21 @@ xdd 有两种执行模型，颗粒度不同但流程对齐：
 ## 激活
 
 ```ts
-import { XddRunner, XddRunnerState, activateXddExtension, xddInlineExtension } from "./extensions/xdd/index.ts";
+import { HeadlessXddController, XddRunnerState, activateXddExtension, xddInlineExtension } from "./extensions/xdd/index.ts";
 
 // 1. 注册 extension（经 pi 的 extensionFactories）
 pi.registerExtension(xddInlineExtension);
 
-// 2. 建 state + runner，注入 extension
+// 2. 生产路径：pi command/event/tool handler 创建 XddCommand，交给 Controller dispatch
 const state = new XddRunnerState({ runId, cwd, userInput });
 activateXddExtension(state);
-const runner = new XddRunner(runtime, state, { task, maxRollbacksPerStage: 2, maxSelfHealPerStage: 3 });
 
-// 3. 跑（runner 驱动阶段循环，tools 经 getState 闭包共享 state）
-const result = await runner.run();
+// 3. 测试/脚本路径：headless adapter 使用同一个 Controller Core，同步记录 effects
+const headless = new HeadlessXddController(cwd);
+const result = headless.dispatch({ type: "START", task, options: { cwd, runId } });
 ```
 
-`XddRunner.run()` 驱动阶段循环；extension 的 tools 通过模块级 `stateRef`（`getState`）
-闭包共享同一个 `XddRunnerState`。无 run 激活时，tools 抛错、handlers no-op。
+生产 `/xdd` 不再启动独立 `XddRunner.run()` 循环；pi 自身 turn cycle 触发的 command/event/tool handler 统一调用 Controller。extension 的 tools 仍通过模块级 `stateRef`（`getState`）读取运行 facade；无 run 激活时，tools 抛错、handlers no-op。
 
 ## 测试
 
@@ -135,5 +133,5 @@ const result = await runner.run();
 ```
 
 覆盖：gate.ts（文件系统 gate）、observe-fs.ts（磁盘观测 + 追溯覆盖）、stage-diff.ts
-（真实 gate diff）、state.ts（runner 状态机/checkpoint）、stage-groups.ts（组级 Gate）、
+（真实 gate diff）、core/controller.ts（唯一状态转换）、adapters/headless-controller.ts（测试适配器）、stage-groups.ts（组级 Gate）、
 diagnosis.ts（根因分类）、xdd-trace.ts（追溯链工具）。

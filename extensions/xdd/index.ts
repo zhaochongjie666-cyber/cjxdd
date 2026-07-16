@@ -13,14 +13,29 @@ export {
 	requireGlobsWithMinSize,
 	softPass,
 } from "./gate.ts";
-export { XddRunner } from "./runner.ts";
 export { STAGES } from "./stages.ts";
+export { compileStageContracts, StageContractError, scopeCoversPattern } from "./core/stage-contract.ts";
+export { XddController, transition, schedulerText, ControllerError } from "./core/controller.ts";
+export { HeadlessXddController } from "./adapters/headless-controller.ts";
+export { pruneContextMessages, buildXddCompactionInstructions, BASH_OUTPUT_STUB } from "./context-prune.ts";
+export { projectAuditEvent } from "./audit/projector.ts";
+export type { XddAuditEvent } from "./audit/events.ts";
 export { STAGE_GROUPS, findStageGroup, isLastStageInGroup } from "./stage-groups.ts";
 export { writeCheckpoint, readCheckpoint, removeCheckpoint } from "./checkpoint.ts";
+export { RuntimeStore, atomicWriteJson } from "./storage/runtime-store.ts";
+export { migrateRuntimeState, RUNTIME_SCHEMA_VERSION } from "./storage/runtime-migrations.ts";
+export type { RuntimeStateV2, RuntimeMigrationResult } from "./storage/runtime-migrations.ts";
+export type { XddCommand, RunStatus, StartOptions } from "./core/commands.ts";
+export type { XddEffect } from "./core/effects.ts";
+export { HookRunner, discoverHookFiles } from "./hooks/runner.ts";
+export { scaffoldHooks } from "./hooks/scaffold.ts";
+export type { HookPayload, HookPoint, HookOutput, HookRunResult } from "./hooks/protocol.ts";
 export type {
 	ActiveXddRun,
 	XddApprovalDecision,
 	XddApprovalEvent,
+	AiGateContract,
+	ArtifactRule,
 	XddArtifactSubmission,
 	XddCheckpointData,
 	XddDiagnose,
@@ -28,6 +43,9 @@ export type {
 	XddEsgNode,
 	XddEsgNodeType,
 	XddEvent,
+	RollbackPolicy,
+	SkipPredicate,
+	XddGatePolicy,
 	XddGateResult,
 	XddLedgerEntry,
 	XddRunnerMode,

@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { STAGES } from "./stages.ts";
 import { XddRunnerState } from "./types.ts";
-import { controllerInitScaffold } from "./init-scaffold.ts";
+import { controllerInitScaffold, hasInitializedXddSkeleton } from "./init-scaffold.ts";
 
 let cwd = "";
 
@@ -94,6 +94,12 @@ describe("F.5 controllerInitScaffold", () => {
 		expect(existsSync(join(cwd, ".xdd/archive"))).toBe(true);
 	});
 
+	it("detects pre-existing initialization before scaffold mutates a new project", () => {
+		expect(hasInitializedXddSkeleton(cwd)).toBe(false);
+		controllerInitScaffold(cwd);
+		expect(hasInitializedXddSkeleton(cwd)).toBe(true);
+	});
+
 	it("is idempotent: second call skips all dirs", () => {
 		controllerInitScaffold(cwd);
 		const r2 = controllerInitScaffold(cwd);
@@ -158,13 +164,9 @@ describe("F.8 --skip-wire option", () => {
 		expect(STAGES.find((s) => s.name === "wire")).toBeDefined();
 	});
 
-	it("XddRunner.buildPlan filters wire when opts.skipWire", async () => {
-		// Test the runner-side skip-wire path. We don't run the runner
-		// here (slow), but the static method exists and the option name
-		// is documented.
-		const { XddRunner } = await import("./runner.ts");
-		expect(typeof XddRunner).toBe("function");
-		// opts.skipWire is a documented property of XddRunOptions
+	it("HeadlessXddController is exported for runnerless tests", async () => {
+		const { HeadlessXddController } = await import("./adapters/headless-controller.ts");
+		expect(typeof HeadlessXddController).toBe("function");
 		const src = require("node:fs").readFileSync(
 			require("node:path").join(import.meta.dirname, "types.ts"),
 			"utf8",

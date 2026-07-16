@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import { REFLECT_PREAMBLE, XDD_PREAMBLE } from "./preambles.ts";
 import type { XddRunnerState, XddStageName, XddStageSpec } from "./types.ts";
+import { HarnessStore } from "./harness/store.ts";
+import { conciseHarness } from "./harness/schema.ts";
 
 function readSkillContent(skills: Skill[], skillName: string): string | undefined {
 	const skill = skills.find((s) => s.name === skillName);
@@ -71,6 +73,8 @@ export function buildStageSystemPrompt(args: BuildStagePromptArgs): string {
 	sections.push(`[当前阶段] ${stage.name}（第 ${planIndex + 1} / ${planTotal} 阶段）`);
 	sections.push(`[用户原始需求] ${userInput}`);
 	sections.push(`[工作目录] ${cwd}`);
+	const harness = buildHarnessPromptSection(cwd);
+	if (harness) sections.push(harness);
 	sections.push(
 		`[期望状态 · desiredState] 本阶段需让以下观察型条件全部为真--完成后请调 xdd_submit_artifact 提交产物与自我攻击结论，触发 gate：\n${stage.desiredState
 			.map((d, i) => `  ${i + 1}. ${d}`)
@@ -90,6 +94,14 @@ export function buildStageSystemPrompt(args: BuildStagePromptArgs): string {
 		`[完成方式 / reconcile] 让所有 desiredState 为真 -> 调 ${gateHint} -> gate 通过后调 xdd_advance 推进。闸门失败可重试，预算见状态；预算耗尽后请调 xdd_diagnose 进入反思。`,
 	);
 	return sections.join("\n\n");
+}
+
+function buildHarnessPromptSection(cwd: string): string {
+	try {
+		return conciseHarness(new HarnessStore(cwd).load());
+	} catch {
+		return "";
+	}
 }
 
 export function buildReflectSystemPrompt(args: { userInput: string; cwd: string }): string {

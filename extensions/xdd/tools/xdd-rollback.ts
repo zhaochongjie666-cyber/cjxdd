@@ -2,6 +2,8 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { type Static, Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { isStageName } from "../diagnosis.ts";
+import { XddController } from "../core/controller.ts";
+import { RuntimeStore } from "../storage/runtime-store.ts";
 import type { XddStageName } from "../types.ts";
 import type { EmptyDetails, GetXddState } from "./index.ts";
 
@@ -64,21 +66,12 @@ export function createXddRollbackTool(getState: GetXddState): ToolDefinition {
 			if (state.currentAttempt(target) >= state.maxRollbacksPerStage) {
 				throw new Error(`[xdd_rollback] ${target} 已达回退上限 ${state.maxRollbacksPerStage}，无法再次回退`);
 			}
-			const moved = state.goToStageName(target);
-			if (!moved.ok) {
-				throw new Error(`[xdd_rollback] ${moved.reason}`);
+			const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
+			try {
+				controller.dispatch({ type: "ROLLBACK", target, reason: String(params.reason ?? "") });
+			} catch (error) {
+				throw new Error(`[xdd_rollback] ${error instanceof Error ? error.message : String(error)}`);
 			}
-			state.markSuperseded(moved.originalIndex);
-			state.rollbackOutcome = { from, to: target, reason: String(params.reason ?? "") };
-			// Phase 3 (C) P28: stamp the rolled-back-to target's epoch so the
-			// context hook knows to slice on the next before_agent_start.
-			state.stageEpoch = state.makeStageEpoch(target, state.currentAttempt(target));
-			// Phase 2 (B): record outcome so agent_end can see "this stage is
-			// now failed; the next stage starts fresh". Don't keep the old
-			// gate_passed/hard_gate_failed -- those describe the *current*
-			// stage (the rolled-back one), not the rolled-back-to target.
-			state.stageOutcome = "advanced";
-			state.lastStageError = undefined;
 			return {
 				content: [{ type: "text", text: `[xdd_rollback] ${from} → ${target}：${params.reason}` }],
 				details: {},

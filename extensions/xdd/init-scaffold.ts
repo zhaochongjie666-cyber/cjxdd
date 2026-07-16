@@ -9,6 +9,11 @@
  */
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { scaffoldHooks } from "./hooks/scaffold.ts";
+
+export function hasInitializedXddSkeleton(cwd: string): boolean {
+	return existsSync(join(cwd, ".xdd", "design")) && existsSync(join(cwd, ".xdd", "runs"));
+}
 
 export function controllerInitScaffold(cwd: string): { created: string[]; skipped: string[] } {
 	const dirs = [
@@ -32,5 +37,8 @@ export function controllerInitScaffold(cwd: string): { created: string[]; skippe
 			created.push(d);
 		}
 	}
+	const hooks = scaffoldHooks(cwd);
+	created.push(...hooks.created);
+	skipped.push(...hooks.skipped);
 	return { created, skipped };
 }

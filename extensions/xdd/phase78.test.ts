@@ -166,21 +166,20 @@ describe("H.3 stage summary uses glob resolver", () => {
 
 // ── H.4: production/test share state machine ──────────────────────────
 
-describe("H.4 production /xdd and E2E share state machine", () => {
-	it("E2E imports the same XddRunnerState used by runXdd", () => {
+describe("H.4 production /xdd and E2E share controller core", () => {
+	it("E2E imports the headless adapter backed by XddController", () => {
 		const e2eSrc = readFileSync(join(SRC_DIR, "runner.e2e.test.ts"), "utf8");
-		expect(e2eSrc).toMatch(/from\s+["']\.\/types\.ts["']/);
-		expect(e2eSrc).toMatch(/XddRunnerState/);
+		const headlessSrc = readFileSync(join(SRC_DIR, "adapters/headless-controller.ts"), "utf8");
+		expect(e2eSrc).toMatch(/HeadlessXddController/);
+		expect(headlessSrc).toMatch(/new XddController/);
 	});
 
-	it("runXdd and E2E both use createXddTools (shared tools)", () => {
+	it("production and headless tests both route through Controller dispatch", () => {
 		const e2eSrc = readFileSync(join(SRC_DIR, "runner.e2e.test.ts"), "utf8");
 		const runSrc = readFileSync(join(SRC_DIR, "run.ts"), "utf8");
-		// Both must import from ./tools/index.ts via createXddTools
-		expect(e2eSrc).toMatch(/createXddTools/);
-		// run.ts doesn't directly call createXddTools (it's called from
-		// activateXddExtension -> factory -> createXddTools(getState)).
-		// So we check that activateXddExtension is the bridge.
+		expect(e2eSrc).toMatch(/\.dispatch\(\{ type: "START"/);
+		expect(runSrc).toMatch(/controller\.dispatch\(\{/);
+		expect(runSrc).toMatch(/type:\s*"START"/);
 		expect(runSrc).toMatch(/activateXddExtension/);
 	});
 });

@@ -2,6 +2,9 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { observeFilesystem, renderFsSnapshot } from "../observe-fs.ts";
+import { HarnessStore } from "../harness/store.ts";
+import { buildAuditView, renderAuditView } from "../audit/projector.ts";
+import { RuntimeStore } from "../storage/runtime-store.ts";
 import { type EmptyDetails, type GetXddState, ok } from "./index.ts";
 
 const schema = Type.Object({});
@@ -37,6 +40,9 @@ export function createXddObserveTool(getState: GetXddState): ToolDefinition {
 					.map(([s, n]) => `${s}: ${n.slice(0, 80)}`)
 					.join(" ") || "(无)";
 			const fsSnap = observeFilesystem(state.cwd, stage.deliverablePaths);
+			const harnessCommands = new HarnessStore(state.cwd).load().验证命令;
+			const runtime = new RuntimeStore(state.cwd).load() ?? state.toCheckpoint(state.status, state.rollbackCount) as never;
+			const auditStatus = renderAuditView(buildAuditView(runtime));
 			const lines = [
 				`run: ${state.runId}`,
 				`阶段: ${stage.name}（计划第 ${state.planIndex + 1}/${state.plan.length}）`,
@@ -48,6 +54,8 @@ export function createXddObserveTool(getState: GetXddState): ToolDefinition {
 				`各阶段尝试次数: ${attempts}`,
 				`自愈预算(当前阶段): ${state.remainingSelfHealBudget(stage.name)}/${state.maxSelfHealPerStage}`,
 				`回退上限/阶段: ${state.maxRollbacksPerStage}`,
+				`Harness 验证命令: ${harnessCommands.length > 0 ? harnessCommands.join(" | ") : "未配置"}`,
+				auditStatus,
 				"",
 				renderFsSnapshot(fsSnap),
 			];

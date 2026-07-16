@@ -3,7 +3,11 @@ import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { findStageGroup, isLastStageInGroup } from "../stage-groups.ts";
 import { computeStageDifference, renderStageDifference } from "../stage-diff.ts";
+import { XddController } from "../core/controller.ts";
 import { type EmptyDetails, type GetXddState, ok } from "./index.ts";
+import { HarnessStore } from "../harness/store.ts";
+import { buildAuditView, renderAuditView } from "../audit/projector.ts";
+import { RuntimeStore } from "../storage/runtime-store.ts";
 
 const schema = Type.Object({});
 
@@ -59,8 +63,21 @@ export function createXddNextTaskTool(getState: GetXddState): ToolDefinition {
 				gaps = [`硬 Gate 未通过且自愈预算耗尽: ${diff.gate.reason ?? "未知"}`];
 				action = `调 xdd_diagnose 诊断根因，或 xdd_rollback 回退到设计层修复后重跑`;
 			}
+			const harnessCommands = new HarnessStore(state.cwd).load().验证命令;
+			const runtime = new RuntimeStore(state.cwd).load() ?? state.toCheckpoint(state.status, state.rollbackCount) as never;
+			const auditStatus = renderAuditView(buildAuditView(runtime));
+			if (stage.name === "verify" && harnessCommands.length > 0 && !diff.gate.ok) {
+				gaps.unshift(`优先运行 Harness 验证命令: ${harnessCommands.join(" && ")}`);
+				action = `先运行 .xdd/harness.yml 中已确认的验证命令，并把结果写入 verify-report/evidence`;
+			} else if (stage.name === "verify" && harnessCommands.length === 0) {
+				gaps.unshift(".xdd/harness.yml 尚未配置 验证命令");
+				action = `先用 xdd_harness_set 配置已确认的验证命令，再执行 verify`;
+			}
 			const group = findStageGroup(stage.name);
-			state.recordEsgNode("task", stage.name, `next task: ${action}（diff met=${diff.metCount} unmet=${diff.unmetCount}）`);
+			new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage: plannedStage }) => plannedStage)).dispatch({
+				type: "RECORD_AUDIT_EVENT",
+				event: { type: "task_result", stage: stage.name, action, met: diff.metCount, unmet: diff.unmetCount },
+			});
 			const lines = [
 				"[Controller 指令]",
 				`阶段: ${stage.name}（${stage.role}）`,
@@ -70,6 +87,8 @@ export function createXddNextTaskTool(getState: GetXddState): ToolDefinition {
 				`硬 Gate: ${diff.gate.ok ? "✓ pass" : "❌ " + (diff.gate.reason ?? "")}`,
 				`desiredState 进度: ${diff.metCount} met / ${diff.unmetCount} unmet / ${diff.selfCheckCount} self-check`,
 				`自愈预算剩余: ${remaining}`,
+				stage.name === "verify" ? `Harness 验证命令: ${harnessCommands.length > 0 ? harnessCommands.join(" | ") : "未配置"}` : "",
+				auditStatus,
 				`组级 Gate 待执行: ${groupGatePending ? "是" : "否"}`,
 				group ? `阶段组: ${group.label}` : "",
 				"",

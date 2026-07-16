@@ -197,7 +197,7 @@ describe("P28 tools write stageEpoch", () => {
 		state.startRun(); // planIndex = 0 (init)
 		state.stageEpoch = state.makeStageEpoch("init", state.currentAttempt("init"));
 		expect(state.stageEpoch).toBe("phase3:init:0");
-		state.advancePlan(); // -> understand
+		state.planIndex = 1; // Controller ADVANCE owns this in production.
 		state.stageEpoch = state.makeStageEpoch("understand", state.currentAttempt("understand"));
 		expect(state.stageEpoch).toBe("phase3:understand:0");
 	});

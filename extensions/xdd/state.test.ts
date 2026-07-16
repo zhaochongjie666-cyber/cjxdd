@@ -38,64 +38,11 @@ describe("XddRunnerState basics", () => {
 	});
 });
 
-describe("XddRunnerState advancePlan", () => {
-	it("moves to next stage", () => {
-		const state = makeState();
-		state.startRun();
-		const next = state.advancePlan();
-		expect(next?.name).toBe("understand");
-		expect(state.planIndex).toBe(1);
-	});
-
-	it("returns undefined and sets runComplete at end", () => {
-		const state = makeState();
-		state.startRun();
-		for (let i = 0; i < state.plan.length; i++) state.advancePlan();
-		expect(state.runComplete).toBe(true);
-	});
-});
-
-describe("XddRunnerState goToStageName", () => {
-	it("rejects forward targets", () => {
-		const state = makeState();
-		state.startRun();
-		state.advancePlan();
-		const result = state.goToStageName("verify");
-		expect(result.ok).toBe(false);
-	});
-
-	it("accepts backward targets", () => {
-		const state = makeState();
-		state.startRun();
-		state.advancePlan();
-		state.advancePlan();
-		const result = state.goToStageName("init");
-		expect(result.ok).toBe(true);
-		expect(state.planIndex).toBe(0);
-	});
-
-	it("rejects unknown stage", () => {
-		const state = makeState();
-		state.startRun();
-		const result = state.goToStageName("unknown" as never);
-		expect(result.ok).toBe(false);
-	});
-
-	it("resets self-heal budget of the rollback target (Bug 3)", () => {
-		const state = makeState();
-		state.maxSelfHealPerStage = 3;
-		state.startRun();
-		state.advancePlan(); // -> understand
-		state.advancePlan(); // -> spec
-		// burn the budget for "init" before we got here
-		state.beginSelfHealAttempt("init");
-		state.beginSelfHealAttempt("init");
-		state.beginSelfHealAttempt("init");
-		expect(state.remainingSelfHealBudget("init")).toBe(0);
-		// now rollback to init
-		const result = state.goToStageName("init");
-		expect(result.ok).toBe(true);
-		expect(state.remainingSelfHealBudget("init")).toBe(3);
+describe("XddRunnerState navigation compatibility", () => {
+	it("does not expose runner-owned advancement helpers", () => {
+		const state = makeState() as unknown as Record<string, unknown>;
+		expect(state.advancePlan).toBeUndefined();
+		expect(state.goToStageName).toBeUndefined();
 	});
 });
 
@@ -166,7 +113,7 @@ describe("XddRunnerState checkpoint", () => {
 	it("serializes to checkpoint and back", () => {
 		const state = makeState();
 		state.startRun();
-		state.advancePlan();
+		state.planIndex = 1;
 		state.recordArtifact("init", ["README.md"]);
 		state.recordSelfAttack("init", "checked edge cases");
 		const cp = state.toCheckpoint("running", 0);
