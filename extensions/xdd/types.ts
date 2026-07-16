@@ -70,6 +70,19 @@ export interface XddStageSpec {
 	gate: XddGate;
 	/** AIGate 审查标准（死标准，每阶段写死）。硬 Gate 通过后由 AI 审查产物质量。 */
 	aigateStandard: string;
+	// ── Phase 4 (F): StageContract extensions ──────────────────────
+	/** Path globs this stage READS from (other than its own outputs).
+	 *  Used to constrain the agent's reads for static verification. */
+	readScopes?: readonly string[];
+	/** Path globs this stage WRITES to. MUST cover all deliverablePaths.
+	 *  Used for the "必需输出必须可写" startup check. */
+	writeScopes?: readonly string[];
+	/** Phase 4 (F.6): true when the stage must NOT modify source code.
+	 *  Used to enforce "verify stage" only writes report/evidence. */
+	noCodeModification?: boolean;
+	/** Phase 4 (F.9): true when the stage requires human approval before
+	 *  advancing to the next stage (e.g. understand -> spec confirmation). */
+	requiresHumanApproval?: boolean;
 }
 
 export type XddSignal = "complete" | "verdict_pass" | "verdict_fail";

@@ -38,6 +38,18 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			// has begun -- any context before this point is safe to drop.
 			const attempt = state.currentAttempt(stage.name);
 			state.stageEpoch = state.makeStageEpoch(stage.name, attempt);
+			// Phase 4 (F.6): verify stage is read-only by contract. Reject
+			// any artifact write that touches source code (src/, lib/,
+			// tests/, etc.) -- the model must only write report/evidence.
+			if (stage.noCodeModification) {
+				const sourceCodePattern = /^(src|lib|tests?|bin|cmd|internal|pkg|source|app|server|client)\//;
+				const codeWrites = artifacts.filter((p) => sourceCodePattern.test(p));
+				if (codeWrites.length > 0) {
+					throw new Error(
+						`[xdd_submit_artifact] verify 阶段不可写源码：${codeWrites.join(", ")}。请只写 report/evidence（.xdd/runs/、.xdd/design/ 下的 .md 文件）。`,
+					);
+				}
+			}
 			if (selfAttack.trim().length < 20) {
 				throw new Error(
 					`[xdd_submit_artifact] selfAttack 过短（${selfAttack.trim().length} 字符）：必须记录具体检查了哪些反例/风险/边界及结论（至少 20 字符）`,

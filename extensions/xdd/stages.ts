@@ -44,7 +44,12 @@ export const STAGES: readonly XddStageSpec[] = [
 		role: roleFor("understand"),
 		skill: "xdd-brainstorm",
 		exit: "goal_complete",
-		allowedTools: [...READ_TOOLS, ...CONTROLLER_TOOLS],
+		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, ...CONTROLLER_TOOLS],
+		// Phase 4 (F.9): understand -> spec requires explicit human
+		// confirmation. The brainstorming output is the foundation for
+		// the entire spec/architecture; the user must OK it before
+		// the pipeline commits RXX rules to it.
+		requiresHumanApproval: true,
 		desiredState: [
 			"已读完前序产物（init 阶段总结、仓库 README / docs/）",
 			"已向用户输出一份 '需求 clarification'：用户原始需求 + 显式/隐式假设 + 待澄清问题",
@@ -324,6 +329,11 @@ export const STAGES: readonly XddStageSpec[] = [
 		skill: "xdd-verify",
 		exit: "verdict",
 		allowedTools: [...READ_TOOLS, "bash", ...CONTROLLER_TOOLS, "xdd_blind_journey"],
+		// Phase 4 (F.6): verify stage is read-only. The submit tool
+		// rejects any artifact write that touches source code. The
+		// model can still RUN tests via bash, but cannot write/edit
+		// source files (declared in the hard-reject list at submit time).
+		noCodeModification: true,
 		desiredState: [
 			"已对 spec 的每条 RXX 规则至少跑一次验证（手动 / 单元 / 集成 / 端到端之一）",
 			"验证结果可复现（命令或脚本有据可查）",

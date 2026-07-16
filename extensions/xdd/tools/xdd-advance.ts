@@ -74,6 +74,22 @@ export function createXddAdvanceTool(getState: GetXddState): ToolDefinition {
 			state.advanceOutcome = { passed: true };
 			state.clearSignals();
 			const prevStageName = stage.name;
+			// Phase 4 (F.9): if the stage required human approval, set
+			// pendingGroupApproval instead of advancing -- the user must
+			// explicitly call /xdd continue to proceed. The agent_end
+			// scheduler will see the pending approval and stay silent.
+			// We compute the next stage up-front for the message even
+			// though we don't advance planIndex yet.
+			const wouldBeNext = state.plan[state.planIndex + 1]?.stage;
+			if (stage.requiresHumanApproval) {
+				state.pendingGroupApproval = {
+					group: prevStageName,
+					gateLabel: `人类确认: ${prevStageName} 阶段产物是否符合预期（输 /xdd continue 进 ${wouldBeNext?.name ?? "下一阶段"}，或 /xdd rollback 回退）`,
+				};
+				return ok(
+					`[xdd_advance] ${prevStageName} 阶段完成，产物已通过闸门。需要人类确认后才能进 ${wouldBeNext?.name ?? "下一阶段"}。输 /xdd continue 推进，或 /xdd rollback 回退。`,
+				);
+			}
 			const next = state.advancePlan();
 			// Phase 2 (B): planIndex moved -- mark "advanced" so agent_end knows
 			// the run progressed and should NOT re-nudge. The new stage starts

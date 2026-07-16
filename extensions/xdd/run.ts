@@ -16,6 +16,7 @@ import { readCheckpoint, writeCheckpoint } from "./checkpoint.ts";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { archiveRun } from "./archive.ts";
+import { controllerInitScaffold } from "./init-scaffold.ts";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
 /** /xdd <task> -- start a new xdd run. */
@@ -26,6 +27,9 @@ export async function runXdd(args: string, cwd: string, pi: ExtensionAPI): Promi
 		return;
 	}
 	const runId = `xdd-${Date.now()}`;
+	// Phase 4 (F.5): Controller scaffold runs BEFORE state creation so
+	// the init stage sees a fully-prepared .xdd/ tree.
+	const scaffold = controllerInitScaffold(cwd);
 	const state = new XddRunnerState({ runId, cwd, userInput: task });
 	state.skills = loadXddSkills(cwd);
 	state.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
@@ -41,8 +45,11 @@ export async function runXdd(args: string, cwd: string, pi: ExtensionAPI): Promi
 	const n = state.skills.length;
 	const stageName = state.currentStageName();
 	const skipMsg = xddExists ? "检测到 .xdd/ 已存在，跳过 init，" : "";
+	const scaffoldMsg = scaffold.created.length > 0
+		? `Controller 已 scaffold ${scaffold.created.length} 个目录（${scaffold.created.join(", ")}）。`
+		: `Controller scaffold：所有目录已存在（${scaffold.skipped.length} 项），无新创建。`;
 	await pi.sendUserMessage(
-		`${task}\n\n[xdd] run ${runId} 启动。${skipMsg}加载了 ${n} 个 xdd 技能。当前阶段: ${stageName}。用 xdd_list_skills 查看，xdd_load_skill 加载，xdd_submit_artifact 提交产物。随时按 Esc 或 /xdd-stop 中断（可 /xdd-resume 恢复）。`,
+		`${task}\n\n[xdd] run ${runId} 启动。${skipMsg}${scaffoldMsg}加载了 ${n} 个 xdd 技能。当前阶段: ${stageName}。用 xdd_list_skills 查看，xdd_load_skill 加载，xdd_submit_artifact 提交产物。随时按 Esc 或 /xdd-stop 中断（可 /xdd-resume 恢复）。`,
 	);
 }
 
