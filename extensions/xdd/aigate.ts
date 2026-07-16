@@ -20,6 +20,7 @@
 import { join } from "node:path";
 import type { Model } from "@earendil-works/pi-ai/compat";
 import { readCappedFiles, resolveGlobs } from "./glob-resolver.ts";
+import type { XddGateResult } from "./types.ts";
 
 /** Default AIGate LLM call timeout: 60s. Configurable per call. */
 const DEFAULT_LLM_TIMEOUT_MS = 60_000;
@@ -35,6 +36,11 @@ export interface AIGateInput {
 	aigateStandard: string;
 	artifactPaths: string[];
 	outputContract?: readonly { pattern: string; description: string }[];
+	/**
+	 * The mechanical hard-Gate verdict for this exact submission. This is
+	 * evidence for the semantic review, not a replacement for it.
+	 */
+	hardGateResult: XddGateResult;
 	cwd: string;
 	intentAnchor?: string;
 }
@@ -443,9 +449,10 @@ function buildAttackUserMessage(params: {
 	angles: AttackAngle[];
 	artifacts: string[];
 	contexts: string[];
+	hardGateResult: XddGateResult;
 	intentAnchor?: string;
 }): string {
-	const { stageName, skillName, aigateStandard, outputContract, angles, artifacts, contexts, intentAnchor } = params;
+	const { stageName, skillName, aigateStandard, outputContract, angles, artifacts, contexts, hardGateResult, intentAnchor } = params;
 
 	const outputText = outputContract && outputContract.length > 0
 		? outputContract.map((o, i) => `${i + 1}. ${o.pattern} -- ${o.description}`).join("\n")
@@ -457,9 +464,15 @@ function buildAttackUserMessage(params: {
 			return `### 角度 ${i + 1}: ${a.name}\n${a.description}\n攻击检查项：\n${checks}`;
 		})
 		.join("\n\n");
+	const hardGateText = formatHardGateResult(hardGateResult);
 
 	return `## 审查阶段：${stageName}
 ${skillName ? `## 对应 skill：${skillName}（检查必须对齐该 skill 的“我产出/产出/Checklist”，不能拿无关检查空跑）\n` : ""}
+## 硬 Gate 机械校验结果（本次提交的已观测输入）
+${hardGateText}
+
+硬 Gate 只证明它的机械条件已被检查；不得把它当作内容质量、需求覆盖或安全性的通过证据。请结合此结果与下方产物继续独立审查。
+
 ## 本阶段先承诺的产出（先看产出，再按对应检查审查）
 ${outputText}
 
@@ -485,10 +498,18 @@ ${artifacts.join("\n\n")}
 ## 请从以上每个攻击角度审查产物，输出 JSON：`;
 }
 
+/** Render the mechanical verdict as bounded, explicit evidence for the LLM. */
+export function formatHardGateResult(result: XddGateResult): string {
+	const verdict = result.ok ? "通过" : "未通过";
+	const mode = result.soft ? "软通过（未完成硬性验证）" : "硬校验";
+	const reason = result.reason?.trim() || "无补充说明";
+	return `- 判定：${verdict}\n- 模式：${mode}\n- 原因/观测：${reason}`;
+}
+
 // ── Main entry ─────────────────────────────────────────────────────────
 
 export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
-	const { model, apiKey, headers, stageName, skillName, aigateStandard, artifactPaths, outputContract, cwd, intentAnchor } = input;
+	const { model, apiKey, headers, stageName, skillName, aigateStandard, artifactPaths, outputContract, hardGateResult, cwd, intentAnchor } = input;
 
 	// Phase 6 (D): use shared resolver for artifacts. Applies realpath
 	// safety + per-file + total size caps. Symlinks pointing outside cwd
@@ -529,6 +550,7 @@ export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
 		angles,
 		artifacts,
 		contexts,
+		hardGateResult,
 		intentAnchor,
 	});
 

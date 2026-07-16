@@ -151,6 +151,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					aigateStandard: stage.aigateStandard,
 					artifactPaths: artifacts.length > 0 ? artifacts : stage.deliverablePaths,
 					outputContract: stage.outputs,
+					hardGateResult: gate,
 					cwd: state.cwd,
 					intentAnchor,
 				});

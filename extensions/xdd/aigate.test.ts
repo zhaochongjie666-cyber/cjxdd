@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatAIGateResult, type AIGateResult } from "./aigate.ts";
+import { formatAIGateResult, formatHardGateResult, type AIGateResult } from "./aigate.ts";
 
 describe("formatAIGateResult", () => {
 	it("formats multi-angle breakdown with failed angles first", () => {
@@ -50,5 +50,20 @@ describe("formatAIGateResult", () => {
 		expect(text).toContain("0/2 角度发现问题");
 		expect(text).toContain("✅ 偷工减料攻击: 通过");
 		expect(text).toContain("✅ AI味攻击: 通过");
+	});
+});
+
+describe("formatHardGateResult", () => {
+	it("provides the passed hard-Gate observation as AI Gate input evidence", () => {
+		const text = formatHardGateResult({ ok: true, reason: "已找到 rules.md", soft: false });
+		expect(text).toContain("判定：通过");
+		expect(text).toContain("模式：硬校验");
+		expect(text).toContain("已找到 rules.md");
+	});
+
+	it("distinguishes an explicit soft pass from a hard verification", () => {
+		const text = formatHardGateResult({ ok: true, soft: true });
+		expect(text).toContain("软通过（未完成硬性验证）");
+		expect(text).toContain("无补充说明");
 	});
 });
