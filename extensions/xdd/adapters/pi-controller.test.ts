@@ -5,9 +5,11 @@ import { join } from "node:path";
 import { PiControllerAdapter, agentEndCommandFromPi, rollbackCommandFromTool, submitCommandFromTool } from "./pi-controller.ts";
 import { STAGES } from "../stages.ts";
 import { XddRunnerState } from "../types.ts";
+import { ControllerTestFixture } from "../test/controller-fixture.ts";
 
 let cwd = "";
 let state: XddRunnerState;
+let controllerFixture: ControllerTestFixture;
 let sent: Array<{ text: string; options?: unknown }>;
 let notified: Array<{ text: string; level?: string }>;
 let aborted = false;
@@ -16,7 +18,8 @@ beforeEach(() => {
 	cwd = mkdtempSync(join(tmpdir(), "xdd-pi-controller-"));
 	state = new XddRunnerState({ runId: "adapter", cwd, userInput: "task" });
 	state.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
-	state.startRun();
+	controllerFixture = new ControllerTestFixture(state);
+	controllerFixture.startAt("init");
 	sent = [];
 	notified = [];
 	aborted = false;
@@ -48,7 +51,7 @@ describe("PiControllerAdapter", () => {
 
 	it("does not send stale followUp effects when continuation epoch has changed", async () => {
 		state.continuationEpoch = 2;
-		state.stageOutcome = "gate_passed";
+		controllerFixture.submitGatePassed();
 		await adapter().dispatch({ type: "AGENT_ENDED", stopReason: "stop" });
 		expect(sent[0]?.text).toContain("xdd_advance");
 		expect(sent[0]?.options).toEqual({ deliverAs: "followUp" });
