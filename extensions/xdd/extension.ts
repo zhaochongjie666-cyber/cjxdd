@@ -161,6 +161,55 @@ export const xddInlineExtension: InlineExtension = {
 			}
 		});
 
+		// PRIMARY auto-continue: use turn_end (not agent_end) to queue the
+		// followUp. turn_end fires INSIDE the agent loop, BEFORE the
+		// getFollowUpMessages check. The followUp is picked up by the agent
+		// loop directly -- no dependency on _handlePostAgentRun ->
+		// hasQueuedMessages, which breaks when auto-compaction triggers at
+		// 99%+ context usage.
+		//
+		// Only fire when the agent produced NO tool calls this turn (it's
+		// done working, just text/summary). If tool calls were made, the
+		// agent loop continues naturally.
+		pi.on("turn_end", async (event) => {
+			if (!stateRef) return;
+			if (stateRef.runComplete) return;
+			if (stateRef.stopRequested) return;
+			// Only auto-continue when the agent made no tool calls (done for this turn)
+			const toolResults = event.toolResults ?? [];
+			if (toolResults.length > 0) return;
+			const stage = stateRef.currentStage();
+			if (!stage) return;
+			const idx = stateRef.planIndex;
+			const submittedSinceLastEnd = stateRef.lastSubmitAt > stateRef.lastAgentEndAt;
+			if (idx !== stateRef.lastAgentEndPlanIndex || submittedSinceLastEnd) {
+				stateRef.consecutiveStalls = 0;
+			} else {
+				stateRef.consecutiveStalls++;
+			}
+			stateRef.lastAgentEndPlanIndex = idx;
+			stateRef.lastAgentEndAt = Date.now();
+			// Stall hard terminate
+			if (stateRef.consecutiveStalls >= 6) {
+				stateRef.runComplete = true;
+				return;
+			}
+			const stalls = stateRef.consecutiveStalls;
+			const healBudget = stateRef.remainingSelfHealBudget(stage.name);
+			const healMax = stateRef.maxSelfHealPerStage;
+			const healUsed = healMax - healBudget;
+			const signals = stateRef.getSignals();
+			const isVerifyFail = stage.exit === "verdict" && signals.has("verdict_fail") && !stateRef.rollbackOutcome;
+			const msg = isVerifyFail
+				? `[xdd] verify 验证未通过。请调 xdd_rollback("execute", "verify 验证失败，主动返回 execute 修复后重跑")。不要问用户，不要重复 verify。`
+				: healBudget > 0 && stalls > 0
+					? `[xdd 自动推进] 继续 ${stage.name} 阶段。上轮闸门/AIGate 未通过，剩余自愈预算 ${healBudget}/${healMax}（已用 ${healUsed}）。请根据上轮反馈修复产物，重新调 xdd_submit_artifact。`
+					: `[xdd 自动推进] 继续 ${stage.name} 阶段。`;
+			try {
+				await pi.sendUserMessage(msg, { deliverAs: "followUp" });
+			} catch { /* ignore */ }
+		});
+
 		// xdd uses per-stage context slicing (on "context" event) to keep only
 		// the current stage's messages. Runtime state is in runtime.json, not in
 		// the conversation. So compaction is safe -- do NOT cancel it. Cancelling
@@ -185,24 +234,18 @@ export const xddInlineExtension: InlineExtension = {
 			const start = Math.min(stateRef.boundary, event.messages.length);
 			if (start <= 0) return undefined;
 			return { messages: event.messages.slice(start) };
-		});
 
-		// Auto-continue: when the agent finishes a turn and the run is still
-		// active (not complete, not pending group approval), automatically drive
-		// the next turn so the pipeline NEVER stalls. After 3 consecutive turns
-		// with no progress, escalate the nudge (diagnose/rollback/ask-user)
-		// instead of blindly repeating "继续" -- never stop, always continue.
-		//
-		// INTERRUPT SUPPORT: if the user ran /xdd-stop (stateRef.stopRequested),
-		// do NOT queue a followUp -- this breaks the auto-continue loop so the
-		// user regains control. Esc detection via ctx.signal?.aborted is wrapped
-		// in try/catch because ctx.signal is a getter that can throw if the
-		// extension runner context is stale -- an uncaught throw here would
-		// break the entire agent_end flow (no followUp -> no auto-continue).
+
+		// agent_end (interrupt-only): the primary auto-continue now lives in
+		// turn_end above (picks up followUp inside the agent loop without
+		// going through _handlePostAgentRun -> hasQueuedMessages, which breaks
+		// when auto-compaction triggers at 99%+ context usage). This handler
+		// only handles user interrupt detection (Esc or /xdd-stop) and the
+		// stall hard-terminate safety net.
 		pi.on("agent_end", async (_event, ctx) => {
 			if (!stateRef) return;
 			if (stateRef.runComplete) return;
-			// Detect user interrupt: /xdd-stop command (explicit) or Esc (abort signal).
+			// Interrupt: /xdd-stop (explicit) or Esc (abort signal).
 			let signalAborted = false;
 			try {
 				signalAborted = ctx.signal?.aborted ?? false;
@@ -217,6 +260,9 @@ export const xddInlineExtension: InlineExtension = {
 				} catch { /* ignore */ }
 				return;
 			}
+			// Stall hard terminate (safety net -- turn_end already handles
+			// the nudges; this catches the case where turn_end didn't fire
+			// or auto-continue is stuck).
 			const idx = stateRef.planIndex;
 			const submittedSinceLastEnd = stateRef.lastSubmitAt > stateRef.lastAgentEndAt;
 			if (idx !== stateRef.lastAgentEndPlanIndex || submittedSinceLastEnd) {
@@ -226,37 +272,6 @@ export const xddInlineExtension: InlineExtension = {
 			}
 			stateRef.lastAgentEndPlanIndex = idx;
 			stateRef.lastAgentEndAt = Date.now();
-			const stage = stateRef.currentStage();
-			if (stage) {
-				const stalls = stateRef.consecutiveStalls;
-				const healBudget = stateRef.remainingSelfHealBudget(stage.name);
-				const healMax = stateRef.maxSelfHealPerStage;
-				// Verify verdict=fail: nudge to rollback to execute (proactive return
-				// to fix implementation bugs), NOT to ask the user.
-				const signals = stateRef.getSignals();
-				const isVerifyFail = stage.exit === "verdict" && signals.has("verdict_fail") && !stateRef.rollbackOutcome;
-				const healUsed = healMax - healBudget;
-				// If the agent still has self-heal budget, nudge it to keep fixing
-			// based on the AIGate/gate feedback -- don't tell it to rollback.
-				// Only escalate to diagnose/rollback when budget is gone.
-				const msg = isVerifyFail
-					? `[xdd] verify 验证未通过。请调 xdd_rollback("execute", "verify 验证失败，主动返回 execute 修复后重跑")。不要问用户，不要重复 verify。`
-					: healBudget > 0
-					? `[xdd 自动推进] 继续 ${stage.name} 阶段。上轮闸门/AIGate 未通过，剩余自愈预算 ${healBudget}/${healMax}（已用 ${healUsed}）。请根据上轮反馈修复产物，重新调 xdd_submit_artifact。`
-					: stalls < 3
-						? `[xdd 自动推进] 继续 ${stage.name} 阶段。`
-						: stalls < 6
-							? `[xdd] 已连续 ${stalls} 轮无进展且自愈预算耗尽。请改变策略：调 xdd_diagnose 诊断根因，或 xdd_rollback 回退。不要重复之前的做法。`
-							: `[xdd] 已连续 ${stalls} 轮无进展，严重卡住。必须 xdd_rollback 回退，或直接向用户提问求助。`;
-				try {
-					await pi.sendUserMessage(msg, { deliverAs: "followUp" });
-				} catch {
-					// ignore send errors (e.g., session shutting down)
-				}
-			}
-			// Layer 3: stall detection hard terminate. After 6 consecutive
-			// stalls the model is truly deadlocked -- force runComplete so the
-			// pipeline stops instead of looping "继续" forever.
 			if (stateRef.consecutiveStalls >= 6) {
 				stateRef.runComplete = true;
 				try {
@@ -265,23 +280,8 @@ export const xddInlineExtension: InlineExtension = {
 						{ deliverAs: "followUp" },
 					);
 				} catch { /* ignore */ }
-				return;
-			}
-			// Stage-advance nudge: if planIndex just moved forward this turn,
-			// a stage completed successfully. Tell the user they can commit the
-			// summary into the session tree via /xdd-commit.
-			const prevIdx = stateRef.lastAgentEndPlanIndex;
-			if (!stateRef.runComplete && idx > prevIdx && prevIdx >= 0) {
-				const advanced = STAGES[prevIdx];
-				try {
-					await pi.sendUserMessage(
-						`[xdd] 阶段 ${advanced?.name ?? "?"} 完成，进 ${stage.name}。输入 /xdd-commit 可把 ${advanced?.name ?? "当前"} 摘要 commit 到 session tree（/tree 查看）。`,
-						{ deliverAs: "followUp" },
-					);
-				} catch { /* ignore */ }
 			}
 		});
-
 		// Checkpoint detection: if pi restarts with an unfinished xdd run,
 		// notify the user they can resume. Use ctx.ui.notify (UI only,
 		// does NOT inject a user message or trigger a turn) -- do NOT use
