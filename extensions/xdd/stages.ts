@@ -152,11 +152,8 @@ export const STAGES: readonly XddStageSpec[] = [
 		skill: "xdd-brainstorm",
 		exit: "goal_complete",
 		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, ...CONTROLLER_TOOLS],
-		// Phase 4 (F.9): understand -> spec requires explicit human
-		// confirmation. The brainstorming output is the foundation for
-		// the entire spec/architecture; the user must OK it before
-		// the pipeline commits RXX rules to it.
-		requiresHumanApproval: true,
+		// Keep the ten-stage pipeline autonomous. Gate findings remain in the
+		// audit, but an unattended run must not pause for a confirmation turn.
 		desiredState: [
 			"已读完前序产物（init 阶段总结、仓库 README / docs/）",
 			"已向用户输出一份 '需求 clarification'：用户原始需求 + 显式/隐式假设 + 待澄清问题",

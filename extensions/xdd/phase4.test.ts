@@ -44,10 +44,9 @@ describe("F.1/F.2 readScopes/writeScopes fields exist", () => {
 		expect(verify.noCodeModification).toBe(true);
 	});
 
-	it("understand stage has requiresHumanApproval set", () => {
-		// F.9: understand -> spec requires explicit user confirmation
+	it("understand stage does not require human approval", () => {
 		const understand = STAGES.find((s) => s.name === "understand")!;
-		expect(understand.requiresHumanApproval).toBe(true);
+		expect(understand.requiresHumanApproval).not.toBe(true);
 	});
 
 	it("understand stage has WRITE_TOOLS (F: brainstorm needs doc-write)", () => {
@@ -136,24 +135,24 @@ describe("F.6 verify noCodeModification enforced", () => {
 	});
 });
 
-// ── F.9: understand -> spec human approval ─────────────────────────────
+// ── F.9: optional human approval controller support ───────────────────
 
-describe("F.9 understand->spec requiresHumanApproval", () => {
-	it("xdd_advance sets pendingGroupApproval when stage.requiresHumanApproval", () => {
+describe("F.9 optional requiresHumanApproval support", () => {
+	it("controller supports pendingGroupApproval for custom stage plans", () => {
 		const src = require("node:fs").readFileSync(
-			require("node:path").join(import.meta.dirname, "tools/xdd-advance.ts"),
+			require("node:path").join(import.meta.dirname, "core/controller.ts"),
 			"utf8",
 		);
-		expect(src).toMatch(/stage\.requiresHumanApproval/);
+		expect(src).toMatch(/current\?\.requiresHumanApproval/);
 		expect(src).toMatch(/pendingGroupApproval/);
 	});
 
-	it("/xdd continue command clears pendingGroupApproval", () => {
+	it("/xdd continue dispatches APPROVE when a custom plan is pending approval", () => {
 		const src = require("node:fs").readFileSync(
 			require("node:path").join(import.meta.dirname, "run.ts"),
 			"utf8",
 		);
-		expect(src).toMatch(/pendingGroupApproval\s*=\s*undefined/);
+		expect(src).toMatch(/type:\s*"APPROVE"/);
 	});
 });
 

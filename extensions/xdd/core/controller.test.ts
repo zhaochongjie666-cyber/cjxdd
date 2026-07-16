@@ -81,6 +81,21 @@ describe("XddController transition", () => {
 		expect(second.effects).toHaveLength(0);
 	});
 
+	it("queues an advance followup when a terminating gate tool ends with toolUse", () => {
+		const state = started();
+		state.stageOutcome = "gate_passed";
+		const result = transition(state, { type: "AGENT_ENDED", stopReason: "toolUse" });
+		expect(result.state.continuationQueued).toBe(true);
+		expect(result.effects[0]).toMatchObject({ type: "SEND_FOLLOWUP" });
+		expect(result.effects[0]?.type === "SEND_FOLLOWUP" ? result.effects[0].text : "").toContain("xdd_advance");
+	});
+
+	it("does not schedule while an ordinary toolUse turn is still working", () => {
+		const result = transition(started(), { type: "AGENT_ENDED", stopReason: "toolUse" });
+		expect(result.effects).toHaveLength(0);
+		expect(result.state.continuationQueued).toBe(false);
+	});
+
 
 	it("high context usage requests compaction before continuation", () => {
 		const state = started();
@@ -110,19 +125,21 @@ describe("XddController transition", () => {
 		expect(result.state.continuationQueued).toBe(true);
 	});
 
-	it("ADVANCE respects human approval before understand -> spec", () => {
+	it("ADVANCE moves standard understand -> spec without a confirmation pause", () => {
 		const state = started();
 		state.planIndex = 1; // understand
 		const result = transition(state, { type: "ADVANCE" });
-		expect(result.state.status).toBe("awaiting_approval");
-		expect(result.effects[0]).toMatchObject({ type: "NOTIFY" });
+		expect(result.state.status).toBe("running");
+		expect(result.state.planIndex).toBe(2);
+		expect(result.state.stageOutcome).toBe("advanced");
 	});
 
 	it("APPROVE moves past an awaiting human approval without looping", () => {
 		const state = started();
 		state.planIndex = 1; // understand
-		const waiting = transition(state, { type: "ADVANCE" }).state;
-		const approved = transition(waiting, { type: "APPROVE", approvalId: "understand" });
+		state.status = "awaiting_approval";
+		state.pendingGroupApproval = { group: "understand", gateLabel: "fixture approval" };
+		const approved = transition(state, { type: "APPROVE", approvalId: "understand" });
 		expect(approved.state.status).toBe("running");
 		expect(approved.state.planIndex).toBe(2);
 		expect(approved.state.stageOutcome).toBe("advanced");

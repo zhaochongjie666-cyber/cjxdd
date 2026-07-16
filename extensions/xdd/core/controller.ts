@@ -166,7 +166,16 @@ function agentEndedTransition(
 		return { state: stamp(state), effects };
 	}
 	if (command.stopReason === "aborted") return stopTransition(state, effects);
-	if (command.stopReason === "toolUse" || command.hasPendingMessages) return { state: stamp(state), effects };
+	if (command.hasPendingMessages) return { state: stamp(state), effects };
+	// A terminating tool result makes Pi report `toolUse` as the stop reason.
+	// Do not treat that as an in-progress turn when the tool has already
+	// reached a scheduler-owned boundary (for example AIGate passed, or its
+	// retry budget was exhausted and the stage was soft-passed).  The old
+	// unconditional `toolUse` return left the run with gate_passed persisted
+	// but no follow-up queued, so it silently stopped after AIGate.
+	if (command.stopReason === "toolUse" && !isContinuationBoundary(state.stageOutcome)) {
+		return { state: stamp(state), effects };
+	}
 	if (state.continuationQueued) return { state: stamp(state), effects };
 	if (shouldCompactBeforeContinuation(state, command.contextUsagePercent)) {
 		state.lastCompactionAt = Date.now();
@@ -175,6 +184,10 @@ function agentEndedTransition(
 	}
 	queueFollowUp(state, effects, state.stageOutcome ?? "idle", currentStageName(state, stages));
 	return { state: stamp(state), effects };
+}
+
+function isContinuationBoundary(outcome: XddStageOutcome | undefined): boolean {
+	return outcome === "gate_passed" || outcome === "advanced";
 }
 
 

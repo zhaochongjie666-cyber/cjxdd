@@ -179,11 +179,23 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 						? "\n修改建议：\n" + aiResult.suggestions.map((s, n) => `${n + 1}. ${s}`).join("\n")
 						: "";
 					if (aiRemaining <= 0) {
-						// A semantic failure still blocks progress, but must not terminate
-						// the Pi turn: the agent needs the current feedback to diagnose and
-						// roll back immediately.
+						// AIGate is advisory after the mechanical gate has passed. Its
+						// five repair attempts must be bounded: do not strand the ten
+						// stage run on an unavailable/malformed review response. Preserve
+						// the failed review in the audit, then soft-pass non-verdict
+						// stages and terminate this turn. agent_end recognizes the
+						// gate_passed boundary and queues the next turn automatically.
+						if (stage.exit === "verdict") {
+							return {
+								content: [{ type: "text", text: `❌ [AIGate ${aiUsed}/${state.maxSelfHealPerStage}] ${stage.name} 多角度攻击未通过（自愈预算耗尽）：\n${angleText}${suggText}\n本轮提交失败。请调 xdd_diagnose 诊断根因，或 xdd_rollback 回退。` }],
+								details: {},
+								terminate: true,
+							};
+						}
+						dispatchToController(state, { type: "RECORD_SIGNAL", signal: "complete" });
+						dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
 						return {
-							content: [{ type: "text", text: `❌ [AIGate ${aiUsed}/${state.maxSelfHealPerStage}] ${stage.name} 多角度攻击未通过（自愈预算耗尽）：\n${angleText}${suggText}\n本轮提交失败，但本 turn 继续。请立即调 xdd_diagnose 诊断根因，并调 xdd_rollback 回退后修复。` }],
+							content: [{ type: "text", text: `⚠️ [AIGate ${aiUsed}/${state.maxSelfHealPerStage}] ${stage.name} 多角度攻击未通过（自愈预算耗尽）：\n${angleText}${suggText}\nAIGate 已记录为告警；硬 Gate 已通过，现软通过并自动进入下一轮推进。` }],
 							details: {},
 						};
 					}
