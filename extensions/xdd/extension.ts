@@ -148,11 +148,11 @@ export const xddInlineExtension: InlineExtension = {
 		}
 		// xdd_ledger intentionally not rendered (audit only).
 
-		// Disable auto-compaction for the duration of any xdd run.
-		pi.on("session_before_compact", async () => {
-			if (!stateRef) return undefined;
-			return { cancel: true };
-		});
+		// xdd uses per-stage context slicing (on "context" event) to keep only
+		// the current stage's messages. Runtime state is in runtime.json, not in
+		// the conversation. So compaction is safe -- do NOT cancel it. Cancelling
+		// causes "Error: Compaction cancelled" when context fills up during long
+		// runs (10 stages × many tool calls).
 
 		// Fresh per-stage system prompt. Group gates auto-advance (no human pause).
 		pi.on("before_agent_start", async (_event, ctx) => {
