@@ -31,11 +31,15 @@ export interface AIGateInput {
 	apiKey?: string;
 	headers?: Record<string, string>;
 	stageName: string;
+	skillName?: string;
 	aigateStandard: string;
 	artifactPaths: string[];
+	outputContract?: readonly { pattern: string; description: string }[];
 	cwd: string;
 	intentAnchor?: string;
 }
+
+export type XddAIGateAngleStatus = boolean | "N/A";
 
 export interface AIGateAngleResult {
 	name: string;
@@ -434,12 +438,18 @@ passed 为 true 当且仅当所有角度都 passed。`;
 function buildAttackUserMessage(params: {
 	stageName: string;
 	aigateStandard: string;
+	skillName?: string;
+	outputContract?: readonly { pattern: string; description: string }[];
 	angles: AttackAngle[];
 	artifacts: string[];
 	contexts: string[];
 	intentAnchor?: string;
 }): string {
-	const { stageName, aigateStandard, angles, artifacts, contexts, intentAnchor } = params;
+	const { stageName, skillName, aigateStandard, outputContract, angles, artifacts, contexts, intentAnchor } = params;
+
+	const outputText = outputContract && outputContract.length > 0
+		? outputContract.map((o, i) => `${i + 1}. ${o.pattern} -- ${o.description}`).join("\n")
+		: "（本阶段未声明机器可审查输出；AI Gate 不得空泛通过，必须基于提交产物内容逐项说明可审查范围。）";
 
 	const angleText = angles
 		.map((a, i) => {
@@ -449,6 +459,15 @@ function buildAttackUserMessage(params: {
 		.join("\n\n");
 
 	return `## 审查阶段：${stageName}
+${skillName ? `## 对应 skill：${skillName}（检查必须对齐该 skill 的“我产出/产出/Checklist”，不能拿无关检查空跑）\n` : ""}
+## 本阶段先承诺的产出（先看产出，再按对应检查审查）
+${outputText}
+
+## 审查纪律：产出-检查必须一一对齐
+1. 先确认上述产出是否真实存在且非空，再审内容质量。
+2. 每个攻击角度的 findings 必须引用具体产物/路径/片段；没有证据不能写“通过”。
+3. 若某检查项与本 skill/本阶段产出无关，标 passed 为 "N/A" 并说明不适用原因；不要做 AI Gate 空检查。
+4. 若缺少可审查产物，必须失败，不能因为没有内容而通过。
 
 ## 攻击角度（逐个独立审查，每个都要给出 passed + findings）：
 ${angleText}
@@ -469,7 +488,7 @@ ${artifacts.join("\n\n")}
 // ── Main entry ─────────────────────────────────────────────────────────
 
 export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
-	const { model, apiKey, headers, stageName, aigateStandard, artifactPaths, cwd, intentAnchor } = input;
+	const { model, apiKey, headers, stageName, skillName, aigateStandard, artifactPaths, outputContract, cwd, intentAnchor } = input;
 
 	// Phase 6 (D): use shared resolver for artifacts. Applies realpath
 	// safety + per-file + total size caps. Symlinks pointing outside cwd
@@ -505,6 +524,8 @@ export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
 	const userMessage = buildAttackUserMessage({
 		stageName,
 		aigateStandard,
+		skillName,
+		outputContract,
 		angles,
 		artifacts,
 		contexts,
@@ -685,11 +706,6 @@ export function formatAIGateResult(aiResult: AIGateResult): string {
 }
 
 // ── Verdict parsing + re-derivation ──────────────────────────────────
-
-/** Angle status: true (passed), false (failed), or "N/A" (this angle
- *  doesn't apply -- e.g. test coverage angle for a stage with no
- *  tests). "N/A" is treated as a pass for the overall verdict. */
-export type XddAIGateAngleStatus = boolean | "N/A";
 
 /** Parse the LLM response. Phase 6 (D) failure semantics: any parse
  *  error (no JSON, JSON.parse throws) returns a hard-fail result with
