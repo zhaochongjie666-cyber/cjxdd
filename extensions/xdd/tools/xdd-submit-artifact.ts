@@ -181,11 +181,13 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 							terminate: true,
 						};
 					}
-					// Layer 2: AIGate failed with budget remaining -- terminate the turn.
+					// Layer 2: AIGate failed with budget remaining -- keep the
+					// same agent turn alive. Semantic review feedback is actionable
+					// context for the model; terminating here forced users to start a
+					// new turn even though AIGate retry budget remains.
 					return {
-						content: [{ type: "text", text: `❌ [AIGate ${aiUsed}/${state.maxSelfHealPerStage}] ${stage.name} 多角度攻击未通过：\n${angleText}${suggText}\n剩余 AIGate 预算：${aiRemaining}\n本轮提交失败，turn 结束。请诊断问题并修复产物，下轮重新提交。` }],
+						content: [{ type: "text", text: `❌ [AIGate ${aiUsed}/${state.maxSelfHealPerStage}] ${stage.name} 多角度攻击未通过：\n${angleText}${suggText}\n剩余 AIGate 预算：${aiRemaining}\n本轮提交失败，但本 turn 继续。请根据审查反馈修复产物后重新调用 xdd_submit_artifact。` }],
 						details: {},
-						terminate: true,
 					};
 				}
 			}

@@ -133,6 +133,21 @@ describe("Compat: AIGate result type shape unchanged", () => {
 	});
 });
 
+
+describe("AIGate retry loop", () => {
+	it("AIGate failure with remaining budget keeps the current turn alive", () => {
+		const submitSrc = readFileSync(join(SRC_DIR, "tools", "xdd-submit-artifact.ts"), "utf8");
+		expect(submitSrc).toContain("本轮提交失败，但本 turn 继续");
+		expect(submitSrc).toContain("剩余 AIGate 预算");
+
+		const keepAliveBlock = submitSrc.slice(
+			submitSrc.indexOf("AIGate failed with budget remaining"),
+			submitSrc.indexOf("All gates passed"),
+		);
+		expect(keepAliveBlock).not.toContain("terminate: true");
+	});
+});
+
 describe("Compat: backward-compatible stage fields preserved", () => {
 	it("XddStageSpec still has all 8 original fields", () => {
 		const typesSrc = readFileSync(join(SRC_DIR, "types.ts"), "utf8");
