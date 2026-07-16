@@ -20,6 +20,14 @@ describe("XddController transition", () => {
 		expect(result.effects.map((effect) => effect.type)).toEqual(["SET_ACTIVE_TOOLS", "SEND_FOLLOWUP"]);
 	});
 
+	it("START can choose an observable initial stage", () => {
+		const result = transition({} as RuntimeStateV2, { type: "START", task: "t", options: { cwd: "/tmp/x", runId: "r-start", initialStage: "understand" } });
+		expect(result.state.planIndex).toBe(1);
+		expect(result.state.stageEpoch).toBe("r-start:understand:0");
+		expect(result.effects[0]).toMatchObject({ type: "SET_ACTIVE_TOOLS" });
+		expect(result.effects[1]?.type === "SEND_FOLLOWUP" ? result.effects[1].text : "").toContain("understand");
+	});
+
 	it("STOP is idempotent and notifies only once", () => {
 		const first = transition(started(), { type: "STOP", source: "command" });
 		expect(first.state.paused).toBe(true);
@@ -32,6 +40,34 @@ describe("XddController transition", () => {
 		const result = transition(started(), { type: "AGENT_ENDED", stopReason: "error", providerError: "rate limit" });
 		expect(result.state.stageOutcome).toBe("provider_error");
 		expect(result.effects).toHaveLength(0);
+	});
+
+	it("SUBMIT records pass/fail outcomes through the Controller", () => {
+		const failed = transition(started(), {
+			type: "SUBMIT",
+			submission: { summary: "s", artifacts: [], selfAttack: "specific risk note", pass: false, error: "missing output" },
+		});
+		expect(failed.state.stageOutcome).toBe("hard_gate_failed");
+		expect(failed.state.lastStageError).toBe("missing output");
+		const passed = transition(failed.state, {
+			type: "SUBMIT",
+			submission: { summary: "s", artifacts: [], selfAttack: "specific risk note", pass: true },
+		});
+		expect(passed.state.stageOutcome).toBe("gate_passed");
+	});
+
+	it("record commands persist artifact review, signals, and ESG audit nodes", () => {
+		let state = started();
+		state = transition(state, { type: "RECORD_ARTIFACT_REVIEW", stage: "init", artifacts: [".xdd/design/intent.md"], selfAttack: "specific risk note for audit" }).state;
+		expect(state.submittedArtifacts?.init).toEqual([".xdd/design/intent.md"]);
+		expect(state.selfAttackNotes?.init).toBe("specific risk note for audit");
+		expect(state.stageEpoch).toBe("r1:init:0");
+		expect(state.esg?.at(-1)).toMatchObject({ type: "review", stage: "init" });
+		state = transition(state, { type: "RECORD_SIGNAL", signal: "complete" }).state;
+		state = transition(state, { type: "RECORD_SIGNAL", signal: "complete" }).state;
+		expect(state.signals).toEqual(["complete"]);
+		state = transition(state, { type: "RECORD_ESG", nodeType: "task", stage: "init", label: "next task" }).state;
+		expect(state.esg?.at(-1)).toMatchObject({ type: "task", stage: "init", label: "next task" });
 	});
 
 	it("gate_passed agent_end queues exactly one advance followup", () => {
@@ -53,9 +89,29 @@ describe("XddController transition", () => {
 		expect(result.effects[0]).toMatchObject({ type: "NOTIFY" });
 	});
 
+	it("APPROVE moves past an awaiting human approval without looping", () => {
+		const state = started();
+		state.planIndex = 1; // understand
+		const waiting = transition(state, { type: "ADVANCE" }).state;
+		const approved = transition(waiting, { type: "APPROVE", approvalId: "understand" });
+		expect(approved.state.status).toBe("running");
+		expect(approved.state.planIndex).toBe(2);
+		expect(approved.state.stageOutcome).toBe("advanced");
+	});
+
 	it("ROLLBACK rejects non-earlier targets", () => {
 		const state = started();
 		expect(() => transition(state, { type: "ROLLBACK", target: "verify", reason: "bad" })).toThrow(ControllerError);
+	});
+
+	it("ROLLBACK moves to an earlier stage and stamps the target epoch", () => {
+		const state = started();
+		state.planIndex = 3; // architecture
+		const result = transition(state, { type: "ROLLBACK", target: "spec", reason: "redo spec" });
+		expect(result.state.planIndex).toBe(2);
+		expect(result.state.rollbackOutcome).toMatchObject({ from: "architecture", to: "spec" });
+		expect(result.state.stageOutcome).toBe("advanced");
+		expect(result.state.stageEpoch).toContain(":spec:");
 	});
 
 	it("dispatch persists the next state before returning effects", () => {

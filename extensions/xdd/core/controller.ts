@@ -2,7 +2,7 @@ import { RuntimeStore } from "../storage/runtime-store.ts";
 import type { RuntimeStateV2 } from "../storage/runtime-migrations.ts";
 import { RUNTIME_SCHEMA_VERSION } from "../storage/runtime-migrations.ts";
 import { STAGES } from "../stages.ts";
-import type { XddCheckpointData, XddStageName, XddStageOutcome, XddStageSpec } from "../types.ts";
+import type { XddCheckpointData, XddEsgNodeType, XddSignal, XddStageName, XddStageOutcome, XddStageSpec } from "../types.ts";
 import type { RunStatus, XddCommand } from "./commands.ts";
 import type { XddEffect } from "./effects.ts";
 
@@ -55,13 +55,19 @@ export function transition(
 		case "AGENT_ENDED":
 			return agentEndedTransition(next, command, stages, effects);
 		case "SUBMIT":
-			return submitTransition(next, command.submission.pass === true, effects);
+			return submitTransition(next, command.submission.pass === true, command.submission.error, effects);
 		case "ADVANCE":
 			return advanceTransition(next, stages, effects);
 		case "APPROVE":
 			return approveTransition(next, stages, effects);
 		case "ROLLBACK":
 			return rollbackTransition(next, command.target, command.reason, stages, effects);
+		case "RECORD_ARTIFACT_REVIEW":
+			return recordArtifactReviewTransition(next, command.stage, command.artifacts, command.selfAttack, effects);
+		case "RECORD_SIGNAL":
+			return recordSignalTransition(next, command.signal, effects);
+		case "RECORD_ESG":
+			return recordEsgTransition(next, command.nodeType, command.stage, command.label, command.data, command.parentId, effects);
 		case "DIAGNOSE":
 			next.diagnose = command.diagnosis;
 			next.status = "reflecting" as never;
@@ -77,19 +83,22 @@ export function transition(
 function startTransition(command: Extract<XddCommand, { type: "START" }>, stages: readonly XddStageSpec[]): ControllerTransitionResult {
 	const runId = command.options.runId ?? `xdd-${Date.now()}`;
 	const plan = (command.options.plan ?? stages.map((stage) => stage.name)).map((stageName) => ({ stageName, originalIndex: stages.findIndex((s) => s.name === stageName) }));
+	const requestedInitialStage = command.options.initialStage;
+	const initialIndex = requestedInitialStage ? plan.findIndex((entry) => entry.stageName === requestedInitialStage) : 0;
+	if (initialIndex < 0) throw new ControllerError("INVALID_START_STAGE", `initial stage ${requestedInitialStage} is not in the execution plan`);
 	const state = stamp({
 		...minimalRuntime(runId, command.options.cwd, command.task),
 		plan,
-		planIndex: 0,
+		planIndex: initialIndex,
 		status: "running" as never,
 		stageOutcome: "idle",
-		stageEpoch: `${runId}:${plan[0]?.stageName ?? "?"}:0`,
+		stageEpoch: `${runId}:${plan[initialIndex]?.stageName ?? "?"}:0`,
 	});
 	return {
 		state,
 		effects: [
-			{ type: "SET_ACTIVE_TOOLS", tools: stages[0]?.allowedTools ?? [] },
-			{ type: "SEND_FOLLOWUP", text: `[xdd] run ${runId} 启动。当前阶段: ${plan[0]?.stageName ?? "?"}。`, epoch: state.continuationEpoch ?? 0 },
+			{ type: "SET_ACTIVE_TOOLS", tools: stages[plan[initialIndex]?.originalIndex ?? initialIndex]?.allowedTools ?? [] },
+			{ type: "SEND_FOLLOWUP", text: `[xdd] run ${runId} 启动。当前阶段: ${plan[initialIndex]?.stageName ?? "?"}。`, epoch: state.continuationEpoch ?? 0 },
 		],
 	};
 }
@@ -139,19 +148,21 @@ function agentEndedTransition(
 	return { state: stamp(state), effects };
 }
 
-function submitTransition(state: RuntimeStateV2, passed: boolean, effects: XddEffect[]): ControllerTransitionResult {
+function submitTransition(state: RuntimeStateV2, passed: boolean, error: string | undefined, effects: XddEffect[]): ControllerTransitionResult {
 	if (passed) {
 		state.stageOutcome = "gate_passed";
 		state.lastStageError = null;
 		return { state: stamp(state), effects };
 	}
 	state.stageOutcome = "hard_gate_failed";
-	state.lastStageError = "artifact submission failed hard gate";
+	state.lastStageError = error ?? "artifact submission failed hard gate";
 	return { state: stamp(state), effects };
 }
 
 function advanceTransition(state: RuntimeStateV2, stages: readonly XddStageSpec[], effects: XddEffect[]): ControllerTransitionResult {
 	const current = stages[state.plan[state.planIndex]?.originalIndex ?? state.planIndex];
+	state.advanceOutcome = { passed: true };
+	state.signals = [];
 	if (current?.requiresHumanApproval) {
 		state.status = "awaiting_approval" as never;
 		state.pendingGroupApproval = { group: current.name, gateLabel: `人类确认: ${current.name}` };
@@ -175,7 +186,19 @@ function approveTransition(state: RuntimeStateV2, stages: readonly XddStageSpec[
 	if (runtimeStatus(state) !== "awaiting_approval") throw new ControllerError("INVALID_APPROVE", "run is not awaiting approval");
 	state.pendingGroupApproval = null;
 	state.status = "running" as never;
-	return advanceTransition(state, stages, effects);
+	state.advanceOutcome = { passed: true };
+	state.signals = [];
+	state.planIndex += 1;
+	if (state.planIndex >= state.plan.length) {
+		state.runComplete = true;
+		state.status = "completed" as never;
+		state.stageOutcome = "completed";
+		return { state: stamp(state), effects };
+	}
+	state.stageOutcome = "advanced";
+	state.stageEpoch = `${state.runId}:${currentStageName(state, stages) ?? "?"}:${state.attempts?.[currentStageName(state, stages) ?? ""] ?? 0}`;
+	effects.push({ type: "SET_ACTIVE_TOOLS", tools: currentStage(state, stages)?.allowedTools ?? [] });
+	return { state: stamp(state), effects };
 }
 
 function rollbackTransition(state: RuntimeStateV2, target: XddStageName | undefined, reason: string, stages: readonly XddStageSpec[], effects: XddEffect[]): ControllerTransitionResult {
@@ -183,11 +206,44 @@ function rollbackTransition(state: RuntimeStateV2, target: XddStageName | undefi
 	const idx = state.plan.findIndex((entry) => entry.stageName === targetName);
 	if (idx < 0 || idx >= state.planIndex) throw new ControllerError("INVALID_ROLLBACK", `rollback target ${targetName} must be earlier than current stage`);
 	const from = currentStageName(state, stages) ?? "?";
+	const targetOriginalIndex = state.plan[idx]?.originalIndex ?? idx;
+	for (const entry of state.ledger ?? []) {
+		if (entry.stageIndex >= targetOriginalIndex && !entry.superseded) entry.superseded = true;
+	}
 	state.planIndex = idx;
 	state.rollbackOutcome = { from: from as XddStageName, to: targetName, reason };
 	state.stageOutcome = "advanced";
+	state.lastStageError = null;
+	state.stageEpoch = `${state.runId}:${targetName}:${state.attempts?.[targetName] ?? 0}`;
 	effects.push({ type: "SET_ACTIVE_TOOLS", tools: currentStage(state, stages)?.allowedTools ?? [] });
 	return { state: stamp(state), effects };
+}
+
+function recordArtifactReviewTransition(state: RuntimeStateV2, stage: XddStageName, artifacts: string[], selfAttack: string, effects: XddEffect[]): ControllerTransitionResult {
+	if (!state.submittedArtifacts) state.submittedArtifacts = {};
+	if (!state.selfAttackNotes) state.selfAttackNotes = {};
+	state.submittedArtifacts[stage] = artifacts;
+	state.selfAttackNotes[stage] = selfAttack;
+	state.stageEpoch = `${state.runId}:${stage}:${state.attempts?.[stage] ?? 0}`;
+	appendEsgNode(state, "review", stage, `self-attack: ${selfAttack.slice(0, 100)}`);
+	return { state: stamp(state), effects };
+}
+
+function recordSignalTransition(state: RuntimeStateV2, signal: XddSignal, effects: XddEffect[]): ControllerTransitionResult {
+	if (!state.signals) state.signals = [];
+	if (!state.signals.includes(signal)) state.signals.push(signal);
+	return { state: stamp(state), effects };
+}
+
+function recordEsgTransition(state: RuntimeStateV2, nodeType: XddEsgNodeType, stage: XddStageName, label: string, data: unknown, parentId: string | undefined, effects: XddEffect[]): ControllerTransitionResult {
+	appendEsgNode(state, nodeType, stage, label, data, parentId);
+	return { state: stamp(state), effects };
+}
+
+function appendEsgNode(state: RuntimeStateV2, type: XddEsgNodeType, stage: XddStageName, label: string, data?: unknown, parentId?: string): void {
+	if (!state.esg) state.esg = [];
+	const id = `esg-${state.esg.length + 1}`;
+	state.esg.push({ id, type, stage, label, data, parentId, at: new Date().toISOString() });
 }
 
 function queueFollowUp(state: RuntimeStateV2, effects: XddEffect[], outcome: XddStageOutcome, stageName: XddStageName | undefined): void {

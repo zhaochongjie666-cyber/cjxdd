@@ -1,4 +1,4 @@
-import type { XddArtifactSubmission, XddDiagnose, XddStageName } from "../types.ts";
+import type { XddArtifactSubmission, XddDiagnose, XddEsgNodeType, XddSignal, XddStageName } from "../types.ts";
 
 export type RunStatus = "idle" | "running" | "awaiting_approval" | "paused" | "reflecting" | "completed" | "failed";
 
@@ -6,6 +6,7 @@ export interface StartOptions {
 	cwd: string;
 	runId?: string;
 	plan?: readonly XddStageName[];
+	initialStage?: XddStageName;
 }
 
 export type XddCommand =
@@ -18,4 +19,7 @@ export type XddCommand =
 	| { type: "ROLLBACK"; target?: XddStageName; reason: string }
 	| { type: "STOP"; source: "command" | "escape" }
 	| { type: "RESUME" }
+	| { type: "RECORD_ARTIFACT_REVIEW"; stage: XddStageName; artifacts: string[]; selfAttack: string }
+	| { type: "RECORD_SIGNAL"; signal: XddSignal }
+	| { type: "RECORD_ESG"; nodeType: XddEsgNodeType; stage: XddStageName; label: string; data?: unknown; parentId?: string }
 	| { type: "COMPACTION_DONE"; success: boolean };

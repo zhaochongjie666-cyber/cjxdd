@@ -685,6 +685,7 @@ export interface XddArtifactSubmission {
 	artifacts: string[];
 	selfAttack: string;
 	pass?: boolean;
+	error?: string;
 }
 
 // ============================================================================

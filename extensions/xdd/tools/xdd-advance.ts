@@ -2,7 +2,8 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { findStageGroup, isLastStageInGroup } from "../stage-groups.ts";
-import { writeCheckpoint } from "../checkpoint.ts";
+import { XddController } from "../core/controller.ts";
+import { RuntimeStore } from "../storage/runtime-store.ts";
 import { type EmptyDetails, type GetXddState, ok } from "./index.ts";
 
 const schema = Type.Object({});
@@ -52,17 +53,12 @@ export function createXddAdvanceTool(getState: GetXddState): ToolDefinition {
 						// downstream audit/notify.
 						const from = stage.name;
 						const to = group.rollbackTarget;
-						const moved = state.goToStageName(to);
-						if (moved.ok) {
-							state.markSuperseded(moved.originalIndex);
-						}
-						state.rollbackOutcome = {
-							from,
-							to,
+						const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage: plannedStage }) => plannedStage));
+						controller.dispatch({
+							type: "ROLLBACK",
+							target: to,
 							reason: `${group.gateLabel} 未通过：${groupGate.reason ?? "未知"}`,
-						};
-						state.stageOutcome = "advanced"; // post-rollback, the new stage starts fresh
-						state.stageEpoch = state.makeStageEpoch(to, state.currentAttempt(to));
+						});
 						return ok(
 							`[xdd_advance] 组级 ${group.gateLabel} 未通过，强制回退 ${stage.name} -> ${group.rollbackTarget}：${groupGate.reason ?? "未知"}`,
 						);
@@ -70,53 +66,24 @@ export function createXddAdvanceTool(getState: GetXddState): ToolDefinition {
 					groupGateLabel = group.gateLabel;
 				}
 			}
-			// Normal advance (group gate passed or non-boundary).
-			state.advanceOutcome = { passed: true };
-			state.clearSignals();
+			// Normal advance (group gate passed or non-boundary). Controller owns
+			// planIndex/stageOutcome/pending approval/stageEpoch updates.
 			const prevStageName = stage.name;
-			// Phase 4 (F.9): if the stage required human approval, set
-			// pendingGroupApproval instead of advancing -- the user must
-			// explicitly call /xdd continue to proceed. The agent_end
-			// scheduler will see the pending approval and stay silent.
-			// We compute the next stage up-front for the message even
-			// though we don't advance planIndex yet.
 			const wouldBeNext = state.plan[state.planIndex + 1]?.stage;
-			if (stage.requiresHumanApproval) {
-				state.pendingGroupApproval = {
-					group: prevStageName,
-					gateLabel: `人类确认: ${prevStageName} 阶段产物是否符合预期（输 /xdd continue 进 ${wouldBeNext?.name ?? "下一阶段"}，或 /xdd rollback 回退）`,
-				};
+			const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage: plannedStage }) => plannedStage));
+			controller.dispatch({ type: "ADVANCE" });
+			if (state.pendingGroupApproval) {
 				return ok(
 					`[xdd_advance] ${prevStageName} 阶段完成，产物已通过闸门。需要人类确认后才能进 ${wouldBeNext?.name ?? "下一阶段"}。输 /xdd continue 推进，或 /xdd rollback 回退。`,
 				);
 			}
-			const next = state.advancePlan();
-			// Phase 2 (B): planIndex moved -- mark "advanced" so agent_end knows
-			// the run progressed and should NOT re-nudge. The new stage starts
-			// in "idle" (waiting for the agent to begin work); agent_end will
-			// send a continuation only if outcome remains "advanced" for too
-			// long without the new stage going "working".
-			state.stageOutcome = "advanced";
-			state.lastStageError = undefined;
-			// Phase 3 (C) P28: stamp the new stage's epoch so the context
-			// hook knows to slice on the next before_agent_start.
-			if (next) {
-				state.stageEpoch = state.makeStageEpoch(next.name, state.currentAttempt(next.name));
-			}
-			// Sync identity fields (runId/cwd/plan) into the runtime file.
-			// Don't call removeCheckpoint here -- with file-first state, deleting
-			// runtime.json resets runComplete to false (from defaults), causing
-			// the runner to loop back and hit currentStage() === undefined.
-			// The runner's finally block handles checkpoint removal.
-			writeCheckpoint(state, "running", state.rollbackCount);
-			if (!next) {
-				state.runComplete = true;
-				state.stageOutcome = "completed";
+			if (state.runComplete) {
 				const prefix = groupGateLabel ? `${groupGateLabel} 通过 ✅，` : "";
 				return { content: [{ type: "text", text: `[xdd_advance] ${prefix}最终阶段 ${stage.name} 通过，xdd run 完成 ✅。` }], details: {}, terminate: true };
 			}
+			const next = state.currentStage();
 			const prefix = groupGateLabel ? `${groupGateLabel} 通过 ✅，` : "";
-			const text = `[xdd_advance] ${prefix}${stage.name} 通过，进入下一阶段 ${next.name}。`;
+			const text = `[xdd_advance] ${prefix}${stage.name} 通过，进入下一阶段 ${next?.name ?? "?"}。`;
 			// Do NOT return terminate:true for non-final stages. terminate:true ends
 			// the turn immediately, but the followUp from agent_end relies on
 			// _handlePostAgentRun -> hasQueuedMessages, which can break when

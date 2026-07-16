@@ -1,9 +1,9 @@
 /**
  * xdd run command handlers -- the missing production entry point.
  *
- * Architecture B: pi's REPL IS the runner loop. The /xdd command creates the
- * state + loads skills + activates the extension (so tools/hooks work) + sends
- * the task as a user message. before_agent_start sets the stage prompt; the
+ * Architecture B: pi's REPL IS the runner loop. The /xdd command dispatches
+ * Controller START + loads skills + activates the extension (so tools/hooks
+ * work) + sends the task as a user message. before_agent_start sets the stage prompt; the
  * tools (xdd_submit_artifact / xdd_advance) drive state transitions.
  *
  * No separate XddRunner.run() loop is needed -- pi's turn cycle replaces it.
@@ -12,11 +12,12 @@ import { STAGES } from "./stages.ts";
 import { XddRunnerState } from "./types.ts";
 import { activateXddExtension, getState } from "./extension.ts";
 import { loadXddSkills } from "./skill-loader.ts";
-import { readCheckpoint, writeCheckpoint } from "./checkpoint.ts";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { readCheckpoint } from "./checkpoint.ts";
 import { archiveRun } from "./archive.ts";
-import { controllerInitScaffold } from "./init-scaffold.ts";
+import { XddController } from "./core/controller.ts";
+import { executePiEffects } from "./adapters/pi-effects.ts";
+import { RuntimeStore } from "./storage/runtime-store.ts";
+import { controllerInitScaffold, hasInitializedXddSkeleton } from "./init-scaffold.ts";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
 /** /xdd <task> -- start a new xdd run. */
@@ -27,24 +28,25 @@ export async function runXdd(args: string, cwd: string, pi: ExtensionAPI): Promi
 		return;
 	}
 	const runId = `xdd-${Date.now()}`;
-	// Phase 4 (F.5): Controller scaffold runs BEFORE state creation so
-	// the init stage sees a fully-prepared .xdd/ tree.
+	// Phase 4 (F.5): decide whether init was already complete BEFORE
+	// scaffold. Otherwise a new project would create .xdd/design + .xdd/runs
+	// and immediately misclassify itself as initialized, skipping init.
+	const xddExistsBeforeScaffold = hasInitializedXddSkeleton(cwd);
 	const scaffold = controllerInitScaffold(cwd);
+	const initialStage = xddExistsBeforeScaffold ? "understand" : "init";
+	const controller = new XddController(new RuntimeStore(cwd), STAGES);
+	controller.dispatch({
+		type: "START",
+		task,
+		options: { cwd, runId, initialStage },
+	});
 	const state = new XddRunnerState({ runId, cwd, userInput: task });
 	state.skills = loadXddSkills(cwd);
 	state.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
-	state.startRun();
-	// Skip init if .xdd/ skeleton already exists (re-run or resumed project).
-	const xddExists = existsSync(join(cwd, ".xdd", "design")) && existsSync(join(cwd, ".xdd", "runs"));
-	if (xddExists) {
-		state.planIndex = 1; // jump to understand
-	}
 	activateXddExtension(state);
-	state.stopRequested = false; // clear stale flag from previous run
-	writeCheckpoint(state, "running", 0);
 	const n = state.skills.length;
 	const stageName = state.currentStageName();
-	const skipMsg = xddExists ? "检测到 .xdd/ 已存在，跳过 init，" : "";
+	const skipMsg = xddExistsBeforeScaffold ? "检测到 .xdd/ 已存在，跳过 init，" : "";
 	const scaffoldMsg = scaffold.created.length > 0
 		? `Controller 已 scaffold ${scaffold.created.length} 个目录（${scaffold.created.join(", ")}）。`
 		: `Controller scaffold：所有目录已存在（${scaffold.skipped.length} 项），无新创建。`;
@@ -67,13 +69,10 @@ export async function continueXdd(_args: string, _cwd: string, pi: ExtensionAPI)
 		return;
 	}
 	const approved = state.pendingGroupApproval;
-	state.pendingGroupApproval = undefined;
-	state.advanceOutcome = { passed: true };
-	state.clearSignals();
-	const next = state.advancePlan();
-	writeCheckpoint(state, "running", 0);
-	if (!next) {
-		state.runComplete = true;
+	const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
+	controller.dispatch({ type: "APPROVE", approvalId: approved.group });
+	const next = state.currentStage();
+	if (state.runComplete || !next) {
 		await pi.sendUserMessage(`[xdd] ${approved.gateLabel} 人工确认通过。全部阶段完成。`);
 		return;
 	}
@@ -104,21 +103,13 @@ export async function resumeXdd(_args: string, cwd: string, pi: ExtensionAPI): P
 			await pi.sendUserMessage("[xdd] 当前 run 未暂停，无需恢复。");
 			return;
 		}
-		// Atomic state flip. Order matters:
-		//  1. bump epoch first -> any in-flight followUp becomes stale
-		//  2. clear continuationQueued -> scheduler can re-queue
-		//  3. clear paused/stopRequested/pauseNotified -> auto-continue resumes
-		//  4. status=running -> reflects current state
-		// All four are persisted to runtime.json by the individual setters,
-		// so even a crash mid-resume leaves a recoverable state.
-		state.continuationEpoch = state.continuationEpoch + 1;
-		state.continuationQueued = false;
-		state.paused = false;
-		state.stopRequested = false;
-		state.pauseNotified = false;
-		state.status = "running";
-		const stageName = state.currentStageName() ?? "?";
-		await pi.sendUserMessage(`[xdd] run ${state.runId} 已恢复。当前阶段: ${stageName}。继续。`);
+		const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
+		const result = controller.dispatch({ type: "RESUME" });
+		await executePiEffects(result.effects, {
+			pi,
+			ctx: { hasPendingMessages: () => false, isIdle: () => true },
+			getState: () => state,
+		});
 		return;
 	}
 
@@ -132,16 +123,14 @@ export async function resumeXdd(_args: string, cwd: string, pi: ExtensionAPI): P
 	newState.skills = loadXddSkills(cwd);
 	newState.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
 	newState.restoreFromCheckpoint(cp);
-	// Bump epoch + clear pause flags on the rebuilt state too.
-	newState.continuationEpoch = (cp.continuationEpoch ?? 0) + 1;
-	newState.continuationQueued = false;
-	newState.paused = false;
-	newState.stopRequested = false;
-	newState.pauseNotified = false;
-	newState.status = "running";
 	activateXddExtension(newState);
-	const stageName = newState.currentStageName() ?? "?";
-	await pi.sendUserMessage(`[xdd] 从 checkpoint 恢复 run ${cp.runId}（epoch=${newState.continuationEpoch}），当前阶段: ${stageName}。继续。`);
+	const controller = new XddController(new RuntimeStore(newState.cwd), newState.plan.map(({ stage }) => stage));
+	const result = controller.dispatch({ type: "RESUME" });
+	await executePiEffects(result.effects, {
+		pi,
+		ctx: { hasPendingMessages: () => false, isIdle: () => true },
+		getState: () => newState,
+	});
 }
 
 /** /xdd status -- show current pipeline state. */
