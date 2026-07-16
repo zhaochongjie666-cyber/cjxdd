@@ -249,4 +249,5 @@ description: |
 □ 混淆元素 A/B/C/D 四类全扫，零未处理项？
 □ 每页 .md 底部有 Review（Q1-Q5 逐条回答）？
 □ 可见文字无 em-dash（-）？
+□ design/ 产物不引用 iter-N（design 是持久锚，跨 iter 保留）？
 ```

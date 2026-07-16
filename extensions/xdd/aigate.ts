@@ -88,6 +88,17 @@ const COMMON_ANGLES: AttackAngle[] = [
 	},
 ];
 
+/** Design-layer angle: design/ is persistent across iters, must not reference iter-N. */
+const ITER_POLLUTION_ANGLE: AttackAngle = {
+	name: "iter污染攻击",
+	description: "design/ 是持久锚，跨 iter 保留，不引用 iter-N",
+	checks: [
+		"design/ 下的产物是否引用了 iter-N？（如 .xdd/runs/iter-N/goals.md 路径出现在 design.md/rules.md/architecture.md/wire/*.md 中）",
+		"产物是否用 iter 编号限定持久设计？（如 'iter-1 的架构' 应该是 '架构'，不绑定 iter）",
+		"design/ 下的文件路径是否指向 runs/iter-N/？（design 层不该关心具体 iter 编号）",
+	],
+};
+
 /** Stage-specific attack angles. */
 const STAGE_ANGLES: Record<string, AttackAngle[]> = {
 	understand: [
@@ -109,6 +120,7 @@ const STAGE_ANGLES: Record<string, AttackAngle[]> = {
 				"是否有明显的用户群体被遗漏？",
 			],
 		},
+		ITER_POLLUTION_ANGLE,
 	],
 	spec: [
 		{
@@ -139,6 +151,7 @@ const STAGE_ANGLES: Record<string, AttackAngle[]> = {
 				"规则是否有实现细节冒充业务规则（数据库字段/assignee_id）？",
 			],
 		},
+		ITER_POLLUTION_ANGLE,
 	],
 	architecture: [
 		{
@@ -181,6 +194,7 @@ const STAGE_ANGLES: Record<string, AttackAngle[]> = {
 				"模块职责表是否写了'不负责'列（防职责泄漏）？",
 			],
 		},
+		ITER_POLLUTION_ANGLE,
 	],
 	wire: [
 		{
@@ -203,6 +217,7 @@ const STAGE_ANGLES: Record<string, AttackAngle[]> = {
 				"跨页面流程连贯性：用户从 A 页到 B 页上下文接得住吗？",
 			],
 		},
+		ITER_POLLUTION_ANGLE,
 	],
 	resilience: [
 		{

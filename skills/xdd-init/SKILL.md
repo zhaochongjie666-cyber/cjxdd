@@ -186,6 +186,7 @@ iter-1 完成 → init --iter 2
 □ git 仓库？（非 git → ⚠️ 提醒 git init）
 □ .gitignore 是否需要加 .xdd/runs/ 规则？（ℹ️ 提醒）
 □ inject marker 落地（AGENTS.md/CLAUDE.md 若注入过）？
+□ design/ 产物不引用 iter-N（design 是持久锚，跨 iter 保留）？
 ```
 
 ## 故障排查

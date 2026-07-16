@@ -221,4 +221,5 @@ Feature: [业务能力] — [核心价值]    @covers-R01
 □ 区分了事实/推导/待确认，没有把假设伪装成正式规则？
 □ RXX 术语来自 understand 的 glossary.md，无新造同义词？
 □ _landscape.md 每条业务线标了子域类型 + 跟 aggregate-landscape.md 一致？
+□ design/ 产物不引用 iter-N（design 是持久锚，跨 iter 保留）？
 ```
