@@ -12,6 +12,7 @@ import type { XddRunnerState, XddStageSpec } from "./types.ts";
 import { decideFollowUp } from "./followup.ts";
 import { sliceByEpoch, EPOCH_MARKER_PREFIX } from "./epoch-slicer.ts";
 import { resolveGlobs, hasGlobMeta } from "./glob-resolver.ts";
+import { compileStageContracts } from "./core/stage-contract.ts";
 
 /**
  * Module-level shared state. The InlineExtension factory registers tools and
@@ -63,7 +64,7 @@ function validateStageContracts(state: XddRunnerState): void {
 }
 
 export function activateXddExtension(state: XddRunnerState): void {
-	validateStageContracts(state);
+	compileStageContracts(state.plan.map(({ stage }) => stage));
 	stateRef = state;
 }
 
