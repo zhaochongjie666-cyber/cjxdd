@@ -124,11 +124,15 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 						terminate: true,
 					};
 				}
-				// Layer 2: gate failed with budget remaining -- terminate the turn.
+				// Layer 2: gate failed with budget remaining -- keep the current
+				// agent turn alive so it can use the actionable Gate feedback to
+				// repair the artifacts and submit again. This matches the AIGate
+				// retry path below; terminating here can cause Pi to report a
+				// toolUse stop reason, which prevents the controller from queuing
+				// the next repair turn.
 				return {
-					content: [{ type: "text", text: `❌ [gate ${used}/${state.maxSelfHealPerStage}] ${stage.name} 未达标：${gate.reason ?? "未知"}\n剩余自愈预算：${remaining}\n本轮提交失败，turn 结束。请诊断问题并修复产物，下轮重新提交。` }],
+					content: [{ type: "text", text: `❌ [gate ${used}/${state.maxSelfHealPerStage}] ${stage.name} 未达标：${gate.reason ?? "未知"}\n剩余自愈预算：${remaining}\n本轮提交失败，但本 turn 继续。请根据 Gate 反馈修复产物后重新调用 xdd_submit_artifact。` }],
 					details: {},
-					terminate: true,
 				};
 			}
 			// --- AIGate: AI 语义审查（硬 Gate 通过后叠加） ---
