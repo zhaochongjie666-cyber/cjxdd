@@ -1,12 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HeadlessXddController } from "../adapters/headless-controller.ts";
+import { HookRunner } from "../hooks/runner.ts";
 import { controllerInitScaffold } from "../init-scaffold.ts";
 
 function tmpCwd(prefix: string): string {
 	return mkdtempSync(join(tmpdir(), prefix));
+}
+
+function alive(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+	const started = Date.now();
+	while (Date.now() - started < timeoutMs) {
+		if (predicate()) return;
+		await new Promise((resolve) => setTimeout(resolve, 25));
+	}
+	throw new Error("condition timed out");
 }
 
 describe("T13 recovery regression", () => {
@@ -47,6 +66,61 @@ describe("T13 recovery regression", () => {
 			expect(resumed.state.status).toBe("running");
 			expect(resumed.state.continuationQueued).toBe(true);
 			expect(resumed.effects.filter((effect) => effect.type === "SEND_FOLLOWUP")).toHaveLength(1);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("records hook timeout as a recoverable pass-with-warning", async () => {
+		const cwd = tmpCwd("xdd-recovery-hook-timeout-");
+		try {
+			controllerInitScaffold(cwd);
+			writeFileSync(join(cwd, ".xdd", "hooks", "before_tools", "01-timeout.cjs"), "setInterval(() => {}, 10000);", "utf8");
+
+			const result = await new HookRunner(cwd, { timeoutMs: 50 }).run("before_tools", {
+				hook: "before_tools",
+				runId: "hook-timeout",
+				stage: "verify",
+				stageEpoch: "hook-timeout:verify:0",
+				cwd,
+			});
+
+			expect(result.action).toBe("pass");
+			expect(result.records[0].timedOut).toBe(true);
+			expect(result.records[0].warning).toContain("timed out");
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("kills hook process groups when aborted", async () => {
+		const cwd = tmpCwd("xdd-recovery-hook-abort-");
+		try {
+			controllerInitScaffold(cwd);
+			const pidFile = join(cwd, "hook.pid");
+			writeFileSync(
+				join(cwd, ".xdd", "hooks", "before_tools", "01-abort.cjs"),
+				`const { writeFileSync } = require("node:fs");\nwriteFileSync(${JSON.stringify(pidFile)}, String(process.pid));\nsetInterval(() => {}, 10000);`,
+				"utf8",
+			);
+
+			const ac = new AbortController();
+			const running = new HookRunner(cwd, { timeoutMs: 10000, signal: ac.signal }).run("before_tools", {
+				hook: "before_tools",
+				runId: "hook-abort",
+				stage: "verify",
+				stageEpoch: "hook-abort:verify:0",
+				cwd,
+			});
+			await waitFor(() => existsSync(pidFile));
+			const pid = Number(readFileSync(pidFile, "utf8"));
+			expect(alive(pid)).toBe(true);
+
+			ac.abort();
+			const result = await running;
+			expect(result.action).toBe("pass");
+			expect(result.records[0].warning).toContain("aborted");
+			await waitFor(() => !alive(pid));
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}

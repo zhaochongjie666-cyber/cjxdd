@@ -3,8 +3,11 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HeadlessXddController } from "../adapters/headless-controller.ts";
+import { formatAIGateResult, type AIGateResult } from "../aigate.ts";
+import { evaluateVerifyEvidenceGate } from "../evidence/verify-gate.ts";
 import { controllerInitScaffold, hasInitializedXddSkeleton } from "../init-scaffold.ts";
 import { checkStagePathAccess } from "../policy/path-policy.ts";
+import { STAGE_GROUPS } from "../stage-groups.ts";
 import { STAGES } from "../stages.ts";
 import type { RuntimeStateV2 } from "../storage/runtime-migrations.ts";
 
@@ -91,6 +94,90 @@ describe("T13 full run regression", () => {
 			expect(result.state.lastStageError).toBe("rate limit");
 			expect(result.effects).toHaveLength(0);
 			expect(result.state.selfHealUsed?.init ?? 0).toBe(before);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects sham verify reports that cite missing evidence", () => {
+		const cwd = tmpCwd("xdd-full-sham-verify-");
+		try {
+			mkdirSync(join(cwd, ".xdd", "runs", "iter-1", "plan", "task"), { recursive: true });
+			mkdirSync(join(cwd, ".xdd", "runs", "iter-1", "evidence"), { recursive: true });
+			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "plan", "task", "plan.md"), "- [x] verify真实证据\n", "utf8");
+			writeFileSync(
+				join(cwd, ".xdd", "runs", "iter-1", "verify-report.md"),
+				[
+					"# Verify",
+					"Runtime evidence: npm test exit code 0.",
+					"HTTP evidence: curl GET /api/orders status 200.",
+					"Evidence .xdd/runs/iter-1/evidence/missing-runtime.txt",
+					"这是一份伪造报告，正文很长但引用的证据文件不存在。".repeat(40),
+				].join("\n"),
+				"utf8",
+			);
+
+			const result = evaluateVerifyEvidenceGate(cwd);
+			expect(result.ok).toBe(false);
+			expect(result.failure?.code).toBe("EVIDENCE_MISSING");
+			expect(result.failure?.message).toContain("missing-runtime.txt");
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("keeps diagnosis and rollback recovery on the Controller path", () => {
+		const cwd = tmpCwd("xdd-full-rollback-");
+		try {
+			controllerInitScaffold(cwd);
+			const headless = new HeadlessXddController(cwd);
+			headless.dispatch({ type: "START", task: "rollback", options: { cwd, runId: "rollback", initialStage: "architecture" } });
+
+			const diagnosed = headless.dispatch({
+				type: "DIAGNOSE",
+				diagnosis: { layer: "architecture-flaw", reason: "Gate 2 发现架构产物不一致" },
+			});
+			expect(diagnosed.state.status).toBe("reflecting");
+			expect(diagnosed.state.diagnose?.layer).toBe("architecture-flaw");
+
+			const rolledBack = headless.dispatch({ type: "ROLLBACK", target: "spec", reason: "diagnosis requires spec repair" });
+			expect(rolledBack.state.status).toBe("running");
+			expect(stageName(rolledBack.state)).toBe("spec");
+			expect(rolledBack.state.stageOutcome).toBe("advanced");
+			expect(rolledBack.state.rollbackOutcome).toContain("spec");
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("surfaces degraded AI Gate results as blocking review text", () => {
+		const degraded: AIGateResult = {
+			passed: false,
+			degraded: true,
+			angles: [{ name: "偷工减料攻击", passed: false, findings: ["[AIGate 响应未包含 JSON]"] }],
+			issues: ["[AIGate 解析失败] LLM 响应未找到 JSON 块"],
+			suggestions: ["重试"],
+		};
+
+		expect(degraded.degraded).toBe(true);
+		expect(degraded.passed).toBe(false);
+		expect(formatAIGateResult(degraded)).toContain("❌ 偷工减料攻击");
+	});
+
+	it("keeps group gate rollback atomic when discovery artifacts are missing", async () => {
+		const cwd = tmpCwd("xdd-full-group-gate-");
+		try {
+			controllerInitScaffold(cwd);
+			const discovery = STAGE_GROUPS.find((group) => group.name === "discovery")!;
+			const gate = await discovery.gate({ cwd });
+			expect(gate.ok).toBe(false);
+			expect(discovery.rollbackTarget).toBe("init");
+
+			const headless = new HeadlessXddController(cwd);
+			headless.dispatch({ type: "START", task: "group gate", options: { cwd, runId: "group", initialStage: "spec" } });
+			const rolledBack = headless.dispatch({ type: "ROLLBACK", target: discovery.rollbackTarget, reason: gate.reason ?? "group gate failed" });
+			expect(stageName(rolledBack.state)).toBe("init");
+			expect(rolledBack.state.rollbackOutcome).toContain("init");
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
