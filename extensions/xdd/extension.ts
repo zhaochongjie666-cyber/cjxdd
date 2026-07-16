@@ -125,16 +125,41 @@ export const xddInlineExtension: InlineExtension = {
 		pi.registerCommand("xdd-stop", {
 			description: "中断当前 xdd run（支持 Esc Esc 后恢复）",
 			handler: async (_args, ctx) => {
+				// Phase 0 P20: /xdd-stop is an IDEMPOTENT control op. Calling it
+				// 5 times in a row must produce ONE notification and ZERO new
+				// LLM turns. Rules:
+				//   - stateRef is null          → ui.notify only, no sendUserMessage
+				//   - stateRef.paused already   → return silently (no abort, no notify)
+				//   - running → paused          → set paused+stopRequested FIRST
+				//                                   (so a racing agent_end sees paused),
+				//                                   then ctx.abort, then ui.notify.
+				// NEVER call pi.sendUserMessage here: it always triggers a turn,
+				// and ctx.abort() leaves the agent in "processing" state, so
+				// the message collides with "Agent is already processing"
+				// and can re-enter agent_end → re-send pause message → loop.
 				if (!stateRef) {
-					await pi.sendUserMessage("[xdd] 无活跃 xdd run。");
+					ctx.ui.notify("[xdd] 无活跃 xdd run。", "warning");
 					return;
 				}
+				if (stateRef.paused) {
+					// Already paused -- idempotent no-op.
+					return;
+				}
+				// Flip paused BEFORE abort so the next agent_end sees the
+				// signal and returns silently (P21).
+				stateRef.paused = true;
 				stateRef.stopRequested = true;
-				// Abort the current turn if the agent is streaming.
-				ctx.abort();
-				await pi.sendUserMessage(
-					`[xdd] 用户中断。run 已暂停在 ${stateRef.currentStageName() ?? "?"} 阶段。输入 /xdd-resume 恢复。`,
+				stateRef.pauseNotified = false;
+				// Abort only when the agent is actually streaming. If idle,
+				// abort() is a no-op anyway but skipping saves a race window.
+				if (!ctx.isIdle()) {
+					ctx.abort();
+				}
+				ctx.ui.notify(
+					`[xdd] run 已暂停在 ${stateRef.currentStageName() ?? "?"} 阶段。输入 /xdd-resume 恢复。`,
+					"warning",
 				);
+				return;
 			},
 		});
 
@@ -208,19 +233,35 @@ export const xddInlineExtension: InlineExtension = {
 		pi.on("agent_end", async (_event, ctx) => {
 			if (!stateRef) return;
 			if (stateRef.runComplete) return;
-			// Detect user interrupt: /xdd-stop command (explicit) or Esc (abort signal).
+			// Phase 0 P21: paused / stopRequested path is SILENT.
+			// Rule: if paused, NEVER queue a followUp. The only place that
+			// emits a pause notification is /xdd-stop (P20). agent_end must
+			// return early so the auto-continue loop breaks.
+			//
+			// Detect user interrupt: /xdd-stop command (explicit), paused flag,
+			// or Esc (abort signal).
 			let signalAborted = false;
 			try {
 				signalAborted = ctx.signal?.aborted ?? false;
 			} catch { /* ctx.signal getter can throw on stale context */ }
-			if (stateRef.stopRequested || signalAborted) {
-				stateRef.stopRequested = true;
-				try {
-					await pi.sendUserMessage(
+			if (stateRef.paused || stateRef.stopRequested || signalAborted) {
+				// Promote to paused if it isn't already (Esc path may flip
+				// stopRequested without going through /xdd-stop). This ensures
+				// subsequent agent_ends stay silent.
+				if (!stateRef.paused) {
+					stateRef.paused = true;
+					stateRef.stopRequested = true;
+				}
+				// Single notification per pause epoch. P20 (xdd-stop) already
+				// notified; this is the fallback for the Esc path. After
+				// notification, ALL future agent_ends return silently.
+				if (!stateRef.pauseNotified) {
+					stateRef.pauseNotified = true;
+					ctx.ui.notify(
 						`[xdd] 用户中断。run 已暂停在 ${stateRef.currentStageName() ?? "?"} 阶段。输入 /xdd-resume 恢复，或继续对话做其他事。`,
-						{ deliverAs: "followUp" },
+						"warning",
 					);
-				} catch { /* ignore */ }
+				}
 				return;
 			}
 			const idx = stateRef.planIndex;
@@ -306,6 +347,33 @@ export const xddInlineExtension: InlineExtension = {
 			} catch {
 				// ignore
 			}
+		});
+
+		// Phase 0 P22: input hook that drops stale xdd continuations.
+		//
+		// Problem: agent_end may have queued a followUp "继续 ${stage}" message
+		// BEFORE the user ran /xdd-stop. The followUp sits in pi's queue. After
+		// /xdd-resume, that old followUp would be delivered and cause confusion
+		// ("why is the agent continuing an old plan?").
+		//
+		// Solution: intercept input events with source="extension" and a
+		// recognizable xdd continuation prefix; if the run is paused or the
+		// epoch is stale, return { action: "handled" } to drop the message.
+		pi.on("input", (event) => {
+			if (!stateRef) return { action: "continue" };
+			if (event.source !== "extension") return { action: "continue" };
+			const text = event.text ?? "";
+			// Recognize xdd continuation messages by their distinguishing
+			// prefix. (P25 will tighten this once StageOutcome is in.)
+			const isXddContinuation =
+				text.startsWith("[xdd 自动推进]") ||
+				text.startsWith("[xdd] 阶段") || // stage-advance nudge
+				text.startsWith("[xdd] 连续"); // stall terminate nudge
+			if (!isXddContinuation) return { action: "continue" };
+			// Drop while paused: agent must not receive a "继续" while the
+			// user is reading the pause notification.
+			if (stateRef.paused) return { action: "handled" };
+			return { action: "continue" };
 		});
 
 		// Run completion: auto-archive (first time only -- `archived` flag prevents re-run).

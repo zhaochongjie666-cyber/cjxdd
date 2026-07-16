@@ -13,7 +13,7 @@
  *
  * 失败安全：LLM 调用失败（网络/API/解析）时 soft-pass，不阻塞流水线。
  */
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { glob } from "tinyglobby";
 import type { Model } from "@earendil-works/pi-ai/compat";
@@ -375,37 +375,79 @@ function readContextFiles(cwd: string, stageName: string): string[] {
 			// tinyglobby: brace expansion + recursive via **, much safer than
 			// manual readdirSync + pattern test (which doesn't recurse and
 			// silently misses nested files like .xdd/design/spec/*/rules.md).
-			const matches = glob.sync(pattern, { cwd: dir, absolute: false, onlyFiles: true });
+			// tinyglobby only exposes an async API; we synchronously read via
+			// the `globSync` (an internal sync export) -- the async variant
+			// would require making readContextFiles async, which then
+			// cascades through the call sites. Keep sync via the
+			// `globSync` named export when present, fall back to a manual
+			// recursive walk.
+			let matches: string[];
+			const tiny = glob as unknown as { globSync?: (p: string, o: object) => string[] };
+			if (typeof tiny.globSync === "function") {
+				matches = tiny.globSync(pattern, { cwd: dir, onlyFiles: true });
+			} else {
+				matches = manualWalkSync(dir, pattern);
+			}
 			for (const rel of matches) {
 				tryRead(join(dirRel, rel));
 			}
 		} catch { /* skip */ }
 	}
 
+/** Fallback walker: recursive readdirSync + pattern.match(). Used only
+ *  when tinyglobby doesn't expose a sync API. */
+function manualWalkSync(dir: string, pattern: string): string[] {
+	const out: string[] = [];
+	const re = new RegExp("^" + pattern.replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]") + "$");
+	const stack = [dir];
+	while (stack.length > 0) {
+		const current = stack.pop() as string;
+		let entries: string[];
+		try {
+			entries = readdirSync(current);
+		} catch { continue; }
+		for (const name of entries) {
+			const full = join(current, name);
+			let st: import("node:fs").Stats;
+			try { st = statSync(full); } catch { continue; }
+			if (st.isDirectory()) {
+				stack.push(full);
+			} else {
+				const rel = full.slice(dir.length + 1).replace(/\\/g, "/");
+				if (re.test(rel)) out.push(rel);
+			}
+		}
+	}
+	return out;
+}
+
 	switch (stageName) {
 		case "spec":
-			// Read personas for traceability attack (recursive)
+			// Read personas for traceability attack (recursive into any depth)
 			tryReadDir(".xdd/design/personas", "**/*.md");
 			break;
 		case "architecture":
-			// Read spec rules for consistency attack (recursive -- spec/<bxx>/rules.md)
-			tryReadDir(".xdd/design/spec", "**/rules.md");
+			// Read spec rules for consistency attack (recursive -- spec/<bxx>/rules.md
+			// and spec/<bxx>/sub/rules.md). tinyglobby's `**/X` matches at any
+			// depth when used as a path segment; `**/*.md` is the canonical
+			// "all .md files anywhere" pattern.
+			tryReadDir(".xdd/design/spec", "**/*.md");
 			tryRead(".xdd/design/spec/_landscape.md");
 			break;
 		case "execute":
 			// Read spec rules + architecture for implementation attack (recursive)
-			tryReadDir(".xdd/design/spec", "**/rules.md");
-			tryReadDir(".xdd/design/architecture", "**/architecture.md");
+			tryReadDir(".xdd/design/spec", "**/*.md");
+			tryReadDir(".xdd/design/architecture", "**/*.md");
 			break;
 		case "verify":
 			// Read spec + architecture + plan for consistency attack (recursive)
-			tryReadDir(".xdd/design/spec", "**/rules.md");
-			tryReadDir(".xdd/design/architecture", "**/architecture.md");
+			tryReadDir(".xdd/design/spec", "**/*.md");
+			tryReadDir(".xdd/design/architecture", "**/*.md");
 			tryReadDir(".xdd/design/wire", "**/*.md");
 			break;
 		case "resilience":
 			// Read architecture for failure mode coverage check (recursive)
-			tryReadDir(".xdd/design/architecture", "**/architecture.md");
+			tryReadDir(".xdd/design/architecture", "**/*.md");
 			break;
 	}
 

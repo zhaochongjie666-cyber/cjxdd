@@ -264,6 +264,29 @@ export class XddRunnerState {
 	set blindJourneyVerdict(v: "pass" | "fail" | "pending" | "skipped") { this.mutRt("blindJourneyVerdict", v); }
 	get stopRequested(): boolean { return this.loadRt().stopRequested ?? false; }
 	set stopRequested(v: boolean) { this.mutRt("stopRequested", v); }
+	// ── Phase 0 (P20-23): stop-message storm prevention ──────────────────
+	// `paused` is the SINGLE source of truth for "run is paused". When true,
+	// agent_end / turn_end / auto-continue paths MUST be silent. `stopRequested`
+	// remains as the input signal (Esc / xdd-stop); `paused` is set once
+	// in /xdd-stop and cleared only by /xdd-resume.
+	get paused(): boolean { return this.loadRt().paused ?? false; }
+	set paused(v: boolean) { this.mutRt("paused", v); }
+	// `pauseNotified` guards against duplicate pause notifications. The first
+	// agent_end after /xdd-stop sets this to true and emits a single
+	// ctx.ui.notify. Subsequent agent_ends return early silently.
+	get pauseNotified(): boolean { return this.loadRt().pauseNotified ?? false; }
+	set pauseNotified(v: boolean) { this.mutRt("pauseNotified", v); }
+	// `continuationEpoch` is incremented on /xdd-resume. Any continuation
+	// followUp queued with an old epoch is filtered out by the input hook
+	// (P22). This solves the "stop 之前已经入队的 followUp, stop 后还继续被
+	// 投递" problem.
+	get continuationEpoch(): number { return this.loadRt().continuationEpoch ?? 0; }
+	set continuationEpoch(v: number) { this.mutRt("continuationEpoch", v); }
+	// `continuationQueued` prevents the auto-continue scheduler from queueing
+	// two followUps in the same agent_end cycle. Set when a continuation is
+	// queued, cleared when it's consumed (next agent_start or input hook).
+	get continuationQueued(): boolean { return this.loadRt().continuationQueued ?? false; }
+	set continuationQueued(v: boolean) { this.mutRt("continuationQueued", v); }
 	get rollbackOutcome(): { from: XddStageName; to: XddStageName; reason: string } | undefined { return this.loadRt().rollbackOutcome ?? undefined; }
 	set rollbackOutcome(v: { from: XddStageName; to: XddStageName; reason: string } | undefined) { this.mutRt("rollbackOutcome", v ?? null); }
 	get pendingGroupApproval(): { group: string; gateLabel: string } | undefined { return this.loadRt().pendingGroupApproval ?? undefined; }
@@ -599,6 +622,11 @@ export interface XddCheckpointData {
 	runComplete?: boolean;
 	blindJourneyVerdict?: "pass" | "fail" | "pending" | "skipped";
 	stopRequested?: boolean;
+	// Phase 0 (P20-23): stop-message storm prevention
+	paused?: boolean;
+	pauseNotified?: boolean;
+	continuationEpoch?: number;
+	continuationQueued?: boolean;
 }
 
 /** Default runtime data for a fresh run. */
@@ -620,6 +648,8 @@ function defaultRt(): XddCheckpointData {
 		boundary: 0, runComplete: false,
 		blindJourneyVerdict: "pending",
 		stopRequested: false,
+		paused: false, pauseNotified: false,
+		continuationEpoch: 0, continuationQueued: false,
 	};
 }
 
