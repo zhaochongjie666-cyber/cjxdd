@@ -23,6 +23,46 @@ import { compileStageContracts } from "./core/stage-contract.ts";
  */
 let stateRef: XddRunnerState | null = null;
 
+/**
+ * Phase 4 (F.3): static validation of stage contracts. At activation
+ * time, walk the planned stages and assert that every deliverable path
+ * is reachable (no impossible writes). Throws on the first violation
+ * so the failure surfaces before any model turn starts.
+ */
+
+function sendFollowUpFireAndForget(
+	pi: { sendUserMessage: (text: string, options?: unknown) => Promise<unknown> | unknown },
+	text: string,
+	onFailure: (err: unknown) => void,
+): void {
+	try {
+		void Promise.resolve(pi.sendUserMessage(text, { deliverAs: "followUp" })).catch(onFailure);
+	} catch (err) {
+		onFailure(err);
+	}
+}
+
+function validateStageContracts(state: XddRunnerState): void {
+	for (const { stage } of state.plan) {
+		if (!stage.writeScopes || stage.writeScopes.length === 0) continue;
+		// If writeScopes are declared, all deliverable paths must be
+		// covered by some writeScope. (Glob match; we don't open files
+		// here -- just pattern check.)
+		const reCache: RegExp[] = stage.writeScopes.map((p) => {
+			const escaped = p.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+			return new RegExp(`^${escaped}$`);
+		});
+		for (const dp of stage.deliverablePaths) {
+			const covered = reCache.some((re) => re.test(dp));
+			if (!covered) {
+				throw new Error(
+					`[xdd] 阶段 ${stage.name} 契约不一致：deliverablePaths "${dp}" 不在 writeScopes 覆盖范围 (${stage.writeScopes.join(", ")})`,
+				);
+			}
+		}
+	}
+}
+
 export function activateXddExtension(state: XddRunnerState): void {
 	compileStageContracts(state.plan.map(({ stage }) => stage));
 	stateRef = state;
@@ -420,14 +460,13 @@ export const xddInlineExtension: InlineExtension = {
 								if (pendingText) {
 									stateRef.continuationQueued = true;
 									stateRef.continuationReason = `compacted:${outcome}`;
-									pi.sendUserMessage(pendingText, { deliverAs: "followUp" })
-										.catch((err) => {
-											stateRef.continuationQueued = false;
-											ctx.ui.notify(
-												`[xdd] 自动推进消息发送失败: ${err instanceof Error ? err.message : String(err)}。可能 run 卡住，需人工干预。`,
-												"error",
-											);
-										});
+									sendFollowUpFireAndForget(pi, pendingText, (err) => {
+										stateRef.continuationQueued = false;
+										ctx.ui.notify(
+											`[xdd] 自动推进消息发送失败: ${err instanceof Error ? err.message : String(err)}。可能 run 卡住，需人工干预。`,
+											"error",
+										);
+									});
 								}
 							},
 							onError: () => {
@@ -438,14 +477,13 @@ export const xddInlineExtension: InlineExtension = {
 								if (stateRef.continuationQueued) return;
 								if (pendingText) {
 									stateRef.continuationQueued = true;
-									pi.sendUserMessage(pendingText, { deliverAs: "followUp" })
-										.catch((err) => {
-											stateRef.continuationQueued = false;
-											ctx.ui.notify(
-												`[xdd] 压缩失败后回退 followUp 发送失败: ${err instanceof Error ? err.message : String(err)}。run 可能卡住。`,
-												"error",
-											);
-										});
+									sendFollowUpFireAndForget(pi, pendingText, (err) => {
+										stateRef.continuationQueued = false;
+										ctx.ui.notify(
+											`[xdd] 压缩失败后回退 followUp 发送失败: ${err instanceof Error ? err.message : String(err)}。run 可能卡住。`,
+											"error",
+										);
+									});
 								}
 							},
 						});
