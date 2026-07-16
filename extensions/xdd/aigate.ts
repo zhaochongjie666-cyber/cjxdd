@@ -11,12 +11,15 @@
  *   - 死审查标准（每阶段写死在 stages.ts 的 aigateStandard）
  *   - 跨产物上下文（读 spec/architecture/code 做一致性攻击）
  *
- * 失败安全：LLM 调用失败（网络/API/解析）时 soft-pass，不阻塞流水线。
+ * Phase 6 (D): failure semantics flipped. Previously soft-passed on
+ * any error (LLM/JSON/parse); now HARD-FAIL so the agent can see and
+ * fix the issue instead of the gate silently saying "PASS". Only the
+ * gate's *content* failure (LLM says "this angle found bugs") blocks;
+ * errors (network/parse) are reported as `degraded` with `passed: false`.
  */
-import { existsSync, readFileSync, statSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { glob } from "tinyglobby";
 import type { Model } from "@earendil-works/pi-ai/compat";
+import { readCappedFiles, resolveGlobs } from "./glob-resolver.ts";
 
 /** Default AIGate LLM call timeout: 60s. Configurable per call. */
 const DEFAULT_LLM_TIMEOUT_MS = 60_000;
@@ -353,101 +356,49 @@ const STAGE_ANGLES: Record<string, AttackAngle[]> = {
 
 /**
  * Read additional context files per stage for cross-artifact attack angles.
- * Truncates each file to avoid prompt explosion.
+ *
+ * Phase 6 (D) refactor: now delegates to glob-resolver.ts for:
+ *   - shared glob pattern matching (resolveGlobs)
+ *   - per-file + total size caps (DEFAULT_MAX_FILE_CHARS, DEFAULT_MAX_TOTAL_CHARS)
+ *   - path-traversal safety (safeRealpath inside readCappedFiles)
  */
 function readContextFiles(cwd: string, stageName: string): string[] {
 	const contexts: string[] = [];
-	const MAX_FILE = 8000; // chars per file
+	const MAX_TOTAL = 32_000; // ~8K tokens across all cross-stage context
 
-	function tryRead(relPath: string, label?: string): void {
-		const abs = join(cwd, relPath);
-		if (existsSync(abs) && statSync(abs).isFile()) {
-			let content = readFileSync(abs, "utf8");
-			if (content.length > MAX_FILE) content = content.slice(0, MAX_FILE) + "\n... (truncated)";
-			contexts.push(`--- ${label ?? relPath} ---\n${content}`);
+	// Helper: read a list of patterns and append to contexts.
+	const readPats = (pats: readonly string[]): void => {
+		const rels = resolveGlobs(cwd, pats);
+		const result = readCappedFiles(cwd, rels, { maxTotalChars: MAX_TOTAL });
+		for (const f of result.files) {
+			contexts.push(`--- ${f.rel} ---\n${f.content}`);
 		}
-	}
-
-	function tryReadDir(dirRel: string, pattern: string): void {
-		const dir = join(cwd, dirRel);
-		if (!existsSync(dir)) return;
-		try {
-			// tinyglobby: brace expansion + recursive via **, much safer than
-			// manual readdirSync + pattern test (which doesn't recurse and
-			// silently misses nested files like .xdd/design/spec/*/rules.md).
-			// tinyglobby only exposes an async API; we synchronously read via
-			// the `globSync` (an internal sync export) -- the async variant
-			// would require making readContextFiles async, which then
-			// cascades through the call sites. Keep sync via the
-			// `globSync` named export when present, fall back to a manual
-			// recursive walk.
-			let matches: string[];
-			const tiny = glob as unknown as { globSync?: (p: string, o: object) => string[] };
-			if (typeof tiny.globSync === "function") {
-				matches = tiny.globSync(pattern, { cwd: dir, onlyFiles: true });
-			} else {
-				matches = manualWalkSync(dir, pattern);
-			}
-			for (const rel of matches) {
-				tryRead(join(dirRel, rel));
-			}
-		} catch { /* skip */ }
-	}
-
-/** Fallback walker: recursive readdirSync + pattern.match(). Used only
- *  when tinyglobby doesn't expose a sync API. */
-function manualWalkSync(dir: string, pattern: string): string[] {
-	const out: string[] = [];
-	const re = new RegExp("^" + pattern.replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]") + "$");
-	const stack = [dir];
-	while (stack.length > 0) {
-		const current = stack.pop() as string;
-		let entries: string[];
-		try {
-			entries = readdirSync(current);
-		} catch { continue; }
-		for (const name of entries) {
-			const full = join(current, name);
-			let st: import("node:fs").Stats;
-			try { st = statSync(full); } catch { continue; }
-			if (st.isDirectory()) {
-				stack.push(full);
-			} else {
-				const rel = full.slice(dir.length + 1).replace(/\\/g, "/");
-				if (re.test(rel)) out.push(rel);
-			}
+		if (result.unsafeFiles.length > 0) {
+			contexts.push(`--- [AIGate] ${result.unsafeFiles.length} 个路径不安全（跳出 cwd 或不可读）---\n${result.unsafeFiles.join("\n")}`);
 		}
-	}
-	return out;
-}
+	};
 
 	switch (stageName) {
 		case "spec":
 			// Read personas for traceability attack (recursive into any depth)
-			tryReadDir(".xdd/design/personas", "**/*.md");
+			readPats([".xdd/design/personas/**/*.md"]);
 			break;
 		case "architecture":
 			// Read spec rules for consistency attack (recursive -- spec/<bxx>/rules.md
-			// and spec/<bxx>/sub/rules.md). tinyglobby's `**/X` matches at any
-			// depth when used as a path segment; `**/*.md` is the canonical
-			// "all .md files anywhere" pattern.
-			tryReadDir(".xdd/design/spec", "**/*.md");
-			tryRead(".xdd/design/spec/_landscape.md");
+			// and spec/<bxx>/sub/rules.md).
+			readPats([".xdd/design/spec/**/*.md", ".xdd/design/spec/_landscape.md"]);
 			break;
 		case "execute":
 			// Read spec rules + architecture for implementation attack (recursive)
-			tryReadDir(".xdd/design/spec", "**/*.md");
-			tryReadDir(".xdd/design/architecture", "**/*.md");
+			readPats([".xdd/design/spec/**/*.md", ".xdd/design/architecture/**/*.md"]);
 			break;
 		case "verify":
 			// Read spec + architecture + plan for consistency attack (recursive)
-			tryReadDir(".xdd/design/spec", "**/*.md");
-			tryReadDir(".xdd/design/architecture", "**/*.md");
-			tryReadDir(".xdd/design/wire", "**/*.md");
+			readPats([".xdd/design/spec/**/*.md", ".xdd/design/architecture/**/*.md", ".xdd/design/wire/**/*.md"]);
 			break;
 		case "resilience":
 			// Read architecture for failure mode coverage check (recursive)
-			tryReadDir(".xdd/design/architecture", "**/*.md");
+			readPats([".xdd/design/architecture/**/*.md"]);
 			break;
 	}
 
@@ -518,26 +469,17 @@ ${artifacts.join("\n\n")}
 export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
 	const { model, apiKey, headers, stageName, aigateStandard, artifactPaths, cwd, intentAnchor } = input;
 
-	// Read all artifact files
-	const artifacts: string[] = [];
-	for (const relPath of artifactPaths) {
-		const abs = join(cwd, relPath);
-		if (existsSync(abs) && statSync(abs).isFile()) {
-			const content = readFileSync(abs, "utf8");
-			artifacts.push(`--- ${relPath} ---\n${content}`);
-		}
-	}
+	// Phase 6 (D): use shared resolver for artifacts. Applies realpath
+	// safety + per-file + total size caps. Symlinks pointing outside cwd
+	// are silently dropped and reported as `unsafeFiles`.
+	const artifactResult = readCappedFiles(cwd, artifactPaths, { maxFileChars: 8_000, maxTotalChars: 24_000 });
+	const artifacts: string[] = artifactResult.files.map((f) => `--- ${f.rel} ---\n${f.content}`);
 
-	// Read personas for understand stage
+	// Understand stage also reads personas (for traceability attack).
 	if (stageName === "understand") {
-		const personasDir = join(cwd, ".xdd/design/personas");
-		if (existsSync(personasDir)) {
-			for (const f of readdirSync(personasDir)) {
-				if (f.endsWith(".md")) {
-					const content = readFileSync(join(personasDir, f), "utf8");
-					artifacts.push(`--- personas/${f} ---\n${content}`);
-				}
-			}
+		const personaResult = readCappedFiles(cwd, [".xdd/design/personas/**/*.md"], { maxTotalChars: 8_000 });
+		for (const f of personaResult.files) {
+			artifacts.push(`--- ${f.rel} ---\n${f.content}`);
 		}
 	}
 
@@ -567,19 +509,59 @@ export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
 		intentAnchor,
 	});
 
-	// Call LLM
+	// Call LLM. Phase 6 (D) failure semantics: LLM error / timeout /
+	// non-retryable HTTP failure all hard-fail (passed=false, recorded
+	// in issues with the error message). The agent must see this and
+	// retry manually. We do NOT soft-pass.
 	let responseText: string;
 	try {
 		responseText = await callLLM(model, apiKey, headers, ATTACKER_SYSTEM_PROMPT, userMessage);
 	} catch (e) {
 		const msg = e instanceof Error ? e.message : String(e);
-		return { passed: true, angles: [], issues: [], suggestions: [], raw: `[AIGate LLM 调用失败，soft-pass] ${msg}` };
+		return {
+			passed: false,
+			angles: angles.map((a) => ({ name: a.name, passed: "N/A" as const, findings: [] })),
+			issues: [`[AIGate LLM 调用失败] ${msg}`],
+			suggestions: ["检查 API key / 网络 / 模型可用性后重试"],
+		};
 	}
 
-	return parseVerdict(responseText);
+	const parsed = parseVerdict(responseText, angles);
+	// Phase 6 (D) trust-but-verify: re-derive passed from per-angle
+	// results, do NOT trust the LLM's top-level passed field. If any
+	// required angle is missing OR marked not-passed, overall is fail.
+	return rederivePassed(parsed, angles);
 }
 
-// ── LLM call ───────────────────────────────────────────────────────────
+// ── LLM call ──────────────────────────────────────────────────────
+
+/** Phase 6 (D): retry policy. Only retry on transient errors:
+ *   - network (TypeError, fetch failed)
+ *   - timeout (AbortError)
+ *   - 5xx HTTP
+ *   - 429 rate limit
+ * Do NOT retry on 4xx other than 429 (auth failure, bad request won't
+ * get better with another shot). Max 1 retry (2 attempts total) to
+ * keep the gate snappy. */
+const MAX_LLM_ATTEMPTS = 2;
+/** Delay before retry, in ms. 1s for 5xx/rate, 0 for network/timeout
+ *  (those are likely transient and retrying immediately is fine). */
+const RETRY_DELAY_MS = 1_000;
+
+function isRetryable(err: unknown): boolean {
+	if (!(err instanceof Error)) return false;
+	// AbortError from AbortController timeout
+	if (err.name === "AbortError" || err.message.includes("timeout")) return true;
+	// Network failures (fetch throws TypeError)
+	if (err.name === "TypeError") return true;
+	// 5xx / 429 in the error message we wrap
+	const m = /API (\d{3})/.exec(err.message);
+	if (m) {
+		const code = Number(m[1]);
+		return code >= 500 || code === 429;
+	}
+	return false;
+}
 
 async function callLLM(
 	model: Model<any>,
@@ -594,60 +576,83 @@ async function callLLM(
 	const api = model.api;
 	const baseUrl = model.baseUrl.replace(/\/$/, "");
 
-	// AbortController + timeout: without this, a stuck LLM call would
-	// hang the entire xdd run forever (LLM hangs at 99%+ context are
-	// the most common stall source). 60s default is generous for AIGate
-	// attacks which are small (a few KB of context, max 4096 tokens out).
-	const ac = new AbortController();
-	const timer = setTimeout(() => ac.abort(new Error(`AIGate LLM call timeout after ${timeoutMs}ms`)), timeoutMs);
-
-	try {
-		if (api === "anthropic-messages") {
-			const res = await fetch(`${baseUrl}/messages`, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					"x-api-key": apiKey,
-					"anthropic-version": "2023-06-01",
-					...(extraHeaders ?? {}),
-				},
-				body: JSON.stringify({
-					model: model.id,
-					max_tokens: 4096,
-					system: systemPrompt,
-					messages: [{ role: "user", content: userMessage }],
-				}),
-				signal: ac.signal,
-			});
-			if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${await res.text()}`);
-			const data = await res.json();
-			return data.content?.map((c: any) => c.text).join("") ?? "";
+	let lastErr: unknown = undefined;
+	for (let attempt = 1; attempt <= MAX_LLM_ATTEMPTS; attempt++) {
+		// AbortController + timeout: without this, a stuck LLM call
+		// would hang the entire xdd run forever.
+		const ac = new AbortController();
+		const timer = setTimeout(() => ac.abort(new Error(`AIGate LLM call timeout after ${timeoutMs}ms`)), timeoutMs);
+		try {
+			const text = await callLLMOnce(ac, api, baseUrl, model, apiKey, extraHeaders, systemPrompt, userMessage);
+			return text;
+		} catch (e) {
+			lastErr = e;
+			if (attempt >= MAX_LLM_ATTEMPTS || !isRetryable(e)) {
+				throw e;
+			}
+			// Backoff before retry
+			await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+		} finally {
+			clearTimeout(timer);
 		}
+	}
+	// Unreachable (loop either returns or throws on last attempt).
+	throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
 
-		const res = await fetch(`${baseUrl}/chat/completions`, {
+async function callLLMOnce(
+	ac: AbortController,
+	api: string,
+	baseUrl: string,
+	model: Model<any>,
+	apiKey: string,
+	extraHeaders: Record<string, string> | undefined,
+	systemPrompt: string,
+	userMessage: string,
+): Promise<string> {
+	if (api === "anthropic-messages") {
+		const res = await fetch(`${baseUrl}/messages`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
-				Authorization: `Bearer ${apiKey}`,
+				"x-api-key": apiKey,
+				"anthropic-version": "2023-06-01",
 				...(extraHeaders ?? {}),
 			},
 			body: JSON.stringify({
 				model: model.id,
-				messages: [
-					{ role: "system", content: systemPrompt },
-					{ role: "user", content: userMessage },
-				],
-				temperature: 0,
 				max_tokens: 4096,
+				system: systemPrompt,
+				messages: [{ role: "user", content: userMessage }],
 			}),
 			signal: ac.signal,
 		});
-		if (!res.ok) throw new Error(`LLM API ${res.status}: ${await res.text()}`);
+		if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${await res.text()}`);
 		const data = await res.json();
-		return data.choices?.[0]?.message?.content ?? "";
-	} finally {
-		clearTimeout(timer);
+		return data.content?.map((c: any) => c.text).join("") ?? "";
 	}
+
+	const res = await fetch(`${baseUrl}/chat/completions`, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+			Authorization: `Bearer ${apiKey}`,
+			...(extraHeaders ?? {}),
+		},
+		body: JSON.stringify({
+			model: model.id,
+			messages: [
+				{ role: "system", content: systemPrompt },
+				{ role: "user", content: userMessage },
+			],
+			temperature: 0,
+			max_tokens: 4096,
+		}),
+		signal: ac.signal,
+	});
+	if (!res.ok) throw new Error(`LLM API ${res.status}: ${await res.text()}`);
+	const data = await res.json();
+	return data.choices?.[0]?.message?.content ?? "";
 }
 
 // ── Verdict formatting ─────────────────────────────────────────────────
@@ -676,32 +681,58 @@ export function formatAIGateResult(aiResult: AIGateResult): string {
 	return lines.join("\n");
 }
 
-// ── Verdict parsing ────────────────────────────────────────────────────
+// ── Verdict parsing + re-derivation ──────────────────────────────────
 
-function parseVerdict(raw: string): AIGateResult {
+/** Angle status: true (passed), false (failed), or "N/A" (this angle
+ *  doesn't apply -- e.g. test coverage angle for a stage with no
+ *  tests). "N/A" is treated as a pass for the overall verdict. */
+export type XddAIGateAngleStatus = boolean | "N/A";
+
+/** Parse the LLM response. Phase 6 (D) failure semantics: any parse
+ *  error (no JSON, JSON.parse throws) returns a hard-fail result with
+ *  `degraded: true` and ALL angles marked as failed. The caller
+ *  (rederivePassed) will then fail the gate. */
+function parseVerdict(raw: string, expectedAngles: readonly AttackAngle[]): AIGateResult {
+	const truncated = raw.slice(0, 500);
 	let text = raw.trim();
 	text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
 
 	const jsonMatch = text.match(/\{[\s\S]*\}/);
 	if (!jsonMatch) {
-		return { passed: true, angles: [], issues: [], suggestions: [], raw: `[AIGate 解析失败，soft-pass] ${text.slice(0, 200)}` };
+		return {
+			passed: false,
+			degraded: true,
+			angles: expectedAngles.map((a) => ({ name: a.name, passed: false, findings: ["[AIGate 响应未包含 JSON]"] })),
+			issues: ["[AIGate 解析失败] LLM 响应未找到 JSON 块"],
+			suggestions: ["检查 AIGate prompt 是否清晰，重试"],
+			raw: truncated,
+		};
 	}
 
 	try {
 		const verdict = JSON.parse(jsonMatch[0]);
 		const angles: AIGateAngleResult[] = Array.isArray(verdict.angles)
-			? verdict.angles.map((a: any) => ({
-					name: String(a.name ?? ""),
-					passed: Boolean(a.passed),
-					findings: Array.isArray(a.findings) ? a.findings.map(String) : [],
-				}))
+			? verdict.angles.map((a: any) => {
+					const raw = a.passed;
+					let status: XddAIGateAngleStatus;
+					if (raw === "N/A" || raw === "n/a" || raw === "na") {
+						status = "N/A";
+					} else {
+						status = Boolean(raw);
+					}
+					return {
+						name: String(a.name ?? ""),
+						passed: status,
+						findings: Array.isArray(a.findings) ? a.findings.map(String) : [],
+					};
+				})
 			: [];
 
 		// Build issues from angles if not provided directly
 		let issues = Array.isArray(verdict.issues) ? verdict.issues.map(String) : [];
 		if (issues.length === 0 && angles.length > 0) {
 			issues = angles
-				.filter((a) => !a.passed)
+				.filter((a) => a.passed === false)
 				.flatMap((a) => a.findings.map((f) => `[${a.name}] ${f}`));
 		}
 
@@ -710,9 +741,61 @@ function parseVerdict(raw: string): AIGateResult {
 			angles,
 			issues,
 			suggestions: Array.isArray(verdict.suggestions) ? verdict.suggestions.map(String) : [],
-			raw: text.slice(0, 500),
+			raw: truncated,
 		};
-	} catch {
-		return { passed: true, angles: [], issues: [], suggestions: [], raw: `[AIGate JSON 解析失败，soft-pass] ${text.slice(0, 200)}` };
+	} catch (e) {
+		return {
+			passed: false,
+			degraded: true,
+			angles: expectedAngles.map((a) => ({ name: a.name, passed: false, findings: ["[AIGate JSON.parse 抛错]"] })),
+			issues: [`[AIGate JSON 解析失败] ${e instanceof Error ? e.message : String(e)}`],
+			suggestions: ["检查 AIGate prompt 格式，重试"],
+			raw: truncated,
+		};
 	}
+}
+
+/** Phase 6 (D) trust-but-verify: re-derive the top-level passed from
+ *  per-angle results. The LLM's top-level "passed" field is NOT
+ *  trusted (LLMs hallucinate). Rules:
+ *   - every expected angle must be present in the result
+ *   - per-angle passed must be true OR "N/A" for the angle to "pass"
+ *   - "N/A" is treated as a pass (the angle doesn't apply to this stage)
+ *   - if any required angle is missing -> overall is fail with a clear
+ *     issue ("expected angle X not in LLM response")
+ */
+function rederivePassed(parsed: AIGateResult, expected: readonly AttackAngle[]): AIGateResult {
+	const issues: string[] = [...parsed.issues];
+	const angles = [...parsed.angles];
+
+	// Build a name -> result map; missing angles get a synthetic "fail".
+	const byName = new Map<string, AIGateAngleResult>();
+	for (const a of angles) byName.set(a.name, a);
+
+	const finalAngles: AIGateAngleResult[] = [];
+	let allOk = true;
+	for (const want of expected) {
+		const got = byName.get(want.name);
+		if (!got) {
+			// Expected angle not in LLM response -- treat as fail.
+			finalAngles.push({ name: want.name, passed: false, findings: ["[AIGate] LLM 未在响应中给出此角度的判定"] });
+			issues.push(`[AIGate] 缺少 ${want.name} 角度的判定（LLM 未报告）`);
+			allOk = false;
+			continue;
+		}
+		finalAngles.push(got);
+		// "N/A" passes the gate; false fails; true passes.
+		if (got.passed === false) {
+			allOk = false;
+		}
+	}
+
+	return {
+		passed: allOk,
+		angles: finalAngles,
+		issues,
+		suggestions: parsed.suggestions,
+		raw: parsed.raw,
+		degraded: parsed.degraded,
+	};
 }
