@@ -306,6 +306,7 @@ export const STAGES: readonly XddStageSpec[] = [
 			"已统一格式（参考 plan 约定的风格 / linter）",
 			"已剔除未被引用的死代码 / 死文件",
 			"已更新 README / docs 反映最终接口与使用方式",
+			"已做迭代沉淀：本 iter 验证过的新规则/模式/失败模式提升到 design/（不引用 iter-N），pilot/实验留在 runs/",
 			"已自我攻击：检查是否误删了 @implements RXX 追溯锚、是否越界改了无关文件、是否留了模糊 TODO，并记录结论",
 		],
 		deliverablePaths: [],
@@ -313,7 +314,8 @@ export const STAGES: readonly XddStageSpec[] = [
 1. 是否有调试代码残留（console.log/print/debugger -> 不通过）
 2. 是否有未使用的import/依赖（-> 不通过）
 3. 是否有死代码（注释掉的大段代码 -> 不通过）
-4. 代码格式是否一致（import顺序/命名风格）`,
+4. 代码格式是否一致（import顺序/命名风格）
+5. 迭代沉淀：验证过的新规则/模式/失败模式是否提升到 design/？PoC/实验是否留在 runs/？design/ 是否仍不引用 iter-N？`,
 				gate: async () => softPass(),
 	},
 	{

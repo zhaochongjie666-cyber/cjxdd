@@ -300,6 +300,17 @@ const STAGE_ANGLES: Record<string, AttackAngle[]> = {
 				"是否误删了 @implements RXX 追溯锚？",
 			],
 		},
+		{
+			name: "沉淀攻击",
+			description: "迭代结束时，验证过的“感悟”是否提升到 design/，pilot 的留在 runs/",
+			checks: [
+				"本 iter 验证中发现的新规则/约束是否提升到 design/spec/rules.md？",
+				"架构中发现的新模式/反模式是否提升到 design/architecture/？",
+				"失败模式/兜底策略是否提升到 design/architecture/*/resilience/？",
+				"PoC/实验结果/临时方案是否留在 runs/iter-N/（未提升到 design/）？",
+				"design/ 产物是否仍不引用 iter-N（提升的内容是跨 iter 结论，不绑定迭代编号）？",
+			],
+		},
 	],
 	verify: [
 		{

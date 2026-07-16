@@ -180,18 +180,26 @@ export const xddInlineExtension: InlineExtension = {
 		// with no progress, escalate the nudge (diagnose/rollback/ask-user)
 		// instead of blindly repeating "继续" -- never stop, always continue.
 		//
-		// INTERRUPT SUPPORT: if the user pressed Esc Esc (ctx.signal.aborted) or
-		// ran /xdd-stop (stateRef.stopRequested), do NOT queue a followUp -- this
-		// breaks the auto-continue loop so the user regains control.
+		// INTERRUPT SUPPORT: if the user ran /xdd-stop (stateRef.stopRequested),
+		// do NOT queue a followUp -- this breaks the auto-continue loop so the
+		// user regains control. Esc detection via ctx.signal?.aborted is wrapped
+		// in try/catch because ctx.signal is a getter that can throw if the
+		// extension runner context is stale -- an uncaught throw here would
+		// break the entire agent_end flow (no followUp -> no auto-continue).
 		pi.on("agent_end", async (_event, ctx) => {
 			if (!stateRef) return;
 			if (stateRef.runComplete) return;
-			// Detect user interrupt: Esc Esc (abort signal) or /xdd-stop command.
-			if (stateRef.stopRequested || ctx.signal?.aborted) {
+			// Detect user interrupt: /xdd-stop command (explicit) or Esc (abort signal).
+			let signalAborted = false;
+			try {
+				signalAborted = ctx.signal?.aborted ?? false;
+			} catch { /* ctx.signal getter can throw on stale context */ }
+			if (stateRef.stopRequested || signalAborted) {
 				stateRef.stopRequested = true;
 				try {
 					await pi.sendUserMessage(
 						`[xdd] 用户中断。run 已暂停在 ${stateRef.currentStageName() ?? "?"} 阶段。输入 /xdd-resume 恢复，或继续对话做其他事。`,
+						{ deliverAs: "followUp" },
 					);
 				} catch { /* ignore */ }
 				return;

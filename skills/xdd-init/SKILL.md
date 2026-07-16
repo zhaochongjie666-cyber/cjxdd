@@ -86,6 +86,12 @@ bash skills/xdd-init/scripts/init.sh
 
 **design/ vs runs/ 二分**：`design/` 是持久锚（review 基准，跨 iter 保留）；`runs/iter-N/` 是单轮工作记录（plan/报告/审计，iter 间不覆盖）。`--iter N+1` 时旧 iter 原地保留作历史。
 
+**迭代沉淀纪律**：每次迭代区分「持久沉淀」与「pilot 实验」：
+- **design/ 只放已验证的持久知识**——跨 iter 的结论，不是某次 iter 的过程。不引用 iter-N。
+- **runs/iter-N/ 放迭代过程和中间产物**——plan / goals / verify-report / evidence / audits / PoC / 实验结果 / 临时方案。这些是 per-iter 的，iter 间不覆盖。
+- **迭代结束时要把“感悟”提升到 design/**——验证中发现的新规则/约束 -> `spec/rules.md`；架构中发现的新模式/反模式 -> `architecture/`；失败模式/兜底 -> `resilience/`；用户反馈/意图修正 -> `intent.md`/`design.md`。提升时不引用 iter-N。
+- **pilot/实验性的东西留在 runs/**——PoC 代码、实验结果、临时方案不提升到 design/（除非验证通过且确认是持久决策）。
+
 **inject 到用户文件**：若项目根已有 `AGENTS.md` / `CLAUDE.md`，init 在文件开头注入一段用 `<!-- xdd:start -->` / `<!-- xdd:end -->` 包裹的 pointer（全局 rule + ACK v2 定义 + Backend/UI-UX/recap 指向 `.xdd/`）。**全新空仓库**（两者都没有）时，init 建一个最小 `CLAUDE.md` 再注入——让全局 rule + ACK 在入口就落地。
 
 **ACK v2**（注入块里定义）：每次回复开头带 `%>R{规则} G{目标} T{任务} W{工作流}%`，把「守哪些 rule / 追哪个 goal / 干哪个 task / 走哪步 workflow」加载进工作内存、集中注意力。四区索引源：R→本文件 rule 1~6（. 分隔逐个列）；G→`runs/iter-N/goals.md` 的 G 编号；T→`runs/iter-N/plan/{bxx-slug}/plan.md` 的 task 编号；W→`.xdd/workflows.md` 的 W 编号。**人肉检测面**：用户扫回复开头对得上 = 在轨，不配脚本校验（ACK 是瞬时对话流、不落盘）。
