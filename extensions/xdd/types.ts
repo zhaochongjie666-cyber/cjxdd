@@ -362,7 +362,27 @@ export class XddRunnerState {
 	get esg(): XddEsgNode[] { return this.loadRt().esg ?? []; }
 
 	// ── Stage navigation ─────────────────────────────────────────────────
-	startRun(): void { this.planIndex = 0; }
+	startRun(): void {
+		const rt = this.loadRt();
+		// A new /xdd run reuses the same project .xdd/ directory, but must not
+		// inherit volatile control state (self-heal/AIGate budgets, outcomes,
+		// pending continuations, rollback counters) from a previous run. Keep the
+		// filesystem artifacts in place; reset only runtime.json when the run id
+		// changes.
+		if (rt.runId && rt.runId !== this.runId) {
+			this.saveRt({
+				...defaultRt(this.runId),
+				runId: this.runId,
+				cwd: this.cwd,
+				userInput: this.userInput,
+				plan: this.plan.map((e) => ({ stageName: e.stage.name, originalIndex: e.originalIndex })),
+				planIndex: 0,
+			});
+			return;
+		}
+		this.planIndex = 0;
+	}
+
 	currentStage(): XddStageSpec | undefined { return this.plan[this.planIndex]?.stage; }
 	currentIndex(): number { return this.plan[this.planIndex]?.originalIndex ?? -1; }
 	currentStageName(): XddStageName | undefined { return this.plan[this.planIndex]?.stage.name; }
