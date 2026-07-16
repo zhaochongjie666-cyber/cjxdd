@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { STAGES } from "./stages.ts";
 import { XddRunnerState } from "./types.ts";
+import { FakePiAdapterHarness } from "./test/pi-adapter-harness.ts";
 
 let cwd = "";
 let state: XddRunnerState;
@@ -110,35 +111,34 @@ describe("Phase 0 resumeXdd (same-session field contract)", () => {
 // ── P22: input hook drop logic (unit-tested via direct prefix match) ──
 
 describe("Phase 0 input hook message classification", () => {
-	// The hook in extension.ts is a closure over stateRef. We can't easily
-	// call it directly without setting up the full extension. Instead,
-	// mirror the prefix table here so changes to the prefixes will at least
-	// surface as a code-review signal in this file.
-	const XDD_CONTINUATION_PREFIXES = [
-		"[xdd 自动推进]",
-		"[xdd] 阶段", // stage-advance nudge
-		"[xdd] 连续", // stall terminate nudge
-	];
-
-	function isXddContinuation(text: string): boolean {
-		return XDD_CONTINUATION_PREFIXES.some((p) => text.startsWith(p));
-	}
-
-	it("recognizes the three continuation prefixes", () => {
-		expect(isXddContinuation("[xdd 自动推进] 继续 understand。")).toBe(true);
-		expect(isXddContinuation("[xdd] 阶段 understand 完成。")).toBe(true);
-		expect(isXddContinuation("[xdd] 连续 6 轮僵死。")).toBe(true);
+	it("drops xdd continuation prefixes while paused through the registered input hook", async () => {
+		const adapter = new FakePiAdapterHarness();
+		try {
+			adapter.state.paused = true;
+			for (const text of [
+				"[xdd 自动推进] 继续 understand。",
+				"[xdd] 阶段 understand 完成。",
+				"[xdd] 连续 6 轮僵死。",
+			]) {
+				const [result] = await adapter.emit("input", { source: "extension", text });
+				expect(result).toEqual({ action: "handled" });
+			}
+		} finally {
+			adapter.dispose();
+		}
 	});
 
-	it("does not match unrelated user input", () => {
-		expect(isXddContinuation("/xdd 帮我写个 todo")).toBe(false);
-		expect(isXddContinuation("hello")).toBe(false);
-		// Note: `[xdd] 阶段` is a prefix-only match, so any text starting
-		// with it counts as a continuation. This is intentional -- the
-		// hook is a safety net, not a strict classifier. False positives
-		// here are harmless (a stray "阶段" in user input would only be
-		// dropped, which is the right behavior when paused).
-		expect(isXddContinuation("[xdd] 阶段未名")).toBe(true);
+	it("allows unrelated extension and user input through the registered input hook", async () => {
+		const adapter = new FakePiAdapterHarness();
+		try {
+			adapter.state.paused = true;
+			let [result] = await adapter.emit("input", { source: "extension", text: "hello" });
+			expect(result).toEqual({ action: "continue" });
+			[result] = await adapter.emit("input", { source: "user", text: "[xdd 自动推进] 继续 understand。" });
+			expect(result).toEqual({ action: "continue" });
+		} finally {
+			adapter.dispose();
+		}
 	});
 });
 
