@@ -106,6 +106,13 @@ describe("XddRunnerState self-heal budget", () => {
 		expect(state.remainingSelfHealBudget("spec")).toBe(3);
 	});
 
+	it("refunds a provisional submit attempt after AIGate infrastructure failure", () => {
+		const state = makeState();
+		state.beginSelfHealAttempt("spec");
+		state.refundSelfHealAttempt("spec");
+		expect(state.remainingSelfHealBudget("spec")).toBe(state.maxSelfHealPerStage);
+	});
+
 	it("defaults to 5 (Layer 1 budget)", () => {
 		const state = new XddRunnerState({ runId: "t", cwd: tmpCwd(), userInput: "u" });
 		expect(state.maxSelfHealPerStage).toBe(5);

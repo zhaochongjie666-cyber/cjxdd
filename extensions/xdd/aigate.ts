@@ -39,7 +39,7 @@ export interface AIGateInput {
 
 export interface AIGateAngleResult {
 	name: string;
-	passed: boolean;
+	passed: XddAIGateAngleStatus;
 	findings: string[];
 }
 
@@ -49,6 +49,8 @@ export interface AIGateResult {
 	issues: string[];
 	suggestions: string[];
 	raw?: string;
+	/** The LLM call or response format failed, so this is not an artifact verdict. */
+	degraded?: boolean;
 }
 
 // ── Attack angle definitions ────────────────────────────────────────────
@@ -520,6 +522,7 @@ export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
 		const msg = e instanceof Error ? e.message : String(e);
 		return {
 			passed: false,
+			degraded: true,
 			angles: angles.map((a) => ({ name: a.name, passed: "N/A" as const, findings: [] })),
 			issues: [`[AIGate LLM 调用失败] ${msg}`],
 			suggestions: ["检查 API key / 网络 / 模型可用性后重试"],

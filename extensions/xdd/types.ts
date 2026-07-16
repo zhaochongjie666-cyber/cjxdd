@@ -426,6 +426,12 @@ export class XddRunnerState {
 		this.saveRt(rt);
 		return used + 1;
 	}
+	refundSelfHealAttempt(stage: XddStageName): void {
+		const rt = this.loadRt();
+		const used = rt.selfHealUsed[stage] ?? 0;
+		if (used > 0) rt.selfHealUsed[stage] = used - 1;
+		this.saveRt(rt);
+	}
 	remainingSelfHealBudget(stage: XddStageName): number {
 		const rt = this.loadRt();
 		return Math.max(0, (rt.maxSelfHealPerStage ?? 5) - (rt.selfHealUsed[stage] ?? 0));
@@ -448,6 +454,11 @@ export class XddRunnerState {
 		rt.lastSubmitFingerprint[stage] = fingerprint;
 		this.saveRt(rt);
 		return last !== fingerprint;
+	}
+	clearSubmitFingerprint(stage: XddStageName): void {
+		const rt = this.loadRt();
+		if (rt.lastSubmitFingerprint) delete rt.lastSubmitFingerprint[stage];
+		this.saveRt(rt);
 	}
 
 	// ── Signals ──────────────────────────────────────────────────────────

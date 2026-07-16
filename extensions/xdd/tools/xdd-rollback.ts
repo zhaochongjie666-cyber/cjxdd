@@ -21,8 +21,8 @@ export type XddRollbackInput = Static<typeof schema>;
  * turn (or directly during a stage turn) to rewind to an earlier stage. It
  * validates the target, enforces the per-stage attempt cap, marks superseded
  * ledger entries, moves the shared state to the target, records the rollback
- * intent, and terminates the turn. The host driver observes `rollbackOutcome`
- * and resumes at the target.
+ * intent, and leaves the turn alive so the agent can immediately resume work at
+ * the target stage with the failure context still available.
  */
 export function createXddRollbackTool(getState: GetXddState): ToolDefinition {
 	return {
@@ -75,7 +75,6 @@ export function createXddRollbackTool(getState: GetXddState): ToolDefinition {
 			return {
 				content: [{ type: "text", text: `[xdd_rollback] ${from} → ${target}：${params.reason}` }],
 				details: {},
-				terminate: true,
 			};
 		},
 	};
