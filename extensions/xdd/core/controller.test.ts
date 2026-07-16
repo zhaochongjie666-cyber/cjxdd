@@ -142,7 +142,6 @@ describe("XddController transition", () => {
 		expect(result.state.stageOutcome).toBe("advanced");
 		expect(result.state.stageEpoch).toContain(":spec:");
 	});
-
 	it("ROLLBACK resets target stage attempt counters and fingerprints", () => {
 		const state = started();
 		state.planIndex = 3; // architecture

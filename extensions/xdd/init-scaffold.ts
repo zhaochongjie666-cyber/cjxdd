@@ -15,6 +15,10 @@ export function hasInitializedXddSkeleton(cwd: string): boolean {
 	return existsSync(join(cwd, ".xdd", "design")) && existsSync(join(cwd, ".xdd", "runs"));
 }
 
+export function hasInitializedXddSkeleton(cwd: string): boolean {
+	return existsSync(join(cwd, ".xdd", "design")) && existsSync(join(cwd, ".xdd", "runs"));
+}
+
 export function controllerInitScaffold(cwd: string): { created: string[]; skipped: string[] } {
 	const dirs = [
 		".xdd",

@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { XddRunnerState } from "./types.ts";
 import { createStateFixture, setStateFixturePlanIndex, startStateFixture } from "./test/state-fixture.ts";
 import { sliceByEpoch, EPOCH_MARKER_PREFIX } from "./epoch-slicer.ts";
+import { FakePiAdapterHarness } from "./test/pi-adapter-harness.ts";
 
 let cwd = "";
 let state: XddRunnerState;
@@ -199,5 +200,26 @@ describe("P28 tools write stageEpoch", () => {
 		setStateFixturePlanIndex(state, 1); // Controller ADVANCE owns this in production.
 		state.stageEpoch = state.makeStageEpoch("understand", state.currentAttempt("understand"));
 		expect(state.stageEpoch).toBe("phase3:understand:0");
+	});
+});
+
+
+describe("P29 compaction followUp dispatch compatibility", () => {
+	it("does not call .catch on a synchronous sendUserMessage result", async () => {
+		const adapter = new FakePiAdapterHarness();
+		try {
+			adapter.sendUserMessageMode = "sync";
+			adapter.contextUsage = { percent: 0.71 };
+			adapter.state.stageOutcome = "idle";
+
+			await adapter.emit("agent_end", { messages: [{ role: "assistant", stopReason: "stop" }] });
+			expect(adapter.compactCalls).toHaveLength(1);
+
+			expect(() => adapter.compactCalls[0].onError()).not.toThrow();
+			expect(adapter.sentMessages).toHaveLength(1);
+			expect(adapter.sentMessages[0].options).toEqual({ deliverAs: "followUp" });
+		} finally {
+			adapter.dispose();
+		}
 	});
 });

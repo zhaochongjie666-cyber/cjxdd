@@ -28,6 +28,28 @@ describe("XddRunnerState basics", () => {
 		expect(state.currentStage()?.name).toBe("init");
 	});
 
+
+	it("startRun resets stale budgets when starting a new run in an existing .xdd directory", () => {
+		const cwd = tmpCwd();
+		const oldState = new XddRunnerState({ runId: "old-run", cwd, userInput: "old" });
+		oldState.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
+		oldState.startRun();
+		oldState.advancePlan(); // -> understand
+		for (let i = 0; i < oldState.maxSelfHealPerStage; i++) oldState.beginSelfHealAttempt("understand");
+		for (let i = 0; i < oldState.maxSelfHealPerStage; i++) oldState.beginAiGateAttempt("understand");
+		expect(oldState.remainingSelfHealBudget("understand")).toBe(0);
+		expect(oldState.remainingAiGateBudget("understand")).toBe(0);
+
+		const newState = new XddRunnerState({ runId: "new-run", cwd, userInput: "new" });
+		newState.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
+		newState.startRun();
+
+		expect(newState.planIndex).toBe(0);
+		expect(newState.remainingSelfHealBudget("understand")).toBe(5);
+		expect(newState.remainingAiGateBudget("understand")).toBe(5);
+		expect(newState.stageOutcome).toBe("idle");
+	});
+
 	it("isLastStage detects final plan entry", () => {
 		const state = makeState();
 		startStateFixture(state);
