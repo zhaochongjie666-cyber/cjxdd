@@ -4,6 +4,7 @@ import { join, relative } from "node:path";
 import { promisify } from "node:util";
 import type { XddGateResult } from "./types.ts";
 import { readResults, computeOverallVerdict } from "./blind-journey.ts";
+import { HarnessStore } from "./harness/store.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -239,20 +240,47 @@ export async function requirePatternInSource(
  * exists" but "tests actually pass". CI=true is set to keep tests non-interactive.
  */
 export async function requireTestsPass(cwd: string): Promise<XddGateResult> {
-	let cmd: string[] | null = null;
-	if (existsSync(join(cwd, "package.json"))) cmd = ["npm", "test"];
-	else if (existsSync(join(cwd, "go.mod"))) cmd = ["go", "test", "./..."];
-	else if (existsSync(join(cwd, "Makefile"))) cmd = ["make", "test"];
-	// Phase 5 (E.1): hard gate NEVER soft-passes. If no test command is
-	// detectable, the gate fails with a clear reason -- the self-heal
-	// budget will then burn down and the run will eventually fail or
-	// rollback. This is the right failure mode: a project with no tests
-	// is a project that hasn't been bootstrapped (run /xdd init first).
-	if (!cmd) {
-		return { ok: false, reason: "未检测到测试命令（需 package.json/npm test、go.mod/go test、Makefile/make test 之一）。请先在 init 阶段创建项目骨架。" };
+	const store = new HarnessStore(cwd);
+	const harnessCommands = store.load().验证命令;
+	if (harnessCommands.length > 0) {
+		return runHarnessValidationCommands(cwd, harnessCommands);
 	}
+	let cmd: string[] | null = null;
+	let discovered: string | null = null;
+	if (existsSync(join(cwd, "package.json"))) {
+		cmd = ["npm", "test"];
+		discovered = "npm test";
+	} else if (existsSync(join(cwd, "go.mod"))) {
+		cmd = ["go", "test", "./..."];
+		discovered = "go test ./...";
+	} else if (existsSync(join(cwd, "Makefile"))) {
+		cmd = ["make", "test"];
+		discovered = "make test";
+	}
+	// Hard gate NEVER soft-passes. If no command is detectable, require the
+	// model to configure Harness instead of guessing a one-off command.
+	if (!cmd || !discovered) {
+		return { ok: false, reason: "未检测到测试命令，且 .xdd/harness.yml 未配置 验证命令。请用 xdd_harness_set 写入已确认的测试/构建命令。" };
+	}
+	const result = await runExecFileCommand(cwd, discovered, cmd[0], cmd.slice(1));
+	if (result.ok) store.update("验证命令", "append", discovered);
+	return result;
+}
+
+async function runHarnessValidationCommands(cwd: string, commands: readonly string[]): Promise<XddGateResult> {
+	const failures: string[] = [];
+	for (const command of commands) {
+		const result = await runExecFileCommand(cwd, command, "bash", ["-lc", command]);
+		if (!result.ok) failures.push(result.reason ?? `${command} failed`);
+	}
+	return failures.length === 0
+		? { ok: true }
+		: { ok: false, reason: `Harness 验证命令失败：\n${failures.join("\n")}` };
+}
+
+async function runExecFileCommand(cwd: string, label: string, command: string, args: string[]): Promise<XddGateResult> {
 	try {
-		await execFileAsync(cmd[0], cmd.slice(1), {
+		await execFileAsync(command, args, {
 			cwd,
 			timeout: 180000,
 			maxBuffer: 1024 * 1024,
@@ -264,7 +292,7 @@ export async function requireTestsPass(cwd: string): Promise<XddGateResult> {
 		const stderr = (err.stderr ?? "").toString().slice(0, 800);
 		return {
 			ok: false,
-			reason: `测试命令 ${cmd.join(" ")} 失败（退出码 ${err.code ?? "?"}）${stderr ? "\n" + stderr : ""}`,
+			reason: `测试命令 ${label} 失败（退出码 ${err.code ?? "?"}）${stderr ? "\n" + stderr : ""}`,
 		};
 	}
 }

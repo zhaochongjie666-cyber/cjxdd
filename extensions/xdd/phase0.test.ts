@@ -11,8 +11,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { STAGES } from "./stages.ts";
 import { XddRunnerState } from "./types.ts";
+import { createStateFixture, startStateFixture } from "./test/state-fixture.ts";
 import { FakePiAdapterHarness } from "./test/pi-adapter-harness.ts";
 
 let cwd = "";
@@ -20,9 +20,8 @@ let state: XddRunnerState;
 
 function freshState(): XddRunnerState {
 	cwd = mkdtempSync(join(tmpdir(), "xdd-phase0-"));
-	state = new XddRunnerState({ runId: "phase0", cwd, userInput: "test" });
-	state.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
-	state.startRun();
+	state = createStateFixture({ runId: "phase0", cwd, userInput: "test" });
+	startStateFixture(state);
 	return state;
 }
 

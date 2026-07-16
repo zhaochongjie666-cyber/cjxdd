@@ -12,8 +12,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { STAGES } from "./stages.ts";
 import { XddRunnerState } from "./types.ts";
+import { createStateFixture, startStateFixture } from "./test/state-fixture.ts";
 import { requireTestsPass, runBuild, softPass } from "./gate.ts";
 import { computeArtifactFingerprint } from "./tools/artifact-fingerprint.ts";
 
@@ -22,9 +22,8 @@ let state: XddRunnerState;
 
 function freshState(): XddRunnerState {
 	cwd = mkdtempSync(join(tmpdir(), "xdd-phase5-"));
-	state = new XddRunnerState({ runId: "phase5", cwd, userInput: "test" });
-	state.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
-	state.startRun();
+	state = createStateFixture({ runId: "phase5", cwd, userInput: "test" });
+	startStateFixture(state);
 	return state;
 }
 

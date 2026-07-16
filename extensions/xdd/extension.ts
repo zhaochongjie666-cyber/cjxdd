@@ -1,5 +1,6 @@
 import type { InlineExtension } from "@earendil-works/pi-coding-agent";
 import { buildActiveStageSystemPrompt } from "./context.ts";
+import { pruneContextMessages } from "./context-prune.ts";
 import { renderReflectEnd, renderReflectStart, renderRollback, renderStageBoundary } from "./renderers.ts";
 import { createXddTools } from "./tools/index.ts";
 import { readCheckpoint } from "./checkpoint.ts";
@@ -8,11 +9,20 @@ import { STAGES } from "./stages.ts";
 import { archiveRun } from "./archive.ts";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, basename } from "node:path";
-import type { XddRunnerState, XddStageSpec } from "./types.ts";
+import type { XddRunnerState, XddStageName, XddStageSpec } from "./types.ts";
 import { sliceByEpoch, EPOCH_MARKER_PREFIX } from "./epoch-slicer.ts";
 import { resolveGlobs, hasGlobMeta } from "./glob-resolver.ts";
 import { compileStageContracts } from "./core/stage-contract.ts";
 import { agentEndCommandFromPi, PiControllerAdapter } from "./adapters/pi-controller.ts";
+import { enforceToolCallPolicy } from "./policy/tool-policy.ts";
+import { diffVerifySnapshot, ensureVerifySnapshot, formatVerifySnapshotDiff } from "./policy/verify-snapshot.ts";
+import { evidenceFailureToGateResult, type EvidenceGateFailure } from "./evidence/verify-gate.ts";
+import { XddController } from "./core/controller.ts";
+import { RuntimeStore } from "./storage/runtime-store.ts";
+import { projectAuditEvent } from "./audit/projector.ts";
+import type { XddAuditEvent } from "./audit/events.ts";
+import { HookRunner } from "./hooks/runner.ts";
+import type { HookPayload, HookPoint, HookRunResult } from "./hooks/protocol.ts";
 
 /**
  * Module-level shared state. The InlineExtension factory registers tools and
@@ -37,6 +47,72 @@ export function getState(): XddRunnerState {
 		throw new Error("[xdd] 无活跃 xdd run（state 未注入）");
 	}
 	return stateRef;
+}
+
+
+
+function recordAuditEvent(event: XddAuditEvent): void {
+	if (!stateRef) return;
+	try {
+		const store = new RuntimeStore(stateRef.cwd);
+		const rt = store.load();
+		if (!rt) return;
+		projectAuditEvent(rt, event);
+		store.save(rt);
+	} catch {
+		// Audit projection must never block lifecycle hooks.
+	}
+}
+
+function recordControllerAudit(nodeType: "finding" | "evidence", stage: XddStageName | "?", label: string, data?: unknown): void {
+	if (!stateRef) return;
+	const safeStage = stage === "?" ? "init" : stage;
+	const controller = new XddController(new RuntimeStore(stateRef.cwd), stateRef.plan.map(({ stage }) => stage));
+	controller.dispatch({ type: "RECORD_ESG", nodeType, stage: safeStage, label, data });
+}
+
+
+function hookPayload(point: HookPoint, extra: Partial<HookPayload> = {}): HookPayload | null {
+	if (!stateRef) return null;
+	return {
+		hook: point,
+		runId: stateRef.runId,
+		stage: stateRef.currentStageName() ?? "?",
+		stageEpoch: stateRef.stageEpoch,
+		cwd: stateRef.cwd,
+		...extra,
+	};
+}
+
+async function runProjectHooks(point: HookPoint, extra: Partial<HookPayload> = {}): Promise<HookRunResult | null> {
+	const payload = hookPayload(point, extra);
+	if (!stateRef || !payload) return null;
+	const result = await new HookRunner(stateRef.cwd).run(point, payload);
+	if (result.records.length > 0 || result.warnings.length > 0 || result.action !== "pass") {
+		recordAuditEvent({
+			type: "hook_result",
+			stage: payload.stage,
+			hook: point,
+			action: result.action,
+			warnings: result.warnings,
+			data: {
+				reason: result.reason,
+				prompt: result.prompt,
+				records: result.records.map((record) => ({ file: record.file, action: record.output.action, warning: record.warning, timedOut: record.timedOut })),
+			},
+		});
+	}
+	return result;
+}
+
+async function sendHookContinuePrompt(pi: { sendUserMessage?: (text: string, options?: unknown) => Promise<unknown> | unknown }, prompt: string): Promise<void> {
+	try {
+		await pi.sendUserMessage?.(`[xdd hook continue] ${prompt}`, { deliverAs: "followUp" });
+	} catch (error) {
+		recordControllerAudit("finding", stateRef?.currentStageName() ?? "init", "hook continue prompt send failed", {
+			error: error instanceof Error ? error.message : String(error),
+		});
+	}
 }
 
 /**
@@ -173,42 +249,28 @@ export const xddInlineExtension: InlineExtension = {
 		}
 		// xdd_ledger intentionally not rendered (audit only).
 
-		// Phase 7 (G.1 + G.2): bash tool guard.
-		// G.1: inject a default 300s timeout (5 min) when the LLM doesn't
-		// set one. pi's bash tool uses this timeout to call killProcessTree
-		// (SIGTERM, then SIGKILL after grace) -- so the entire child
-		// process group is reaped on timeout, not just the shell.
-		// G.2: block forbidden patterns (`find /`, `rm -rf /`, etc.)
-		// before they run. These don't have a meaningful timeout -- a
-		// 12-hour `find /` will keep burning wall-clock even if killed,
-		// and `rm -rf /` should never run regardless.
+		// T6: stage-aware tool policy. Enforce allowed xdd tools, read/write
+		// scopes, protected paths, and bash defaults/dangerous-command blocks
+		// before pi executes the tool.
 		pi.on("tool_call", async (event) => {
-			if (event.toolName !== "bash" || !event.input) return;
-			const input = event.input as {
-				timeout?: number;
-				command?: string;
-				description?: string;
-			};
-			// G.1: default timeout
-			if (input.timeout === undefined || input.timeout <= 0) {
-				input.timeout = 300;
+			if (!stateRef) return;
+			const toolName = String(event.toolName ?? event.name ?? "?");
+			const hookResult = await runProjectHooks("before_tools", { toolCalls: [{ name: toolName, input: event.input }] });
+			if (hookResult?.action === "block") {
+				throw new Error(`[xdd hook] before_tools blocked ${toolName}: ${hookResult.reason ?? "no reason"}`);
 			}
-			// G.2: forbidden patterns. These commands are dangerous enough
-			// that the agent should be told to scope them, not just timed out.
-			const cmd = String(input.command ?? "");
-			const forbidden: Array<{ pattern: RegExp; reason: string }> = [
-				{ pattern: /\bfind\s+\/\s*(?!-)/, reason: "find / 会扫描整个文件系统" },
-				{ pattern: /\bfind\s+\/\s*-/, reason: "find /<args> 会扫描整个文件系统" },
-				{ pattern: /\brm\s+(-[a-zA-Z]*\s+)*\/\s*(?:-|$|\.)/, reason: "rm -rf / 会删除整个系统" },
-				{ pattern: /\bdd\s+if=\/dev\/(zero|urandom)\s+of=\/dev\//, reason: "dd 到设备会清空磁盘" },
-				{ pattern: /\bmkfs(\.\w+)?\s+\/dev\//, reason: "mkfs 会格式化磁盘" },
-			];
-			for (const f of forbidden) {
-				if (f.pattern.test(cmd)) {
-					throw new Error(
-						`[xdd] 禁止的 bash 命令 (${f.reason}): ${cmd.slice(0, 120)}${cmd.length > 120 ? "..." : ""}。请限定到 cwd 子目录或明确白名单根。`,
-					);
-				}
+			if (hookResult?.action === "continue" && hookResult.prompt) {
+				await sendHookContinuePrompt(pi, hookResult.prompt);
+			}
+			try {
+				enforceToolCallPolicy(stateRef, event);
+			} catch (error) {
+				recordControllerAudit("finding", stateRef.currentStageName() ?? "init", "policy block", {
+					toolName: event.toolName ?? event.name,
+					input: event.input,
+					error: error instanceof Error ? error.message : String(error),
+				});
+				throw error;
 			}
 		});
 
@@ -216,9 +278,32 @@ export const xddInlineExtension: InlineExtension = {
 		// timeout, and error info into the ESG for post-mortem analysis.
 		// isError=true means the command failed (non-zero exit, timeout,
 		// or abort). The content text tells us which; we record both.
-		pi.on("tool_result", (event) => {
-			if (event.type !== "tool_result" || event.toolName !== "bash") return;
+		pi.on("tool_result", async (event) => {
 			if (!stateRef) return;
+			const toolName = String(event.toolName ?? event.name ?? "?");
+			const hookResult = await runProjectHooks("tool_use_done", { toolCalls: [{ name: toolName, input: event.input }], toolResult: event });
+			if (hookResult?.action === "continue" && hookResult.prompt) {
+				await sendHookContinuePrompt(pi, hookResult.prompt);
+			}
+			if (stateRef.currentStageName() === "verify") {
+				const diff = diffVerifySnapshot(stateRef.cwd);
+				const mutated = diff.changed.length + diff.added.length + diff.deleted.length;
+				if (mutated > 0) {
+					const failure: EvidenceGateFailure = {
+						code: "VERIFY_MUTATED_CONTRACT",
+						message: "verify Gate: verify 阶段修改了源码或设计契约文件",
+						files: [...diff.changed, ...diff.added, ...diff.deleted],
+						remediation: `回滚到 execute 或对应设计阶段修复；verify 只允许写当前 iteration 的 report/evidence。变更: ${formatVerifySnapshotDiff(diff)}`,
+					};
+					recordControllerAudit("finding", "verify", failure.message, { diff, failure });
+					const controller = new XddController(new RuntimeStore(stateRef.cwd), stateRef.plan.map(({ stage }) => stage));
+					controller.dispatch({
+						type: "SUBMIT",
+						submission: { summary: "verify mutated source/design", artifacts: [], selfAttack: "verify snapshot diff detected source or design mutation", pass: false, error: evidenceFailureToGateResult(failure).reason },
+					});
+				}
+			}
+			if (event.type !== "tool_result" || event.toolName !== "bash") return;
 			const input = event.input as { command?: string; timeout?: number };
 			const cmd = String(input.command ?? "").slice(0, 200);
 			const cmdShort = cmd.length > 80 ? cmd.slice(0, 77) + "..." : cmd;
@@ -233,7 +318,7 @@ export const xddInlineExtension: InlineExtension = {
 					.join(" ");
 				const isTimeout = /timeout:\d+/.test(errText);
 				const stageName = stateRef.currentStageName() ?? "?";
-				stateRef.recordEsgNode("evidence", stageName,
+				recordControllerAudit("evidence", stageName,
 					isTimeout
 						? `bash timeout: ${cmdShort}`
 						: `bash failed: ${cmdShort}`,
@@ -248,16 +333,15 @@ export const xddInlineExtension: InlineExtension = {
 		// causes "Error: Compaction cancelled" when context fills up during long
 		// runs (10 stages × many tool calls).
 
-		// Phase 1 P24: turn_end no longer sends followUps. The previous
-		// double-source (turn_end + agent_end) was the root cause of
-		// "two hooks each send followUp" -> double-advance. agent_end is
-		// the SINGLE continuation scheduler; turn_end only records
-		// metrics (no message dispatch).
-		pi.on("turn_end", (_event) => {
-			// Reserved for future metrics (turn count per stage, tool-call
-			// histograms, etc.). Currently a no-op; the real state machine
-			// lives in agent_end and in the xdd_submit_artifact /
-			// xdd_advance tools, which write stageOutcome to runtime.json.
+		// Phase 1 P24: turn_end no longer runs xdd scheduler followUps.
+		// T8 project hooks may request a bounded followUp prompt, but they
+		// cannot mutate Controller state and are audited separately.
+		pi.on("turn_end", async (event) => {
+			// Reserved for future metrics (turn count per stage, tool-call histograms, etc.).
+			const hookResult = await runProjectHooks("turn_end", { turn: event });
+			if (hookResult?.action === "continue" && hookResult.prompt) {
+				await sendHookContinuePrompt(pi, hookResult.prompt);
+			}
 		});
 
 		// Fresh per-stage system prompt. Group gates auto-advance (no human pause).
@@ -270,7 +354,20 @@ export const xddInlineExtension: InlineExtension = {
 			// Capture model + modelRegistry for AIGate LLM calls.
 			setLLMRef(ctx.model ?? null, ctx.modelRegistry ?? null);
 			if (!stateRef) return undefined;
-			const systemPrompt = buildActiveStageSystemPrompt(stateRef);
+			if (stateRef.currentStageName() === "verify") ensureVerifySnapshot(stateRef.cwd);
+			const hookResult = await runProjectHooks("turn_start");
+			let systemPrompt = buildActiveStageSystemPrompt(stateRef);
+			if (hookResult?.action === "continue" && hookResult.prompt) {
+				systemPrompt = `${systemPrompt ?? ""}
+
+[xdd hook continue]
+${hookResult.prompt}`;
+			}
+			if (hookResult?.action === "block") {
+				systemPrompt = `${systemPrompt ?? ""}
+
+[xdd hook block warning] turn_start hook blocked: ${hookResult.reason ?? "no reason"}`;
+			}
 			const epoch = stateRef.stageEpoch;
 			// Inject a user message with the epoch marker so the context
 			// hook can find it on the next compaction. We append to the
@@ -292,8 +389,9 @@ export const xddInlineExtension: InlineExtension = {
 		pi.on("context", async (event) => {
 			if (!stateRef) return undefined;
 			const sliced = sliceByEpoch(event.messages, stateRef.stageEpoch);
-			if (sliced === event.messages) return undefined;
-			return { messages: sliced };
+			const pruned = pruneContextMessages(sliced);
+			if (sliced === event.messages && pruned === sliced) return undefined;
+			return { messages: pruned };
 		});
 
 		// Auto-continue: route Pi lifecycle into the Controller Core.
@@ -307,8 +405,20 @@ export const xddInlineExtension: InlineExtension = {
 			if (typeof ctx.hasPendingMessages === "function") {
 				command.hasPendingMessages = ctx.hasPendingMessages();
 			}
+			if (typeof ctx.getContextUsage === "function") {
+				command.contextUsagePercent = ctx.getContextUsage()?.percent ?? null;
+			}
 			const adapter = new PiControllerAdapter({ pi, ctx, getState: () => stateRef });
 			await adapter.dispatch(command);
+		});
+
+
+		pi.on("session_compact", async (event, ctx) => {
+			if (!stateRef) return;
+			if (stateRef.runComplete) return;
+			const success = typeof event?.success === "boolean" ? event.success : !event?.error;
+			const adapter = new PiControllerAdapter({ pi, ctx, getState: () => stateRef });
+			await adapter.dispatch({ type: "COMPACTION_DONE", success });
 		});
 
 		// Checkpoint detection: if pi restarts with an unfinished xdd run,

@@ -394,52 +394,14 @@ export class XddRunnerState {
 	get esg(): XddEsgNode[] { return this.loadRt().esg ?? []; }
 
 	// ── Stage navigation ─────────────────────────────────────────────────
-	startRun(): void {
-		const rt = this.loadRt();
-		// A new /xdd run reuses the same project .xdd/ directory, but must not
-		// inherit volatile control state (self-heal/AIGate budgets, outcomes,
-		// pending continuations, rollback counters) from a previous run. Keep the
-		// filesystem artifacts in place; reset only runtime.json when the run id
-		// changes.
-		if (rt.runId && rt.runId !== this.runId) {
-			this.saveRt({
-				...defaultRt(this.runId),
-				runId: this.runId,
-				cwd: this.cwd,
-				userInput: this.userInput,
-				plan: this.plan.map((e) => ({ stageName: e.stage.name, originalIndex: e.originalIndex })),
-				planIndex: 0,
-			});
-			return;
-		}
-		this.planIndex = 0;
-	}
-
 	currentStage(): XddStageSpec | undefined { return this.plan[this.planIndex]?.stage; }
 	currentIndex(): number { return this.plan[this.planIndex]?.originalIndex ?? -1; }
 	currentStageName(): XddStageName | undefined { return this.plan[this.planIndex]?.stage.name; }
 	isLastStage(): boolean { return this.planIndex === this.plan.length - 1; }
 
-	advancePlan(): XddStageSpec | undefined {
-		const rt = this.loadRt();
-		rt.planIndex++;
-		if (rt.planIndex >= this.plan.length) { rt.runComplete = true; this.saveRt(rt); return undefined; }
-		this.saveRt(rt);
-		const newStage = this.plan[rt.planIndex].stage;
-		this.resetSelfHealBudget(newStage.name);
-		return newStage;
-	}
-
-	goToStageName(name: XddStageName): { ok: true; originalIndex: number } | { ok: false; reason: string } {
-		const idx = this.plan.findIndex((e) => e.stage.name === name);
-		if (idx === -1) return { ok: false, reason: `目标阶段 ${name} 不在执行计划内` };
-		const rt = this.loadRt();
-		if (idx >= rt.planIndex) return { ok: false, reason: `回退目标 ${name} 必须早于当前阶段` };
-		rt.planIndex = idx;
-		this.saveRt(rt);
-		this.resetSelfHealBudget(name);
-		return { ok: true, originalIndex: this.plan[idx].originalIndex };
-	}
+	// Stage progression and rollback are intentionally removed from this runtime
+	// facade. Controller Core is the only owner of planIndex/stageOutcome/
+	// rollbackOutcome transitions; tests/scripts should use HeadlessXddController.
 
 	markSuperseded(targetOriginalIndex: number): void {
 		const rt = this.loadRt();

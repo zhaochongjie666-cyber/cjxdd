@@ -5,6 +5,7 @@ import { computeStageDifference, renderStageDifference } from "../stage-diff.ts"
 import { XddController } from "../core/controller.ts";
 import { RuntimeStore } from "../storage/runtime-store.ts";
 import { type EmptyDetails, type GetXddState, ok } from "./index.ts";
+import { HarnessStore } from "../harness/store.ts";
 
 const schema = Type.Object({});
 
@@ -44,7 +45,11 @@ export function createXddDifferenceTool(getState: GetXddState): ToolDefinition {
 				selfHealRemaining: remaining,
 				maxSelfHeal: state.maxSelfHealPerStage,
 			});
-			return ok(text);
+			const harnessCommands = new HarnessStore(state.cwd).load().验证命令;
+			const harnessHint = stage.name === "verify"
+				? `[Harness 验证命令] ${harnessCommands.length > 0 ? harnessCommands.join(" | ") : "未配置；请用 xdd_harness_set 写入已确认命令"}`
+				: "";
+			return ok([harnessHint, text].filter(Boolean).join("\n\n"));
 		},
 	};
 }

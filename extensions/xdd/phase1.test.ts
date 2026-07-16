@@ -9,8 +9,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { STAGES } from "./stages.ts";
-import { XddRunnerState } from "./types.ts";
+import { XddRunnerState, type XddStageOutcome } from "./types.ts";
 import { decideFollowUp } from "./followup.ts";
 import { FakePiAdapterHarness } from "./test/pi-adapter-harness.ts";
 
@@ -19,10 +18,19 @@ let state: XddRunnerState;
 
 function freshState(): XddRunnerState {
 	cwd = mkdtempSync(join(tmpdir(), "xdd-phase1-"));
-	state = new XddRunnerState({ runId: "phase1", cwd, userInput: "test" });
-	state.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
-	state.startRun();
+	state = createStateFixture({ runId: "phase1", cwd, userInput: "test" });
+	startStateFixture(state);
 	return state;
+}
+
+/**
+ * Pure scheduler-input fixture. These tests intentionally exercise follow-up
+ * text decisions from explicit outcome inputs; production behavior tests should
+ * use ControllerTestFixture instead of direct outcome writes.
+ */
+function setSchedulerInputOutcome(outcome: XddStageOutcome, error?: string): void {
+	state.stageOutcome = outcome;
+	if (error !== undefined) state.lastStageError = error;
 }
 
 beforeEach(() => { freshState(); });
@@ -45,14 +53,13 @@ describe("Phase 2 stageOutcome", () => {
 			"paused", "completed", "failed",
 		] as const;
 		for (const o of outcomes) {
-			state.stageOutcome = o;
+			setSchedulerInputOutcome(o);
 			expect(state.stageOutcome).toBe(o);
 		}
 	});
 
 	it("lastStageError persists with the outcome", () => {
-		state.stageOutcome = "hard_gate_failed";
-		state.lastStageError = "missing design.md";
+		setSchedulerInputOutcome("hard_gate_failed", "missing design.md");
 		const rt = JSON.parse(readFileSync(join(cwd, ".xdd", "runtime.json"), "utf8"));
 		expect(rt.stageOutcome).toBe("hard_gate_failed");
 		expect(rt.lastStageError).toBe("missing design.md");
@@ -71,7 +78,7 @@ describe("Phase 2 stageOutcome", () => {
 
 describe("P25 decideFollowUp terminal states", () => {
 	it("advanced -> starts the newly advanced stage", () => {
-		state.stageOutcome = "advanced";
+		setSchedulerInputOutcome("advanced");
 		const msg = decideFollowUp("advanced", "architecture", state);
 		expect(msg).toContain("已进入 architecture 阶段");
 		expect(msg).toContain("xdd_observe");
@@ -80,23 +87,22 @@ describe("P25 decideFollowUp terminal states", () => {
 	});
 
 	it("provider_error -> null (pi's built-in retry handles it)", () => {
-		state.stageOutcome = "provider_error";
-		state.lastStageError = "rate limit";
+		setSchedulerInputOutcome("provider_error", "rate limit");
 		expect(decideFollowUp("provider_error", "spec", state)).toBeNull();
 	});
 
 	it("paused -> null (P21 silent path)", () => {
-		state.stageOutcome = "paused";
+		setSchedulerInputOutcome("paused");
 		expect(decideFollowUp("paused", "spec", state)).toBeNull();
 	});
 
 	it("completed -> null", () => {
-		state.stageOutcome = "completed";
+		setSchedulerInputOutcome("completed");
 		expect(decideFollowUp("completed", "spec", state)).toBeNull();
 	});
 
 	it("failed -> null", () => {
-		state.stageOutcome = "failed";
+		setSchedulerInputOutcome("failed");
 		expect(decideFollowUp("failed", "spec", state)).toBeNull();
 	});
 });
@@ -112,15 +118,14 @@ describe("P25 decideFollowUp working states", () => {
 	});
 
 	it("working -> nudge to call xdd_submit_artifact", () => {
-		state.stageOutcome = "working";
+		setSchedulerInputOutcome("working");
 		const msg = decideFollowUp("working", "execute", state);
 		expect(msg).toContain("xdd_submit_artifact");
 		expect(msg).toContain("execute");
 	});
 
 	it("hard_gate_failed + budget > 0 -> '修复后重试' (no rollback)", () => {
-		state.stageOutcome = "hard_gate_failed";
-		state.lastStageError = "missing rules.md";
+		setSchedulerInputOutcome("hard_gate_failed", "missing rules.md");
 		// Default budget is 5
 		const msg = decideFollowUp("hard_gate_failed", "spec", state);
 		expect(msg).toContain("修复");
@@ -130,8 +135,7 @@ describe("P25 decideFollowUp working states", () => {
 	});
 
 	it("hard_gate_failed + budget = 0 -> escalate to diagnose/rollback", () => {
-		state.stageOutcome = "hard_gate_failed";
-		state.lastStageError = "still failing";
+		setSchedulerInputOutcome("hard_gate_failed", "still failing");
 		// Exhaust the budget
 		for (let i = 0; i < state.maxSelfHealPerStage; i++) {
 			state.beginSelfHealAttempt("spec");
@@ -143,15 +147,14 @@ describe("P25 decideFollowUp working states", () => {
 	});
 
 	it("ai_gate_failed + budget > 0 -> '修复后重试' (no rollback)", () => {
-		state.stageOutcome = "ai_gate_failed";
-		state.lastStageError = "偷工减料, AI味";
+		setSchedulerInputOutcome("ai_gate_failed", "偷工减料, AI味");
 		const msg = decideFollowUp("ai_gate_failed", "spec", state);
 		expect(msg).toContain("修复");
 		expect(msg).toContain("5/5");
 	});
 
 	it("gate_passed -> nudge to call xdd_advance", () => {
-		state.stageOutcome = "gate_passed";
+		setSchedulerInputOutcome("gate_passed");
 		const msg = decideFollowUp("gate_passed", "spec", state);
 		expect(msg).toContain("xdd_advance");
 		expect(msg).toContain("spec");
@@ -210,8 +213,7 @@ describe("P25 provider_error semantics", () => {
 		// the post-condition here: budget is still 5/5 after a provider
 		// error scenario.
 		const usedBefore = state.currentAttempt("spec");
-		state.stageOutcome = "provider_error";
-		state.lastStageError = "rate limit";
+		setSchedulerInputOutcome("provider_error", "rate limit");
 		// The handler would set consecutiveStalls = 0 and return.
 		// No budget mutation.
 		expect(state.currentAttempt("spec")).toBe(usedBefore);

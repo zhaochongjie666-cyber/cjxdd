@@ -81,6 +81,35 @@ describe("XddController transition", () => {
 		expect(second.effects).toHaveLength(0);
 	});
 
+
+	it("high context usage requests compaction before continuation", () => {
+		const state = started();
+		state.stageOutcome = "gate_passed";
+		const result = transition(state, { type: "AGENT_ENDED", stopReason: "stop", contextUsagePercent: 0.71 });
+		expect(result.effects[0]).toMatchObject({ type: "COMPACT" });
+		expect(result.effects[0]?.type === "COMPACT" ? result.effects[0].instructions : "").toContain("tool_call 与 tool result 配对");
+		expect(result.state.continuationQueued).toBeFalsy();
+		expect(result.state.lastCompactionAt).toBeGreaterThan(0);
+	});
+
+	it("recent compaction does not loop and queues the normal continuation", () => {
+		const state = started();
+		state.stageOutcome = "gate_passed";
+		state.lastCompactionAt = Date.now();
+		const result = transition(state, { type: "AGENT_ENDED", stopReason: "stop", contextUsagePercent: 0.99 });
+		expect(result.effects[0]).toMatchObject({ type: "SEND_FOLLOWUP" });
+		expect(result.state.continuationQueued).toBe(true);
+	});
+
+
+	it("COMPACTION_DONE queues continuation even when compaction failed", () => {
+		const state = started();
+		state.stageOutcome = "gate_passed";
+		const result = transition(state, { type: "COMPACTION_DONE", success: false });
+		expect(result.effects[0]).toMatchObject({ type: "SEND_FOLLOWUP" });
+		expect(result.state.continuationQueued).toBe(true);
+	});
+
 	it("ADVANCE respects human approval before understand -> spec", () => {
 		const state = started();
 		state.planIndex = 1; // understand
@@ -112,6 +141,28 @@ describe("XddController transition", () => {
 		expect(result.state.rollbackOutcome).toMatchObject({ from: "architecture", to: "spec" });
 		expect(result.state.stageOutcome).toBe("advanced");
 		expect(result.state.stageEpoch).toContain(":spec:");
+	});
+	it("ROLLBACK resets target stage attempt counters and fingerprints", () => {
+		const state = started();
+		state.planIndex = 3; // architecture
+		state.selfHealUsed = { spec: 4 };
+		state.aiGateUsed = { spec: 2 };
+		state.lastSubmitFingerprint = { spec: "same-files" };
+		const result = transition(state, { type: "ROLLBACK", target: "spec", reason: "retry with fresh budget" });
+		expect(result.state.selfHealUsed.spec).toBe(0);
+		expect(result.state.aiGateUsed?.spec).toBe(0);
+		expect(result.state.lastSubmitFingerprint?.spec).toBeUndefined();
+	});
+
+	it("RELEASE_CONTINUATION clears a persisted continuation lock", () => {
+		const state = started();
+		state.continuationQueued = true;
+		state.continuationReason = "idle";
+		state.continuationStage = "init";
+		const result = transition(state, { type: "RELEASE_CONTINUATION", reason: "send failed" });
+		expect(result.state.continuationQueued).toBe(false);
+		expect(result.state.continuationReason).toBeNull();
+		expect(result.state.continuationStage).toBeNull();
 	});
 
 	it("dispatch persists the next state before returning effects", () => {

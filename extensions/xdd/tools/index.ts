@@ -21,6 +21,8 @@ import { createXddRollbackTool } from "./xdd-rollback.ts";
 import { createXddBlindJourneyTool } from "./xdd-blind-journey.ts";
 import { createXddSubmitArtifactTool } from "./xdd-submit-artifact.ts";
 import { createXddTraceTool } from "./xdd-trace.ts";
+import { createXddHarnessGetTool } from "./xdd-harness-get.ts";
+import { createXddHarnessSetTool } from "./xdd-harness-set.ts";
 
 export function createXddTools(getState: GetXddState): ToolDefinition[] {
 	return [
@@ -35,6 +37,8 @@ export function createXddTools(getState: GetXddState): ToolDefinition[] {
 		createXddListSkillsTool(getState),
 		createXddLoadSkillTool(getState),
 		createXddTraceTool(getState),
+		createXddHarnessGetTool(getState),
+		createXddHarnessSetTool(getState),
 		createXddBlindJourneyTool(getState),
 	];
 }

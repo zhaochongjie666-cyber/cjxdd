@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { STAGES } from "./stages.ts";
 import { XddRunnerState } from "./types.ts";
+import { createStateFixture, setStateFixturePlanIndex, startStateFixture } from "./test/state-fixture.ts";
 
 /** Each state gets its own temp dir so file-backed state doesn't collide. */
 let dirCounter = 0;
@@ -12,9 +12,7 @@ function tmpCwd(): string {
 }
 
 function makeState(): XddRunnerState {
-	const state = new XddRunnerState({ runId: "test", cwd: tmpCwd(), userInput: "test" });
-	state.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
-	return state;
+	return createStateFixture({ runId: "test", cwd: tmpCwd(), userInput: "test" });
 }
 
 describe("XddRunnerState basics", () => {
@@ -23,9 +21,9 @@ describe("XddRunnerState basics", () => {
 		expect(state.planIndex).toBe(-1);
 	});
 
-	it("startRun sets planIndex to 0", () => {
+	it("Controller fixture starts at init", () => {
 		const state = makeState();
-		state.startRun();
+		startStateFixture(state);
 		expect(state.planIndex).toBe(0);
 		expect(state.currentStage()?.name).toBe("init");
 	});
@@ -54,70 +52,17 @@ describe("XddRunnerState basics", () => {
 
 	it("isLastStage detects final plan entry", () => {
 		const state = makeState();
-		state.startRun();
-		state.planIndex = state.plan.length - 1;
+		startStateFixture(state);
+		setStateFixturePlanIndex(state, state.plan.length - 1);
 		expect(state.isLastStage()).toBe(true);
 	});
 });
 
-describe("XddRunnerState advancePlan", () => {
-	it("moves to next stage", () => {
-		const state = makeState();
-		state.startRun();
-		const next = state.advancePlan();
-		expect(next?.name).toBe("understand");
-		expect(state.planIndex).toBe(1);
-	});
-
-	it("returns undefined and sets runComplete at end", () => {
-		const state = makeState();
-		state.startRun();
-		for (let i = 0; i < state.plan.length; i++) state.advancePlan();
-		expect(state.runComplete).toBe(true);
-	});
-});
-
-describe("XddRunnerState goToStageName", () => {
-	it("rejects forward targets", () => {
-		const state = makeState();
-		state.startRun();
-		state.advancePlan();
-		const result = state.goToStageName("verify");
-		expect(result.ok).toBe(false);
-	});
-
-	it("accepts backward targets", () => {
-		const state = makeState();
-		state.startRun();
-		state.advancePlan();
-		state.advancePlan();
-		const result = state.goToStageName("init");
-		expect(result.ok).toBe(true);
-		expect(state.planIndex).toBe(0);
-	});
-
-	it("rejects unknown stage", () => {
-		const state = makeState();
-		state.startRun();
-		const result = state.goToStageName("unknown" as never);
-		expect(result.ok).toBe(false);
-	});
-
-	it("resets self-heal budget of the rollback target (Bug 3)", () => {
-		const state = makeState();
-		state.maxSelfHealPerStage = 3;
-		state.startRun();
-		state.advancePlan(); // -> understand
-		state.advancePlan(); // -> spec
-		// burn the budget for "init" before we got here
-		state.beginSelfHealAttempt("init");
-		state.beginSelfHealAttempt("init");
-		state.beginSelfHealAttempt("init");
-		expect(state.remainingSelfHealBudget("init")).toBe(0);
-		// now rollback to init
-		const result = state.goToStageName("init");
-		expect(result.ok).toBe(true);
-		expect(state.remainingSelfHealBudget("init")).toBe(3);
+describe("XddRunnerState navigation compatibility", () => {
+	it("does not expose runner-owned advancement helpers", () => {
+		const state = makeState() as unknown as Record<string, unknown>;
+		expect(state.advancePlan).toBeUndefined();
+		expect(state.goToStageName).toBeUndefined();
 	});
 });
 
@@ -187,8 +132,8 @@ describe("XddRunnerState artifacts and self-attack", () => {
 describe("XddRunnerState checkpoint", () => {
 	it("serializes to checkpoint and back", () => {
 		const state = makeState();
-		state.startRun();
-		state.advancePlan();
+		startStateFixture(state);
+		setStateFixturePlanIndex(state, 1);
 		state.recordArtifact("init", ["README.md"]);
 		state.recordSelfAttack("init", "checked edge cases");
 		const cp = state.toCheckpoint("running", 0);
@@ -206,7 +151,7 @@ describe("XddRunnerState checkpoint", () => {
 
 	it("persists flowRollbackCount across checkpoint (Layer 2)", () => {
 		const state = makeState();
-		state.startRun();
+		startStateFixture(state);
 		state.flowRollbackCount = 7;
 		const cp = state.toCheckpoint("running", 0);
 		expect(cp.flowRollbackCount).toBe(7);

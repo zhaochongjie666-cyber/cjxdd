@@ -1,20 +1,19 @@
 import {
 	gitHasChanges,
-	requireBlindJourneyReports,
 	requireGlobs,
 	requireGlobsWithKeywords,
 	requireGlobsWithMinSize,
 	requirePatternInSource,
 	requirePersonas,
-	requireTestsPass,
 	softPass,
 } from "./gate.ts";
 import type { XddStageName, XddStageSpec } from "./types.ts";
 import { STAGE_ROLES } from "./types.ts";
+import { evaluateVerifyEvidenceGateFull } from "./evidence/verify-gate.ts";
 
 const roleFor = (name: XddStageName): string => STAGE_ROLES[name];
 
-const CONTROLLER_TOOLS = ["xdd_submit_artifact", "xdd_list_skills", "xdd_load_skill"] as const;
+const CONTROLLER_TOOLS = ["xdd_submit_artifact", "xdd_list_skills", "xdd_load_skill", "xdd_harness_get", "xdd_harness_set"] as const;
 const READ_TOOLS = ["read", "grep", "find", "ls"] as const;
 const WRITE_TOOLS = ["write", "edit"] as const;
 
@@ -463,14 +462,12 @@ export const STAGES: readonly XddStageSpec[] = [
 10. 代码级质量：领域规则不住Controller？DB负责并发（条件更新不是先查后改）？审计append-only？通知不破坏主事务？身份来自认证上下文？-- 任一不达标 -> 不通过
 11. Blind Journey（如已定义角色）：Actor 是否真按用户视角操作（不查看代码/DOM/API）？Judge 是否有完整 Feature + 证据对照？每个 Then 是否有可见证据？PASS_WITH_FRICTION 是否列了具体体验问题？BLOCKED/INCONCLUSIVE 是否给了具体原因？覆盖报告是否列了所有角色？`,
 				gate: async ({ cwd }) => {
+			const evidenceOk = await evaluateVerifyEvidenceGateFull(cwd);
+			if (!evidenceOk.ok) return evidenceOk;
 			const specOk = await requireGlobs(cwd, [".xdd/design/spec/**/rules.md"]);
 			if (!specOk.ok) return { ok: false, reason: "verify Gate: 缺少 spec rules.md，无法验证验收标准" };
 			const reportOk = await requireGlobsWithMinSize(cwd, [".xdd/runs/*/verify-report.md"], 100);
 			if (!reportOk.ok) return { ok: false, reason: "verify Gate: 缺少验证报告 .xdd/runs/iter-N/verify-report.md（含健康检查+漫游+全链路审计+双契约）" };
-			const testsOk = await requireTestsPass(cwd);
-			if (!testsOk.ok) return testsOk;
-			const bjOk = await requireBlindJourneyReports(cwd);
-			if (!bjOk.ok) return bjOk;
 			return { ok: true };
 		},
 	},

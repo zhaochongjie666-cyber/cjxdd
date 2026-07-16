@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { STAGES } from "./stages.ts";
 import { XddRunnerState } from "./types.ts";
+import { createStateFixture, startStateFixture } from "./test/state-fixture.ts";
 import { controllerInitScaffold, hasInitializedXddSkeleton } from "./init-scaffold.ts";
 
 let cwd = "";
@@ -62,9 +63,8 @@ describe("F.3 activate-time static validation", () => {
 		// activateXddExtension throws on the first violation. The default
 		// STAGES have no writeScopes declared, so the validator skips
 		// every stage -- this test verifies the default is sane.
-		const state = new XddRunnerState({ runId: "f3", cwd, userInput: "t" });
-		state.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
-		state.startRun();
+		const state = createStateFixture({ runId: "f3", cwd, userInput: "t" });
+		startStateFixture(state);
 		// We can't import activateXddExtension directly (it pulls in
 		// extension.ts -> pi-tui). Instead, we exercise the validation
 		// surface indirectly: validateStageContracts is module-private
@@ -164,13 +164,9 @@ describe("F.8 --skip-wire option", () => {
 		expect(STAGES.find((s) => s.name === "wire")).toBeDefined();
 	});
 
-	it("XddRunner.buildPlan filters wire when opts.skipWire", async () => {
-		// Test the runner-side skip-wire path. We don't run the runner
-		// here (slow), but the static method exists and the option name
-		// is documented.
-		const { XddRunner } = await import("./runner.ts");
-		expect(typeof XddRunner).toBe("function");
-		// opts.skipWire is a documented property of XddRunOptions
+	it("HeadlessXddController is exported for runnerless tests", async () => {
+		const { HeadlessXddController } = await import("./adapters/headless-controller.ts");
+		expect(typeof HeadlessXddController).toBe("function");
 		const src = require("node:fs").readFileSync(
 			require("node:path").join(import.meta.dirname, "types.ts"),
 			"utf8",

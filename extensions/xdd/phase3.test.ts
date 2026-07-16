@@ -13,8 +13,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { STAGES } from "./stages.ts";
 import { XddRunnerState } from "./types.ts";
+import { createStateFixture, setStateFixturePlanIndex, startStateFixture } from "./test/state-fixture.ts";
 import { sliceByEpoch, EPOCH_MARKER_PREFIX } from "./epoch-slicer.ts";
 import { FakePiAdapterHarness } from "./test/pi-adapter-harness.ts";
 
@@ -23,9 +23,8 @@ let state: XddRunnerState;
 
 function freshState(): XddRunnerState {
 	cwd = mkdtempSync(join(tmpdir(), "xdd-phase3-"));
-	state = new XddRunnerState({ runId: "phase3", cwd, userInput: "test" });
-	state.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
-	state.startRun();
+	state = createStateFixture({ runId: "phase3", cwd, userInput: "test" });
+	startStateFixture(state);
 	return state;
 }
 
@@ -195,10 +194,10 @@ describe("P28 tools write stageEpoch", () => {
 
 	it("xdd_advance sets new stage's epoch after planIndex moves", () => {
 		// Simulate the xdd_advance handler:
-		state.startRun(); // planIndex = 0 (init)
+		startStateFixture(state); // planIndex = 0 (init)
 		state.stageEpoch = state.makeStageEpoch("init", state.currentAttempt("init"));
 		expect(state.stageEpoch).toBe("phase3:init:0");
-		state.advancePlan(); // -> understand
+		setStateFixturePlanIndex(state, 1); // Controller ADVANCE owns this in production.
 		state.stageEpoch = state.makeStageEpoch("understand", state.currentAttempt("understand"));
 		expect(state.stageEpoch).toBe("phase3:understand:0");
 	});

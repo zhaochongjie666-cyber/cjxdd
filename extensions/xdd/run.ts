@@ -18,6 +18,8 @@ import { XddController } from "./core/controller.ts";
 import { executePiEffects } from "./adapters/pi-effects.ts";
 import { RuntimeStore } from "./storage/runtime-store.ts";
 import { controllerInitScaffold, hasInitializedXddSkeleton } from "./init-scaffold.ts";
+import { HarnessStore } from "./harness/store.ts";
+import { buildAuditView, renderAuditView } from "./audit/projector.ts";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
 /** /xdd <task> -- start a new xdd run. */
@@ -124,13 +126,20 @@ export async function resumeXdd(_args: string, cwd: string, pi: ExtensionAPI): P
 	newState.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
 	newState.restoreFromCheckpoint(cp);
 	activateXddExtension(newState);
+	if (newState.paused) {
+		const controller = new XddController(new RuntimeStore(newState.cwd), newState.plan.map(({ stage }) => stage));
+		const result = controller.dispatch({ type: "RESUME" });
+		await executePiEffects(result.effects, {
+			pi,
+			ctx: { hasPendingMessages: () => false, isIdle: () => true },
+			getState: () => newState,
+		});
+		return;
+	}
 	const controller = new XddController(new RuntimeStore(newState.cwd), newState.plan.map(({ stage }) => stage));
-	const result = controller.dispatch({ type: "RESUME" });
-	await executePiEffects(result.effects, {
-		pi,
-		ctx: { hasPendingMessages: () => false, isIdle: () => true },
-		getState: () => newState,
-	});
+	controller.dispatch({ type: "RELEASE_CONTINUATION", reason: "checkpoint restored without paused flag" });
+	const stageName = newState.currentStageName() ?? "?";
+	await pi.sendUserMessage(`[xdd] 从检查点恢复运行 ${cp.runId}，当前阶段: ${stageName}。请调 xdd_next_task 继续。`);
 }
 
 /** /xdd status -- show current pipeline state. */
@@ -146,14 +155,18 @@ export async function xddStatus(_args: string, _cwd: string, pi: ExtensionAPI): 
 	const idx = state.currentIndex() + 1;
 	const total = state.plan.length;
 	const pending = state.pendingGroupApproval;
+	const harnessCommands = new HarnessStore(state.cwd).load().验证命令;
+	const harnessStatus = harnessCommands.length > 0 ? harnessCommands.join(" | ") : "未配置";
+	const lastError = state.lastStageError ? ` | 最后错误: ${state.lastStageError}` : "";
+	const auditStatus = renderAuditView(buildAuditView(new RuntimeStore(state.cwd).load() ?? state.toCheckpoint(state.status, state.rollbackCount) as never));
 	if (pending) {
 		await pi.sendUserMessage(
-			`[xdd] 阶段 ${stage?.name} (${idx}/${total}) | ⏸ ${pending.gateLabel} 待确认: 输入 /xdd continue 推进，或检查产物后 /xdd rollback`,
+			`[xdd] 阶段 ${stage?.name} (${idx}/${total}) | ⏸ ${pending.gateLabel} 待确认: 输入 /xdd continue 推进，或检查产物后 /xdd rollback | ${auditStatus} | Harness 验证命令: ${harnessStatus}${lastError}`,
 		);
 		return;
 	}
 	await pi.sendUserMessage(
-		`[xdd] 阶段 ${stage?.name} (${idx}/${total}) | skills: ${state.skills.length} | ledger: ${state.ledger.length} 条`,
+		`[xdd] 阶段 ${stage?.name} (${idx}/${total}) | skills: ${state.skills.length} | ${auditStatus} | Harness 验证命令: ${harnessStatus}${lastError}`,
 	);
 }
 

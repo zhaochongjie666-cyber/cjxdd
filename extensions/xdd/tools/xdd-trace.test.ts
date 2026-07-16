@@ -2,14 +2,13 @@ import { describe, it, expect } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { STAGES } from "../stages.ts";
 import { XddRunnerState } from "../types.ts";
+import { createStateFixture, startStateFixture } from "../test/state-fixture.ts";
 import { createXddTraceTool } from "./xdd-trace.ts";
 
 function makeState(cwd: string): XddRunnerState {
-	const state = new XddRunnerState({ runId: "trace-test", cwd, userInput: "u" });
-	state.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
-	state.startRun();
+	const state = createStateFixture({ runId: "trace-test", cwd, userInput: "u" });
+	startStateFixture(state);
 	return state;
 }
 
