@@ -115,13 +115,12 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 								"\nAIGate: 跳过（软通过模式）",
 						);
 					}
-					// Layer 2: terminate the turn so the runner can trigger reflectTurn.
-					// Returning (not throwing) with terminate:true prevents the agent
-					// from blindly retrying within the same turn.
+					// The budget is exhausted, so this needs diagnosis/rollback rather
+					// than another blind submit. Keep the turn alive so the agent can
+					// perform that recovery immediately.
 					return {
-						content: [{ type: "text", text: `❌ [xdd_submit_artifact] ${stage.name} 自愈预算耗尽（${used}/${state.maxSelfHealPerStage}）：${gate.reason ?? "未知"}\n本轮提交失败，turn 结束。下轮将进入反思，请诊断并修复后重新提交。` }],
+						content: [{ type: "text", text: `❌ [xdd_submit_artifact] ${stage.name} 自愈预算耗尽（${used}/${state.maxSelfHealPerStage}）：${gate.reason ?? "未知"}\n本轮提交失败，但本 turn 继续。请立即调 xdd_diagnose 诊断根因，并调 xdd_rollback 回退后修复。` }],
 						details: {},
-						terminate: true,
 					};
 				}
 				// Layer 2: gate failed with budget remaining -- keep the current
@@ -143,12 +142,6 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 				if (existsSync(intentPath)) {
 					intentAnchor = readFileSync(intentPath, "utf8");
 				}
-				// Phase 5 (E.2): AIGate has its own budget counter, independent
-				// of the hard-Gate budget. A failed AIGate now only burns
-				// AIGate budget, leaving hard-Gate budget untouched (and vice
-				// versa).
-				const aiUsed = state.beginAiGateAttempt(stage.name);
-				const aiRemaining = state.remainingAiGateBudget(stage.name);
 				const aiResult = await runAIGate({
 					model: llmInfo.model,
 					apiKey: llmInfo.apiKey,
@@ -161,6 +154,23 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					cwd: state.cwd,
 					intentAnchor,
 				});
+				// Transport and JSON-format failures are not findings about the
+				// submitted artifacts. Do not spend either retry budget, and clear
+				// the fingerprint so the agent can retry the same valid artifacts.
+				if (aiResult.degraded) {
+					state.refundSelfHealAttempt(stage.name);
+					state.clearSubmitFingerprint(stage.name);
+					const aiError = aiResult.issues.join("; ") || "AIGate 服务或响应格式异常";
+					dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error: aiError } });
+					const angleText = formatAIGateResult(aiResult);
+					return {
+						content: [{ type: "text", text: `⚠️ [AIGate] ${stage.name} 审查服务/响应格式异常（未消耗自愈预算）：\n${angleText}\n本 turn 继续。请直接重新调用 xdd_submit_artifact；无需修改产物。` }],
+						details: {},
+					};
+				}
+				// A semantic AIGate failure consumes only the AIGate retry budget.
+				const aiUsed = state.beginAiGateAttempt(stage.name);
+				const aiRemaining = state.remainingAiGateBudget(stage.name);
 				if (!aiResult.passed) {
 					const aiError = aiResult.angles.filter((a) => a.passed === false).map((a) => a.name).join(", ") || "AIGate 多角度未通过";
 					dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error: aiError } });
@@ -169,22 +179,12 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 						? "\n修改建议：\n" + aiResult.suggestions.map((s, n) => `${n + 1}. ${s}`).join("\n")
 						: "";
 					if (aiRemaining <= 0) {
-						// Layer 1: AIGate budget exhausted -- hard-fail (E.1).
-						// Per P5 plan: "硬 Gate 永不 soft-pass; 预算耗尽 →
-						// diagnose/rollback/fail". No more soft-pass escape hatch.
-						if (stage.exit === "verdict") {
-							return {
-								content: [{ type: "text", text: `❌ [AIGate ${aiUsed}/${state.maxSelfHealPerStage}] ${stage.name} 多角度攻击未通过（自愈预算耗尽）：\n${angleText}${suggText}\n本轮提交失败。请调 xdd_diagnose 诊断根因，或 xdd_rollback 回退。` }],
-								details: {},
-								terminate: true,
-							};
-						}
-						// Non-verdict: still hard-fail (P5 E.1); agent must
-						// diagnose/rollback rather than soft-pass.
+						// A semantic failure still blocks progress, but must not terminate
+						// the Pi turn: the agent needs the current feedback to diagnose and
+						// roll back immediately.
 						return {
-							content: [{ type: "text", text: `❌ [AIGate ${aiUsed}/${state.maxSelfHealPerStage}] ${stage.name} 多角度攻击未通过（自愈预算耗尽）：\n${angleText}${suggText}\n本轮提交失败。请调 xdd_diagnose 诊断根因，或 xdd_rollback 回退。` }],
+							content: [{ type: "text", text: `❌ [AIGate ${aiUsed}/${state.maxSelfHealPerStage}] ${stage.name} 多角度攻击未通过（自愈预算耗尽）：\n${angleText}${suggText}\n本轮提交失败，但本 turn 继续。请立即调 xdd_diagnose 诊断根因，并调 xdd_rollback 回退后修复。` }],
 							details: {},
-							terminate: true,
 						};
 					}
 					// Layer 2: AIGate failed with budget remaining -- keep the
