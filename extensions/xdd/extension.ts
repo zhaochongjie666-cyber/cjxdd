@@ -105,6 +105,37 @@ async function runProjectHooks(point: HookPoint, extra: Partial<HookPayload> = {
 	return result;
 }
 
+function toolResultText(event: { content?: Array<{ type?: string; text?: string }> }): string {
+	return (event.content ?? [])
+		.filter((part) => part.type === "text")
+		.map((part) => part.text ?? "")
+		.join("\n");
+}
+
+/** True only for xdd_submit_artifact's mechanical (not AI semantic) Gate result. */
+function isHardGateFailureResult(event: { type?: string; content?: Array<{ type?: string; text?: string }> }, toolName: string): boolean {
+	if (event.type !== "tool_result" || toolName !== "xdd_submit_artifact") return false;
+	return /❌ \[(?:gate \d+\/|xdd_submit_artifact\])/.test(toolResultText(event));
+}
+
+async function sendHardGateSteering(
+	pi: { sendUserMessage?: (text: string, options?: unknown) => Promise<unknown> | unknown },
+	state: XddRunnerState,
+): Promise<void> {
+	const stage = state.currentStageName() ?? "当前";
+	const reason = state.lastStageError ?? "Gate 未说明失败原因";
+	try {
+		await pi.sendUserMessage?.(
+			`[xdd hard-gate steering] ${stage} 阶段硬 Gate 失败：${reason}。停止无关工作；先按该原因修复产物，再重新调用 xdd_submit_artifact。`,
+			{ deliverAs: "steer" },
+		);
+	} catch (error) {
+		recordControllerAudit("finding", stage, "hard-gate steering send failed", {
+			error: error instanceof Error ? error.message : String(error),
+		});
+	}
+}
+
 async function sendHookContinuePrompt(pi: { sendUserMessage?: (text: string, options?: unknown) => Promise<unknown> | unknown }, prompt: string): Promise<void> {
 	try {
 		await pi.sendUserMessage?.(`[xdd hook continue] ${prompt}`, { deliverAs: "followUp" });
@@ -281,6 +312,13 @@ export const xddInlineExtension: InlineExtension = {
 		pi.on("tool_result", async (event) => {
 			if (!stateRef) return;
 			const toolName = String(event.toolName ?? event.name ?? "?");
+			// A mechanical Gate failure is actionable immediately. Send it as a Pi
+			// steering message so the next LLM call sees an explicit repair directive
+			// before it can choose unrelated work. AIGate failures deliberately do not
+			// match this predicate: their tool result already carries review feedback.
+			if (isHardGateFailureResult(event, toolName)) {
+				await sendHardGateSteering(pi, stateRef);
+			}
 			const hookResult = await runProjectHooks("tool_use_done", { toolCalls: [{ name: toolName, input: event.input }], toolResult: event });
 			if (hookResult?.action === "continue" && hookResult.prompt) {
 				await sendHookContinuePrompt(pi, hookResult.prompt);
@@ -451,24 +489,28 @@ ${hookResult.prompt}`;
 		// Solution: intercept input events with source="extension" and a
 		// recognizable xdd continuation prefix; if the run is paused or the
 		// epoch is stale, return { action: "handled" } to drop the message.
-		pi.on("input", (event) => {
+		pi.on("input", async (event) => {
 			if (!stateRef) return { action: "continue" };
 			if (event.source !== "extension") return { action: "continue" };
 			const text = event.text ?? "";
-			// Recognize xdd continuation messages by their distinguishing
-			// prefix. (P25/P26: the prefixes are emitted by controller scheduler text).
+			const isHardGateSteering = text.startsWith("[xdd hard-gate steering]");
+			// Recognize scheduler-owned continuation messages by their
+			// distinguishing prefix. Steering is intentionally separate: it must
+			// not release the follow-up continuation lock.
 			const isXddContinuation =
 				text.startsWith("[xdd 自动推进]") ||
 				text.startsWith("[xdd] 阶段") || // stage-advance nudge (kept for legacy)
 				text.startsWith("[xdd] 连续"); // stall terminate nudge
-			if (!isXddContinuation) return { action: "continue" };
-			// Drop while paused: agent must not receive a "继续" while the
-			// user is reading the pause notification.
+			if (!isHardGateSteering && !isXddContinuation) return { action: "continue" };
+			// Drop while paused: the model must not receive either a repair
+			// steering instruction or a continuation while the user is paused.
 			if (stateRef.paused) return { action: "handled" };
-			// P26 lock cycle complete: a queued continuation has been
-			// delivered to the agent. Clear the lock so the next agent_end
-			// can queue a fresh continuation if needed.
-			stateRef.continuationQueued = false;
+			if (isXddContinuation) {
+				// P26 lock cycle complete: a queued continuation has been
+				// delivered to the agent. Clear the lock so the next agent_end
+				// can queue a fresh continuation if needed.
+				stateRef.continuationQueued = false;
+			}
 			return { action: "continue" };
 		});
 

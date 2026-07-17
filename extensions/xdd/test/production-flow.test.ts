@@ -83,6 +83,36 @@ describe("production pi adapter lifecycle", () => {
 	});
 
 
+	it("hard Gate failure sends a steering message before the next LLM call", async () => {
+		harness.state.stageOutcome = "hard_gate_failed";
+		harness.state.lastStageError = "missing .xdd/design/intent.md";
+
+		await harness.emit("tool_result", {
+			type: "tool_result",
+			toolName: "xdd_submit_artifact",
+			content: [{ type: "text", text: "❌ [gate 1/5] init 未达标：missing .xdd/design/intent.md" }],
+		});
+
+		expect(harness.sentMessages).toHaveLength(1);
+		expect(harness.sentMessages[0]).toMatchObject({
+			text: expect.stringContaining("missing .xdd/design/intent.md"),
+			options: { deliverAs: "steer" },
+		});
+	});
+
+	it("AIGate failure does not masquerade as a hard-Gate steering message", async () => {
+		harness.state.stageOutcome = "hard_gate_failed";
+		harness.state.lastStageError = "semantic review failed";
+
+		await harness.emit("tool_result", {
+			type: "tool_result",
+			toolName: "xdd_submit_artifact",
+			content: [{ type: "text", text: "❌ [AIGate 1/5] init 多角度攻击未通过" }],
+		});
+
+		expect(harness.sentMessages).toHaveLength(0);
+	});
+
 	it("before_tools hook block rejects the tool call before execution", async () => {
 		mkdirSync(join(harness.cwd, ".xdd", "hooks", "before_tools"), { recursive: true });
 		writeFileSync(
@@ -231,6 +261,27 @@ describe("production pi adapter lifecycle", () => {
 		const statusText = harness.sentMessages.at(-1)?.text ?? "";
 		expect(statusText).toContain("Audit last finding");
 		expect(statusText).toContain("hook before_tools: block");
+	});
+
+	it("hard-Gate steering is asynchronous and does not release the followUp lock", async () => {
+		harness.state.continuationQueued = true;
+		const handlers = harness.handlers.get("input") ?? [];
+		expect(handlers).toHaveLength(1);
+
+		const resultPromise = handlers[0]?.({
+			source: "extension",
+			text: "[xdd hard-gate steering] repair the artifact",
+		}, harness.ctx);
+		expect(resultPromise).toBeInstanceOf(Promise);
+		expect(await resultPromise).toEqual({ action: "continue" });
+		expect(harness.state.continuationQueued).toBe(true);
+
+		harness.state.paused = true;
+		const [pausedResult] = await harness.emit("input", {
+			source: "extension",
+			text: "[xdd hard-gate steering] repair the artifact",
+		});
+		expect(pausedResult).toEqual({ action: "handled" });
 	});
 
 	it("stale queued continuation is dropped while paused and lock clears after resume delivery", async () => {
