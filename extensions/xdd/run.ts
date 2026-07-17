@@ -20,6 +20,7 @@ import { RuntimeStore } from "./storage/runtime-store.ts";
 import { controllerInitScaffold, hasInitializedXddSkeleton } from "./init-scaffold.ts";
 import { HarnessStore } from "./harness/store.ts";
 import { buildAuditView, renderAuditView } from "./audit/projector.ts";
+import { configuredFlowBudgetUsd } from "./flow-budget.ts";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
 /** /xdd <task> -- start a new xdd run. */
@@ -43,6 +44,7 @@ export async function runXdd(args: string, cwd: string, pi: ExtensionAPI): Promi
 		options: { cwd, runId, initialStage },
 	});
 	const state = new XddRunnerState({ runId, cwd, userInput: task });
+	state.flowBudgetUsd = configuredFlowBudgetUsd();
 	state.skills = loadXddSkills(cwd);
 	state.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
 	activateXddExtension(state);

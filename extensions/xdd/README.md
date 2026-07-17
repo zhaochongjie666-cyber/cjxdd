@@ -40,6 +40,10 @@ xdd 控制循环（[`core.md`](../../core.md)）作为 **pi coding agent inline 
 | `xdd_list_skills` | 装载 | 列可用 xdd skill |
 | `xdd_load_skill` | 装载 | 把 skill SKILL.md 注入阶段 system prompt |
 
+### 全流程预算
+
+xdd 默认把一个流程的 Pi 已报告 LLM 费用限制为 **$500 USD**。启动前可通过 `XDD_FLOW_BUDGET_USD` 配置，例如 `XDD_FLOW_BUDGET_USD=75 pi`。预算和已用 tokens/费用持久化在 `.xdd/runtime.json`，恢复时不会因环境变量变化而意外改变原 run 的上限；达到上限后流程暂停，不再自动发起下一轮模型调用。
+
 ### AIGate 超时
 
 审查请求默认最多等待 10 分钟。提交产物和跨阶段上下文会分别限制为 32,000 字符，审查响应限制为 12,000 tokens，以保留完整的架构审查信息。可设置 `XDD_AIGATE_TIMEOUT_MS`（15,000–600,000，单位毫秒）后再启动 pi。超时不会消耗自愈预算，也不会对同一个超时请求自动重试；请在服务恢复或调整超时后重新提交相同产物。
