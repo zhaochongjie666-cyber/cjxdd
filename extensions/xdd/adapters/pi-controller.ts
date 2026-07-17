@@ -17,7 +17,7 @@ export class PiControllerAdapter {
 		this.options = options;
 	}
 
-	async dispatch(command: XddCommand): Promise<void> {
+	async dispatch(command: XddCommand, steeringInput?: string): Promise<void> {
 		const state = this.options.getState();
 		if (!state) {
 			if (command.type === "STOP") {
@@ -28,7 +28,7 @@ export class PiControllerAdapter {
 		}
 		const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
 		const result = controller.dispatch(command);
-		await executePiEffects(result.effects, this.options);
+		await executePiEffects(result.effects, { ...this.options, steeringInput });
 	}
 }
 

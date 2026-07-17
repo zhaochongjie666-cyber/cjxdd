@@ -47,6 +47,17 @@ describe("production pi adapter lifecycle", () => {
 		expect(harness.sentMessages).toHaveLength(0);
 	});
 
+	it("/xdd-resume appends its input to the continuation steering", async () => {
+		await harness.command("xdd-stop");
+		await harness.command("xdd-resume", "请注意使用node");
+
+		expect(harness.sentMessages).toHaveLength(1);
+		expect(harness.sentMessages[0]).toMatchObject({
+			text: "[xdd 自动推进] 恢复 init 阶段。请调 xdd_next_task 继续。\n\n请注意使用node",
+			options: { deliverAs: "followUp" },
+		});
+	});
+
 	it("provider error followed by compaction does not create xdd followUp and shows Pi retry ownership", async () => {
 		harness.contextUsage = { percent: 95 };
 		await harness.emit("agent_end", {

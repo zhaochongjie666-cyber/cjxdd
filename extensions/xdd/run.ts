@@ -15,7 +15,7 @@ import { loadXddSkills } from "./skill-loader.ts";
 import { readCheckpoint } from "./checkpoint.ts";
 import { archiveRun } from "./archive.ts";
 import { XddController } from "./core/controller.ts";
-import { executePiEffects } from "./adapters/pi-effects.ts";
+import { appendSteeringInput, executePiEffects } from "./adapters/pi-effects.ts";
 import { RuntimeStore } from "./storage/runtime-store.ts";
 import { controllerInitScaffold, hasInitializedXddSkeleton } from "./init-scaffold.ts";
 import { HarnessStore } from "./harness/store.ts";
@@ -93,7 +93,7 @@ export async function continueXdd(_args: string, _cwd: string, pi: ExtensionAPI)
  * In both paths the continuationEpoch bump invalidates any followUp queued
  * before the resume (Phase 0 P22).
  */
-export async function resumeXdd(_args: string, cwd: string, pi: ExtensionAPI): Promise<void> {
+export async function resumeXdd(args: string, cwd: string, pi: ExtensionAPI): Promise<void> {
 	// Try same-session first (stateRef still alive).
 	let state: XddRunnerState | undefined;
 	try {
@@ -109,6 +109,7 @@ export async function resumeXdd(_args: string, cwd: string, pi: ExtensionAPI): P
 		const result = controller.dispatch({ type: "RESUME" });
 		await executePiEffects(result.effects, {
 			pi,
+			steeringInput: args,
 			ctx: { hasPendingMessages: () => false, isIdle: () => true },
 			getState: () => state,
 		});
@@ -131,6 +132,7 @@ export async function resumeXdd(_args: string, cwd: string, pi: ExtensionAPI): P
 		const result = controller.dispatch({ type: "RESUME" });
 		await executePiEffects(result.effects, {
 			pi,
+			steeringInput: args,
 			ctx: { hasPendingMessages: () => false, isIdle: () => true },
 			getState: () => newState,
 		});
@@ -139,7 +141,7 @@ export async function resumeXdd(_args: string, cwd: string, pi: ExtensionAPI): P
 	const controller = new XddController(new RuntimeStore(newState.cwd), newState.plan.map(({ stage }) => stage));
 	controller.dispatch({ type: "RELEASE_CONTINUATION", reason: "checkpoint restored without paused flag" });
 	const stageName = newState.currentStageName() ?? "?";
-	await pi.sendUserMessage(`[xdd] 从检查点恢复运行 ${cp.runId}，当前阶段: ${stageName}。请调 xdd_next_task 继续。`);
+	await pi.sendUserMessage(appendSteeringInput(`[xdd] 从检查点恢复运行 ${cp.runId}，当前阶段: ${stageName}。请调 xdd_next_task 继续。`, args));
 }
 
 /** /xdd status -- show current pipeline state. */
@@ -217,4 +219,3 @@ export async function xddCommit(stageArg: string, ctx: ExtensionCommandContext, 
 	}
 	await pi.sendUserMessage(`[xdd-commit] 已 commit 摘要到 session tree（leaf=${leafId.slice(0, 8)}...，label="xdd ${stageName}"）。输入 /tree 查看。`);
 }
-
