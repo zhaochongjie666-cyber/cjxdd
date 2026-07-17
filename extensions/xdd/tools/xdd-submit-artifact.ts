@@ -108,7 +108,10 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 				// single unified review cannot produce a verdict.
 				state.refundSelfHealAttempt(stage.name);
 				state.clearSubmitFingerprint(stage.name);
-				const error = "AIGate 模型不可用，无法执行统一审查";
+				const mechanicalDetail = mechanicalCheckResult.ok
+					? "机械检查通过"
+					: `机械检查未通过：${mechanicalCheckResult.reason ?? "未说明原因"}`;
+				const error = `AIGate 模型不可用，无法执行统一审查；${mechanicalDetail}`;
 				dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error } });
 				return {
 					content: [{ type: "text", text: `⚠️ [AIGate] ${error}。机械检查结果为：${mechanicalCheckResult.ok ? "通过" : "未通过"}${mechanicalCheckResult.reason ? `（${mechanicalCheckResult.reason}）` : ""}\n本 turn 继续。请恢复模型配置后重新调用 xdd_submit_artifact；无需修改产物。` }],

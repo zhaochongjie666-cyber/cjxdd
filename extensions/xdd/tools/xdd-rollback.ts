@@ -19,8 +19,8 @@ export type XddRollbackInput = Static<typeof schema>;
 /**
  * xdd_rollback: model-initiated rollback. The model calls this during a reflect
  * turn (or directly during a stage turn) to rewind to an earlier stage. It
- * validates the target, enforces the per-stage attempt cap, marks superseded
- * ledger entries, moves the shared state to the target, records the rollback
+ * validates the target, lets the Controller atomically enforce the per-stage
+ * rollback cap, marks superseded ledger entries, moves the shared state to the target, records the rollback
  * intent, and leaves the turn alive so the agent can immediately resume work at
  * the target stage with the failure context still available.
  */
@@ -61,10 +61,6 @@ export function createXddRollbackTool(getState: GetXddState): ToolDefinition {
 				} else {
 					target = "understand";
 				}
-			}
-			// Enforce the attempt cap BEFORE mutating any state.
-			if (state.currentAttempt(target) >= state.maxRollbacksPerStage) {
-				throw new Error(`[xdd_rollback] ${target} 已达回退上限 ${state.maxRollbacksPerStage}，无法再次回退`);
 			}
 			const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
 			try {

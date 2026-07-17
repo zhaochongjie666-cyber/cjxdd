@@ -1,7 +1,7 @@
 /**
  * Phase 5 (E) regression tests: Gate & self-heal robustness.
  *
- *   E.1  hard Gate never soft-passes
+ *   E.1  mechanical checks are mandatory input to the unified AIGate
  *   E.2  hardGateAttempts / aiGateAttempts are independent counters
  *   E.3  glob fingerprint based on real expanded files
  *   E.4  group rollback is atomic (xdd_advance calls goToStageName)
@@ -30,9 +30,9 @@ function freshState(): XddRunnerState {
 beforeEach(() => { freshState(); });
 afterEach(() => { if (existsSync(cwd)) rmSync(cwd, { recursive: true }); });
 
-// ── E.1: hard Gate never soft-passes ──────────────────────────────────
+// ── E.1: mechanical checks remain strict inputs ────────────────────────
 
-describe("E.1 hard Gate never soft-passes", () => {
+describe("E.1 mechanical checks", () => {
 	it("requireTestsPass fails when no test command is found", async () => {
 		// Empty dir, no package.json / go.mod / Makefile
 		const result = await requireTestsPass(cwd);
@@ -175,13 +175,13 @@ describe("E.6 Gate 3 runs build + tests", () => {
 // ── E.4: group rollback is atomic (source check) ─────────────────────
 
 describe("E.4 group rollback atomicity", () => {
-	it("xdd_advance calls goToStageName on group gate fail", () => {
+	it("xdd_advance dispatches Controller ROLLBACK on group gate fail", () => {
 		const src = readFileSync(join(import.meta.dirname, "tools/xdd-advance.ts"), "utf8");
-		// The group-gate-fail branch must call goToStageName (not just
-		// set rollbackOutcome and hope the agent re-calls xdd_rollback).
+		// The controller owns the rollback limit, so group-gate failures must
+		// dispatch the same ROLLBACK command rather than mutate state directly.
 		const branch = src.slice(src.indexOf("groupGate.ok"));
-		expect(branch).toMatch(/goToStageName/);
-		expect(branch).toMatch(/markSuperseded/);
+		expect(branch).toMatch(/type:\s*"ROLLBACK"/);
+		expect(branch).toMatch(/controller\.dispatch/);
 	});
 });
 

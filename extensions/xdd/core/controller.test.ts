@@ -36,10 +36,10 @@ describe("XddController transition", () => {
 		expect(second.effects).toHaveLength(0);
 	});
 
-	it("provider errors do not queue followups", () => {
+	it("provider errors do not queue followups and make Pi retry ownership visible", () => {
 		const result = transition(started(), { type: "AGENT_ENDED", stopReason: "error", providerError: "rate limit" });
 		expect(result.state.stageOutcome).toBe("provider_error");
-		expect(result.effects).toHaveLength(0);
+		expect(result.effects).toEqual([expect.objectContaining({ type: "NOTIFY", text: expect.stringContaining("等待 Pi 内建重试") })]);
 	});
 
 	it("SUBMIT records pass/fail outcomes through the Controller", () => {
@@ -169,6 +169,20 @@ describe("XddController transition", () => {
 		expect(result.state.selfHealUsed.spec).toBe(0);
 		expect(result.state.aiGateUsed?.spec).toBe(0);
 		expect(result.state.lastSubmitFingerprint?.spec).toBeUndefined();
+	});
+
+	it("ROLLBACK enforces a controller-owned per-target limit for every caller", () => {
+		let state = started();
+		state.maxRollbacksPerStage = 2;
+		state.planIndex = 3; // architecture
+		state = transition(state, { type: "ROLLBACK", target: "spec", reason: "first" }).state;
+		expect(state.rollbackAttempts?.spec).toBe(1);
+		state.planIndex = 3; // simulate re-entering architecture after repair
+		state = transition(state, { type: "ROLLBACK", target: "spec", reason: "second" }).state;
+		expect(state.rollbackAttempts?.spec).toBe(2);
+		state.planIndex = 3;
+		expect(() => transition(state, { type: "ROLLBACK", target: "spec", reason: "third" }))
+			.toThrow(/ROLLBACK_LIMIT_REACHED|reached its limit/);
 	});
 
 	it("RELEASE_CONTINUATION clears a persisted continuation lock", () => {
