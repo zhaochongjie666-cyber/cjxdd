@@ -56,6 +56,24 @@ describe("formatAIGateResult", () => {
 		expect(text).toContain("✅ 偷工减料攻击: 通过");
 		expect(text).toContain("✅ AI味攻击: 通过");
 	});
+
+	it("does not present an unavailable review as an all-pass verdict", () => {
+		const result: AIGateResult = {
+			passed: false,
+			degraded: true,
+			angles: [
+				{ name: "偷工减料攻击", passed: "N/A", findings: [] },
+				{ name: "AI味攻击", passed: "N/A", findings: [] },
+			],
+			issues: ["[AIGate LLM 调用失败] timeout"],
+			suggestions: [],
+		};
+		const text = formatAIGateResult(result);
+		expect(text).toContain("多角度攻击审查不可用：2/2 角度未获得判定");
+		expect(text).toContain("⚠️ 偷工减料攻击: 审查未完成");
+		expect(text).not.toContain("0/2 角度发现问题");
+		expect(text).not.toContain("✅ 偷工减料攻击: 通过");
+	});
 });
 
 describe("formatMechanicalCheckResult", () => {
@@ -109,6 +127,40 @@ describe("unified AI Gate", () => {
 			expect(prompt).toContain("未找到必需产物");
 			expect(result.passed).toBe(false);
 			expect(result.angles).toContainEqual({ name: "机械检查结果", passed: false, findings: ["未找到必需产物"] });
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("does not coerce the string false into a passing angle", async () => {
+		const cwd = mkdtempSync(join(tmpdir(), "xdd-aigate-"));
+		writeFileSync(join(cwd, "artifact.md"), "real artifact content");
+		vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+			choices: [{ message: { content: JSON.stringify({
+				passed: true,
+				angles: [
+					{ name: "机械检查结果", passed: true, findings: [] },
+					{ name: "偷工减料攻击", passed: "false", findings: ["发现问题"] },
+					{ name: "AI味攻击", passed: true, findings: [] },
+					{ name: "规格偏离攻击", passed: true, findings: [] },
+				],
+				issues: [],
+				suggestions: [],
+			}) } }],
+		}))));
+
+		try {
+			const result = await runAIGate({
+				model: { api: "openai", baseUrl: "https://example.test", id: "test" } as any,
+				apiKey: "test-key",
+				stageName: "custom",
+				aigateStandard: "test standard",
+				artifactPaths: ["artifact.md"],
+				mechanicalCheckResult: { ok: true },
+				cwd,
+			});
+			expect(result.passed).toBe(false);
+			expect(result.angles).toContainEqual({ name: "偷工减料攻击", passed: false, findings: ["发现问题"] });
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
