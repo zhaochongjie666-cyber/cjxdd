@@ -13,7 +13,7 @@
 | **工具数** | 6（`nf_observe`、`nf_desired_state`、`nf_difference`、`nf_submit_artifact`、`nf_advance`、`nf_rollback`） |
 | **复用** | xdd 的 `XddController` + `RuntimeStore` + Audit + Harness + Policy |
 | **砍掉** | AIGate、外部可编程 Hooks、Blind Journey、Group Gates、Renderers、双预算 |
-| **代码量** | ~1200 行 NF + 小型共享生命周期抽象 |
+| **代码量** | ~1300 行 NF（含自建 stage contract-meta 表）+ 小型共享生命周期抽象 |
 
 **用户操作**：输 `/normal-flow <任务>`，系统按 explore → spec → plan → implement → verify 顺序跑，每个阶段 gate 通过就推进。任意阶段卡住调 `nf_rollback`。完成后自动归档。
 
@@ -58,16 +58,19 @@ NF 新增：
 - 1 个 slash command（`flow.ts`）
 - extension 事件注册（`extension.ts`）
 
-并对共享层做两项小型抽象：
+并对共享层做以下改动：
 
-- `StartOptions` / runtime 初始化接受 `maxSelfHealPerStage`、`flowRollbackLimit` 和 `iterLabel`；NF 显式传入 3 / 7 / `iter-N`，而不是继承 xdd 的 5 次默认值。
+- **预算覆盖走 `XddRunnerState` 属性 setter，而不是 `StartOptions`**：现有 `StartOptions`（`core/commands.ts`）只有 `{ cwd, runId?, plan?, initialStage? }` 四个字段，没有预算字段；`startTransition` 生成的初始状态来自 `minimalRuntime()`，其内部无条件写死 `maxSelfHealPerStage: 5`、`flowRollbackLimit: 7`，与传入的 `stages` 无关。NF 的 start 流程必须照抄 `runXdd()` 对 `flowBudgetUsd` 的现成做法：`dispatch(START)` 之后立即设置 `state.maxSelfHealPerStage = 3`（非 deprecated，可直接用）；`flowRollbackLimit` 目前只有 `flowRollbackLimitTier1`/`Tier2` 两个标了 `@deprecated` 的别名 setter，NF 先借用其一，并把“给 xdd 补一个非 deprecated 的 `flowRollbackLimit` setter”列为对 xdd 的小改动项（见第 12 节）。
 - `resumeFlow()` 从 checkpoint 重建**调用方传入的** stage plan 并 activate 对应 extension；session-start 检测也由 NF 自己注册。生命周期 hook 仅用于 pause/resume/归档，不向用户暴露外部可编程 hook 点。
+- **显式前提（必须写进测试）**：`XddController` 构造函数、`transition()`、`currentStage()` 的 `stages` 参数默认值都是 xdd 的 `STAGES`；cwd 无 runtime.json 时收到非 START 命令，`minimalRuntime()` 更是直接硬编码 `plan: STAGES.map(...)`。这些默认值只有在“同一个 cwd 收到的第一条命令一定是 `START`”时才不会被触发。NF 的每个 `nf_*` 工具必须在 dispatch 前确认 runtime.json 已存在，不存在就报错退出，不能静默走到 Controller 的 xdd 默认兜底。
 
 ---
 
 ## 4. 5 阶段契约
 
 沿用 xdd 的 `XddStageSpec` 结构（`role` / `skill` / `exit` / `allowedTools` / `deliverablePaths` / `inputs` / `outputs` / `readScopes` / `writeScopes` / `gatePolicy` / `rollbackPolicy` / `desiredState` / `gate`）。当前类型的 `aigateStandard` 仍是必填字段：共享类型应将其改为仅在 `aiGate.enabled` 时必填，或 NF stage 必须显式填写一个“NF 不启用 AIGate”的占位标准；不能照下方简写遗漏该字段直接实现。
+
+`compileStageContracts`（`extensions/xdd/core/stage-contract.ts`）在阶段激活时强制校验 `inputs`、`outputs`、`readScopes`、`writeScopes`、`gatePolicy`、`hardGate`、`rollbackPolicy` 七个字段全部非空，否则抛 `StageContractError`；`outputs` 里标了 `required: true` 的 `pattern` 还必须被 `writeScopes` 覆盖。xdd 自己的 10 个阶段定义能省掉这些字段，是因为 `extensions/xdd/stages.ts` 内部有一个**未导出的私有** helper：`withStageContract()` + `CONTRACT_META` 查找表，在模块加载时把这些字段自动拼接到每个阶段上（`hardGate` 恒等于 `gate`）。这套私有机制不能被 NF import，NF 的 `stages.ts` 必须二选一：(a) 仿照同样的模式自建一份 `NF_CONTRACT_META` + `withNfStageContract()`；(b) 每个阶段手写全部字段。下面 4.1 采用 (b)，`inputs`/`outputs`/`hardGate` 均已补全。
 
 | 阶段 | xdd 名 | role | skill | 写入 |
 |------|--------|------|-------|------|
@@ -84,16 +87,38 @@ NF 新增：
 ### 4.1 explore 契约
 
 ```typescript
+const exploreGate: XddGate = async ({ cwd }) => {
+  const intentOk = await requireGlobs(cwd, [".xdd/design/intent.md"]);
+  if (!intentOk.ok) return { ok: false, reason: "explore Gate: 缺少 .xdd/design/intent.md" };
+  const designOk = await requireGlobsWithKeywords(
+    cwd, [".xdd/design/design.md"],
+    ["Selected", "Alternatives", "Assumptions", "Out of Scope", "Open Questions"], 3
+  );
+  if (!designOk.ok) return { ok: false, reason: "explore Gate: .xdd/design/design.md 缺少收敛决策 5 段（至少 3 段）" };
+  return { ok: true };
+};
+
 {
   name: "understand",                              // xdd stage 名（与 display name 解耦）
   role: "Requirements Analyst",
   skill: "xdd-brainstorm",
   exit: "goal_complete",
   allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, ...NF_TOOLS],
+  deliverablePaths: [".xdd/design/intent.md", ".xdd/design/design.md"],
+  inputs: [
+    { pattern: "README*", required: true, description: "仓库 README/说明文档（如存在）" },
+  ],
+  outputs: [
+    { pattern: ".xdd/design/intent.md", required: true, description: "意图锚：1 句话定位 + 可验证成功标准 + 非目标" },
+    { pattern: ".xdd/design/design.md", required: true, description: "5 段收敛决策：Selected/Alternatives/Assumptions/Out of Scope/Open Questions" },
+  ],
   readScopes:  ["**/*.md", ".xdd/**", "package.json", "pyproject.toml", "Cargo.toml"],
-  writeScopes: [".xdd/design/**", ".xdd/runs/**"],
+  writeScopes: [".xdd/design/**", ".xdd/runs/**"],   // 必须覆盖上面两条 outputs 的 pattern
   gatePolicy: "hard",
-  rollbackPolicy: { target: "init", reason: "explore 默认回退到 init" },
+  // explore 是 NF 的第一个阶段（NF 没有 init 阶段），没有更早的阶段可回退；
+  // 不能照抄 xdd understand 阶段的 "init"（NF plan 里不存在该 stage 名，
+  // compileStageContracts 会因 rollback target 找不到而拒绝激活）。
+  rollbackPolicy: { target: "none", reason: "explore 是首个阶段，无回退目标" },
   aigateStandard: "NF 不启用 AIGate；语义质量由 verify 阶段证据审查负责。",
 
   desiredState: [
@@ -102,16 +127,8 @@ NF 新增：
     "已产出 .xdd/design/design.md（5 段：Selected / Alternatives / Assumptions / Out of Scope / Open Questions）",
   ],
 
-  gate: async ({ cwd }) => {
-    const intentOk = await requireGlobs(cwd, [".xdd/design/intent.md"]);
-    if (!intentOk.ok) return { ok: false, reason: "explore Gate: 缺少 .xdd/design/intent.md" };
-    const designOk = await requireGlobsWithKeywords(
-      cwd, [".xdd/design/design.md"],
-      ["Selected", "Alternatives", "Assumptions", "Out of Scope", "Open Questions"], 3
-    );
-    if (!designOk.ok) return { ok: false, reason: "explore Gate: .xdd/design/design.md 缺少收敛决策 5 段（至少 3 段）" };
-    return { ok: true };
-  },
+  gate: exploreGate,
+  hardGate: exploreGate,   // StageContract 要求非空；xdd 约定 hardGate 恒等于 gate
 }
 ```
 
@@ -321,11 +338,12 @@ attempt 2: agent 修了 3 个实现 bug → 重提 → exit 0 → PASS
 - `runtime.json` 原子写入（`atomicWriteJson` 的 tmp + rename）
 - session_start hook 检测未完成 run → `ctx.ui.notify` 提示 `/normal-flow-resume`
 - `/normal-flow-resume` 重建 state、bump continuationEpoch、queue follow-up
+- **已知缺口**：xdd 自己的 `session_start` hook（`extensions/xdd/extension.ts`）只要 `readCheckpoint(process.cwd())` 有返回值就提示 `/xdd-resume`，不区分该 checkpoint 是不是 NF 建的。两个 extension 按仓库 `AGENTS.md` 是一起装进 `~/.pi/agent/extensions` 的，这条缺口是真实存在的，缓解方式见第 13 节
 
 ### 9.3 P6 Runtime Independence
 
 - NF 不绑 pi 内部细节（`flow.ts` 只通过 `ExtensionAPI` 接口调用）
-- `XddController` 不知道是 NF 还是 xdd 在用
+- `XddController` 的 dispatch/transition 主路径不知道是 NF 还是 xdd 在用（`stages` 全程作为参数传递）；但 `minimalRuntime()` 和几处默认参数仍隐式硬编码 xdd 的 `STAGES`（见第 3 节“显式前提”），只要 NF 保证每个 cwd 的首条命令一定是 `START`，这一层“不知道”就成立
 - 切换 run 上下文（换 cwd）只需要重新 activate
 
 ### 9.4 P7 Human Governance（简化）
@@ -340,9 +358,9 @@ attempt 2: agent 修了 3 个实现 bug → 重提 → exit 0 → PASS
 
 | 预算 | 默认值 | 配置位置 |
 |------|-------|---------|
-| 自愈预算（每阶段） | 3 | NF `START` options → `runtime.json` `maxSelfHealPerStage` |
-| Flow 回退预算（整个 run） | 7 | `runtime.json` `flowRollbackLimit` |
-| 流 USD 预算 | $500 | `XDD_FLOW_BUDGET_USD` env |
+| 自愈预算（每阶段） | 3 | NF start 流程在 `dispatch(START)` 后 `state.maxSelfHealPerStage = 3`（`XddRunnerState` setter，不是 `StartOptions`） |
+| Flow 回退预算（整个 run） | 7 | 与 xdd 默认值相同，通常无需覆盖；如需显式设置走 `state.flowRollbackLimitTier1 = 7`（`@deprecated` 别名，暂无干净 setter） |
+| 流 USD 预算 | $500 | `XDD_FLOW_BUDGET_USD` env（xdd/NF 共用同一个环境变量） |
 
 ---
 
@@ -361,7 +379,7 @@ attempt 2: agent 修了 3 个实现 bug → 重提 → exit 0 → PASS
 | Renderers（TUI） | ✅ | ❌ |
 | Stage role 数量 | 10 角色 | 5 角色 |
 | `pendingGroupApproval` | 死代码（实现保留） | 不实现 |
-| 总 LoC | ~7500 | ~1200 + 小型共享生命周期抽象 |
+| 总 LoC | ~7500 | ~1300 + 小型共享生命周期抽象 |
 
 **为什么砍**：
 - **AIGate**：单次 10 分钟超时 + 高 LLM 成本，对"快 + 简单"场景是负担；需要时切到 xdd
@@ -395,7 +413,7 @@ extensions/normal-flow/
     └── nf-rollback.ts
 ```
 
-约 **1200 行**（其中 stages.ts 300 行 / 6 tools 600 行 / extension+flow 250 行 / 共享 lifecycle 抽象与测试约 150 行）。
+约 **1300 行**（其中 stages.ts 350 行，含 NF 自建的 contract-meta 补全表 / 6 tools 600 行 / extension+flow 250 行 / 共享 lifecycle 抽象与测试约 150 行）。不含直接 re-export `context.ts`/`epoch-slicer.ts`/`context-prune.ts`/`skill-loader.ts` 等纯函数 helper 的胶水代码（预计 <50 行）。
 
 ---
 
@@ -418,9 +436,17 @@ extensions/normal-flow/
 | `enforceToolCallPolicy` | `extensions/xdd/policy/tool-policy.ts` |
 | `checkStagePathAccess` | `extensions/xdd/policy/path-policy.ts` |
 | `applyStageBashPolicy` | `extensions/xdd/policy/bash-policy.ts` |
+| `buildActiveStageSystemPrompt` | `extensions/xdd/context.ts` |
+| `sliceByEpoch`, `EPOCH_MARKER_PREFIX` | `extensions/xdd/epoch-slicer.ts` |
+| `pruneContextMessages` | `extensions/xdd/context-prune.ts` |
+| `loadXddSkills` | `extensions/xdd/skill-loader.ts` |
+| `resolveGlobs`, `hasGlobMeta` | `extensions/xdd/glob-resolver.ts` |
+| `configuredFlowBudgetUsd`, `assistantFlowUsage` | `extensions/xdd/flow-budget.ts` |
+| `controllerInitScaffold`, `hasInitializedXddSkeleton` | `extensions/xdd/init-scaffold.ts`（NF 没有 init 阶段，靠这个建 `.xdd/` 骨架） |
 | `resumeFlow`（新增共享 helper） | 从 `extensions/xdd/run.ts` 提取；注入 stages / activate / 文案 |
+| `NF_CONTRACT_META`, `withNfStageContract`（NF 新增，非 xdd 复用） | `extensions/normal-flow/stages.ts`；仿照 xdd `stages.ts` 内私有的 `CONTRACT_META`/`withStageContract` 模式自建，用来补全 `inputs`/`outputs`/`hardGate`（详见第 4 节） |
 
-**新增量**：5 个 stage 定义、6 个 nf_* 工具、start/resume 命令、extension 事件 wiring，以及可参数化的共享 lifecycle helper。其他文件大部分 re-export。
+**新增量**：5 个 stage 定义（含各自的 contract-meta 补全）、6 个 nf_* 工具、start/resume 命令、extension 事件 wiring，以及可参数化的共享 lifecycle helper。`context.ts`/`epoch-slicer.ts`/`context-prune.ts`/`skill-loader.ts` 等纯函数 helper 可直接 re-export；`extension.ts` 本身（事件注册 + `stateRef` 单例）仍需要 NF 自己写一份，不能跨模块共享同一个 `stateRef`。
 
 ---
 
@@ -429,26 +455,31 @@ extensions/normal-flow/
 | 风险 | 缓解 |
 |------|------|
 | 与 xdd 共享 `runtime.json` 导致冲突 | 启动时检查 `state.plan[].stageName` 是否全部 ∈ `{understand, spec, plan, execute, verify}`，否则提示「cwd 已被 xdd run 占用，请先 /xdd-stop 或新开 cwd」 |
+| **xdd 自己的 `session_start` 对 NF 的 checkpoint 提示错误的 `/xdd-resume`** | `readCheckpoint(process.cwd())` 不区分 runtime.json 归属；给 `extensions/xdd/extension.ts` 的 session_start 加一条「`plan[].stageName` 若全部 ∈ NF 阶段集合就不提示 `/xdd-resume`，改提示 `/normal-flow-resume`」的判断（或在 runtime.json 加一个 `flow: "xdd" \| "nf"` 标记，两侧 session_start 都读它）；这是需要对 xdd 现有代码做的小改动，不是 NF 单侧能兜住的 |
+| **`XddController` 默认参数仍隐式绑定 xdd 的 `STAGES`** | `minimalRuntime()`、构造函数、`transition()` 的 `stages` 缺省值都是 `STAGES`；只在“cwd 无 runtime.json 时收到非 START 命令”这一边界情况触发。NF 每个 `nf_*` 工具 dispatch 前必须确认 runtime.json 已存在，不存在就报错，不允许静默走 Controller 默认兜底；验证清单新增专项测试（第 14 节） |
 | 砍掉 AIGate 后语义漏洞靠硬 gate 抓不到 | 硬 gate 已覆盖「文件存在 + 字节数 + 关键词」；AIGate 抓的「AI 味 / 实现细节冒充业务规则」等留给 verify 阶段人工 review |
 | 5 阶段对复杂项目粒度过粗 | 复杂项目用 xdd；NF 定位为「快 + 简单」场景，文档中明确说明 |
-| 自愈预算 3 次太少 | 3 次 = 1 次原始 + 2 次重试；如需更多可在 `runtime.json` 调 `maxSelfHealPerStage` |
+| 自愈预算 3 次太少 | 3 次 = 1 次原始 + 2 次重试；如需更多可在 start 流程里把 `state.maxSelfHealPerStage` 设成更大的值 |
 | display name ↔ xdd stage name 映射造成日志混淆 | 所有用户面（prompt / tool 输出 / 文档）使用 display name；runtime.json 保留 xdd 名（向后兼容） |
 | checkpoint 恢复错误装载 xdd 的 10 阶段 | `resumeFlow` 强制注入 `NF_STAGES` 和 NF activate 函数；跨进程恢复测试断言 plan 恒为 5 阶段 |
-| NF 预算意外继承 xdd 的 5 次默认值 | `START` options 显式持久化 3 / 7；启动和恢复测试断言 runtime 预算不漂移 |
+| NF 预算意外继承 xdd 的 5 次/7 次默认值 | start 流程在 `dispatch(START)` 后显式设置 `state.maxSelfHealPerStage = 3`（`flowRollbackLimit` 默认值本就是 7，无需覆盖）；启动和恢复测试断言 runtime 预算不漂移 |
 
 ---
 
 ## 14. 验证清单（实现后必跑）
 
 - [ ] `extension.ts` 注册 6 个工具 + 1 个 slash 命令，无 TS 编译错
-- [ ] NF stage contracts 通过 TypeScript 和 `validateStageContracts`；`aigateStandard` 的可选性/占位策略有单测
+- [ ] 5 个 NF stage 定义通过 TypeScript 类型检查和 `compileStageContracts()`（含 `inputs`/`outputs`/`hardGate` 补全、`outputs` 的 `required` pattern 被 `writeScopes` 覆盖）；`aigateStandard` 的占位标准有单测
+- [ ] `explore` 阶段的 `rollbackPolicy.target` 为 `"none"`（不是 `"init"`）且能通过 `compileStageContracts` 的 rollback 校验
 - [ ] `stages.ts` 的 5 个 gate 全部能在空仓库上「应失败」
 - [ ] 故意写空 `intent.md` → explore gate 报缺 `design.md`
 - [ ] `npm test` 在 `implement` 阶段失败时，gate 报 exit code + stderr 前 800 字
 - [ ] verify 阶段 3 次 hard-gate budget 耗尽后，触发自动 ROLLBACK 到 implement；flow rollback 预算为 7
 - [ ] 关闭 pi 后重新启动 → checkpoint 提示恢复 → `/normal-flow-resume` 重建且只重建 5 阶段 plan
-- [ ] 启动、暂停、恢复后 `maxSelfHealPerStage=3`、`flowRollbackLimit=7` 不变
+- [ ] 启动、暂停、恢复后 `maxSelfHealPerStage=3`、`flowRollbackLimit=7` 不变（通过 `state.maxSelfHealPerStage` setter 验证，不是 `StartOptions`）
 - [ ] 同 cwd 已有 xdd run 时启动 NF → 提示冲突并拒绝启动
+- [ ] 在无 `runtime.json` 的 cwd 上直接调用非 START 的 `nf_*` 工具 → 报错，不静默创建 xdd 10 阶段 plan
+- [ ] xdd 和 NF 同时安装时，对一个 NF 创建的 checkpoint 重启 pi → 不出现「/xdd-resume」的误导提示
 
 ---
 
