@@ -1,4 +1,4 @@
-import { applyBashPolicy } from "./bash-policy.ts";
+import { applyStageBashPolicy } from "./bash-policy.ts";
 import { checkStagePathAccess, type PathAccessKind } from "./path-policy.ts";
 import type { XddRunnerState, XddStageSpec } from "../types.ts";
 
@@ -21,7 +21,7 @@ export function enforceToolCallPolicy(state: XddRunnerState, event: ToolCallEven
 	}
 	if (toolName === "bash") {
 		const input = ensureRecord(event.input);
-		const violation = applyBashPolicy(input as { command?: string; timeout?: number; description?: string });
+		const violation = applyStageBashPolicy(stage, input as { command?: string; timeout?: number; description?: string });
 		if (violation) throw new Error(`[xdd policy] 禁止的 bash 命令 (${violation.reason}): ${violation.command.slice(0, 160)}`);
 		return;
 	}

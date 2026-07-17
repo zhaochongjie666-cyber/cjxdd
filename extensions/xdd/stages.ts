@@ -71,6 +71,10 @@ const CONTRACT_META: Record<XddStageName, {
 	architecture: {
 		inputs: [input(".xdd/design/spec/**", "业务规则与验收场景")],
 		readScopes: [".xdd/design/**", "README*", "docs/**", "package.json", "pyproject.toml", "Cargo.toml"],
+		// Architecture may document an upstream inconsistency, but it must not
+		// silently rewrite project intent or converged product decisions. The
+		// change request lives with the architecture evidence and is handled by
+		// the owning upstream stage after an explicit rollback.
 		writeScopes: [".xdd/design/architecture/**"],
 		gatePolicy: "hard",
 		rollbackTarget: "spec",
@@ -263,6 +267,7 @@ export const STAGES: readonly XddStageSpec[] = [
 			"包含：模块划分、模块间依赖关系、数据流向、关键技术选型及权衡理由",
 			"明确每个模块对应 spec 中的哪条 RXX 规则",
 			"识别至少 1 个失败模式 / 风险点（与 resilience 阶段的关注点对接）",
+			"若发现 intent.md/design.md 与架构约束冲突：在 .xdd/design/architecture/upstream-change-requests.md 记录证据、影响、备选方案和建议回退阶段；不得直接修改上游锚。规则/验收问题回退 spec，项目意图/范围/成功标准/项目级约束问题回退 understand",
 			"design/ 产物不引用 iter-N（design 是持久锚，跨 iter 保留）",
 			"已自我攻击：检查耦合泄漏、循环依赖、隐藏单点，并记录结论",
 		],
