@@ -187,6 +187,35 @@ describe("production pi adapter lifecycle", () => {
 		expect(statusText).toContain("Audit last gate");
 	});
 
+	it("uses all five verify self-heal attempts before spending one flow rollback", async () => {
+		writeVerifyTraceGapFixture(harness.cwd);
+		harness.controller.startAt("verify");
+		const submit = harness.tools.find((tool) => tool.name === "xdd_submit_artifact");
+		expect(submit).toBeTruthy();
+
+		for (let attempt = 1; attempt <= 4; attempt++) {
+			const result = await submit!.execute(`verify-retry-${attempt}`, {
+				summary: `verify trace gap retry ${attempt}`,
+				artifacts: [],
+				selfAttack: `checked trace consistency on retry ${attempt} and found the expected gap`,
+				pass: false,
+			});
+			expect(result.terminate).toBeUndefined();
+			expect(harness.state.currentStageName()).toBe("verify");
+			expect(harness.state.flowRollbackCount).toBe(0);
+		}
+
+		const exhausted = await submit!.execute("verify-retry-5", {
+			summary: "verify trace gap retry 5",
+			artifacts: [],
+			selfAttack: "checked trace consistency on retry 5 and found the expected gap",
+			pass: false,
+		});
+		expect(exhausted.terminate).toBeUndefined();
+		expect(harness.state.currentStageName()).toBe("spec");
+		expect(harness.state.flowRollbackCount).toBe(1);
+	});
+
 
 	it("context hook runs epoch slicing and safe pruning together", async () => {
 		harness.state.stageEpoch = "harness:verify:1";
