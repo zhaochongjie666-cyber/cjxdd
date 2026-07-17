@@ -92,6 +92,58 @@ describe("formatMechanicalCheckResult", () => {
 });
 
 describe("unified AI Gate", () => {
+	it("parses the first balanced JSON object when the response contains extra objects", async () => {
+		const cwd = mkdtempSync(join(tmpdir(), "xdd-aigate-"));
+		writeFileSync(join(cwd, "artifact.md"), "real artifact content");
+		const verdict = {
+			passed: true,
+			angles: ["机械检查结果", "偷工减料攻击", "AI味攻击", "规格偏离攻击"].map((name) => ({ name, passed: true, findings: [] })),
+			issues: [], suggestions: [],
+		};
+		vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+			choices: [{ message: { content: `审查完成。\n${JSON.stringify(verdict)}\n调试数据：${JSON.stringify({ ignored: true })}` } }],
+		}))));
+
+		try {
+			const result = await runAIGate({
+				model: { api: "openai", baseUrl: "https://example.test", id: "test" } as any,
+				apiKey: "test-key", stageName: "custom", aigateStandard: "test standard",
+				artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd,
+			});
+			expect(result.passed).toBe(true);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("retries once with a format correction after malformed JSON", async () => {
+		const cwd = mkdtempSync(join(tmpdir(), "xdd-aigate-"));
+		writeFileSync(join(cwd, "artifact.md"), "real artifact content");
+		const verdict = {
+			passed: true,
+			angles: ["机械检查结果", "偷工减料攻击", "AI味攻击", "规格偏离攻击"].map((name) => ({ name, passed: true, findings: [] })),
+			issues: [], suggestions: [],
+		};
+		const fetchMock = vi.fn()
+			.mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: '{"passed": true "angles": []}' } }] })))
+			.mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(verdict) } }] })));
+		vi.stubGlobal("fetch", fetchMock);
+
+		try {
+			const result = await runAIGate({
+				model: { api: "openai", baseUrl: "https://example.test", id: "test" } as any,
+				apiKey: "test-key", stageName: "custom", aigateStandard: "test standard",
+				artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd,
+			});
+			expect(result.passed).toBe(true);
+			expect(fetchMock).toHaveBeenCalledTimes(2);
+			const retryBody = JSON.parse(String(fetchMock.mock.calls[1][1].body));
+			expect(retryBody.messages[1].content).toContain("上一次输出无效");
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
 	it("makes a failed mechanical check fail the single AI Gate verdict even when the LLM says pass", async () => {
 		const cwd = mkdtempSync(join(tmpdir(), "xdd-aigate-"));
 		writeFileSync(join(cwd, "artifact.md"), "real artifact content");
@@ -189,6 +241,7 @@ describe("unified AI Gate", () => {
 				artifactPaths: ["architecture.md"], mechanicalCheckResult: { ok: true }, cwd,
 			});
 			expect(body.max_tokens).toBe(12_000);
+			expect(body.response_format).toMatchObject({ type: "json_schema", json_schema: { name: "aigate_verdict", strict: true } });
 			expect(body.messages[1].content.length).toBeLessThan(75_000);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });

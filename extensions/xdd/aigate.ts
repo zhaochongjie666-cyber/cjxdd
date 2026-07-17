@@ -475,6 +475,40 @@ const ATTACKER_SYSTEM_PROMPT = `你是一个极度严厉的多角度攻击审查
 
 passed 为 true 当且仅当所有角度都 passed。`;
 
+/** Ask for a complete replacement after a malformed model response. */
+const JSON_RETRY_INSTRUCTION = `
+
+## 上一次输出无效
+上一次响应不是可解析的单个 JSON verdict。请重新审查并只输出一个完整、严格有效的 JSON 对象。数组元素之间必须使用逗号；不要输出解释、Markdown 或第二个 JSON 对象。`;
+
+const AIGATE_RESPONSE_SCHEMA = {
+	name: "aigate_verdict",
+	strict: true,
+	schema: {
+		type: "object",
+		additionalProperties: false,
+		required: ["passed", "angles", "issues", "suggestions"],
+		properties: {
+			passed: { type: "boolean" },
+			angles: {
+				type: "array",
+				items: {
+					type: "object",
+					additionalProperties: false,
+					required: ["name", "passed", "findings"],
+					properties: {
+						name: { type: "string" },
+						passed: { anyOf: [{ type: "boolean" }, { type: "string", enum: ["N/A"] }] },
+						findings: { type: "array", items: { type: "string" } },
+					},
+				},
+			},
+			issues: { type: "array", items: { type: "string" } },
+			suggestions: { type: "array", items: { type: "string" } },
+		},
+	},
+} as const;
+
 function buildAttackUserMessage(params: {
 	stageName: string;
 	aigateStandard: string;
@@ -609,7 +643,18 @@ export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
 		};
 	}
 
-	const parsed = parseVerdict(responseText, angles);
+	let parsed = parseVerdict(responseText, angles);
+	// Providers occasionally ignore even JSON-mode/schema constraints. A retry
+	// here is deliberately limited to malformed output, rather than asking the
+	// caller to resubmit unchanged artifacts or consuming the self-heal budget.
+	if (parsed.degraded) {
+		try {
+			responseText = await callLLM(model, apiKey, headers, ATTACKER_SYSTEM_PROMPT, `${userMessage}${JSON_RETRY_INSTRUCTION}`);
+			parsed = parseVerdict(responseText, angles);
+		} catch {
+			// Keep the original parse diagnostic; the retry is best-effort.
+		}
+	}
 	// Phase 6 (D) trust-but-verify: re-derive passed from per-angle
 	// results, do NOT trust the LLM's top-level passed field. If any
 	// required angle is missing OR marked not-passed, overall is fail.
@@ -666,7 +711,16 @@ async function callLLM(
 		const ac = new AbortController();
 		const timer = setTimeout(() => ac.abort(new Error(`AIGate LLM call timeout after ${timeoutMs}ms`)), timeoutMs);
 		try {
-			const text = await callLLMOnce(ac, api, baseUrl, model, apiKey, extraHeaders, systemPrompt, userMessage);
+			let text: string;
+			try {
+				text = await callLLMOnce(ac, api, baseUrl, model, apiKey, extraHeaders, systemPrompt, userMessage, true);
+			} catch (e) {
+				// Some OpenAI-compatible gateways have not implemented JSON Schema.
+				// Fall back to the explicit prompt + balanced parser instead of making
+				// AIGate unavailable solely because the optional enhancement is absent.
+				if (api === "anthropic-messages" || !isStructuredOutputRejection(e)) throw e;
+				text = await callLLMOnce(ac, api, baseUrl, model, apiKey, extraHeaders, systemPrompt, userMessage, false);
+			}
 			return text;
 		} catch (e) {
 			lastErr = e;
@@ -683,6 +737,10 @@ async function callLLM(
 	throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
+function isStructuredOutputRejection(err: unknown): boolean {
+	return err instanceof Error && /LLM API 400:.*(?:response_format|json_schema|schema|structured)/is.test(err.message);
+}
+
 async function callLLMOnce(
 	ac: AbortController,
 	api: string,
@@ -692,6 +750,7 @@ async function callLLMOnce(
 	extraHeaders: Record<string, string> | undefined,
 	systemPrompt: string,
 	userMessage: string,
+	useStructuredOutput: boolean,
 ): Promise<string> {
 	if (api === "anthropic-messages") {
 		const res = await fetch(`${baseUrl}/messages`, {
@@ -730,6 +789,13 @@ async function callLLMOnce(
 			],
 			temperature: 0,
 			max_tokens: 12_000,
+			...(useStructuredOutput
+				? {
+					// OpenAI-compatible providers that implement structured outputs return
+					// a syntactically valid verdict instead of relying on prompt wording.
+					response_format: { type: "json_schema", json_schema: AIGATE_RESPONSE_SCHEMA },
+				}
+				: {}),
 		}),
 		signal: ac.signal,
 	});
@@ -783,13 +849,38 @@ export function formatAIGateResult(aiResult: AIGateResult): string {
  *  error (no JSON, JSON.parse throws) returns a hard-fail result with
  *  `degraded: true` and ALL angles marked as failed. The caller
  *  (rederivePassed) will then fail the gate. */
+function jsonObjectCandidates(text: string): string[] {
+	const candidates: string[] = [];
+	for (let start = text.indexOf("{"); start !== -1; start = text.indexOf("{", start + 1)) {
+		let depth = 0;
+		let inString = false;
+		let escaped = false;
+		for (let end = start; end < text.length; end++) {
+			const char = text[end];
+			if (inString) {
+				if (escaped) escaped = false;
+				else if (char === "\\") escaped = true;
+				else if (char === '"') inString = false;
+				continue;
+			}
+			if (char === '"') inString = true;
+			else if (char === "{") depth++;
+			else if (char === "}" && --depth === 0) {
+				candidates.push(text.slice(start, end + 1));
+				break;
+			}
+		}
+	}
+	return candidates;
+}
+
 function parseVerdict(raw: string, expectedAngles: readonly AttackAngle[]): AIGateResult {
 	const truncated = raw.slice(0, 500);
 	let text = raw.trim();
 	text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
 
-	const jsonMatch = text.match(/\{[\s\S]*\}/);
-	if (!jsonMatch) {
+	const candidates = jsonObjectCandidates(text);
+	if (candidates.length === 0) {
 		return {
 			passed: false,
 			degraded: true,
@@ -800,8 +891,22 @@ function parseVerdict(raw: string, expectedAngles: readonly AttackAngle[]): AIGa
 		};
 	}
 
-	try {
-		const verdict = JSON.parse(jsonMatch[0]);
+	let verdict: any;
+	let parseError: unknown;
+	for (const candidate of candidates) {
+		try {
+			const parsed = JSON.parse(candidate);
+			if (parsed && typeof parsed === "object" && "angles" in parsed) {
+				verdict = parsed;
+				break;
+			}
+			parseError = new Error("JSON 对象不是 AIGate verdict");
+		} catch (e) {
+			parseError = e;
+		}
+	}
+
+	if (verdict !== undefined) {
 		const angles: AIGateAngleResult[] = Array.isArray(verdict.angles)
 			? verdict.angles.map((a: any) => {
 					const raw = a.passed;
@@ -838,16 +943,16 @@ function parseVerdict(raw: string, expectedAngles: readonly AttackAngle[]): AIGa
 			suggestions: Array.isArray(verdict.suggestions) ? verdict.suggestions.map(String) : [],
 			raw: truncated,
 		};
-	} catch (e) {
-		return {
-			passed: false,
-			degraded: true,
-			angles: expectedAngles.map((a) => ({ name: a.name, passed: false, findings: ["[AIGate JSON.parse 抛错]"] })),
-			issues: [`[AIGate JSON 解析失败] ${e instanceof Error ? e.message : String(e)}`],
-			suggestions: ["检查 AIGate prompt 格式，重试"],
-			raw: truncated,
-		};
 	}
+
+	return {
+		passed: false,
+		degraded: true,
+		angles: expectedAngles.map((a) => ({ name: a.name, passed: false, findings: ["[AIGate JSON.parse 抛错]"] })),
+		issues: [`[AIGate JSON 解析失败] ${parseError instanceof Error ? parseError.message : String(parseError)}`],
+		suggestions: ["检查 AIGate prompt 格式，重试"],
+		raw: truncated,
+	};
 }
 
 /** Phase 6 (D) trust-but-verify: re-derive the top-level passed from
