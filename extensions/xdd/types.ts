@@ -47,6 +47,22 @@ export interface RollbackPolicy {
 
 export type XddGatePolicy = "hard" | "explicit-soft";
 
+/**
+ * A stage has two independent five-attempt repair budgets.  A failed hard
+ * (mechanical) Gate consumes `hard_gate`; a semantic AIGate finding consumes
+ * `ai_gate`. Successful checks and AIGate transport/format failures consume
+ * neither budget.  Never combine the counters when deciding exhaustion.
+ */
+export type XddSelfHealBudgetKind = "hard_gate" | "ai_gate";
+
+export interface XddSelfHealBudget {
+	kind: XddSelfHealBudgetKind;
+	used: number;
+	limit: number;
+	remaining: number;
+	exhausted: boolean;
+}
+
 export interface XddGateResult {
 	ok: boolean;
 	/** Why the gate failed (when ok === false). */
@@ -295,6 +311,20 @@ export class XddRunnerState {
 	set flowRollbackLimitTier1(v: number) { this.mutRt("flowRollbackLimitTier1", v); }
 	get flowRollbackLimitTier2(): number { return this.loadRt().flowRollbackLimitTier2 ?? 10; }
 	set flowRollbackLimitTier2(v: number) { this.mutRt("flowRollbackLimitTier2", v); }
+	/** The flow-level rollback budget used by automatic verify recovery. */
+	remainingFlowRollbackBudget(): number {
+		return Math.max(0, this.flowRollbackLimitTier2 - this.flowRollbackCount);
+	}
+	/** Atomically reserve one flow rollback; false means the flow is exhausted. */
+	consumeFlowRollbackBudget(): boolean {
+		const rt = this.loadRt();
+		const limit = rt.flowRollbackLimitTier2 ?? 10;
+		const used = rt.flowRollbackCount ?? 0;
+		if (used >= limit) return false;
+		rt.flowRollbackCount = used + 1;
+		this.saveRt(rt);
+		return true;
+	}
 	get maxRollbacksPerStage(): number { return this.loadRt().maxRollbacksPerStage ?? 2; }
 	set maxRollbacksPerStage(v: number) { this.mutRt("maxRollbacksPerStage", v); }
 	/** Number of completed rollbacks to each target stage. Controller-owned. */
@@ -342,12 +372,15 @@ export class XddRunnerState {
 	// P29: track when compaction last fired (for telemetry + dedup).
 	get lastCompactionAt(): number { return this.loadRt().lastCompactionAt ?? 0; }
 	set lastCompactionAt(v: number) { this.mutRt("lastCompactionAt", v); }
-	// Phase 5 (E.2): AIGate budget, independent of hard-Gate budget.
+	// The AIGate semantic-failure budget is deliberately independent from the
+	// hard-Gate failure budget; stageSelfHealBudget() is the sole read model.
 	get aiGateUsed(): Record<string, number> { return this.loadRt().aiGateUsed ?? {}; }
 	aiGateUsedFor(stage: XddStageName): number { return this.aiGateUsed[stage] ?? 0; }
 	beginAiGateAttempt(stage: XddStageName): number {
 		const rt = this.loadRt();
 		const used = rt.aiGateUsed?.[stage] ?? 0;
+		const max = rt.maxSelfHealPerStage ?? 5;
+		if (used >= max) return max;
 		const next = used + 1;
 		if (!rt.aiGateUsed) rt.aiGateUsed = {};
 		rt.aiGateUsed[stage] = next;
@@ -355,7 +388,7 @@ export class XddRunnerState {
 		return next;
 	}
 	remainingAiGateBudget(stage: XddStageName): number {
-		return Math.max(0, (this.loadRt().maxSelfHealPerStage ?? 5) - this.aiGateUsedFor(stage));
+		return this.stageSelfHealBudget(stage, "ai_gate").remaining;
 	}
 	resetAiGateBudget(stage: XddStageName): void {
 		const rt = this.loadRt();
@@ -418,7 +451,16 @@ export class XddRunnerState {
 	}
 
 	// ── Self-heal budget ─────────────────────────────────────────────────
-	// Phase 5 (E.2): split hard-Gate attempts from AIGate attempts.
+	/** The canonical persisted/read model for both independent repair budgets. */
+	stageSelfHealBudget(stage: XddStageName, kind: XddSelfHealBudgetKind): XddSelfHealBudget {
+		const rt = this.loadRt();
+		const limit = rt.maxSelfHealPerStage ?? 5;
+		const source = kind === "hard_gate" ? rt.selfHealUsed : (rt.aiGateUsed ?? {});
+		const used = Math.min(limit, source[stage] ?? 0);
+		const remaining = Math.max(0, limit - used);
+		return { kind, used, limit, remaining, exhausted: remaining === 0 };
+	}
+	/** Consume exactly one failed hard-Gate repair attempt. */
 	beginSelfHealAttempt(stage: XddStageName): number {
 		const rt = this.loadRt();
 		const used = rt.selfHealUsed[stage] ?? 0;
@@ -435,8 +477,7 @@ export class XddRunnerState {
 		this.saveRt(rt);
 	}
 	remainingSelfHealBudget(stage: XddStageName): number {
-		const rt = this.loadRt();
-		return Math.max(0, (rt.maxSelfHealPerStage ?? 5) - (rt.selfHealUsed[stage] ?? 0));
+		return this.stageSelfHealBudget(stage, "hard_gate").remaining;
 	}
 	resetSelfHealBudget(stage: XddStageName): void {
 		const rt = this.loadRt();
@@ -661,6 +702,8 @@ export interface XddArtifactSubmission {
 	selfAttack: string;
 	pass?: boolean;
 	error?: string;
+	/** Failure source; omitted means a failed hard Gate for backward compatibility. */
+	gateKind?: XddSelfHealBudgetKind;
 }
 
 // ============================================================================

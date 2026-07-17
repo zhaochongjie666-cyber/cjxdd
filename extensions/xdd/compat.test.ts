@@ -138,7 +138,7 @@ describe("AIGate retry loop", () => {
 	it("AIGate failure with remaining budget keeps the current turn alive", () => {
 		const submitSrc = readFileSync(join(SRC_DIR, "tools", "xdd-submit-artifact.ts"), "utf8");
 		expect(submitSrc).toContain("本轮提交失败，但本 turn 继续");
-		expect(submitSrc).toContain("剩余 AIGate 预算");
+		expect(submitSrc).toContain("剩余 AIGate 自愈预算");
 
 		const keepAliveBlock = submitSrc.slice(
 			submitSrc.indexOf("AIGate failed with budget remaining"),
@@ -153,20 +153,21 @@ describe("AIGate retry loop", () => {
 			submitSrc.indexOf("if (aiResult.degraded)"),
 			submitSrc.indexOf("// A semantic AIGate failure"),
 		);
-		expect(degradedBlock).toContain("refundSelfHealAttempt");
+		expect(degradedBlock).not.toContain("beginSelfHealAttempt");
+		expect(degradedBlock).not.toContain("beginAiGateAttempt");
 		expect(degradedBlock).toContain("clearSubmitFingerprint");
 		expect(degradedBlock).toContain("无需修改产物");
 		expect(degradedBlock).not.toContain("terminate: true");
 	});
 
-	it("exhausted AIGate budget keeps the turn alive for diagnosis and rollback", () => {
+	it("exhausted AIGate budget soft-passes non-verify and automatically recovers verify", () => {
 		const submitSrc = readFileSync(join(SRC_DIR, "tools", "xdd-submit-artifact.ts"), "utf8");
 		const exhaustedBlock = submitSrc.slice(
-			submitSrc.indexOf("if (aiRemaining <= 0)"),
+			submitSrc.indexOf("if (aiBudget.exhausted)"),
 			submitSrc.indexOf("// Layer 2: AIGate failed"),
 		);
-		expect(exhaustedBlock).toContain("本轮提交失败，但本 turn 继续");
-		expect(exhaustedBlock).toContain("xdd_rollback");
+		expect(exhaustedBlock).toContain("handleExhaustedVerifyFailure");
+		expect(exhaustedBlock).toContain("现软通过");
 		expect(exhaustedBlock).not.toContain("terminate: true");
 	});
 });
@@ -175,7 +176,7 @@ describe("Hard Gate retry loop", () => {
 	it("hard Gate failure with remaining budget keeps the current turn alive", () => {
 		const submitSrc = readFileSync(join(SRC_DIR, "tools", "xdd-submit-artifact.ts"), "utf8");
 		const keepAliveBlock = submitSrc.slice(
-			submitSrc.indexOf("Layer 2: gate failed with budget remaining"),
+			submitSrc.indexOf("if (!mechanicalCheckResult.ok)"),
 			submitSrc.indexOf("// --- AIGate"),
 		);
 		expect(keepAliveBlock).toContain("本轮提交失败，但本 turn 继续");
@@ -195,7 +196,7 @@ describe("Hard Gate retry loop", () => {
 	it("hard Gate failure with remaining budget keeps the current turn alive", () => {
 		const submitSrc = readFileSync(join(SRC_DIR, "tools", "xdd-submit-artifact.ts"), "utf8");
 		const keepAliveBlock = submitSrc.slice(
-			submitSrc.indexOf("Layer 2: gate failed with budget remaining"),
+			submitSrc.indexOf("if (!mechanicalCheckResult.ok)"),
 			submitSrc.indexOf("// --- AIGate"),
 		);
 		expect(keepAliveBlock).toContain("本轮提交失败，但本 turn 继续");
@@ -225,5 +226,25 @@ describe("Compat: extension loads with 0 errors", () => {
 		// already runs all imports, so if this test runs at all, the
 		// extension source loaded without parse errors.
 		expect(true).toBe(true);
+	});
+});
+
+describe("Stage repair exhaustion policy", () => {
+	it("soft-passes exhausted non-verify stages but auto-rolls back verify", () => {
+		const submitSrc = readFileSync(join(SRC_DIR, "tools", "xdd-submit-artifact.ts"), "utf8");
+		expect(submitSrc).toContain('if (stage.exit !== "verdict")');
+		expect(submitSrc).toContain('signal: "complete"');
+		expect(submitSrc).toContain("handleExhaustedVerifyFailure");
+		expect(submitSrc).toContain("consumeFlowRollbackBudget");
+		expect(submitSrc).toContain('type: "ROLLBACK"');
+	});
+
+	it("uses a distinct persisted source for each displayed self-heal budget", () => {
+		const typesSrc = readFileSync(join(SRC_DIR, "types.ts"), "utf8");
+		const nextTaskSrc = readFileSync(join(SRC_DIR, "tools", "xdd-next-task.ts"), "utf8");
+		expect(typesSrc).toContain('type XddSelfHealBudgetKind = "hard_gate" | "ai_gate"');
+		expect(typesSrc).toContain("stageSelfHealBudget(stage: XddStageName");
+		expect(nextTaskSrc).toContain('stageSelfHealBudget(stage.name, "hard_gate")');
+		expect(nextTaskSrc).toContain('stageSelfHealBudget(stage.name, "ai_gate")');
 	});
 });
