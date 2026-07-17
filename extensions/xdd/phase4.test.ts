@@ -91,6 +91,9 @@ describe("F.5 controllerInitScaffold", () => {
 		expect(existsSync(join(cwd, ".xdd/design/wire"))).toBe(true);
 		expect(existsSync(join(cwd, ".xdd/runs"))).toBe(true);
 		expect(existsSync(join(cwd, ".xdd/archive"))).toBe(true);
+		expect(existsSync(join(cwd, ".xdd/design/README.md"))).toBe(true);
+		expect(existsSync(join(cwd, ".xdd/runs/README.md"))).toBe(true);
+		expect(existsSync(join(cwd, ".xdd/archive/README.md"))).toBe(true);
 	});
 
 	it("detects pre-existing initialization before scaffold mutates a new project", () => {

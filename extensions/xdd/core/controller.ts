@@ -12,6 +12,9 @@ export interface ControllerTransitionResult {
 	effects: XddEffect[];
 }
 
+/** Pi's getContextUsage().percent is expressed on a 0..100 scale. */
+export const COMPACTION_THRESHOLD_PERCENT = 70;
+
 export class ControllerError extends Error {
 	readonly code: string;
 	constructor(code: string, message: string) {
@@ -196,7 +199,7 @@ function isContinuationBoundary(outcome: XddStageOutcome | undefined): boolean {
 
 
 function shouldCompactBeforeContinuation(state: RuntimeStateV2, contextUsagePercent: number | null | undefined): boolean {
-	if (typeof contextUsagePercent !== "number" || contextUsagePercent < 0.7) return false;
+	if (!Number.isFinite(contextUsagePercent) || contextUsagePercent < COMPACTION_THRESHOLD_PERCENT) return false;
 	const last = state.lastCompactionAt ?? 0;
 	return Date.now() - last >= 30_000;
 }

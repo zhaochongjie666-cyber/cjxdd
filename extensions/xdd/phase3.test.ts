@@ -14,6 +14,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { XddRunnerState } from "./types.ts";
+import { COMPACTION_THRESHOLD_PERCENT } from "./core/controller.ts";
 import { createStateFixture, setStateFixturePlanIndex, startStateFixture } from "./test/state-fixture.ts";
 import { sliceByEpoch, EPOCH_MARKER_PREFIX } from "./epoch-slicer.ts";
 import { FakePiAdapterHarness } from "./test/pi-adapter-harness.ts";
@@ -146,15 +147,8 @@ describe("P28 sliceByEpoch", () => {
 // ── P29: context usage check (unit-testable via stub) ────────────────
 
 describe("P29 context usage threshold contract", () => {
-	// The 70% threshold lives in extension.ts (not directly testable
-	// here). We pin the contract as a constant + a smoke test.
-
-	it("threshold is documented as 0.7 (P29 plan)", () => {
-		// Grep the source to confirm the threshold matches P29. If a
-		// future refactor changes the value, this test fails and forces
-		// a docs + plan update.
-		const src = readFileSync(join(import.meta.dirname, "extension.ts"), "utf8");
-		expect(src).toMatch(/usage\.percent\s*>=\s*0\.7/);
+	it("uses Pi's 0..100 percent scale with a 70% threshold", () => {
+		expect(COMPACTION_THRESHOLD_PERCENT).toBe(70);
 	});
 
 	it("dedup: lastCompactionAt < 30s ago -> skip retry (anti-loop)", () => {
@@ -209,7 +203,7 @@ describe("P29 compaction followUp dispatch compatibility", () => {
 		const adapter = new FakePiAdapterHarness();
 		try {
 			adapter.sendUserMessageMode = "sync";
-			adapter.contextUsage = { percent: 0.71 };
+			adapter.contextUsage = { percent: 71 };
 			adapter.state.stageOutcome = "idle";
 
 			await adapter.emit("agent_end", { messages: [{ role: "assistant", stopReason: "stop" }] });

@@ -48,7 +48,7 @@ describe("production pi adapter lifecycle", () => {
 	});
 
 	it("provider error followed by compaction does not create xdd followUp and shows Pi retry ownership", async () => {
-		harness.contextUsage = { percent: 0.95 };
+		harness.contextUsage = { percent: 95 };
 		await harness.emit("agent_end", {
 			messages: [{ role: "assistant", stopReason: "error", errorMessage: "rate limit" }],
 		});
@@ -210,7 +210,7 @@ describe("production pi adapter lifecycle", () => {
 
 	it("waits for Pi's compaction callback before queuing the continuation", async () => {
 		let compactOptions: any;
-		harness.contextUsage = { percent: 0.72 };
+		harness.contextUsage = { percent: 72 };
 		harness.ctx.compact = (options: any) => {
 			harness.compactCalls.push(options);
 			compactOptions = options;
@@ -231,7 +231,7 @@ describe("production pi adapter lifecycle", () => {
 	});
 
 	it("high context usage compacts before sending a single continuation", async () => {
-		harness.contextUsage = { percent: 0.72 };
+		harness.contextUsage = { percent: 72 };
 		harness.controller.submitGatePassed();
 		await harness.emit("agent_end", {
 			messages: [{ role: "assistant", stopReason: "stop" }],
@@ -257,7 +257,7 @@ describe("production pi adapter lifecycle", () => {
 	});
 
 	it("compaction failure releases back to a single continuation instead of stalling", async () => {
-		harness.contextUsage = { percent: 0.9 };
+		harness.contextUsage = { percent: 90 };
 		harness.controller.submitGatePassed();
 		harness.ctx.compact = () => { throw new Error("compactor unavailable"); };
 

@@ -31,7 +31,7 @@ export const NO_CODE_STAGES = new Set<XddStageName>([
 
 export const NO_CODE_CONSTRAINT =
 	"[约束] 此阶段不允许读取源代码文件（*.ts/*.tsx/*.js/*.jsx/*.py/*.go/*.java/*.rs 等）。" +
-	"只允许读取 .xdd/design/ 设计文件、文档（README, docs/）、配置文件（package.json, tsconfig.json 等）。" +
+	"只允许按当前阶段的读取范围访问 .xdd/design/ 设计文件、文档、图片参考和配置文件（package.json, tsconfig.json 等）。" +
 	"只关注设计（做成什么样 / 系统怎么设计），不关注现有实现（代码怎么写的）。" +
 	"wire 阶段可写新的脚手架文件，但不应读现有源码。";
 
