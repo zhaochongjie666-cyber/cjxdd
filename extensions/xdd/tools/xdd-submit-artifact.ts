@@ -15,9 +15,9 @@ import { routeVerifyFailure } from "../verify-failure-routing.ts";
 const schema = Type.Object({
 	summary: Type.String({ description: "本阶段完成内容与产物路径摘要" }),
 	artifacts: Type.Array(Type.String(), { description: "提交的产物文件路径列表" }),
-	selfAttack: Type.String({
-		description: "自我攻击结论：检查了哪些反例/风险/边界，结论是什么",
-	}),
+	selfAttack: Type.Optional(Type.String({
+		description: "本次 run 唯一一次自我攻击结论；仅记录在 run/runtime，绝不写入 design",
+	})),
 	pass: Type.Optional(Type.Boolean({ description: "仅 verify 阶段：是否通过验证" })),
 });
 
@@ -74,7 +74,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 		name: "xdd_submit_artifact",
 		label: "xdd: submit artifact",
 		description:
-			"提交阶段产物 + 自我攻击结论，触发 Gate 验证。Gate 通过后调 xdd_advance 推进。verify 阶段需附 pass。",
+			"提交阶段产物并触发 Gate 验证。每个 run 仅提交一次 selfAttack（记录在 runtime，不是 design 产物）；verify 需附 pass。Gate 通过后调 xdd_advance 推进。",
 		parameters: schema,
 		async execute(_toolCallId, params: XddSubmitArtifactInput): Promise<AgentToolResult<EmptyDetails>> {
 			const state: XddRunnerState = getState();
@@ -82,7 +82,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			if (!stage) throw new Error("[xdd] 无活跃阶段");
 			const summary = String(params.summary ?? "");
 			const artifacts = params.artifacts ?? [];
-			const selfAttack = String(params.selfAttack ?? "");
+			const selfAttack = params.selfAttack?.trim();
 			// Phase 4 (F.6): verify stage is read-only by contract. Reject
 			// any artifact write that touches source code (src/, lib/,
 			// tests/, etc.) -- the model must only write report/evidence.
@@ -95,16 +95,23 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					);
 				}
 			}
-			if (selfAttack.trim().length < 20) {
+			// Self-attack is one run-level review, never a design-stage deliverable.
+			if (selfAttack && selfAttack.length < 20) {
 				throw new Error(
-					`[xdd_submit_artifact] selfAttack 过短（${selfAttack.trim().length} 字符）：必须记录具体检查了哪些反例/风险/边界及结论（至少 20 字符）`,
+					`[xdd_submit_artifact] selfAttack 过短（${selfAttack.length} 字符）：必须记录本次 run 检查过的反例/风险/边界及结论（至少 20 字符）`,
 				);
 			}
 			const rejectPattern = /^(无|none|ok|n\/a|没有|passing|done|完成|ok了|n\/a\.|无异常|没问题)\s*\.?$/i;
-			if (rejectPattern.test(selfAttack.trim())) {
+			if (selfAttack && rejectPattern.test(selfAttack)) {
 				throw new Error(
-					`[xdd_submit_artifact] selfAttack 内容无效（"${selfAttack.trim()}"）：必须记录具体检查了哪些反例/风险/边界及结论`,
+					`[xdd_submit_artifact] selfAttack 内容无效（"${selfAttack}"）：必须记录本次 run 检查过的反例/风险/边界及结论`,
 				);
+			}
+			if (selfAttack && state.getRunSelfAttack()) {
+				throw new Error("[xdd_submit_artifact] 本次 run 已记录 selfAttack；自我攻击只能记录一次，请不要重复提交。");
+			}
+			if (stage.exit === "verdict" && !selfAttack && !state.getRunSelfAttack()) {
+				throw new Error("[xdd_submit_artifact] verify 前必须为本次 run 提交一次 selfAttack；它只记录在 runtime，不应写入 design。");
 			}
 			// Bug 1: verify declared artifacts exist on disk before recording them.
 			// Gives the agent immediate, specific feedback instead of a vague gate

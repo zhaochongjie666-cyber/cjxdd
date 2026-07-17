@@ -60,7 +60,7 @@ describe("XddController transition", () => {
 		let state = started();
 		state = transition(state, { type: "RECORD_ARTIFACT_REVIEW", stage: "init", artifacts: [".xdd/design/intent.md"], selfAttack: "specific risk note for audit" }).state;
 		expect(state.submittedArtifacts?.init).toEqual([".xdd/design/intent.md"]);
-		expect(state.selfAttackNotes?.init).toBe("specific risk note for audit");
+		expect(state.runSelfAttack).toBe("specific risk note for audit");
 		expect(state.stageEpoch).toBe("r1:init:0");
 		expect(state.esg?.at(-1)).toMatchObject({ type: "review", stage: "init" });
 		state = transition(state, { type: "RECORD_SIGNAL", signal: "complete" }).state;
@@ -68,6 +68,17 @@ describe("XddController transition", () => {
 		expect(state.signals).toEqual(["complete"]);
 		state = transition(state, { type: "RECORD_ESG", nodeType: "task", stage: "init", label: "next task" }).state;
 		expect(state.esg?.at(-1)).toMatchObject({ type: "task", stage: "init", label: "next task" });
+	});
+
+	it("records no self-attack note for ordinary stage submissions", () => {
+		const state = transition(started(), {
+			type: "RECORD_ARTIFACT_REVIEW",
+			stage: "spec",
+			artifacts: [".xdd/design/spec/b01/rules.md"],
+		}).state;
+		expect(state.submittedArtifacts?.spec).toEqual([".xdd/design/spec/b01/rules.md"]);
+		expect(state.runSelfAttack).toBeUndefined();
+		expect(state.esg).toEqual([]);
 	});
 
 	it("gate_passed agent_end queues exactly one advance followup", () => {

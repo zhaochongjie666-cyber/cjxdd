@@ -29,10 +29,9 @@ export function createXddDifferenceTool(getState: GetXddState): ToolDefinition {
 			const stage = state.currentStage();
 			if (!stage) return ok("[xdd_difference] 无活跃 run。");
 			const artifacts = state.getSubmittedArtifactsForStage(stage.name) ?? [];
-			const selfAttack = state.getSelfAttackNoteForStage(stage.name);
 			const remaining = state.remainingSelfHealBudget(stage.name);
 
-			const diff = await computeStageDifference(state.cwd, stage, { artifacts, selfAttack });
+			const diff = await computeStageDifference(state.cwd, stage, { artifacts });
 			new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage: plannedStage }) => plannedStage)).dispatch({
 				type: "RECORD_ESG",
 				nodeType: "task",

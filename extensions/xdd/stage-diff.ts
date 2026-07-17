@@ -31,24 +31,18 @@ export interface StageDifference {
 export interface StageDiffContext {
 	/** Artifacts the runner recorded as submitted (in-memory bookkeeping). */
 	artifacts: string[];
-	/** Self-attack note the runner recorded, if any. */
-	selfAttack?: string;
 }
 
 /**
  * Classify a desiredState item against real signals (NOT keyword guessing).
  *
- * - self-attack items are "met" only when a real self-attack note (>=20 chars) exists.
  * - artifact-producing items are "met" only when a declared deliverable exists on disk.
  * - everything else is "self-check": refuse to fake satisfaction.
  */
 export function classifyDesiredStateItem(
 	item: string,
-	ctx: { selfAttack: string | undefined; fsSnap: XddFsSnapshot },
+	ctx: { fsSnap: XddFsSnapshot },
 ): DesiredStateCheck["status"] {
-	if (item.includes("自我攻击")) {
-		return ctx.selfAttack && ctx.selfAttack.trim().length >= 20 ? "met" : "unmet";
-	}
 	if (
 		item.includes("产出") ||
 		item.includes("创建") ||
@@ -86,7 +80,7 @@ export async function computeStageDifference(
 	const checks: DesiredStateCheck[] = stage.desiredState.map((item, i) => ({
 		index: i + 1,
 		item,
-		status: classifyDesiredStateItem(item, { selfAttack: ctx.selfAttack, fsSnap }),
+		status: classifyDesiredStateItem(item, { fsSnap }),
 	}));
 	const metCount = checks.filter((c) => c.status === "met").length;
 	const unmetCount = checks.filter((c) => c.status === "unmet").length;

@@ -77,12 +77,12 @@ export function buildStageSystemPrompt(args: BuildStagePromptArgs): string {
 	if (harness) sections.push(harness);
 	const outputContract = (stage.outputs ?? []).map((o, i) => `  ${i + 1}. ${o.pattern} -- ${o.description}`).join("\n");
 	sections.push(
-		`[期望状态 · desiredState] 本阶段需让以下观察型条件全部为真--完成后请调 xdd_submit_artifact 提交产物与自我攻击结论，触发 gate：\n${stage.desiredState
+		`[期望状态 · desiredState] 本阶段需让以下观察型条件全部为真--完成后请调 xdd_submit_artifact 提交产物，触发 gate：\n${stage.desiredState
 			.map((d, i) => `  ${i + 1}. ${d}`)
 			.join("\n")}`,
 	);
 	sections.push(
-		`[先声明产出，再接受检查] 本阶段 skill=${stage.skill}。你必须先产出这些文件/模式，再提交给对应 hard gate + AI Gate 检查；不要提交空产物让 AI Gate 空检查：\n${outputContract || "  （无硬文件产出；必须在 summary/selfAttack 中说明本阶段无文件产出的可观察依据）"}`,
+		`[先声明产出，再接受检查] 本阶段 skill=${stage.skill}。你必须先产出这些文件/模式，再提交给对应 hard gate + AI Gate 检查；不要提交空产物让 AI Gate 空检查：\n${outputContract || "  （无硬文件产出；必须在 summary 中说明本阶段无文件产出的可观察依据）"}`,
 	);
 	if (skillBody) {
 		sections.push(`[阶段技能 ${stage.skill}]\n${skillBody}`);
@@ -90,10 +90,9 @@ export function buildStageSystemPrompt(args: BuildStagePromptArgs): string {
 		sections.push(`[阶段技能 ${stage.skill}] （未找到 SKILL.md，按阶段名通用指引与 desiredState 执行）`);
 	}
 	sections.push(`[允许工具] ${[...stage.allowedTools, ...STAGE_ORCHESTRATION_TOOLS].join(", ")}`);
-	const gateHint =
-		stage.exit === "verdict"
-			? "xdd_submit_artifact(summary, artifacts, selfAttack, pass)"
-			: "xdd_submit_artifact(summary, artifacts, selfAttack)";
+	const gateHint = stage.exit === "verdict"
+		? "xdd_submit_artifact(summary, artifacts, pass；若本 run 尚未记录 selfAttack，则一并提交)"
+		: "xdd_submit_artifact(summary, artifacts；selfAttack 仅本 run 首次提交时附带)";
 	sections.push(
 		`[完成方式 / reconcile] 让所有 desiredState 为真 -> 调 ${gateHint} -> gate 通过后调 xdd_advance 推进。闸门失败可重试，预算见状态；预算耗尽后请调 xdd_diagnose 进入反思。`,
 	);
@@ -115,10 +114,9 @@ export function buildReflectSystemPrompt(args: { userInput: string; cwd: string 
 /** Seed user prompt that launches a stage turn. */
 export function buildSeed(stage: XddStageSpec, userInput: string): string {
 	const desired = stage.desiredState.map((d, i) => `  ${i + 1}. ${d}`).join("\n");
-	const gateHint =
-		stage.exit === "verdict"
-			? "xdd_submit_artifact（summary, artifacts, selfAttack, pass）"
-			: "xdd_submit_artifact（summary, artifacts, selfAttack）";
+	const gateHint = stage.exit === "verdict"
+		? "xdd_submit_artifact（summary, artifacts, pass；若本 run 尚未记录 selfAttack，则一并提交）"
+		: "xdd_submit_artifact（summary, artifacts；selfAttack 仅本 run 首次提交时附带）";
 	const lines = [
 		`进入 xdd 阶段：${stage.name}。`,
 		`本阶段角色：${stage.role}。`,

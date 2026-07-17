@@ -334,13 +334,14 @@ function resetStageAttemptState(state: RuntimeStateV2, targetName: XddStageName)
 	if (state.artifactFingerprints) delete state.artifactFingerprints[targetName];
 }
 
-function recordArtifactReviewTransition(state: RuntimeStateV2, stage: XddStageName, artifacts: string[], selfAttack: string, effects: XddEffect[]): ControllerTransitionResult {
+function recordArtifactReviewTransition(state: RuntimeStateV2, stage: XddStageName, artifacts: string[], selfAttack: string | undefined, effects: XddEffect[]): ControllerTransitionResult {
 	if (!state.submittedArtifacts) state.submittedArtifacts = {};
-	if (!state.selfAttackNotes) state.selfAttackNotes = {};
 	state.submittedArtifacts[stage] = artifacts;
-	state.selfAttackNotes[stage] = selfAttack;
+	if (selfAttack) {
+		state.runSelfAttack = selfAttack;
+		projectAuditEvent(state, { type: "esg_record", nodeType: "review", stage, label: `self-attack: ${selfAttack.slice(0, 100)}` });
+	}
 	state.stageEpoch = `${state.runId}:${stage}:${state.attempts?.[stage] ?? 0}`;
-	projectAuditEvent(state, { type: "esg_record", nodeType: "review", stage, label: `self-attack: ${selfAttack.slice(0, 100)}` });
 	return { state: stamp(state), effects };
 }
 

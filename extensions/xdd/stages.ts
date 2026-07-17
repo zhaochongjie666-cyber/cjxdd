@@ -166,7 +166,6 @@ export const STAGES: readonly XddStageSpec[] = [
 			"已读仓库现有文档（README / docs/ / .xdd/design/ 如存在），对项目目标有 3-5 句话的总结",
 			"已与用户确认或在 prompt 中明示了本次 run 的目标边界（在 init 末尾向用户复述一遍即可）",
 			"已选好本次用到的 xdd 技能子集（xdd_list_skills -> xdd_load_skill）",
-			"已自我攻击：检查是否遗漏了仓库现有约束/技术债/目标边界模糊，并记录结论",
 		],
 		// These controller-owned markers make init's structural evidence
 		// observable without granting this read-only stage write permissions.
@@ -195,7 +194,6 @@ export const STAGES: readonly XddStageSpec[] = [
 			"已产出本 iter 高层目标（.xdd/runs/iter-N/goals.md，分配 G 编号供 plan 回指）",
 			"已与用户就最关键 2-3 个模糊点达成一致，或在 prompt 中明确声明无法澄清时的合理默认",
 			"design/ 产物不引用 iter-N（design 是持久锚，跨 iter 保留，不关心具体迭代编号）",
-			"已自我攻击：检查是否有遗漏的隐含假设或异常路径，并记录结论",
 		],
 		deliverablePaths: [".xdd/design/design.md", ".xdd/design/intent.md", ".xdd/runs/*/goals.md", ".xdd/design/personas/_index.md"],
 		noCodeReading: true,
@@ -240,7 +238,6 @@ export const STAGES: readonly XddStageSpec[] = [
 			"规则与 understand 阶段澄清的需求点逐条对应（无遗漏假设）",
 			"已列已知/未知四象限（已知的已知 / 已知的未知 / 未知的已知 / 未知的未知）并标注每项处置",
 			"design/ 产物不引用 iter-N（design 是持久锚，跨 iter 保留）",
-			"已自我攻击：检查真实场景是否成立、遗漏异常路径与反例，并记录结论",
 		],
 		deliverablePaths: [".xdd/design/spec/**/rules.md", ".xdd/design/spec/**/*.feature"],
 			noCodeReading: true,
@@ -278,7 +275,6 @@ export const STAGES: readonly XddStageSpec[] = [
 			"识别至少 1 个失败模式 / 风险点（与 resilience 阶段的关注点对接）",
 			"若发现 intent.md/design.md 与架构约束冲突：在 .xdd/design/architecture/upstream-change-requests.md 记录证据、影响、备选方案和建议回退阶段；不得直接修改上游锚。规则/验收问题回退 spec，项目意图/范围/成功标准/项目级约束问题回退 understand",
 			"design/ 产物不引用 iter-N（design 是持久锚，跨 iter 保留）",
-			"已自我攻击：检查耦合泄漏、循环依赖、隐藏单点，并记录结论",
 		],
 		deliverablePaths: [
 			".xdd/design/architecture/**/architecture.md",
@@ -336,7 +332,6 @@ export const STAGES: readonly XddStageSpec[] = [
 			"页面清单跟 spec 的 RXX 规则一一对应（不多不少）",
 			"每个元素标了 @covers-RXX（有存在意义，无混淆）",
 			"design/ 产物不引用 iter-N（design 是持久锚，跨 iter 保留）",
-			"已自我攻击：检查是否有遗漏页面/状态、混淆元素四类（视觉/语义/交互/内容）、元素无来源规则，并记录结论",
 		],
 		deliverablePaths: [".xdd/design/wire/*.md"],
 		noCodeReading: true,
@@ -363,7 +358,6 @@ export const STAGES: readonly XddStageSpec[] = [
 			"记录依赖超时 / 重试 / 降级 / 资源限制等通用容错决策",
 			"已产出韧性测试计划（resilience-test-plan.md），含失败模式 × 自动化/手工/巡检矩阵",
 			"design/ 产物不引用 iter-N（design 是持久锚，跨 iter 保留）",
-			"已自我攻击：检查是否存在单点故障、恢复语义是否含糊、模块是否真正可替换",
 		],
 		deliverablePaths: [
 			".xdd/design/architecture/**/resilience/failure-modes.md",
@@ -398,7 +392,6 @@ export const STAGES: readonly XddStageSpec[] = [
 			"计划按阶段组织：spec -> architecture -> wire -> resilience -> execute 每段至少一项具体工作项",
 			"每项工作项标明：依赖前序产出、预计产物、改动文件范围",
 			"识别关键路径与可并行项（不强制并行，但能标注）",
-			"已自我攻击：检查是否有遗漏的依赖、被标并行却实际串行的项、task 粒度过大或过小，并记录结论",
 		],
 		deliverablePaths: [".xdd/runs/**/plan.md"],
 		aigateStandard: `审查 plan 阶段：
@@ -420,7 +413,6 @@ export const STAGES: readonly XddStageSpec[] = [
 			"先创建模块骨架文件（可被 import），再填充实现逻辑（脚手架从 wire 整合到此）",
 			"代码改动落在 plan 标注的文件范围内（无未授权改动）",
 			"每个新模块至少含 1 个最小可运行入口（main/index/handler）",
-			"已自我攻击：检查越界修改、重复实现、脆弱耦合、循环依赖，并记录结论",
 		],
 		deliverablePaths: [],
 		aigateStandard: `审查 execute 阶段（最严格）：
@@ -449,7 +441,6 @@ export const STAGES: readonly XddStageSpec[] = [
 			"已剔除未被引用的死代码 / 死文件",
 			"已更新 README / docs 反映最终接口与使用方式",
 			"已做迭代沉淀：本 iter 验证过的新规则/模式/失败模式提升到 design/（不引用 iter-N），pilot/实验留在 runs/",
-			"已自我攻击：检查是否误删了 @implements RXX 追溯锚、是否越界改了无关文件、是否留了模糊 TODO，并记录结论",
 		],
 		deliverablePaths: [],
 		aigateStandard: `审查 cleanup 阶段：
@@ -475,7 +466,6 @@ export const STAGES: readonly XddStageSpec[] = [
 			"已对 spec 的每条 RXX 规则至少跑一次验证（手动 / 单元 / 集成 / 端到端之一）",
 			"验证结果可复现（命令或脚本有据可查）",
 			"未在 verify 阶段改动契约或架构（仅验证，不修改）",
-			"已自我攻击：检查是否真正满足原始用户旅途、是否有未验证假设，并记录结论",
 			"已执行盲测用户验收（Blind Journey）：定义角色、用 xdd_blind_journey 工具执行 Actor/Judge 两阶段、记录结果、生成覆盖报告（纯后端项目跳过）",
 		],
 		deliverablePaths: [".xdd/runs/*/verify-report.md"],
