@@ -307,10 +307,12 @@ export class XddRunnerState {
 	set lastAgentEndAt(v: number) { this.mutRt("lastAgentEndAt", v); }
 	get flowRollbackCount(): number { return this.loadRt().flowRollbackCount ?? 0; }
 	set flowRollbackCount(v: number) { this.mutRt("flowRollbackCount", v); }
-	get flowRollbackLimitTier1(): number { return this.loadRt().flowRollbackLimitTier1 ?? 5; }
-	set flowRollbackLimitTier1(v: number) { this.mutRt("flowRollbackLimitTier1", v); }
-	get flowRollbackLimitTier2(): number { return this.loadRt().flowRollbackLimitTier2 ?? 10; }
-	set flowRollbackLimitTier2(v: number) { this.mutRt("flowRollbackLimitTier2", v); }
+	/** @deprecated compatibility alias for the single flow rollback budget. */
+	get flowRollbackLimitTier1(): number { return this.loadRt().flowRollbackLimit ?? 7; }
+	set flowRollbackLimitTier1(v: number) { this.mutRt("flowRollbackLimit", v); }
+	/** @deprecated compatibility alias for the single flow rollback budget. */
+	get flowRollbackLimitTier2(): number { return this.loadRt().flowRollbackLimit ?? 7; }
+	set flowRollbackLimitTier2(v: number) { this.mutRt("flowRollbackLimit", v); }
 	/** The flow-level rollback budget used by automatic verify recovery. */
 	remainingFlowRollbackBudget(): number {
 		return Math.max(0, this.flowRollbackLimitTier2 - this.flowRollbackCount);
@@ -318,7 +320,7 @@ export class XddRunnerState {
 	/** Atomically reserve one flow rollback; false means the flow is exhausted. */
 	consumeFlowRollbackBudget(): boolean {
 		const rt = this.loadRt();
-		const limit = rt.flowRollbackLimitTier2 ?? 10;
+		const limit = rt.flowRollbackLimit ?? 7;
 		const used = rt.flowRollbackCount ?? 0;
 		if (used >= limit) return false;
 		rt.flowRollbackCount = used + 1;

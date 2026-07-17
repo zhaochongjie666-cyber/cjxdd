@@ -45,29 +45,28 @@ function handleExhaustedVerifyFailure(
 	gate: string,
 	used: number,
 	limit: number,
+	target: XddStageName,
 	detail = "",
 ): AgentToolResult<EmptyDetails> {
-	const diagnosis = state.getDiagnose();
-	const diagnosedTarget = diagnosis ? diagnoseRollbackTarget[diagnosis.layer] : "execute";
-	// Single-stage/custom plans may omit the diagnosed stage; choose the nearest
-	// available earlier stage rather than consuming flow budget then throwing.
-	const target = state.plan.some(({ stage: plannedStage }) => plannedStage.name === diagnosedTarget)
-		? diagnosedTarget
-		: state.plan[Math.max(0, state.planIndex - 1)]?.stage.name;
-	if (!target || target === stage || !state.consumeFlowRollbackBudget()) {
-		state.status = "fail";
-		state.stageOutcome = "failed";
-		state.lastStageError = `${gate} exhausted at verify: ${reason}`;
+	const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage: plannedStage }) => plannedStage));
+	const rollback = controller.dispatch({ type: "ROLLBACK", target, reason: `verify ${gate} 预算耗尽：${reason}` });
+	if (rollback.state.status === "failed") {
 		return {
-			content: [{ type: "text", text: `❌ [${gate} ${used}/${limit}] verify 未通过且自愈预算耗尽。流程回退预算已耗尽（${state.flowRollbackCount}/${state.flowRollbackLimitTier2}），run 已终止。${detail}` }],
+			content: [{ type: "text", text: `❌ [${gate} ${used}/${limit}] verify 未通过且自愈预算耗尽。${rollback.state.lastStageError ?? "流程预算耗尽，流程退出"}。${detail}` }],
 			details: {},
 			terminate: true,
 		};
 	}
-	const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage: plannedStage }) => plannedStage));
-	controller.dispatch({ type: "ROLLBACK", target, reason: `verify ${gate} 预算耗尽：${reason}` });
 	return ok(`⚠️ [${gate} ${used}/${limit}] verify 未通过且自愈预算耗尽：${reason}${detail}
-已消耗流程回退预算（${state.flowRollbackCount}/${state.flowRollbackLimitTier2}），自动回退 verify → ${target}${diagnosis ? `（诊断层：${diagnosis.layer}）` : "（未记录诊断，默认实现缺陷）"}。请在 ${target} 修复后重新推进 verify。`);
+已消耗流程回退预算（${rollback.state.flowRollbackCount}/${rollback.state.flowRollbackLimit}），自动回退 verify → ${target}。请在 ${target} 修复后重新推进 verify。`);
+}
+
+function diagnosedVerifyRollbackTarget(state: XddRunnerState): XddStageName {
+	const diagnosis = state.getDiagnose();
+	const diagnosedTarget = diagnosis ? diagnoseRollbackTarget[diagnosis.layer] : "execute";
+	return state.plan.some(({ stage }) => stage.name === diagnosedTarget)
+		? diagnosedTarget
+		: state.plan[Math.max(0, state.planIndex - 1)]?.stage.name ?? "execute";
 }
 
 export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefinition {
@@ -159,7 +158,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
 					return ok(`⚠️ [硬 Gate ${hardUsed}/${hardBudget.limit}] ${stage.name} 未通过且预算耗尽：${error}\n硬 Gate 告警已记录，现软通过；请调用 xdd_advance 自动推进。`);
 				}
-				return handleExhaustedVerifyFailure(state, error, "硬 Gate", hardUsed, hardBudget.limit);
+				return handleExhaustedVerifyFailure(state, error, "硬 Gate", hardUsed, hardBudget.limit, diagnosedVerifyRollbackTarget(state));
 			}
 			// --- AIGate: semantic review after the hard Gate passes ---
 			const llmInfo = await getAIGateLLM();
@@ -224,7 +223,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 						: "";
 					if (aiBudget.exhausted) {
 						if (stage.exit === "verdict") {
-							return handleExhaustedVerifyFailure(state, aiError, "AIGate", aiUsed, aiBudget.limit, `${angleText}${suggText}`);
+							return handleExhaustedVerifyFailure(state, aiError, "AIGate", aiUsed, aiBudget.limit, diagnosedVerifyRollbackTarget(state), `${angleText}${suggText}`);
 						}
 						dispatchToController(state, { type: "RECORD_SIGNAL", signal: "complete" });
 						dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
@@ -252,14 +251,19 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 				if (!pass) {
 					const verifyResult = await evaluateVerifyEvidenceGateFull(state.cwd);
 					const route = routeVerifyFailure({ summary, gateReason: verifyResult.reason, failure: verifyResult.failure });
-					// Submit first so the precise failure is retained as the gate result,
-					// then let Controller atomically enforce its recovery budget.
+					// A failed verdict follows the same five-attempt local repair rule as
+					// every other verify failure. Only exhaustion spends the flow-level
+					// rollback budget and returns to the stage that owns the defect.
+					const hardUsed = state.beginSelfHealAttempt(stage.name);
+					const hardBudget = state.stageSelfHealBudget(stage.name, "hard_gate");
 					dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error: route.reason } });
-					const rollback = dispatchToController(state, { type: "ROLLBACK", target: route.target, reason: route.reason });
-					if (rollback.state.status === "failed") {
-						return { content: [{ type: "text", text: `${stage.name} verdict: FAIL\n${route.reason}\n❌ Controller 已在第 ${rollback.state.flowRollbackCount} 次失败终止 run。` }], details: {}, terminate: true };
+					if (!hardBudget.exhausted) {
+						return {
+							content: [{ type: "text", text: `❌ [verify verdict ${hardUsed}/${hardBudget.limit}] verify 未通过：${route.reason}\n剩余硬 Gate 自愈预算：${hardBudget.remaining}/${hardBudget.limit}。本轮提交失败，但本 turn 继续。请修复后重新调用 xdd_submit_artifact。` }],
+							details: {},
+						};
 					}
-					return ok(`${stage.name} verdict: FAIL\n${route.reason}\n已由 Controller 自动回退 ${stage.name} → ${route.target} 并重新排程。`);
+					return handleExhaustedVerifyFailure(state, route.reason, "verify verdict", hardUsed, hardBudget.limit, route.target);
 				}
 				dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
 				return ok(

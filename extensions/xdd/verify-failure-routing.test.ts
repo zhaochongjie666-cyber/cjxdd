@@ -26,7 +26,7 @@ describe("verify failure routing", () => {
 		expect(route.reason).toContain("安全默认");
 	});
 
-	it("Controller terminates the run on the eighth rollback failure", () => {
+	it("Controller terminates the run after the seven rollback budget is used", () => {
 		let state = transition({} as RuntimeStateV2, { type: "START", task: "t", options: { cwd: "/tmp/x", runId: "route-budget", initialStage: "verify" } }).state;
 		state.maxRollbacksPerStage = 99;
 		for (let attempt = 1; attempt <= MAX_FLOW_ROLLBACKS; attempt++) {
@@ -34,7 +34,7 @@ describe("verify failure routing", () => {
 			state.planIndex = 9; // simulate completing execute..verify before the next failed verdict
 		}
 		const exhausted = transition(state, { type: "ROLLBACK", target: "execute", reason: "failure 8" });
-		expect(exhausted.state.flowRollbackCount).toBe(8);
+		expect(exhausted.state.flowRollbackCount).toBe(MAX_FLOW_ROLLBACKS);
 		expect(exhausted.state.status).toBe("failed");
 		expect(exhausted.state.stageOutcome).toBe("failed");
 		expect(exhausted.state.lastStageError).toContain("预算耗尽");
