@@ -1,12 +1,13 @@
 /**
- * AIGate: AI 语义审查层。在硬 Gate（机械检查）通过后，用同一个 LLM
- * 以"多角度攻击者"角色审查产物，抓机械检查抓不到的偷工减料、设计缺陷、
+ * AIGate: 统一审查层。机械检查结果是它的一个输入，由同一个 LLM
+ * 以"多角度攻击者"角色连同产物语义一起审查，抓机械检查抓不到的偷工减料、设计缺陷、
  * 安全漏洞、一致性断裂、遗漏场景。
  *
  * 设计原则：
  *   - 每个阶段都跑
  *   - 用同一个模型（pi 当前 model）
  *   - 多角度攻击（偷工减料 + AI味 + 规格偏离 + 阶段特定攻击角度）
+ *   - 机械检查不单独放行/拦截；最终 verdict 只由 AIGate 给出
  *   - 不通过 -> 自愈预算耗尽后回退（复用现有机制）
  *   - 死审查标准（每阶段写死在 stages.ts 的 aigateStandard）
  *   - 跨产物上下文（读 spec/architecture/code 做一致性攻击）
@@ -20,6 +21,7 @@
 import { join } from "node:path";
 import type { Model } from "@earendil-works/pi-ai/compat";
 import { readCappedFiles, resolveGlobs } from "./glob-resolver.ts";
+import type { XddGateResult } from "./types.ts";
 
 /** Default AIGate LLM call timeout: 60s. Configurable per call. */
 const DEFAULT_LLM_TIMEOUT_MS = 60_000;
@@ -35,6 +37,11 @@ export interface AIGateInput {
 	aigateStandard: string;
 	artifactPaths: string[];
 	outputContract?: readonly { pattern: string; description: string }[];
+	/**
+	 * The observed mechanical check result for this exact submission. It is one
+	 * required dimension of the unified AIGate verdict.
+	 */
+	mechanicalCheckResult: XddGateResult;
 	cwd: string;
 	intentAnchor?: string;
 }
@@ -100,6 +107,25 @@ const COMMON_ANGLES: AttackAngle[] = [
 		],
 	},
 ];
+
+/**
+ * The mechanical check is an AIGate dimension, not a separate gate. The
+ * expected verdict is injected from the observed check so the model cannot
+ * ignore a missing artifact or a failed test while judging semantics.
+ */
+function mechanicalCheckAngle(result: XddGateResult): AttackAngle {
+	const observation = formatMechanicalCheckResult(result);
+	return {
+		name: "机械检查结果",
+		description: "将本次机械检查观测纳入统一 AIGate verdict，不能标记为 N/A。",
+		checks: [
+			`本次机械检查结果：\n${observation}`,
+			result.ok
+				? "机械检查已通过；确认产物内容没有利用机械检查的盲区。"
+				: "机械检查未通过；此角度必须 passed=false，并在 findings 中说明失败原因。",
+		],
+	};
+}
 
 /** Design-layer angle: design/ is persistent across iters, must not reference iter-N. */
 const ITER_POLLUTION_ANGLE: AttackAngle = {
@@ -443,9 +469,10 @@ function buildAttackUserMessage(params: {
 	angles: AttackAngle[];
 	artifacts: string[];
 	contexts: string[];
+	mechanicalCheckResult: XddGateResult;
 	intentAnchor?: string;
 }): string {
-	const { stageName, skillName, aigateStandard, outputContract, angles, artifacts, contexts, intentAnchor } = params;
+	const { stageName, skillName, aigateStandard, outputContract, angles, artifacts, contexts, mechanicalCheckResult, intentAnchor } = params;
 
 	const outputText = outputContract && outputContract.length > 0
 		? outputContract.map((o, i) => `${i + 1}. ${o.pattern} -- ${o.description}`).join("\n")
@@ -457,9 +484,15 @@ function buildAttackUserMessage(params: {
 			return `### 角度 ${i + 1}: ${a.name}\n${a.description}\n攻击检查项：\n${checks}`;
 		})
 		.join("\n\n");
+	const mechanicalCheckText = formatMechanicalCheckResult(mechanicalCheckResult);
 
 	return `## 审查阶段：${stageName}
 ${skillName ? `## 对应 skill：${skillName}（检查必须对齐该 skill 的“我产出/产出/Checklist”，不能拿无关检查空跑）\n` : ""}
+## 机械检查结果（本次提交的已观测输入）
+${mechanicalCheckText}
+
+这是统一 AIGate 的一个必审维度，不得标记为 "N/A"。机械检查未通过时，该角度必须为 false；机械检查通过也不能替代内容质量、需求覆盖或安全性的审查。
+
 ## 本阶段先承诺的产出（先看产出，再按对应检查审查）
 ${outputText}
 
@@ -485,10 +518,18 @@ ${artifacts.join("\n\n")}
 ## 请从以上每个攻击角度审查产物，输出 JSON：`;
 }
 
+/** Render the mechanical verdict as bounded, explicit evidence for the LLM. */
+export function formatMechanicalCheckResult(result: XddGateResult): string {
+	const verdict = result.ok ? "通过" : "未通过";
+	const mode = result.soft ? "软通过（未完成机械验证）" : "机械校验";
+	const reason = result.reason?.trim() || "无补充说明";
+	return `- 判定：${verdict}\n- 模式：${mode}\n- 原因/观测：${reason}`;
+}
+
 // ── Main entry ─────────────────────────────────────────────────────────
 
 export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
-	const { model, apiKey, headers, stageName, skillName, aigateStandard, artifactPaths, outputContract, cwd, intentAnchor } = input;
+	const { model, apiKey, headers, stageName, skillName, aigateStandard, artifactPaths, outputContract, mechanicalCheckResult, cwd, intentAnchor } = input;
 
 	// Phase 6 (D): use shared resolver for artifacts. Applies realpath
 	// safety + per-file + total size caps. Symlinks pointing outside cwd
@@ -516,9 +557,10 @@ export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
 	// Read cross-artifact context for attack angles
 	const contexts = readContextFiles(cwd, stageName);
 
-	// Build attack angles (common + stage-specific)
+	// Build unified attack angles. The mechanical check is evidence and a
+	// required dimension of AIGate -- it no longer makes a separate verdict.
 	const stageAngles = STAGE_ANGLES[stageName] ?? [];
-	const angles = [...COMMON_ANGLES, ...stageAngles];
+	const angles = [mechanicalCheckAngle(mechanicalCheckResult), ...COMMON_ANGLES, ...stageAngles];
 
 	// Build user message
 	const userMessage = buildAttackUserMessage({
@@ -529,6 +571,7 @@ export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
 		angles,
 		artifacts,
 		contexts,
+		mechanicalCheckResult,
 		intentAnchor,
 	});
 
@@ -554,7 +597,7 @@ export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
 	// Phase 6 (D) trust-but-verify: re-derive passed from per-angle
 	// results, do NOT trust the LLM's top-level passed field. If any
 	// required angle is missing OR marked not-passed, overall is fail.
-	return rederivePassed(parsed, angles);
+	return rederivePassed(parsed, angles, mechanicalCheckResult);
 }
 
 // ── LLM call ──────────────────────────────────────────────────────
@@ -783,7 +826,11 @@ function parseVerdict(raw: string, expectedAngles: readonly AttackAngle[]): AIGa
  *   - if any required angle is missing -> overall is fail with a clear
  *     issue ("expected angle X not in LLM response")
  */
-function rederivePassed(parsed: AIGateResult, expected: readonly AttackAngle[]): AIGateResult {
+function rederivePassed(
+	parsed: AIGateResult,
+	expected: readonly AttackAngle[],
+	mechanicalCheckResult: XddGateResult,
+): AIGateResult {
 	const issues: string[] = [...parsed.issues];
 	const angles = [...parsed.angles];
 
@@ -795,6 +842,17 @@ function rederivePassed(parsed: AIGateResult, expected: readonly AttackAngle[]):
 	let allOk = true;
 	for (const want of expected) {
 		const got = byName.get(want.name);
+		// The observed mechanical outcome is authoritative input to the
+		// unified AIGate. Do not let an LLM hallucinate it away.
+		if (want.name === "机械检查结果") {
+			const finding = mechanicalCheckResult.reason?.trim() || (mechanicalCheckResult.ok ? "机械检查通过" : "机械检查未提供失败原因");
+			finalAngles.push({ name: want.name, passed: mechanicalCheckResult.ok, findings: mechanicalCheckResult.ok ? [] : [finding] });
+			if (!mechanicalCheckResult.ok) {
+				issues.push(`[机械检查结果] ${finding}`);
+				allOk = false;
+			}
+			continue;
+		}
 		if (!got) {
 			// Expected angle not in LLM response -- treat as fail.
 			finalAngles.push({ name: want.name, passed: false, findings: ["[AIGate] LLM 未在响应中给出此角度的判定"] });
