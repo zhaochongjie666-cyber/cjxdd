@@ -95,47 +95,26 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 				}
 			}
 			dispatchToController(state, { type: "RECORD_ARTIFACT_REVIEW", stage: stage.name, artifacts, selfAttack });
-			const used = state.beginSelfHealAttempt(stage.name);
+			state.beginSelfHealAttempt(stage.name);
 			const remaining = state.remainingSelfHealBudget(stage.name);
-			const gate = await stage.gate({ cwd: state.cwd, summary, desiredState: stage.desiredState });
-			if (!gate.ok) {
-				dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error: gate.reason ?? "未知" } });
-				if (remaining <= 0) {
-					// Layer 1: self-heal budget exhausted -- soft-pass (non-blocking).
-					// For non-verdict stages: record 'complete' so xdd_advance can
-					// proceed to the next stage. "能做多少做多少，别卡住".
-					// For verdict stages: do NOT soft-pass -- verify failure must go
-					// through Layer 2 (flow rollback), so keep throwing.
-					if (stage.exit !== "verdict") {
-						dispatchToController(state, { type: "RECORD_SIGNAL", signal: "complete" });
-						dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
-						return ok(
-							`[soft-pass] ${stage.name} 自愈预算耗尽（${used}/${state.maxSelfHealPerStage}），软通过进下一阶段。` +
-								`\nGate: ${gate.reason ?? "未知"}（未达标但放行）` +
-								"\nAIGate: 跳过（软通过模式）",
-						);
-					}
-					// The budget is exhausted, so this needs diagnosis/rollback rather
-					// than another blind submit. Keep the turn alive so the agent can
-					// perform that recovery immediately.
-					return {
-						content: [{ type: "text", text: `❌ [xdd_submit_artifact] ${stage.name} 自愈预算耗尽（${used}/${state.maxSelfHealPerStage}）：${gate.reason ?? "未知"}\n本轮提交失败，但本 turn 继续。请立即调 xdd_diagnose 诊断根因，并调 xdd_rollback 回退后修复。` }],
-						details: {},
-					};
-				}
-				// Layer 2: gate failed with budget remaining -- keep the current
-				// agent turn alive so it can use the actionable Gate feedback to
-				// repair the artifacts and submit again. This matches the AIGate
-				// retry path below; terminating here can cause Pi to report a
-				// toolUse stop reason, which prevents the controller from queuing
-				// the next repair turn.
+			// Mechanical checks now provide one required AIGate input. They do
+			// not independently pass or block a submission; AIGate owns the only
+			// final verdict and returns the combined feedback to the agent.
+			const mechanicalCheckResult = await stage.gate({ cwd: state.cwd, summary, desiredState: stage.desiredState });
+			// --- AIGate: unified semantic + mechanical review ---
+			const llmInfo = await getAIGateLLM();
+			if (!llmInfo) {
+				// There is no standalone mechanical-check fallback: without the model, the
+				// single unified review cannot produce a verdict.
+				state.refundSelfHealAttempt(stage.name);
+				state.clearSubmitFingerprint(stage.name);
+				const error = "AIGate 模型不可用，无法执行统一审查";
+				dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error } });
 				return {
-					content: [{ type: "text", text: `❌ [gate ${used}/${state.maxSelfHealPerStage}] ${stage.name} 未达标：${gate.reason ?? "未知"}\n剩余自愈预算：${remaining}\n本轮提交失败，但本 turn 继续。请根据 Gate 反馈修复产物后重新调用 xdd_submit_artifact。` }],
+					content: [{ type: "text", text: `⚠️ [AIGate] ${error}。机械检查结果为：${mechanicalCheckResult.ok ? "通过" : "未通过"}${mechanicalCheckResult.reason ? `（${mechanicalCheckResult.reason}）` : ""}\n本 turn 继续。请恢复模型配置后重新调用 xdd_submit_artifact；无需修改产物。` }],
 					details: {},
 				};
 			}
-			// --- AIGate: AI 语义审查（硬 Gate 通过后叠加） ---
-			const llmInfo = await getAIGateLLM();
 			if (llmInfo) {
 				let intentAnchor: string | undefined;
 				const intentPath = join(state.cwd, ".xdd/design/intent.md");
@@ -151,6 +130,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					aigateStandard: stage.aigateStandard,
 					artifactPaths: artifacts.length > 0 ? artifacts : stage.deliverablePaths,
 					outputContract: stage.outputs,
+					mechanicalCheckResult,
 					cwd: state.cwd,
 					intentAnchor,
 				});
@@ -179,7 +159,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 						? "\n修改建议：\n" + aiResult.suggestions.map((s, n) => `${n + 1}. ${s}`).join("\n")
 						: "";
 					if (aiRemaining <= 0) {
-						// AIGate is advisory after the mechanical gate has passed. Its
+						// The unified AIGate is bounded by its repair budget. Its
 						// five repair attempts must be bounded: do not strand the ten
 						// stage run on an unavailable/malformed review response. Preserve
 						// the failed review in the audit, then soft-pass non-verdict
@@ -195,7 +175,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 						dispatchToController(state, { type: "RECORD_SIGNAL", signal: "complete" });
 						dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
 						return {
-							content: [{ type: "text", text: `⚠️ [AIGate ${aiUsed}/${state.maxSelfHealPerStage}] ${stage.name} 多角度攻击未通过（自愈预算耗尽）：\n${angleText}${suggText}\nAIGate 已记录为告警；硬 Gate 已通过，现软通过并自动进入下一轮推进。` }],
+							content: [{ type: "text", text: `⚠️ [AIGate ${aiUsed}/${state.maxSelfHealPerStage}] ${stage.name} 统一审查未通过（自愈预算耗尽）：\n${angleText}${suggText}\nAIGate 已记录为告警，现软通过并自动进入下一轮推进。` }],
 							details: {},
 						};
 					}
@@ -209,7 +189,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					};
 				}
 			}
-			// All gates passed -- mark "real progress" only here. Setting lastSubmitAt
+			// The unified AIGate passed -- mark "real progress" only here. Setting lastSubmitAt
 			// before the gate (the old behavior) caused agent_end to mis-detect stalls
 			// as progress and reset consecutiveStalls to 0 on every failed submit,
 			// so the stall counter could climb to 40+ without ever triggering the
@@ -233,7 +213,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			}
 			dispatchToController(state, { type: "RECORD_SIGNAL", signal: "complete" });
 			return ok(
-				`${stage.name} 完成${gate.soft ? "（软通过）" : ""}：${summary}\n剩余自愈预算：${remaining}/${state.maxSelfHealPerStage}${llmInfo ? "\nAIGate: 通过 ✅" : ""}`,
+				`${stage.name} 完成${mechanicalCheckResult.soft ? "（机械检查软通过）" : ""}：${summary}\n剩余自愈预算：${remaining}/${state.maxSelfHealPerStage}\nAIGate: 通过 ✅`,
 			);
 		},
 	};
