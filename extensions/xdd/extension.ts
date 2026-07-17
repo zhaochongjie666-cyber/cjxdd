@@ -233,29 +233,29 @@ export const xddInlineExtension: InlineExtension = {
 		});
 		pi.registerCommand("xdd-continue", {
 			description: "确认组级 Gate 通过，推进到下一阶段组",
-			handler: async (_args, ctx) => {
+			handler: async (args, ctx) => {
 				if (stateRef?.pendingGroupApproval) {
 					const adapter = new PiControllerAdapter({ pi, ctx, getState: () => stateRef });
-					await adapter.dispatch({ type: "APPROVE", approvalId: stateRef.pendingGroupApproval.group });
+					await adapter.dispatch({ type: "APPROVE", approvalId: stateRef.pendingGroupApproval.group }, args);
 					await ctx.waitForIdle();
 					return;
 				}
 				const { continueXdd } = await import("./run.ts");
-				await continueXdd(_args, ctx.cwd, pi);
+				await continueXdd(args, ctx.cwd, pi);
 				await ctx.waitForIdle();
 			},
 		});
 		pi.registerCommand("xdd-resume", {
 			description: "从 checkpoint 恢复中断的 xdd run",
-			handler: async (_args, ctx) => {
+			handler: async (args, ctx) => {
 				if (stateRef?.paused) {
 					const adapter = new PiControllerAdapter({ pi, ctx, getState: () => stateRef });
-					await adapter.dispatch({ type: "RESUME" });
+					await adapter.dispatch({ type: "RESUME" }, args);
 					await ctx.waitForIdle();
 					return;
 				}
 				const { resumeXdd } = await import("./run.ts");
-				await resumeXdd(_args, ctx.cwd, pi);
+				await resumeXdd(args, ctx.cwd, pi);
 				await ctx.waitForIdle();
 			},
 		});

@@ -6,6 +6,8 @@ import type { XddRunnerState } from "../types.ts";
 
 export interface PiEffectRuntime {
 	pi: { sendUserMessage?: (text: string, options?: unknown) => Promise<unknown> | unknown };
+	/** User instruction supplied with an xdd slash command, retained in its steering follow-up. */
+	steeringInput?: string;
 	ctx: {
 		ui?: { notify?: (text: string, level?: string) => unknown };
 		abort?: () => unknown;
@@ -55,7 +57,7 @@ async function sendFollowUp(text: string, epoch: number, runtime: PiEffectRuntim
 	}
 	if (runtime.ctx.hasPendingMessages?.()) return true;
 	try {
-		await runtime.pi.sendUserMessage?.(text, { deliverAs: "followUp" });
+		await runtime.pi.sendUserMessage?.(appendSteeringInput(text, runtime.steeringInput), { deliverAs: "followUp" });
 		return true;
 	} catch (error) {
 		releaseContinuationLock(runtime, error);
@@ -63,6 +65,12 @@ async function sendFollowUp(text: string, epoch: number, runtime: PiEffectRuntim
 		runtime.ctx.ui?.notify?.(`[xdd] followUp 发送失败，已释放 continuation lock：${error instanceof Error ? error.message : String(error)}`, "warning");
 		return false;
 	}
+}
+
+/** Keep an instruction typed after `/xdd-*` visible to the model that resumes work. */
+export function appendSteeringInput(text: string, input?: string): string {
+	const instruction = input?.trim();
+	return instruction ? `${text}\n\n${instruction}` : text;
 }
 
 function releaseContinuationLock(runtime: PiEffectRuntime, error: unknown): void {
