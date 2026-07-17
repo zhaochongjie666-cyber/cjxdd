@@ -732,10 +732,20 @@ export function formatAIGateResult(aiResult: AIGateResult): string {
 			? aiResult.issues.map((i, n) => `${n + 1}. ${i}`).join("\n")
 			: "AIGate 判定不通过（未给出具体问题）";
 	}
-	const failed = aiResult.angles.filter((a) => !a.passed);
-	const passed = aiResult.angles.filter((a) => a.passed);
+	// Do not use truthiness here: the string "N/A" is truthy, but it means
+	// the review did not produce a verdict for that angle. Treating it as a
+	// green pass was especially misleading for transport failures: the tool
+	// reported "0/N issues" and every angle as passed while the gate correctly
+	// returned `passed: false`.
+	const failed = aiResult.angles.filter((a) => a.passed === false);
+	const passed = aiResult.angles.filter((a) => a.passed === true);
+	const unavailable = aiResult.angles.filter((a) => a.passed === "N/A");
 	const lines: string[] = [];
-	lines.push(`多角度攻击审查：${failed.length}/${aiResult.angles.length} 角度发现问题`);
+	if (unavailable.length > 0) {
+		lines.push(`多角度攻击审查不可用：${unavailable.length}/${aiResult.angles.length} 角度未获得判定`);
+	} else {
+		lines.push(`多角度攻击审查：${failed.length}/${aiResult.angles.length} 角度发现问题`);
+	}
 	lines.push("");
 	for (const a of failed) {
 		lines.push(`❌ ${a.name}:`);
@@ -744,6 +754,9 @@ export function formatAIGateResult(aiResult: AIGateResult): string {
 	}
 	if (passed.length > 0) {
 		lines.push(passed.map((a) => `✅ ${a.name}: 通过`).join("\n"));
+	}
+	if (unavailable.length > 0) {
+		lines.push(unavailable.map((a) => `⚠️ ${a.name}: 审查未完成`).join("\n"));
 	}
 	return lines.join("\n");
 }
@@ -779,8 +792,12 @@ function parseVerdict(raw: string, expectedAngles: readonly AttackAngle[]): AIGa
 					let status: XddAIGateAngleStatus;
 					if (raw === "N/A" || raw === "n/a" || raw === "na") {
 						status = "N/A";
+					} else if (raw === true || raw === "true") {
+						status = true;
 					} else {
-						status = Boolean(raw);
+						// A malformed or omitted status must never become a pass through
+						// JavaScript truthiness (for example, Boolean("false") is true).
+						status = false;
 					}
 					return {
 						name: String(a.name ?? ""),
