@@ -31,17 +31,26 @@ export function createXddNextTaskTool(getState: GetXddState): ToolDefinition {
 			const artifacts = state.getSubmittedArtifactsForStage(stage.name) ?? [];
 			const diff = await computeStageDifference(state.cwd, stage, {
 				artifacts,
-				selfHealRemaining: state.remainingSelfHealBudget(stage.name),
+				selfHealRemaining: state.stageSelfHealBudget(stage.name, "hard_gate").remaining,
 				maxSelfHeal: state.maxSelfHealPerStage,
 			});
-			const remaining = state.remainingSelfHealBudget(stage.name);
+			const hardBudget = state.stageSelfHealBudget(stage.name, "hard_gate");
+			const aiBudget = state.stageSelfHealBudget(stage.name, "ai_gate");
+			const failedBudget = state.stageOutcome === "ai_gate_failed" ? aiBudget : hardBudget;
 			const groupGatePending = isLastStageInGroup(stage.name);
 			const signals = state.getSignals();
 			const hasComplete = signals.has("complete") || signals.has("verdict_pass");
 			// Decide action based on diff results (NOT artifacts alone).
 			let action: string;
 			let gaps: string[];
-			if (diff.gate.ok) {
+			if (state.stageOutcome === "ai_gate_failed") {
+				gaps = [`AIGate 未通过: ${state.lastStageError ?? "未知"}`];
+				action = aiBudget.exhausted
+					? (stage.name === "verify"
+						? "verify 将自动消耗流程回退预算并回退到诊断出的缺陷阶段"
+						: "AIGate 告警已软通过；调用 xdd_advance 推进")
+					: `根据 AIGate 反馈修复后重新调 xdd_submit_artifact（剩余 AIGate 预算: ${aiBudget.remaining}）`;
+			} else if (diff.gate.ok) {
 				if (hasComplete) {
 					gaps = [];
 					action = `调用 xdd_advance 推进到下一阶段`;
@@ -56,12 +65,14 @@ export function createXddNextTaskTool(getState: GetXddState): ToolDefinition {
 				// work yet. List the unmet items as the gap.
 				gaps = diff.checks.filter((c) => c.status === "unmet").map((c) => c.item);
 				action = `按 desiredState 执行 ${stage.name} 阶段工作（${diff.unmetCount} 项未完成）`;
-			} else if (remaining > 0) {
+			} else if (!failedBudget.exhausted) {
 				gaps = [`硬 Gate 未通过: ${diff.gate.reason ?? "未知"}`];
-				action = `修复产物后重新调 xdd_submit_artifact（剩余预算: ${remaining}）`;
+				action = `修复产物后重新调 xdd_submit_artifact（剩余${failedBudget.kind === "ai_gate" ? " AIGate" : "硬 Gate"}预算: ${failedBudget.remaining}）`;
 			} else {
 				gaps = [`硬 Gate 未通过且自愈预算耗尽: ${diff.gate.reason ?? "未知"}`];
-				action = `调 xdd_diagnose 诊断根因，或 xdd_rollback 回退到设计层修复后重跑`;
+				action = stage.name === "verify"
+					? `verify 预算耗尽会自动消耗流程回退预算并回退到诊断出的缺陷阶段`
+					: `非 verify 阶段预算耗尽会软通过；调 xdd_advance 推进`;
 			}
 			const harnessCommands = new HarnessStore(state.cwd).load().验证命令;
 			const runtime = new RuntimeStore(state.cwd).load() ?? state.toCheckpoint(state.status, state.rollbackCount) as never;
@@ -86,14 +97,15 @@ export function createXddNextTaskTool(getState: GetXddState): ToolDefinition {
 				...gaps.map((g) => `  - ${g}`),
 				`硬 Gate: ${diff.gate.ok ? "✓ pass" : "❌ " + (diff.gate.reason ?? "")}`,
 				`desiredState 进度: ${diff.metCount} met / ${diff.unmetCount} unmet / ${diff.selfCheckCount} self-check`,
-				`自愈预算剩余: ${remaining}`,
+				`硬 Gate 自愈预算剩余: ${hardBudget.remaining}/${hardBudget.limit}`,
+				`AIGate 自愈预算剩余: ${aiBudget.remaining}/${aiBudget.limit}`,
 				stage.name === "verify" ? `Harness 验证命令: ${harnessCommands.length > 0 ? harnessCommands.join(" | ") : "未配置"}` : "",
 				auditStatus,
 				`组级 Gate 待执行: ${groupGatePending ? "是" : "否"}`,
 				group ? `阶段组: ${group.label}` : "",
 				"",
 				"=== 完整 diff 输出 ===",
-				renderStageDifference(diff, { artifacts, selfHealRemaining: remaining, maxSelfHeal: state.maxSelfHealPerStage }),
+				renderStageDifference(diff, { artifacts, selfHealRemaining: hardBudget.remaining, maxSelfHeal: state.maxSelfHealPerStage }),
 			].filter((s) => s !== "");
 			return ok(lines.join("\n"));
 		},

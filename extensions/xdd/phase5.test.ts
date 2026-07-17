@@ -202,3 +202,32 @@ describe("E.5 verify rollback default target", () => {
 		expect(src).toMatch(/targetStage:\s*Type\.Optional/);
 	});
 });
+
+describe("stage repair budget state machine", () => {
+	it("keeps five hard-Gate failures independent from five semantic AIGate failures", () => {
+		for (let i = 0; i < 5; i++) expect(state.beginSelfHealAttempt("spec")).toBe(i + 1);
+		expect(state.stageSelfHealBudget("spec", "hard_gate")).toMatchObject({ used: 5, remaining: 0, exhausted: true });
+		expect(state.stageSelfHealBudget("spec", "ai_gate")).toMatchObject({ used: 0, remaining: 5, exhausted: false });
+		for (let i = 0; i < 5; i++) expect(state.beginAiGateAttempt("spec")).toBe(i + 1);
+		expect(state.stageSelfHealBudget("spec", "ai_gate")).toMatchObject({ used: 5, remaining: 0, exhausted: true });
+		const rt = JSON.parse(readFileSync(join(cwd, ".xdd", "runtime.json"), "utf8"));
+		expect(rt.selfHealUsed.spec).toBe(5);
+		expect(rt.aiGateUsed.spec).toBe(5);
+	});
+
+	it("caps both persisted counters at five even after additional failures", () => {
+		for (let i = 0; i < 6; i++) {
+			state.beginSelfHealAttempt("spec");
+			state.beginAiGateAttempt("spec");
+		}
+		expect(state.stageSelfHealBudget("spec", "hard_gate").used).toBe(5);
+		expect(state.stageSelfHealBudget("spec", "ai_gate").used).toBe(5);
+	});
+
+	it("reserves flow budget for automatic verify fallback and stops when exhausted", () => {
+		state.flowRollbackLimitTier2 = 1;
+		expect(state.consumeFlowRollbackBudget()).toBe(true);
+		expect(state.remainingFlowRollbackBudget()).toBe(0);
+		expect(state.consumeFlowRollbackBudget()).toBe(false);
+	});
+});

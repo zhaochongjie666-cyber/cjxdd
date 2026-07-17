@@ -14,9 +14,6 @@ export function decideFollowUp(
 	state: XddRunnerState,
 ): string | null {
 	const name = stageName as XddStageName;
-	const remaining = state.remainingSelfHealBudget(name);
-	const healMax = state.maxSelfHealPerStage;
-	const healUsed = healMax - remaining;
 	const err = state.lastStageError ? `\n原因：${state.lastStageError}` : "";
 	switch (outcome) {
 		case "idle":
@@ -24,16 +21,22 @@ export function decideFollowUp(
 			return `[xdd 自动推进] 继续 ${stageName} 阶段。请调 xdd_submit_artifact 提交产物（summary + artifacts + selfAttack）。`;
 
 		case "hard_gate_failed":
-			if (remaining > 0) {
-				return `[xdd 自动推进] ${stageName} 闸门未通过。剩余自愈预算 ${remaining}/${healMax}（已用 ${healUsed}）。${err}请修复产物后重新调 xdd_submit_artifact。`;
+			{
+				const budget = state.stageSelfHealBudget(name, "hard_gate");
+				if (!budget.exhausted) {
+					return `[xdd 自动推进] ${stageName} 硬 Gate 未通过。剩余硬 Gate 自愈预算 ${budget.remaining}/${budget.limit}（已用 ${budget.used}）。${err}请修复产物后重新调 xdd_submit_artifact。`;
+				}
+				return `[xdd] ${stageName} 硬 Gate 未通过且硬 Gate 自愈预算耗尽（${budget.used}/${budget.limit}）。${err}${name === "verify" ? "verify 会自动消耗流程回退预算并回退到诊断出的缺陷阶段；请调 xdd_next_task 继续。" : "该非 verify 阶段已软通过；请调 xdd_advance 推进。"}`;
 			}
-			return `[xdd] ${stageName} 闸门未通过且自愈预算耗尽（${healUsed}/${healMax}）。${err}请改变策略：调 xdd_diagnose 诊断根因，或 xdd_rollback 回退到设计层修复后重跑。`;
 
 		case "ai_gate_failed":
-			if (remaining > 0) {
-				return `[xdd 自动推进] ${stageName} AIGate 多角度攻击未通过。剩余自愈预算 ${remaining}/${healMax}（已用 ${healUsed}）。${err}请根据反馈修复产物后重新调 xdd_submit_artifact。`;
+			{
+				const budget = state.stageSelfHealBudget(name, "ai_gate");
+				if (!budget.exhausted) {
+					return `[xdd 自动推进] ${stageName} AIGate 多角度攻击未通过。剩余 AIGate 自愈预算 ${budget.remaining}/${budget.limit}（已用 ${budget.used}）。${err}请根据反馈修复产物后重新调 xdd_submit_artifact。`;
+				}
+				return `[xdd] ${stageName} AIGate 未通过且 AIGate 自愈预算耗尽（${budget.used}/${budget.limit}）。${err}${name === "verify" ? "verify 会自动消耗流程回退预算并回退到诊断出的缺陷阶段；请调 xdd_next_task 继续。" : "该非 verify 阶段已软通过；请调 xdd_advance 推进。"}`;
 			}
-			return `[xdd] ${stageName} AIGate 未通过且自愈预算耗尽（${healUsed}/${healMax}）。${err}请调 xdd_diagnose 诊断根因，或 xdd_rollback 回退。`;
 
 		case "gate_passed":
 			return `[xdd 自动推进] ${stageName} 闸门已通过。调 xdd_advance 推进到下一阶段。`;

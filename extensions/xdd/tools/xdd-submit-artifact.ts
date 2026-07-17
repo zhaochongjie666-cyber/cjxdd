@@ -3,11 +3,11 @@ import { type Static, Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { XddController } from "../core/controller.ts";
 import { RuntimeStore } from "../storage/runtime-store.ts";
-import type { XddRunnerState } from "../types.ts";
+import type { XddRunnerState, XddStageName } from "../types.ts";
 import { type EmptyDetails, type GetXddState, ok } from "./index.ts";
 import { runAIGate, formatAIGateResult } from "../aigate.ts";
 import { getAIGateLLM } from "../llm-ref.ts";
-import { readFileSync, existsSync, statSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { evaluateVerifyEvidenceGateFull } from "../evidence/verify-gate.ts";
 import { routeVerifyFailure } from "../verify-failure-routing.ts";
@@ -26,6 +26,48 @@ export type XddSubmitArtifactInput = Static<typeof schema>;
 function dispatchToController(state: XddRunnerState, command: Parameters<XddController["dispatch"]>[0]) {
 	const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
 	return controller.dispatch(command);
+}
+
+const diagnoseRollbackTarget: Readonly<Record<string, XddStageName>> = {
+	"intent-unclear": "understand",
+	"spec-gap": "spec",
+	"architecture-flaw": "architecture",
+	"wiring-bug": "wire",
+	"implementation-bug": "execute",
+	"test-gap": "execute",
+	"cleanup-missed": "cleanup",
+};
+
+/** Verify cannot soft-pass: exhaustion automatically consumes flow budget and rolls back. */
+function handleExhaustedVerifyFailure(
+	state: XddRunnerState,
+	reason: string,
+	gate: string,
+	used: number,
+	limit: number,
+	detail = "",
+): AgentToolResult<EmptyDetails> {
+	const diagnosis = state.getDiagnose();
+	const diagnosedTarget = diagnosis ? diagnoseRollbackTarget[diagnosis.layer] : "execute";
+	// Single-stage/custom plans may omit the diagnosed stage; choose the nearest
+	// available earlier stage rather than consuming flow budget then throwing.
+	const target = state.plan.some(({ stage: plannedStage }) => plannedStage.name === diagnosedTarget)
+		? diagnosedTarget
+		: state.plan[Math.max(0, state.planIndex - 1)]?.stage.name;
+	if (!target || target === stage || !state.consumeFlowRollbackBudget()) {
+		state.status = "fail";
+		state.stageOutcome = "failed";
+		state.lastStageError = `${gate} exhausted at verify: ${reason}`;
+		return {
+			content: [{ type: "text", text: `❌ [${gate} ${used}/${limit}] verify 未通过且自愈预算耗尽。流程回退预算已耗尽（${state.flowRollbackCount}/${state.flowRollbackLimitTier2}），run 已终止。${detail}` }],
+			details: {},
+			terminate: true,
+		};
+	}
+	const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage: plannedStage }) => plannedStage));
+	controller.dispatch({ type: "ROLLBACK", target, reason: `verify ${gate} 预算耗尽：${reason}` });
+	return ok(`⚠️ [${gate} ${used}/${limit}] verify 未通过且自愈预算耗尽：${reason}${detail}
+已消耗流程回退预算（${state.flowRollbackCount}/${state.flowRollbackLimitTier2}），自动回退 verify → ${target}${diagnosis ? `（诊断层：${diagnosis.layer}）` : "（未记录诊断，默认实现缺陷）"}。请在 ${target} 修复后重新推进 verify。`);
 }
 
 export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefinition {
@@ -97,18 +139,32 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 				}
 			}
 			dispatchToController(state, { type: "RECORD_ARTIFACT_REVIEW", stage: stage.name, artifacts, selfAttack });
-			state.beginSelfHealAttempt(stage.name);
-			const remaining = state.remainingSelfHealBudget(stage.name);
-			// Mechanical checks now provide one required AIGate input. They do
-			// not independently pass or block a submission; AIGate owns the only
-			// final verdict and returns the combined feedback to the agent.
 			const mechanicalCheckResult = await stage.gate({ cwd: state.cwd, summary, desiredState: stage.desiredState });
-			// --- AIGate: unified semantic + mechanical review ---
+			// A failed hard Gate and a semantic AIGate failure have independent
+			// five-attempt budgets. A hard failure stops before AIGate so one
+			// submission can never consume both counters.
+			if (!mechanicalCheckResult.ok) {
+				const hardUsed = state.beginSelfHealAttempt(stage.name);
+				const hardBudget = state.stageSelfHealBudget(stage.name, "hard_gate");
+				const error = mechanicalCheckResult.reason ?? "硬 Gate 未通过";
+				dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error } });
+				if (!hardBudget.exhausted) {
+					return {
+						content: [{ type: "text", text: `❌ [硬 Gate ${hardUsed}/${hardBudget.limit}] ${stage.name} 未通过：${error}\n剩余硬 Gate 自愈预算：${hardBudget.remaining}/${hardBudget.limit}。本轮提交失败，但本 turn 继续。请修复产物后重新调用 xdd_submit_artifact。` }],
+						details: {},
+					};
+				}
+				if (stage.exit !== "verdict") {
+					dispatchToController(state, { type: "RECORD_SIGNAL", signal: "complete" });
+					dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
+					return ok(`⚠️ [硬 Gate ${hardUsed}/${hardBudget.limit}] ${stage.name} 未通过且预算耗尽：${error}\n硬 Gate 告警已记录，现软通过；请调用 xdd_advance 自动推进。`);
+				}
+				return handleExhaustedVerifyFailure(state, error, "硬 Gate", hardUsed, hardBudget.limit);
+			}
+			// --- AIGate: semantic review after the hard Gate passes ---
 			const llmInfo = await getAIGateLLM();
 			if (!llmInfo) {
-				// There is no standalone mechanical-check fallback: without the model, the
-				// single unified review cannot produce a verdict.
-				state.refundSelfHealAttempt(stage.name);
+				// AIGate infrastructure failures are retryable and consume neither budget.
 				state.clearSubmitFingerprint(stage.name);
 				const mechanicalDetail = mechanicalCheckResult.ok
 					? "机械检查通过"
@@ -143,7 +199,6 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 				// submitted artifacts. Do not spend either retry budget, and clear
 				// the fingerprint so the agent can retry the same valid artifacts.
 				if (aiResult.degraded) {
-					state.refundSelfHealAttempt(stage.name);
 					state.clearSubmitFingerprint(stage.name);
 					const aiError = aiResult.issues.join("; ") || "AIGate 服务或响应格式异常";
 					dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error: aiError } });
@@ -156,43 +211,31 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 						details: {},
 					};
 				}
-				// A semantic AIGate failure consumes only the AIGate retry budget.
-				const aiUsed = state.beginAiGateAttempt(stage.name);
-				const aiRemaining = state.remainingAiGateBudget(stage.name);
 				if (!aiResult.passed) {
+					// A semantic AIGate failure consumes only the AIGate retry budget.
+					const aiUsed = state.beginAiGateAttempt(stage.name);
+					const aiBudget = state.stageSelfHealBudget(stage.name, "ai_gate");
+					const aiRemaining = aiBudget.remaining;
 					const aiError = aiResult.angles.filter((a) => a.passed === false).map((a) => a.name).join(", ") || "AIGate 多角度未通过";
-					dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error: aiError } });
+					dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error: aiError, gateKind: "ai_gate" } });
 					const angleText = formatAIGateResult(aiResult);
 					const suggText = aiResult.suggestions.length > 0
 						? "\n修改建议：\n" + aiResult.suggestions.map((s, n) => `${n + 1}. ${s}`).join("\n")
 						: "";
-					if (aiRemaining <= 0) {
-						// The unified AIGate is bounded by its repair budget. Its
-						// five repair attempts must be bounded: do not strand the ten
-						// stage run on an unavailable/malformed review response. Preserve
-						// the failed review in the audit, then soft-pass non-verdict
-						// stages and terminate this turn. agent_end recognizes the
-						// gate_passed boundary and queues the next turn automatically.
+					if (aiBudget.exhausted) {
 						if (stage.exit === "verdict") {
-							return {
-								content: [{ type: "text", text: `❌ [AIGate ${aiUsed}/${state.maxSelfHealPerStage}] ${stage.name} 多角度攻击未通过（自愈预算耗尽）：\n${angleText}${suggText}\n本轮提交失败。请调 xdd_diagnose 诊断根因，或 xdd_rollback 回退。` }],
-								details: {},
-								terminate: true,
-							};
+							return handleExhaustedVerifyFailure(state, aiError, "AIGate", aiUsed, aiBudget.limit, `${angleText}${suggText}`);
 						}
 						dispatchToController(state, { type: "RECORD_SIGNAL", signal: "complete" });
 						dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
-						return {
-							content: [{ type: "text", text: `⚠️ [AIGate ${aiUsed}/${state.maxSelfHealPerStage}] ${stage.name} 统一审查未通过（自愈预算耗尽）：\n${angleText}${suggText}\nAIGate 已记录为告警，现软通过并自动进入下一轮推进。` }],
-							details: {},
-						};
+						return ok(`⚠️ [AIGate ${aiUsed}/${aiBudget.limit}] ${stage.name} 统一审查未通过且预算耗尽：\n${angleText}${suggText}\nAIGate 告警已记录，现软通过；请调用 xdd_advance 自动推进。`);
 					}
 					// Layer 2: AIGate failed with budget remaining -- keep the
 					// same agent turn alive. Semantic review feedback is actionable
 					// context for the model; terminating here forced users to start a
 					// new turn even though AIGate retry budget remains.
 					return {
-						content: [{ type: "text", text: `❌ [AIGate ${aiUsed}/${state.maxSelfHealPerStage}] ${stage.name} 多角度攻击未通过：\n${angleText}${suggText}\n剩余 AIGate 预算：${aiRemaining}\n本轮提交失败，但本 turn 继续。请根据审查反馈修复产物后重新调用 xdd_submit_artifact。` }],
+						content: [{ type: "text", text: `❌ [AIGate ${aiUsed}/${state.maxSelfHealPerStage}] ${stage.name} 多角度攻击未通过：\n${angleText}${suggText}\n剩余 AIGate 自愈预算：${aiRemaining}/${aiBudget.limit}\n本轮提交失败，但本 turn 继续。请根据审查反馈修复产物后重新调用 xdd_submit_artifact。` }],
 						details: {},
 					};
 				}
@@ -220,13 +263,13 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 				}
 				dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
 				return ok(
-					`${stage.name} verdict: pass - ${summary}\n剩余自愈预算：${remaining}/${state.maxSelfHealPerStage}${llmInfo ? "\nAIGate: 通过 ✅" : ""}`,
+					`${stage.name} verdict: pass - ${summary}\n剩余硬 Gate 自愈预算：${state.stageSelfHealBudget(stage.name, "hard_gate").remaining}/${state.maxSelfHealPerStage}\n剩余 AIGate 自愈预算：${state.stageSelfHealBudget(stage.name, "ai_gate").remaining}/${state.maxSelfHealPerStage}${llmInfo ? "\nAIGate: 通过 ✅" : ""}`,
 				);
 			}
 			dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
 			dispatchToController(state, { type: "RECORD_SIGNAL", signal: "complete" });
 			return ok(
-				`${stage.name} 完成${mechanicalCheckResult.soft ? "（机械检查软通过）" : ""}：${summary}\n剩余自愈预算：${remaining}/${state.maxSelfHealPerStage}\nAIGate: 通过 ✅`,
+				`${stage.name} 完成${mechanicalCheckResult.soft ? "（机械检查软通过）" : ""}：${summary}\n剩余硬 Gate 自愈预算：${state.stageSelfHealBudget(stage.name, "hard_gate").remaining}/${state.maxSelfHealPerStage}\n剩余 AIGate 自愈预算：${state.stageSelfHealBudget(stage.name, "ai_gate").remaining}/${state.maxSelfHealPerStage}\nAIGate: 通过 ✅`,
 			);
 		},
 	};
