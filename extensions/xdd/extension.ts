@@ -112,25 +112,39 @@ function toolResultText(event: { content?: Array<{ type?: string; text?: string 
 		.join("\n");
 }
 
-/** True only for xdd_submit_artifact's mechanical (not AI semantic) Gate result. */
-function isHardGateFailureResult(event: { type?: string; content?: Array<{ type?: string; text?: string }> }, toolName: string): boolean {
+/**
+ * A repair steer is issued only for a real unified-AIGate artifact verdict
+ * with remaining budget. Degraded/model-unavailable reviews did not decide the
+ * artifact verdict, and exhausted verdict stages must diagnose or roll back.
+ */
+function isAIGateRepairFailure(
+	event: { type?: string; content?: Array<{ type?: string; text?: string }> },
+	toolName: string,
+	state: XddRunnerState,
+): boolean {
 	if (event.type !== "tool_result" || toolName !== "xdd_submit_artifact") return false;
-	return /❌ \[(?:gate \d+\/|xdd_submit_artifact\])/.test(toolResultText(event));
+	const text = toolResultText(event);
+	const stage = state.currentStageName();
+	return Boolean(stage) &&
+		/❌ \[AIGate \d+\/\d+\]/.test(text) &&
+		text.includes("多角度攻击未通过") &&
+		!text.includes("自愈预算耗尽") &&
+		state.remainingAiGateBudget(stage!) > 0;
 }
 
-async function sendHardGateSteering(
+async function sendAIGateRepairSteering(
 	pi: { sendUserMessage?: (text: string, options?: unknown) => Promise<unknown> | unknown },
 	state: XddRunnerState,
 ): Promise<void> {
 	const stage = state.currentStageName() ?? "当前";
-	const reason = state.lastStageError ?? "Gate 未说明失败原因";
+	const reason = state.lastStageError ?? "AIGate 未说明失败原因";
 	try {
 		await pi.sendUserMessage?.(
-			`[xdd hard-gate steering] ${stage} 阶段硬 Gate 失败：${reason}。停止无关工作；先按该原因修复产物，再重新调用 xdd_submit_artifact。`,
+			`[xdd aigate steering] ${stage} 阶段统一 AIGate 未通过：${reason}。立即阅读上一条 AIGate 审查反馈和修改建议，修复产物后重新调用 xdd_submit_artifact；不要推进下一阶段。`,
 			{ deliverAs: "steer" },
 		);
 	} catch (error) {
-		recordControllerAudit("finding", stage, "hard-gate steering send failed", {
+		recordControllerAudit("finding", stage, "AIGate repair steering send failed", {
 			error: error instanceof Error ? error.message : String(error),
 		});
 	}
@@ -312,12 +326,11 @@ export const xddInlineExtension: InlineExtension = {
 		pi.on("tool_result", async (event) => {
 			if (!stateRef) return;
 			const toolName = String(event.toolName ?? event.name ?? "?");
-			// A mechanical Gate failure is actionable immediately. Send it as a Pi
-			// steering message so the next LLM call sees an explicit repair directive
-			// before it can choose unrelated work. AIGate failures deliberately do not
-			// match this predicate: their tool result already carries review feedback.
-			if (isHardGateFailureResult(event, toolName)) {
-				await sendHardGateSteering(pi, stateRef);
+			// The unified AIGate owns the branching decision: a passing verdict enters
+			// normal stage advancement, while a repairable failed verdict steers the
+			// next model call to fix the reviewed artifacts.
+			if (isAIGateRepairFailure(event, toolName, stateRef)) {
+				await sendAIGateRepairSteering(pi, stateRef);
 			}
 			const hookResult = await runProjectHooks("tool_use_done", { toolCalls: [{ name: toolName, input: event.input }], toolResult: event });
 			if (hookResult?.action === "continue" && hookResult.prompt) {
@@ -493,24 +506,20 @@ ${hookResult.prompt}`;
 			if (!stateRef) return { action: "continue" };
 			if (event.source !== "extension") return { action: "continue" };
 			const text = event.text ?? "";
-			const isHardGateSteering = text.startsWith("[xdd hard-gate steering]");
-			// Recognize scheduler-owned continuation messages by their
-			// distinguishing prefix. Steering is intentionally separate: it must
-			// not release the follow-up continuation lock.
+			const isAIGateSteering = text.startsWith("[xdd aigate steering]");
+			// Steering deliberately does not release the follow-up lock.
 			const isXddContinuation =
 				text.startsWith("[xdd 自动推进]") ||
 				text.startsWith("[xdd] 阶段") || // stage-advance nudge (kept for legacy)
 				text.startsWith("[xdd] 连续"); // stall terminate nudge
-			if (!isHardGateSteering && !isXddContinuation) return { action: "continue" };
-			// Drop while paused: the model must not receive either a repair
-			// steering instruction or a continuation while the user is paused.
+			if (!isAIGateSteering && !isXddContinuation) return { action: "continue" };
+			// Drop queued repair and continuation instructions while paused: the model
+			// must not receive additional work until /xdd-resume.
 			if (stateRef.paused) return { action: "handled" };
-			if (isXddContinuation) {
-				// P26 lock cycle complete: a queued continuation has been
-				// delivered to the agent. Clear the lock so the next agent_end
-				// can queue a fresh continuation if needed.
-				stateRef.continuationQueued = false;
-			}
+			if (isAIGateSteering) return { action: "continue" };
+			// P26 lock cycle complete: a queued continuation has been delivered to
+			// the agent. Clear the lock so the next agent_end can queue a fresh one.
+			stateRef.continuationQueued = false;
 			return { action: "continue" };
 		});
 
@@ -552,4 +561,3 @@ ${hookResult.prompt}`;
 		});
 	},
 };
-

@@ -163,6 +163,10 @@ function agentEndedTransition(
 		state.stageOutcome = "provider_error";
 		state.lastStageError = command.providerError ?? "LLM provider error";
 		projectAuditEvent(state, { type: "provider_error", stage: currentStageName(state, stages) ?? "?", message: state.lastStageError });
+		// Pi owns provider retries. XDD deliberately does not enqueue another
+		// model turn here: that could race Pi's retry/backoff policy. Make the
+		// wait visible to the user so an exhausted Pi retry can be resumed.
+		effects.push({ type: "NOTIFY", level: "warning", text: `[xdd] 模型提供商错误：${state.lastStageError}。等待 Pi 内建重试；若 Pi 未继续，请使用 /xdd-resume。` });
 		return { state: stamp(state), effects };
 	}
 	if (command.stopReason === "aborted") return stopTransition(state, effects);
@@ -276,12 +280,19 @@ function rollbackTransition(state: RuntimeStateV2, target: XddStageName | undefi
 	const targetName = target ?? defaultRollbackTarget(state, stages);
 	const idx = state.plan.findIndex((entry) => entry.stageName === targetName);
 	if (idx < 0 || idx >= state.planIndex) throw new ControllerError("INVALID_ROLLBACK", `rollback target ${targetName} must be earlier than current stage`);
+	const used = state.rollbackAttempts?.[targetName] ?? 0;
+	const limit = state.maxRollbacksPerStage ?? 2;
+	if (used >= limit) {
+		throw new ControllerError("ROLLBACK_LIMIT_REACHED", `rollback target ${targetName} reached its limit (${used}/${limit})`);
+	}
 	const from = currentStageName(state, stages) ?? "?";
 	const targetOriginalIndex = state.plan[idx]?.originalIndex ?? idx;
 	for (const entry of state.ledger ?? []) {
 		if (entry.stageIndex >= targetOriginalIndex && !entry.superseded) entry.superseded = true;
 	}
 	state.planIndex = idx;
+	if (!state.rollbackAttempts) state.rollbackAttempts = {};
+	state.rollbackAttempts[targetName] = used + 1;
 	state.rollbackOutcome = { from: from as XddStageName, to: targetName, reason };
 	resetStageAttemptState(state, targetName);
 	state.stageOutcome = "advanced";
@@ -346,6 +357,7 @@ function minimalRuntime(runId: string, cwd: string, userInput: string): RuntimeS
 		attempts: {},
 		selfHealUsed: {},
 		maxRollbacksPerStage: 2,
+		rollbackAttempts: {},
 		maxSelfHealPerStage: 5,
 		flowRollbackCount: 0,
 		flowRollbackLimitTier1: 5,

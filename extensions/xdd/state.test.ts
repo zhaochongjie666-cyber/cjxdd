@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { XddRunnerState } from "./types.ts";
 import { createStateFixture, setStateFixturePlanIndex, startStateFixture } from "./test/state-fixture.ts";
+import { ControllerTestFixture } from "./test/controller-fixture.ts";
 
 /** Each state gets its own temp dir so file-backed state doesn't collide. */
 let dirCounter = 0;
@@ -31,18 +32,15 @@ describe("XddRunnerState basics", () => {
 
 	it("startRun resets stale budgets when starting a new run in an existing .xdd directory", () => {
 		const cwd = tmpCwd();
-		const oldState = new XddRunnerState({ runId: "old-run", cwd, userInput: "old" });
-		oldState.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
-		oldState.startRun();
-		oldState.advancePlan(); // -> understand
+		const oldState = createStateFixture({ runId: "old-run", cwd, userInput: "old" });
+		new ControllerTestFixture(oldState).startAt("understand");
 		for (let i = 0; i < oldState.maxSelfHealPerStage; i++) oldState.beginSelfHealAttempt("understand");
 		for (let i = 0; i < oldState.maxSelfHealPerStage; i++) oldState.beginAiGateAttempt("understand");
 		expect(oldState.remainingSelfHealBudget("understand")).toBe(0);
 		expect(oldState.remainingAiGateBudget("understand")).toBe(0);
 
-		const newState = new XddRunnerState({ runId: "new-run", cwd, userInput: "new" });
-		newState.plan = STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
-		newState.startRun();
+		const newState = createStateFixture({ runId: "new-run", cwd, userInput: "new" });
+		new ControllerTestFixture(newState).startAt("init");
 
 		expect(newState.planIndex).toBe(0);
 		expect(newState.remainingSelfHealBudget("understand")).toBe(5);

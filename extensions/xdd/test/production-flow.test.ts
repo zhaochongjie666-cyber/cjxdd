@@ -47,7 +47,7 @@ describe("production pi adapter lifecycle", () => {
 		expect(harness.sentMessages).toHaveLength(0);
 	});
 
-	it("provider error followed by compaction does not create xdd followUp", async () => {
+	it("provider error followed by compaction does not create xdd followUp and shows Pi retry ownership", async () => {
 		harness.contextUsage = { percent: 0.95 };
 		await harness.emit("agent_end", {
 			messages: [{ role: "assistant", stopReason: "error", errorMessage: "rate limit" }],
@@ -56,6 +56,7 @@ describe("production pi adapter lifecycle", () => {
 		expect(harness.state.lastStageError).toBe("rate limit");
 		expect(harness.compactCalls).toHaveLength(0);
 		expect(harness.sentMessages).toHaveLength(0);
+		expect(harness.notifications.at(-1)?.message).toContain("等待 Pi 内建重试");
 	});
 
 	it("normal agent_end queues exactly one continuation", async () => {
@@ -83,24 +84,7 @@ describe("production pi adapter lifecycle", () => {
 	});
 
 
-	it("hard Gate failure sends a steering message before the next LLM call", async () => {
-		harness.state.stageOutcome = "hard_gate_failed";
-		harness.state.lastStageError = "missing .xdd/design/intent.md";
-
-		await harness.emit("tool_result", {
-			type: "tool_result",
-			toolName: "xdd_submit_artifact",
-			content: [{ type: "text", text: "❌ [gate 1/5] init 未达标：missing .xdd/design/intent.md" }],
-		});
-
-		expect(harness.sentMessages).toHaveLength(1);
-		expect(harness.sentMessages[0]).toMatchObject({
-			text: expect.stringContaining("missing .xdd/design/intent.md"),
-			options: { deliverAs: "steer" },
-		});
-	});
-
-	it("AIGate failure does not masquerade as a hard-Gate steering message", async () => {
+	it("repairable unified AIGate failure steers the next model call to fix artifacts", async () => {
 		harness.state.stageOutcome = "hard_gate_failed";
 		harness.state.lastStageError = "semantic review failed";
 
@@ -110,7 +94,45 @@ describe("production pi adapter lifecycle", () => {
 			content: [{ type: "text", text: "❌ [AIGate 1/5] init 多角度攻击未通过" }],
 		});
 
+		expect(harness.sentMessages).toHaveLength(1);
+		expect(harness.sentMessages[0]).toMatchObject({
+			text: expect.stringContaining("semantic review failed"),
+			options: { deliverAs: "steer" },
+		});
+	});
+
+	it("exhausted AIGate failure does not steer because it must diagnose or roll back", async () => {
+		harness.state.stageOutcome = "hard_gate_failed";
+		harness.state.lastStageError = "semantic review failed";
+		for (let i = 0; i < harness.state.maxSelfHealPerStage; i++) {
+			harness.state.beginAiGateAttempt("init");
+		}
+
+		await harness.emit("tool_result", {
+			type: "tool_result",
+			toolName: "xdd_submit_artifact",
+			content: [{ type: "text", text: "❌ [AIGate 5/5] init 多角度攻击未通过（自愈预算耗尽）" }],
+		});
+
 		expect(harness.sentMessages).toHaveLength(0);
+	});
+
+	it("group Gate automatic rollbacks use the Controller limit", async () => {
+		const advance = harness.tools.find((tool) => tool.name === "xdd_advance");
+		expect(advance).toBeDefined();
+		harness.state.maxRollbacksPerStage = 2;
+
+		for (let attempt = 1; attempt <= 2; attempt++) {
+			harness.state.planIndex = 2; // spec: end of the discovery group
+			harness.state.recordSignal("complete");
+			const result = await advance.execute("group-gate", {});
+			expect(toolText(result)).toContain("强制回退 spec -> init");
+			expect(harness.state.rollbackAttempts.init).toBe(attempt);
+		}
+
+		harness.state.planIndex = 2;
+		harness.state.recordSignal("complete");
+		await expect(advance.execute("group-gate-limit", {})).rejects.toThrow(/ROLLBACK_LIMIT_REACHED|reached its limit/);
 	});
 
 	it("before_tools hook block rejects the tool call before execution", async () => {
@@ -283,27 +305,6 @@ describe("production pi adapter lifecycle", () => {
 		const statusText = harness.sentMessages.at(-1)?.text ?? "";
 		expect(statusText).toContain("Audit last finding");
 		expect(statusText).toContain("hook before_tools: block");
-	});
-
-	it("hard-Gate steering is asynchronous and does not release the followUp lock", async () => {
-		harness.state.continuationQueued = true;
-		const handlers = harness.handlers.get("input") ?? [];
-		expect(handlers).toHaveLength(1);
-
-		const resultPromise = handlers[0]?.({
-			source: "extension",
-			text: "[xdd hard-gate steering] repair the artifact",
-		}, harness.ctx);
-		expect(resultPromise).toBeInstanceOf(Promise);
-		expect(await resultPromise).toEqual({ action: "continue" });
-		expect(harness.state.continuationQueued).toBe(true);
-
-		harness.state.paused = true;
-		const [pausedResult] = await harness.emit("input", {
-			source: "extension",
-			text: "[xdd hard-gate steering] repair the artifact",
-		});
-		expect(pausedResult).toEqual({ action: "handled" });
 	});
 
 	it("stale queued continuation is dropped while paused and lock clears after resume delivery", async () => {
