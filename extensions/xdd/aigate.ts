@@ -23,8 +23,22 @@ import type { Model } from "@earendil-works/pi-ai/compat";
 import { readCappedFiles, resolveGlobs } from "./glob-resolver.ts";
 import type { XddGateResult } from "./types.ts";
 
-/** Default AIGate LLM call timeout: 60s. Configurable per call. */
-const DEFAULT_LLM_TIMEOUT_MS = 60_000;
+/**
+ * AIGate reviews several artifacts and returns one verdict per attack angle.
+ * A ten-minute window accommodates slower compatible providers when
+ * architecture submissions also include cross-stage context.
+ */
+const MIN_LLM_TIMEOUT_MS = 15_000;
+const MAX_LLM_TIMEOUT_MS = 600_000;
+const MAX_AIGATE_ARTIFACT_CHARS = 32_000;
+const MAX_AIGATE_CONTEXT_CHARS = 32_000;
+const DEFAULT_LLM_TIMEOUT_MS = configuredTimeoutMs();
+
+function configuredTimeoutMs(): number {
+	const value = Number.parseInt(process.env.XDD_AIGATE_TIMEOUT_MS ?? "", 10);
+	if (!Number.isFinite(value)) return 600_000;
+	return Math.min(MAX_LLM_TIMEOUT_MS, Math.max(MIN_LLM_TIMEOUT_MS, value));
+}
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -396,7 +410,7 @@ const STAGE_ANGLES: Record<string, AttackAngle[]> = {
  */
 function readContextFiles(cwd: string, stageName: string): string[] {
 	const contexts: string[] = [];
-	const MAX_TOTAL = 32_000; // ~8K tokens across all cross-stage context
+	const MAX_TOTAL = MAX_AIGATE_CONTEXT_CHARS;
 
 	// Helper: read a list of patterns and append to contexts.
 	const readPats = (pats: readonly string[]): void => {
@@ -534,7 +548,9 @@ export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
 	// Phase 6 (D): use shared resolver for artifacts. Applies realpath
 	// safety + per-file + total size caps. Symlinks pointing outside cwd
 	// are silently dropped and reported as `unsafeFiles`.
-	const artifactResult = readCappedFiles(cwd, artifactPaths, { maxFileChars: 8_000, maxTotalChars: 24_000 });
+	// Bound the full request while retaining enough architecture and spec context
+	// for a complete cross-artifact review.
+	const artifactResult = readCappedFiles(cwd, artifactPaths, { maxFileChars: 8_000, maxTotalChars: MAX_AIGATE_ARTIFACT_CHARS });
 	const artifacts: string[] = artifactResult.files.map((f) => `--- ${f.rel} ---\n${f.content}`);
 
 	// Understand stage also reads personas (for traceability attack).
@@ -604,21 +620,21 @@ export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
 
 /** Phase 6 (D): retry policy. Only retry on transient errors:
  *   - network (TypeError, fetch failed)
- *   - timeout (AbortError)
  *   - 5xx HTTP
  *   - 429 rate limit
- * Do NOT retry on 4xx other than 429 (auth failure, bad request won't
- * get better with another shot). Max 1 retry (2 attempts total) to
- * keep the gate snappy. */
+ * Do NOT retry a timeout: repeating the identical expensive request merely
+ * makes the agent wait another full timeout and cannot yield a verdict.
+ * Do NOT retry on 4xx other than 429 (auth failure, bad request won't get
+ * better with another shot). Max 1 retry (2 attempts total) for transient
+ * transport and server failures. */
 const MAX_LLM_ATTEMPTS = 2;
-/** Delay before retry, in ms. 1s for 5xx/rate, 0 for network/timeout
- *  (those are likely transient and retrying immediately is fine). */
+/** Delay before retry, in ms. */
 const RETRY_DELAY_MS = 1_000;
 
 function isRetryable(err: unknown): boolean {
 	if (!(err instanceof Error)) return false;
-	// AbortError from AbortController timeout
-	if (err.name === "AbortError" || err.message.includes("timeout")) return true;
+	// A timeout already consumed the complete request budget.
+	if (err.name === "AbortError" || err.message.includes("timeout")) return false;
 	// Network failures (fetch throws TypeError)
 	if (err.name === "TypeError") return true;
 	// 5xx / 429 in the error message we wrap
@@ -688,7 +704,7 @@ async function callLLMOnce(
 			},
 			body: JSON.stringify({
 				model: model.id,
-				max_tokens: 4096,
+				max_tokens: 12_000,
 				system: systemPrompt,
 				messages: [{ role: "user", content: userMessage }],
 			}),
@@ -713,7 +729,7 @@ async function callLLMOnce(
 				{ role: "user", content: userMessage },
 			],
 			temperature: 0,
-			max_tokens: 4096,
+			max_tokens: 12_000,
 		}),
 		signal: ac.signal,
 	});

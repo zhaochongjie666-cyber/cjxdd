@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it, expect, vi } from "vitest";
@@ -161,6 +161,35 @@ describe("unified AI Gate", () => {
 			});
 			expect(result.passed).toBe(false);
 			expect(result.angles).toContainEqual({ name: "偷工减料攻击", passed: false, findings: ["发现问题"] });
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("bounds architecture review request and response budgets", async () => {
+		const cwd = mkdtempSync(join(tmpdir(), "xdd-aigate-"));
+		writeFileSync(join(cwd, "architecture.md"), "x".repeat(40_000));
+		mkdirSync(join(cwd, ".xdd/design/spec"), { recursive: true });
+		writeFileSync(join(cwd, ".xdd/design/spec/rules.md"), "y".repeat(40_000));
+		let body: any;
+		vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+			body = JSON.parse(String(init.body));
+			return new Response(JSON.stringify({
+				choices: [{ message: { content: JSON.stringify({
+					passed: true,
+					angles: ["机械检查结果", "偷工减料攻击", "AI味攻击", "规格偏离攻击", "安全攻击", "一致性攻击", "可运维攻击", "方案合理性攻击", "iter污染攻击"].map((name) => ({ name, passed: true, findings: [] })),
+					issues: [], suggestions: [],
+				}) } }],
+			}));
+		}));
+		try {
+			await runAIGate({
+				model: { api: "openai", baseUrl: "https://example.test", id: "test" } as any,
+				apiKey: "test-key", stageName: "architecture", aigateStandard: "test standard",
+				artifactPaths: ["architecture.md"], mechanicalCheckResult: { ok: true }, cwd,
+			});
+			expect(body.max_tokens).toBe(12_000);
+			expect(body.messages[1].content.length).toBeLessThan(75_000);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}

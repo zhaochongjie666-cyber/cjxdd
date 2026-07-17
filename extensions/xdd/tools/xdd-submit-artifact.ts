@@ -146,8 +146,11 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					const aiError = aiResult.issues.join("; ") || "AIGate 服务或响应格式异常";
 					dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error: aiError } });
 					const angleText = formatAIGateResult(aiResult);
+					const retryAdvice = /timeout/i.test(aiError)
+						? "审查请求已超时；请稍后重试，或调整 XDD_AIGATE_TIMEOUT_MS（15,000–600,000 毫秒）后重试；无需修改产物。"
+						: "请恢复审查服务或模型配置后重新调用 xdd_submit_artifact；无需修改产物。";
 					return {
-						content: [{ type: "text", text: `⚠️ [AIGate] ${stage.name} 审查服务/响应格式异常（未消耗自愈预算）：\n${angleText}\n本 turn 继续。请直接重新调用 xdd_submit_artifact；无需修改产物。` }],
+						content: [{ type: "text", text: `⚠️ [AIGate] ${stage.name} 审查服务/响应格式异常（未消耗自愈预算）：\n原因：${aiError}\n${angleText}\n本 turn 继续。${retryAdvice}` }],
 						details: {},
 					};
 				}

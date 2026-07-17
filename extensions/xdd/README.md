@@ -40,6 +40,10 @@ xdd 控制循环（[`core.md`](../../core.md)）作为 **pi coding agent inline 
 | `xdd_list_skills` | 装载 | 列可用 xdd skill |
 | `xdd_load_skill` | 装载 | 把 skill SKILL.md 注入阶段 system prompt |
 
+### AIGate 超时
+
+审查请求默认最多等待 10 分钟。提交产物和跨阶段上下文会分别限制为 32,000 字符，审查响应限制为 12,000 tokens，以保留完整的架构审查信息。可设置 `XDD_AIGATE_TIMEOUT_MS`（15,000–600,000，单位毫秒）后再启动 pi。超时不会消耗自愈预算，也不会对同一个超时请求自动重试；请在服务恢复或调整超时后重新提交相同产物。
+
 ## 运行流程
 
 ### 单次控制循环（core.md 的 while 落地）
