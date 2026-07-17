@@ -21,8 +21,7 @@ const baseRuntime = (): XddCheckpointData => ({
 	maxRollbacksPerStage: 2,
 	maxSelfHealPerStage: 5,
 	flowRollbackCount: 0,
-	flowRollbackLimitTier1: 5,
-	flowRollbackLimitTier2: 10,
+	flowRollbackLimit: 7,
 	rollbackCount: 0,
 	status: "running",
 	submittedArtifacts: {},
@@ -48,11 +47,11 @@ describe("RuntimeStore", () => {
 		expect(store.load()?.runId).toBe("old");
 	});
 
-	it("migrates v1/no-schema runtime to schemaVersion 2 and writes a backup", () => {
+	it("migrates v1/no-schema runtime to schemaVersion 3 and writes a backup", () => {
 		const store = new RuntimeStore(cwd);
 		writeFileSync(store.runtimePath, JSON.stringify({ ...baseRuntime(), runId: "legacy" }, null, 2), "utf8");
 		const loaded = store.load();
-		expect(loaded?.schemaVersion).toBe(2);
+		expect(loaded?.schemaVersion).toBe(3);
 		expect(loaded?.runId).toBe("legacy");
 		expect(existsSync(store.v1BackupPath)).toBe(true);
 	});
@@ -64,7 +63,14 @@ describe("RuntimeStore", () => {
 	it("updates through a single RuntimeStore facade", () => {
 		const store = new RuntimeStore(cwd);
 		const updated = store.update((state) => ({ ...state, ...baseRuntime(), runId: "updated", planIndex: 3 }));
-		expect(updated.schemaVersion).toBe(2);
+		expect(updated.schemaVersion).toBe(3);
 		expect(JSON.parse(readFileSync(store.runtimePath, "utf8")).planIndex).toBe(3);
+	});
+
+	it("migrates tiered flow rollback fields to one persisted limit", () => {
+		const migrated = migrateRuntimeState({ ...baseRuntime(), schemaVersion: 2, flowRollbackLimitTier1: 5, flowRollbackLimitTier2: 10 });
+		expect(migrated.state.flowRollbackLimit).toBe(7);
+		expect(migrated.state).not.toHaveProperty("flowRollbackLimitTier1");
+		expect(migrated.state).not.toHaveProperty("flowRollbackLimitTier2");
 	});
 });
