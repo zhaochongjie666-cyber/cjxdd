@@ -35,10 +35,7 @@ export function createXddObserveTool(getState: GetXddState): ToolDefinition {
 				.getSubmittedArtifacts()
 				.map((a) => `${a.stage}: [${a.paths.join(", ")}]`)
 				.join(" ") || "(无)";
-			const selfAttacks =
-				state.getSelfAttackNotes()
-					.map(([s, n]) => `${s}: ${n.slice(0, 80)}`)
-					.join(" ") || "(无)";
+			const selfAttack = state.getRunSelfAttack() ?? "(无)";
 			const fsSnap = observeFilesystem(state.cwd, stage.deliverablePaths);
 			const harnessCommands = new HarnessStore(state.cwd).load().验证命令;
 			const runtime = new RuntimeStore(state.cwd).load() ?? state.toCheckpoint(state.status, state.rollbackCount) as never;
@@ -50,7 +47,7 @@ export function createXddObserveTool(getState: GetXddState): ToolDefinition {
 				`信号: ${signals}`,
 				`产物闸门(任一): ${stage.deliverablePaths.length > 0 ? stage.deliverablePaths.join(", ") : "(软通过)"}`,
 				`已提交产物: ${artifacts}`,
-				`自我攻击记录: ${selfAttacks}`,
+				`本 run 自我攻击记录: ${selfAttack.slice(0, 80)}`,
 				`各阶段尝试次数: ${attempts}`,
 				`自愈预算(当前阶段): ${state.remainingSelfHealBudget(stage.name)}/${state.maxSelfHealPerStage}`,
 				`回退上限/阶段: ${state.maxRollbacksPerStage}`,

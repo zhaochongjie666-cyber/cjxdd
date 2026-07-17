@@ -126,10 +126,10 @@ describe("XddRunnerState artifacts and self-attack", () => {
 		expect(arts[0].paths).toEqual(["docs/spec.md"]);
 	});
 
-	it("records self-attack notes", () => {
+	it("records one run-level self-attack", () => {
 		const state = makeState();
-		state.recordSelfAttack("spec", "checked edge cases");
-		expect(state.getSelfAttackNoteForStage("spec")).toBe("checked edge cases");
+		state.recordRunSelfAttack("checked cross-stage assumptions and failure paths");
+		expect(state.getRunSelfAttack()).toBe("checked cross-stage assumptions and failure paths");
 	});
 });
 
@@ -139,18 +139,18 @@ describe("XddRunnerState checkpoint", () => {
 		startStateFixture(state);
 		setStateFixturePlanIndex(state, 1);
 		state.recordArtifact("init", ["README.md"]);
-		state.recordSelfAttack("init", "checked edge cases");
+		state.recordRunSelfAttack("checked edge cases");
 		const cp = state.toCheckpoint("running", 0);
 		expect(cp.planIndex).toBe(1);
 		expect(cp.submittedArtifacts.init).toEqual(["README.md"]);
-		expect(cp.selfAttackNotes.init).toBe("checked edge cases");
+		expect(cp.runSelfAttack).toBe("checked edge cases");
 		expect(cp.status).toBe("running");
 
 		const restored = XddRunnerState.fromCheckpoint(cp);
 		expect(restored.planIndex).toBe(1);
 		expect(restored.runId).toBe("test");
 		expect(restored.getSubmittedArtifacts()[0].paths).toEqual(["README.md"]);
-		expect(restored.getSelfAttackNoteForStage("init")).toBe("checked edge cases");
+		expect(restored.getRunSelfAttack()).toBe("checked edge cases");
 	});
 
 	it("persists flowRollbackCount across checkpoint (Layer 2)", () => {

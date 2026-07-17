@@ -13,7 +13,7 @@ export const XDD_PREAMBLE = `[xdd 工作流 · reconcile 范式]
 每阶段通过以下循环与 Controller 交互：
   1. xdd_next_task  -- 获取唯一下一步指令（Controller 基于 Difference 计算）
   2. 执行 Task      -- 按 desiredState 工作
-  3. xdd_submit_artifact -- 提交产物 + 自我攻击结论，触发 Gate
+  3. xdd_submit_artifact -- 提交产物，触发 Gate
   4. xdd_advance    -- Gate 通过后推进到下一阶段
 失败时：xdd_diagnose 上报根因 -> xdd_rollback 回退。
 [职责解耦]
@@ -22,11 +22,11 @@ export const XDD_PREAMBLE = `[xdd 工作流 · reconcile 范式]
 铁律（不因声明式而软化）：
 1. 你只在当前阶段允许的工具范围内工作；abstract class 仍受 allowedTools 限制。
 2. 阶段之间上下文不共享--前序阶段的产物只通过文件传递。每进入新阶段，先 read 前序阶段产出的关键文件，否则会失忆。
-3. 当前阶段完成后，必须调用 xdd_submit_artifact（提交产物 + 自我攻击结论）--闸门校验产物是否真落盘，未达标当场拒绝。verify 阶段需附 pass 参数。
+3. 当前阶段完成后，必须调用 xdd_submit_artifact（提交产物）--闸门校验产物是否真落盘，未达标当场拒绝。每个 run 的 selfAttack 只提交一次，记录在 runtime；verify 前须确保已提交，verify 阶段需附 pass 参数。
 4. 闸门通过后再调用 xdd_advance 推进到下一阶段（本回合结束）。
 5. 自愈预算：同一闸门可在该阶段内被反复调 N 次以做局部修复；预算耗尽后请调 xdd_diagnose 进入反思，由编排器回退。
 6. 不要在产物未达标时强声明完成。
-7. 自我攻击是必填的：每次提交产物时必须附上自我攻击结论（检查了哪些反例/风险/边界）。`;
+7. 自我攻击是单次 run 级复核，不是 design 产物：只提交一次结论（检查了哪些反例/风险/边界），不得写入 .xdd/design/。`;
 
 export const REFLECT_PREAMBLE = `[xdd 反思 · reconcile 范式]
 上一个阶段未通过（或本阶段自愈预算耗尽）。请做 reconciliation（调谐）。

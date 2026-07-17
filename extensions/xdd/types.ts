@@ -560,12 +560,7 @@ export class XddRunnerState {
 		rt.submittedArtifacts[stage] = paths;
 		this.saveRt(rt);
 	}
-	recordSelfAttack(stage: XddStageName, note: string): void {
-		const rt = this.loadRt();
-		if (!rt.selfAttackNotes) rt.selfAttackNotes = {};
-		rt.selfAttackNotes[stage] = note;
-		this.saveRt(rt);
-	}
+	recordRunSelfAttack(note: string): void { this.mutRt("runSelfAttack", note); }
 	recordEsgNode(type: XddEsgNodeType, stage: XddStageName, label: string, data?: unknown, parentId?: string): string {
 		const rt = this.loadRt();
 		if (!rt.esg) rt.esg = [];
@@ -580,12 +575,7 @@ export class XddRunnerState {
 	getSubmittedArtifactsForStage(stage: XddStageName): string[] | undefined {
 		return this.loadRt().submittedArtifacts?.[stage];
 	}
-	getSelfAttackNoteForStage(stage: XddStageName): string | undefined {
-		return this.loadRt().selfAttackNotes?.[stage];
-	}
-	getSelfAttackNotes(): Array<[XddStageName, string]> {
-		return Object.entries(this.loadRt().selfAttackNotes ?? {}) as Array<[XddStageName, string]>;
-	}
+	getRunSelfAttack(): string | undefined { return this.loadRt().runSelfAttack; }
 
 	// ── Checkpoint compat (thin wrappers around load/save) ──────────────
 	toCheckpoint(status: XddStatus, rollbackCount: number): XddCheckpointData {
@@ -723,7 +713,8 @@ export interface XddTaskInstruction {
 export interface XddArtifactSubmission {
 	summary: string;
 	artifacts: string[];
-	selfAttack: string;
+	/** One run-level review, supplied only by the final verify submission. */
+	selfAttack?: string;
 	pass?: boolean;
 	error?: string;
 	/** Failure source; omitted means a failed hard Gate for backward compatibility. */
@@ -770,7 +761,10 @@ export interface XddCheckpointData {
 	rollbackCount: number;
 	status: XddStatus;
 	submittedArtifacts: Record<string, string[]>;
+	/** Legacy per-stage notes retained only for reading older runtime files. */
 	selfAttackNotes: Record<string, string>;
+	/** One self-attack conclusion for the whole run; never a design artifact. */
+	runSelfAttack?: string;
 	esg: XddEsgNode[];
 	at: string;
 	// ── Runtime-only fields (file-first: persisted to runtime.json, optional
