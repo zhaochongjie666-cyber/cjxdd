@@ -11,6 +11,24 @@ const verify = STAGES.find((stage) => stage.name === "verify")!;
 const spec = STAGES.find((stage) => stage.name === "spec")!;
 
 describe("xdd policy", () => {
+	it("allows every stage to use the lifecycle and recovery tools named in prompts", () => {
+		const promptTools = [
+			"xdd_observe",
+			"xdd_desired_state",
+			"xdd_difference",
+			"xdd_next_task",
+			"xdd_submit_artifact",
+			"xdd_advance",
+			"xdd_diagnose",
+			"xdd_rollback",
+		];
+		for (const stage of STAGES) {
+			for (const tool of promptTools) {
+				expect(stage.allowedTools).toContain(tool);
+			}
+		}
+	});
+
 	it("blocks cwd escapes and symlink escapes", () => {
 		const cwd = mkdtempSync(join(tmpdir(), "xdd-policy-"));
 		const outside = mkdtempSync(join(tmpdir(), "xdd-outside-"));

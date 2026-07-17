@@ -13,7 +13,24 @@ import { evaluateVerifyEvidenceGateFull } from "./evidence/verify-gate.ts";
 
 const roleFor = (name: XddStageName): string => STAGE_ROLES[name];
 
-const CONTROLLER_TOOLS = ["xdd_submit_artifact", "xdd_list_skills", "xdd_load_skill", "xdd_harness_get", "xdd_harness_set"] as const;
+// Controller tools are used by the common lifecycle and failure-recovery
+// prompts, irrespective of the active delivery stage. These tools enforce
+// their own state preconditions; excluding one here would make the prompt ask
+// the agent to perform a policy-blocked transition or recovery action.
+const CONTROLLER_TOOLS = [
+	"xdd_observe",
+	"xdd_desired_state",
+	"xdd_difference",
+	"xdd_next_task",
+	"xdd_submit_artifact",
+	"xdd_advance",
+	"xdd_diagnose",
+	"xdd_rollback",
+	"xdd_list_skills",
+	"xdd_load_skill",
+	"xdd_harness_get",
+	"xdd_harness_set",
+] as const;
 const READ_TOOLS = ["read", "grep", "find", "ls"] as const;
 const WRITE_TOOLS = ["write", "edit"] as const;
 
