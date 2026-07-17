@@ -64,7 +64,14 @@ export function createXddRollbackTool(getState: GetXddState): ToolDefinition {
 			}
 			const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
 			try {
-				controller.dispatch({ type: "ROLLBACK", target, reason: String(params.reason ?? "") });
+				const rollback = controller.dispatch({ type: "ROLLBACK", target, reason: String(params.reason ?? "") });
+				if (rollback.state.status === "failed") {
+					return {
+						content: [{ type: "text", text: `[xdd_rollback] ${rollback.state.lastStageError ?? "流程预算耗尽，流程退出"}。` }],
+						details: {},
+						terminate: true,
+					};
+				}
 			} catch (error) {
 				throw new Error(`[xdd_rollback] ${error instanceof Error ? error.message : String(error)}`);
 			}

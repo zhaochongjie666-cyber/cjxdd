@@ -9,6 +9,8 @@ import { runAIGate, formatAIGateResult } from "../aigate.ts";
 import { getAIGateLLM } from "../llm-ref.ts";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { evaluateVerifyEvidenceGateFull } from "../evidence/verify-gate.ts";
+import { routeVerifyFailure } from "../verify-failure-routing.ts";
 
 const schema = Type.Object({
 	summary: Type.String({ description: "本阶段完成内容与产物路径摘要" }),
@@ -21,9 +23,9 @@ const schema = Type.Object({
 
 export type XddSubmitArtifactInput = Static<typeof schema>;
 
-function dispatchToController(state: XddRunnerState, command: Parameters<XddController["dispatch"]>[0]): void {
+function dispatchToController(state: XddRunnerState, command: Parameters<XddController["dispatch"]>[0]) {
 	const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
-	controller.dispatch(command);
+	return controller.dispatch(command);
 }
 
 const diagnoseRollbackTarget: Readonly<Record<string, XddStageName>> = {
@@ -244,22 +246,27 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			// so the stall counter could climb to 40+ without ever triggering the
 			// 3-turn escalation nudge.
 			state.lastSubmitAt = Date.now();
-			dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
 			if (stage.exit === "verdict") {
 				const pass = Boolean(params.pass);
 				dispatchToController(state, { type: "RECORD_SIGNAL", signal: pass ? "verdict_pass" : "verdict_fail" });
 				if (!pass) {
-					return ok(
-						`${stage.name} verdict: FAIL - ${summary}\n` +
-							`⚠️ 验证未通过。如果是实现缺陷（代码 bug / 端点缺失 / 测试失败），请立即调 xdd_rollback("execute", "verify 验证失败，主动返回 execute 修复后重跑")。\n` +
-							`如果是设计缺陷（规则不清 / 架构缺失 / 兜底不够），调 xdd_diagnose 诊断根因后回退到对应设计层。\n` +
-							`不要问用户 -- 实现缺陷应回 execute 修复后重跑 verify。`,
-					);
+					const verifyResult = await evaluateVerifyEvidenceGateFull(state.cwd);
+					const route = routeVerifyFailure({ summary, gateReason: verifyResult.reason, failure: verifyResult.failure });
+					// Submit first so the precise failure is retained as the gate result,
+					// then let Controller atomically enforce its recovery budget.
+					dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error: route.reason } });
+					const rollback = dispatchToController(state, { type: "ROLLBACK", target: route.target, reason: route.reason });
+					if (rollback.state.status === "failed") {
+						return { content: [{ type: "text", text: `${stage.name} verdict: FAIL\n${route.reason}\n❌ Controller 已在第 ${rollback.state.flowRollbackCount} 次失败终止 run。` }], details: {}, terminate: true };
+					}
+					return ok(`${stage.name} verdict: FAIL\n${route.reason}\n已由 Controller 自动回退 ${stage.name} → ${route.target} 并重新排程。`);
 				}
+				dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
 				return ok(
 					`${stage.name} verdict: pass - ${summary}\n剩余硬 Gate 自愈预算：${state.stageSelfHealBudget(stage.name, "hard_gate").remaining}/${state.maxSelfHealPerStage}\n剩余 AIGate 自愈预算：${state.stageSelfHealBudget(stage.name, "ai_gate").remaining}/${state.maxSelfHealPerStage}${llmInfo ? "\nAIGate: 通过 ✅" : ""}`,
 				);
 			}
+			dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
 			dispatchToController(state, { type: "RECORD_SIGNAL", signal: "complete" });
 			return ok(
 				`${stage.name} 完成${mechanicalCheckResult.soft ? "（机械检查软通过）" : ""}：${summary}\n剩余硬 Gate 自愈预算：${state.stageSelfHealBudget(stage.name, "hard_gate").remaining}/${state.maxSelfHealPerStage}\n剩余 AIGate 自愈预算：${state.stageSelfHealBudget(stage.name, "ai_gate").remaining}/${state.maxSelfHealPerStage}\nAIGate: 通过 ✅`,
