@@ -295,7 +295,7 @@ export class XddRunnerState {
 	set flowRollbackLimitTier1(v: number) { this.mutRt("flowRollbackLimitTier1", v); }
 	get flowRollbackLimitTier2(): number { return this.loadRt().flowRollbackLimitTier2 ?? 10; }
 	set flowRollbackLimitTier2(v: number) { this.mutRt("flowRollbackLimitTier2", v); }
-	get maxRollbacksPerStage(): number { return this.loadRt().maxRollbacksPerStage ?? 2; }
+	get maxRollbacksPerStage(): number { return this.loadRt().maxRollbacksPerStage ?? 7; }
 	set maxRollbacksPerStage(v: number) { this.mutRt("maxRollbacksPerStage", v); }
 	/** Number of completed rollbacks to each target stage. Controller-owned. */
 	get rollbackAttempts(): Record<string, number> { return this.loadRt().rollbackAttempts ?? {}; }
@@ -777,7 +777,7 @@ function defaultRt(runId: string = ""): XddCheckpointData {
 		runId: "", userInput: "", cwd: "",
 		planIndex: -1, plan: [], mode: "stage",
 		ledger: [], attempts: {}, selfHealUsed: {},
-		maxRollbacksPerStage: 2, maxSelfHealPerStage: 5,
+		maxRollbacksPerStage: 7, maxSelfHealPerStage: 5,
 		rollbackAttempts: {},
 		flowRollbackCount: 0, flowRollbackLimitTier1: 5, flowRollbackLimitTier2: 10,
 		rollbackCount: 0, status: "running",

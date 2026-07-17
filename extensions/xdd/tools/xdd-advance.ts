@@ -44,7 +44,6 @@ export function createXddAdvanceTool(getState: GetXddState): ToolDefinition {
 					});
 					if (!groupGate.ok) {
 						state.clearSignals();
-						state.flowRollbackCount++; // Layer 2: group gate fail -> flow rollback
 						// Phase 5 (E.4): atomically call goToStageName so the
 						// rollback lands even if the agent never calls
 						// xdd_rollback. We mark superseded ledger entries,

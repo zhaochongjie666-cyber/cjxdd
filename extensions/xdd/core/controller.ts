@@ -279,16 +279,29 @@ function approveTransition(state: RuntimeStateV2, stages: readonly XddStageSpec[
 	return { state: stamp(state), effects };
 }
 
+export const MAX_FLOW_ROLLBACKS = 7;
+
 function rollbackTransition(state: RuntimeStateV2, target: XddStageName | undefined, reason: string, stages: readonly XddStageSpec[], effects: XddEffect[]): ControllerTransitionResult {
 	const targetName = target ?? defaultRollbackTarget(state, stages);
 	const idx = state.plan.findIndex((entry) => entry.stageName === targetName);
 	if (idx < 0 || idx >= state.planIndex) throw new ControllerError("INVALID_ROLLBACK", `rollback target ${targetName} must be earlier than current stage`);
+	const from = currentStageName(state, stages) ?? "?";
+	const nextFlowRollback = (state.flowRollbackCount ?? 0) + 1;
+	// The Controller, rather than a tool or model prompt, owns the run-wide
+	// recovery budget. The eighth failed recovery terminates the run atomically.
+	if (nextFlowRollback > MAX_FLOW_ROLLBACKS) {
+		state.flowRollbackCount = nextFlowRollback;
+		state.status = "failed" as never;
+		state.stageOutcome = "failed";
+		state.lastStageError = `${reason}\n流程回退预算耗尽（${nextFlowRollback}/${MAX_FLOW_ROLLBACKS}）。`;
+		projectAuditEvent(state, { type: "esg_record", nodeType: "finding", stage: from as XddStageName, label: "rollback budget exhausted", data: { from, to: targetName, reason: state.lastStageError } });
+		return { state: stamp(state), effects };
+	}
 	const used = state.rollbackAttempts?.[targetName] ?? 0;
 	const limit = state.maxRollbacksPerStage ?? 2;
 	if (used >= limit) {
 		throw new ControllerError("ROLLBACK_LIMIT_REACHED", `rollback target ${targetName} reached its limit (${used}/${limit})`);
 	}
-	const from = currentStageName(state, stages) ?? "?";
 	const targetOriginalIndex = state.plan[idx]?.originalIndex ?? idx;
 	for (const entry of state.ledger ?? []) {
 		if (entry.stageIndex >= targetOriginalIndex && !entry.superseded) entry.superseded = true;
@@ -296,10 +309,12 @@ function rollbackTransition(state: RuntimeStateV2, target: XddStageName | undefi
 	state.planIndex = idx;
 	if (!state.rollbackAttempts) state.rollbackAttempts = {};
 	state.rollbackAttempts[targetName] = used + 1;
+	state.flowRollbackCount = nextFlowRollback;
 	state.rollbackOutcome = { from: from as XddStageName, to: targetName, reason };
 	resetStageAttemptState(state, targetName);
 	state.stageOutcome = "advanced";
-	state.lastStageError = null;
+	state.lastStageError = reason;
+	projectAuditEvent(state, { type: "esg_record", nodeType: "finding", stage: from as XddStageName, label: `rollback: ${from} -> ${targetName}`, data: { reason } });
 	state.stageEpoch = `${state.runId}:${targetName}:${state.attempts?.[targetName] ?? 0}`;
 	effects.push({ type: "SET_ACTIVE_TOOLS", tools: currentStage(state, stages)?.allowedTools ?? [] });
 	return { state: stamp(state), effects };
@@ -359,7 +374,7 @@ function minimalRuntime(runId: string, cwd: string, userInput: string): RuntimeS
 		ledger: [],
 		attempts: {},
 		selfHealUsed: {},
-		maxRollbacksPerStage: 2,
+		maxRollbacksPerStage: MAX_FLOW_ROLLBACKS,
 		rollbackAttempts: {},
 		maxSelfHealPerStage: 5,
 		flowRollbackCount: 0,
