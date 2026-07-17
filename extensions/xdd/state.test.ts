@@ -65,11 +65,10 @@ describe("XddRunnerState navigation compatibility", () => {
 });
 
 describe("XddRunnerState flow rollback (Layer 2)", () => {
-	it("defaults: tier1=5, tier2=10", () => {
+	it("defaults to a single persisted limit of 7", () => {
 		const state = new XddRunnerState({ runId: "t", cwd: tmpCwd(), userInput: "u" });
 		expect(state.flowRollbackCount).toBe(0);
-		expect(state.flowRollbackLimitTier1).toBe(5);
-		expect(state.flowRollbackLimitTier2).toBe(10);
+		expect(state.flowRollbackLimit).toBe(7);
 	});
 });
 

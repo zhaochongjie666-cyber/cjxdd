@@ -285,16 +285,20 @@ function rollbackTransition(state: RuntimeStateV2, target: XddStageName | undefi
 	const targetName = target ?? defaultRollbackTarget(state, stages);
 	const idx = state.plan.findIndex((entry) => entry.stageName === targetName);
 	if (idx < 0 || idx >= state.planIndex) throw new ControllerError("INVALID_ROLLBACK", `rollback target ${targetName} must be earlier than current stage`);
-	const from = currentStageName(state, stages) ?? "?";
-	const nextFlowRollback = (state.flowRollbackCount ?? 0) + 1;
-	// The Controller, rather than a tool or model prompt, owns the run-wide
-	// recovery budget. The eighth failed recovery terminates the run atomically.
-	if (nextFlowRollback > MAX_FLOW_ROLLBACKS) {
-		state.flowRollbackCount = nextFlowRollback;
+	const flowRollbackCount = state.flowRollbackCount ?? 0;
+	const flowRollbackLimit = state.flowRollbackLimit ?? 7;
+	if (flowRollbackCount >= flowRollbackLimit) {
+		const message = "流程预算耗尽，流程退出";
 		state.status = "failed" as never;
 		state.stageOutcome = "failed";
-		state.lastStageError = `${reason}\n流程回退预算耗尽（${nextFlowRollback}/${MAX_FLOW_ROLLBACKS}）。`;
-		projectAuditEvent(state, { type: "esg_record", nodeType: "finding", stage: from as XddStageName, label: "rollback budget exhausted", data: { from, to: targetName, reason: state.lastStageError } });
+		state.lastStageError = `${message}（已使用 ${flowRollbackCount}/${flowRollbackLimit} 次回退）`;
+		state.stopRequested = true;
+		state.continuationQueued = false;
+		state.continuationReason = null;
+		state.continuationStage = null;
+		// Invalidate a continuation that was already queued before this command.
+		state.continuationEpoch = (state.continuationEpoch ?? 0) + 1;
+		effects.push({ type: "NOTIFY", level: "error", text: `[xdd] ${state.lastStageError}。` });
 		return { state: stamp(state), effects };
 	}
 	const used = state.rollbackAttempts?.[targetName] ?? 0;
@@ -309,9 +313,10 @@ function rollbackTransition(state: RuntimeStateV2, target: XddStageName | undefi
 	state.planIndex = idx;
 	if (!state.rollbackAttempts) state.rollbackAttempts = {};
 	state.rollbackAttempts[targetName] = used + 1;
-	state.flowRollbackCount = nextFlowRollback;
+	state.flowRollbackCount = flowRollbackCount + 1;
 	state.rollbackOutcome = { from: from as XddStageName, to: targetName, reason };
 	resetStageAttemptState(state, targetName);
+	state.status = "running" as never;
 	state.stageOutcome = "advanced";
 	state.lastStageError = reason;
 	projectAuditEvent(state, { type: "esg_record", nodeType: "finding", stage: from as XddStageName, label: `rollback: ${from} -> ${targetName}`, data: { reason } });
@@ -378,8 +383,7 @@ function minimalRuntime(runId: string, cwd: string, userInput: string): RuntimeS
 		rollbackAttempts: {},
 		maxSelfHealPerStage: 5,
 		flowRollbackCount: 0,
-		flowRollbackLimitTier1: 5,
-		flowRollbackLimitTier2: 10,
+		flowRollbackLimit: 7,
 		rollbackCount: 0,
 		status: "running" as never,
 		submittedArtifacts: {},

@@ -53,11 +53,18 @@ export function createXddAdvanceTool(getState: GetXddState): ToolDefinition {
 						const from = stage.name;
 						const to = group.rollbackTarget;
 						const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage: plannedStage }) => plannedStage));
-						controller.dispatch({
+						const rollback = controller.dispatch({
 							type: "ROLLBACK",
 							target: to,
 							reason: `${group.gateLabel} 未通过：${groupGate.reason ?? "未知"}`,
 						});
+						if (rollback.state.status === "failed") {
+							return {
+								content: [{ type: "text", text: `[xdd_advance] ${rollback.state.lastStageError ?? "流程预算耗尽，流程退出"}。` }],
+								details: {},
+								terminate: true,
+							};
+						}
 						return ok(
 							`[xdd_advance] 组级 ${group.gateLabel} 未通过，强制回退 ${stage.name} -> ${group.rollbackTarget}：${groupGate.reason ?? "未知"}`,
 						);
