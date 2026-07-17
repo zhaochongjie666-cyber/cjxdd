@@ -14,7 +14,7 @@ function started(): RuntimeStateV2 {
 describe("XddController transition", () => {
 	it("START creates a running v2 runtime and kickoff effects", () => {
 		const result = transition({} as RuntimeStateV2, { type: "START", task: "build", options: { cwd: "/tmp/x", runId: "r1" } });
-		expect(result.state.schemaVersion).toBe(2);
+		expect(result.state.schemaVersion).toBe(3);
 		expect(result.state.status).toBe("running");
 		expect(result.state.planIndex).toBe(0);
 		expect(result.effects.map((effect) => effect.type)).toEqual(["SET_ACTIVE_TOOLS", "SEND_FOLLOWUP"]);
@@ -191,6 +191,43 @@ describe("XddController transition", () => {
 		state.planIndex = 3;
 		expect(() => transition(state, { type: "ROLLBACK", target: "spec", reason: "third" }))
 			.toThrow(/ROLLBACK_LIMIT_REACHED|reached its limit/);
+	});
+
+	it("consumes the single flow rollback budget on rollbacks 1 through 7", () => {
+		let state = started();
+		state.maxRollbacksPerStage = 20;
+		for (let attempt = 1; attempt <= 7; attempt += 1) {
+			state.planIndex = 3; // architecture; the controller must own each increment
+			state = transition(state, { type: "ROLLBACK", target: "spec", reason: `retry ${attempt}` }).state;
+			expect(state.flowRollbackLimit).toBe(7);
+			expect(state.flowRollbackCount).toBe(attempt);
+			expect(state.status).toBe("running");
+		}
+	});
+
+	it("terminates the runtime instead of allowing an eighth flow rollback", () => {
+		const state = started();
+		state.planIndex = 3;
+		state.maxRollbacksPerStage = 20;
+		state.flowRollbackCount = 7;
+		state.continuationQueued = true;
+		const result = transition(state, { type: "ROLLBACK", target: "spec", reason: "eighth retry" });
+		expect(result.state.flowRollbackCount).toBe(7);
+		expect(result.state.status).toBe("failed");
+		expect(result.state.stageOutcome).toBe("failed");
+		expect(result.state.continuationQueued).toBe(false);
+		expect(result.state.lastStageError).toContain("流程预算耗尽，流程退出");
+		expect(result.effects).toEqual([expect.objectContaining({ type: "NOTIFY", text: expect.stringContaining("流程预算耗尽，流程退出") })]);
+	});
+
+	it("applies the flow budget to a group Gate's automatic ROLLBACK command", () => {
+		const state = started();
+		state.planIndex = 2; // spec, whose discovery group rolls back to init
+		state.flowRollbackCount = 7;
+		const result = transition(state, { type: "ROLLBACK", target: "init", reason: "Gate 1 failed" });
+		expect(result.state.status).toBe("failed");
+		expect(result.state.planIndex).toBe(2);
+		expect(result.state.lastStageError).toContain("流程预算耗尽，流程退出");
 	});
 
 	it("RELEASE_CONTINUATION clears a persisted continuation lock", () => {

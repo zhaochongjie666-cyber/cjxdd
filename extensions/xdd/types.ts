@@ -291,10 +291,9 @@ export class XddRunnerState {
 	set lastAgentEndAt(v: number) { this.mutRt("lastAgentEndAt", v); }
 	get flowRollbackCount(): number { return this.loadRt().flowRollbackCount ?? 0; }
 	set flowRollbackCount(v: number) { this.mutRt("flowRollbackCount", v); }
-	get flowRollbackLimitTier1(): number { return this.loadRt().flowRollbackLimitTier1 ?? 5; }
-	set flowRollbackLimitTier1(v: number) { this.mutRt("flowRollbackLimitTier1", v); }
-	get flowRollbackLimitTier2(): number { return this.loadRt().flowRollbackLimitTier2 ?? 10; }
-	set flowRollbackLimitTier2(v: number) { this.mutRt("flowRollbackLimitTier2", v); }
+	/** Total number of flow-level rollbacks allowed for this persisted run. */
+	get flowRollbackLimit(): number { return this.loadRt().flowRollbackLimit ?? 7; }
+	set flowRollbackLimit(v: number) { this.mutRt("flowRollbackLimit", v); }
 	get maxRollbacksPerStage(): number { return this.loadRt().maxRollbacksPerStage ?? 2; }
 	set maxRollbacksPerStage(v: number) { this.mutRt("maxRollbacksPerStage", v); }
 	/** Number of completed rollbacks to each target stage. Controller-owned. */
@@ -571,7 +570,7 @@ export type XddEvent =
 
 export type XddEventListener = (event: XddEvent) => void;
 
-export type XddStatus = "running" | "reflecting" | "pass" | "fail";
+export type XddStatus = "running" | "reflecting" | "pass" | "fail" | "failed";
 
 // ============================================================================
 // Blind Journey Validation (black-box user acceptance)
@@ -698,8 +697,8 @@ export interface XddCheckpointData {
 	rollbackAttempts?: Record<string, number>;
 	maxSelfHealPerStage: number;
 	flowRollbackCount: number;
-	flowRollbackLimitTier1: number;
-	flowRollbackLimitTier2: number;
+	/** Flow-level rollback budget. `flowRollbackCount` records the used amount. */
+	flowRollbackLimit: number;
 	rollbackCount: number;
 	status: XddStatus;
 	submittedArtifacts: Record<string, string[]>;
@@ -773,13 +772,13 @@ export type XddStageOutcome =
 /** Default runtime data for a fresh run. */
 function defaultRt(runId: string = ""): XddCheckpointData {
 	return {
-		schemaVersion: 2,
+		schemaVersion: 3,
 		runId: "", userInput: "", cwd: "",
 		planIndex: -1, plan: [], mode: "stage",
 		ledger: [], attempts: {}, selfHealUsed: {},
 		maxRollbacksPerStage: 2, maxSelfHealPerStage: 5,
 		rollbackAttempts: {},
-		flowRollbackCount: 0, flowRollbackLimitTier1: 5, flowRollbackLimitTier2: 10,
+		flowRollbackCount: 0, flowRollbackLimit: 7,
 		rollbackCount: 0, status: "running",
 		submittedArtifacts: {}, selfAttackNotes: {}, esg: [],
 		at: new Date().toISOString(),
