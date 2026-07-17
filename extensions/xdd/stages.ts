@@ -37,7 +37,9 @@ const CONTRACT_META: Record<XddStageName, {
 	},
 	understand: {
 		inputs: [input("README*", "仓库 README/说明文档"), input("docs/**", "仓库文档"), input(".xdd/**", "既有 XDD 设计与运行状态")],
-		readScopes: ["README*", "docs/**", ".xdd/**", "package.json", "pyproject.toml", "Cargo.toml", "src/**", "lib/**", "app/**", "tests/**"],
+		// Understand may use any Markdown document as product context, including
+		// root-level project notes. It must not inspect implementation source.
+		readScopes: ["**/*.md", ".xdd/**", "package.json", "pyproject.toml", "Cargo.toml"],
 		writeScopes: [".xdd/design/**", ".xdd/runs/**"],
 		gatePolicy: "hard",
 		rollbackTarget: "init",

@@ -34,6 +34,19 @@ describe("xdd policy", () => {
 		}
 	});
 
+	it("allows understand to read Markdown context without allowing source reads", () => {
+		const cwd = mkdtempSync(join(tmpdir(), "xdd-policy-"));
+		const understand = STAGES.find((stage) => stage.name === "understand")!;
+		try {
+			for (const path of ["context.md", "core.md", "MEMORY.md", "docs/guide.md"]) {
+				expect(checkStagePathAccess(cwd, understand, path, "read").ok).toBe(true);
+			}
+			expect(checkStagePathAccess(cwd, understand, "src/app.ts", "read").ok).toBe(false);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
 	it("blocks spec source reads by contract", () => {
 		const cwd = mkdtempSync(join(tmpdir(), "xdd-policy-"));
 		try {
