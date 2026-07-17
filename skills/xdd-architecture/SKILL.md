@@ -21,6 +21,16 @@ description: |
 | **下游消费者** | `xdd-plan`（端点/聚合/事件 → task）、`xdd-resilience`（ODD 失败模型是韧性种子）、`xdd-verify`（端点清单做 architecture↔code 审计） |
 | **回溯锚** | 每个端点标 `@flow BXX-NYY` + `@rules RXX`，每个技术选型标 `@intent` |
 
+### 上游锚冲突：提出变更，不直接改写
+
+`intent.md` 和 `design.md` 属于 understand 阶段的项目级锚；architecture 阶段只能读取，**不得直接修改**。当架构分析发现上游锚与已知系统约束、规则或可验证性交叉冲突时：
+
+1. 写入 `.xdd/design/architecture/upstream-change-requests.md`，逐项记录：受影响的上游段落、可复现证据、影响的 RXX/架构决策、至少一个备选方案、推荐方案，以及是否需要用户确认。
+2. 仅规则、验收场景或业务语义不完整：调用 `xdd_rollback(targetStage="spec", reason=...)`。
+3. 项目意图、成功标准、非目标、范围或项目级技术约束不成立：调用 `xdd_rollback(targetStage="understand", reason=...)`；由 understand 阶段修改 `intent.md`/`design.md` 并重新通过后续阶段。
+
+不要为了让架构方案成立而静默缩小目标、删除成功标准或把“待确认”伪装成确定决策。
+
 ## ADD 思维链
 
 ```

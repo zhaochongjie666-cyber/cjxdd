@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { STAGES } from "../stages.ts";
 import { checkStagePathAccess } from "./path-policy.ts";
-import { applyBashPolicy } from "./bash-policy.ts";
+import { applyBashPolicy, applyStageBashPolicy } from "./bash-policy.ts";
+import { enforceToolCallPolicy } from "./tool-policy.ts";
 import { ensureVerifySnapshot, diffVerifySnapshot } from "./verify-snapshot.ts";
 
 const verify = STAGES.find((stage) => stage.name === "verify")!;
@@ -52,6 +53,18 @@ describe("xdd policy", () => {
 		}
 	});
 
+	it("keeps upstream anchors read-only in architecture while allowing a durable change request", () => {
+		const cwd = mkdtempSync(join(tmpdir(), "xdd-policy-"));
+		const architecture = STAGES.find((stage) => stage.name === "architecture")!;
+		try {
+			expect(checkStagePathAccess(cwd, architecture, ".xdd/design/intent.md", "write").ok).toBe(false);
+			expect(checkStagePathAccess(cwd, architecture, ".xdd/design/design.md", "write").ok).toBe(false);
+			expect(checkStagePathAccess(cwd, architecture, ".xdd/design/architecture/upstream-change-requests.md", "write").ok).toBe(true);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
 	it("allows understand to read Markdown context without allowing source reads", () => {
 		const cwd = mkdtempSync(join(tmpdir(), "xdd-policy-"));
 		const understand = STAGES.find((stage) => stage.name === "understand")!;
@@ -79,6 +92,16 @@ describe("xdd policy", () => {
 		expect(applyBashPolicy(input)).toBeNull();
 		expect(input.timeout).toBe(300);
 		expect(applyBashPolicy({ command: "find / -name x" })?.reason).toContain("find /");
+	});
+
+	it("does not let bash bypass scoped-stage write policy", () => {
+		expect(applyStageBashPolicy(verify, { command: "npm test" })).toBeNull();
+		expect(applyStageBashPolicy(verify, { command: "printf x > output" })?.reason).toContain("verify 阶段禁止");
+		expect(applyStageBashPolicy(verify, { command: "printf x > src/x.ts" })?.reason).toContain("verify 阶段禁止");
+		expect(applyStageBashPolicy(verify, { command: "echo x | tee .xdd/design/intent.md" })?.reason).toContain("verify 阶段禁止");
+
+		const state = { cwd: "/tmp/xdd-policy", currentStage: () => verify } as any;
+		expect(() => enforceToolCallPolicy(state, { toolName: "bash", input: { command: "printf x > src/x.ts" } })).toThrow("verify 阶段禁止");
 	});
 });
 
