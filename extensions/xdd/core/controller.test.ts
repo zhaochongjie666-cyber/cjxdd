@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RuntimeStore } from "../storage/runtime-store.ts";
 import { STAGES } from "../stages.ts";
-import { transition, XddController, schedulerText, ControllerError } from "./controller.ts";
+import { COMPACTION_THRESHOLD_PERCENT, transition, XddController, schedulerText, ControllerError } from "./controller.ts";
 import type { RuntimeStateV2 } from "../storage/runtime-migrations.ts";
 
 function started(): RuntimeStateV2 {
@@ -100,18 +100,26 @@ describe("XddController transition", () => {
 	it("high context usage requests compaction before continuation", () => {
 		const state = started();
 		state.stageOutcome = "gate_passed";
-		const result = transition(state, { type: "AGENT_ENDED", stopReason: "stop", contextUsagePercent: 0.71 });
+		const result = transition(state, { type: "AGENT_ENDED", stopReason: "stop", contextUsagePercent: 71 });
 		expect(result.effects[0]).toMatchObject({ type: "COMPACT" });
 		expect(result.effects[0]?.type === "COMPACT" ? result.effects[0].instructions : "").toContain("tool_call 与 tool result 配对");
 		expect(result.state.continuationQueued).toBeFalsy();
 		expect(result.state.lastCompactionAt).toBeGreaterThan(0);
 	});
 
+	it("does not compact a short session when Pi reports fractional usage", () => {
+		const state = started();
+		state.stageOutcome = "gate_passed";
+		const result = transition(state, { type: "AGENT_ENDED", stopReason: "stop", contextUsagePercent: 0.72 });
+		expect(COMPACTION_THRESHOLD_PERCENT).toBe(70);
+		expect(result.effects[0]).toMatchObject({ type: "SEND_FOLLOWUP" });
+	});
+
 	it("recent compaction does not loop and queues the normal continuation", () => {
 		const state = started();
 		state.stageOutcome = "gate_passed";
 		state.lastCompactionAt = Date.now();
-		const result = transition(state, { type: "AGENT_ENDED", stopReason: "stop", contextUsagePercent: 0.99 });
+		const result = transition(state, { type: "AGENT_ENDED", stopReason: "stop", contextUsagePercent: 99 });
 		expect(result.effects[0]).toMatchObject({ type: "SEND_FOLLOWUP" });
 		expect(result.state.continuationQueued).toBe(true);
 	});

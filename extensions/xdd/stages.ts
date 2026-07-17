@@ -46,8 +46,15 @@ const CONTRACT_META: Record<XddStageName, {
 	rollbackTarget: XddStageName | "none";
 }> = {
 	init: {
-		inputs: [input("README*", "仓库 README/说明文档（如存在）"), input("docs/**", "仓库文档（如存在）")],
-		readScopes: ["README*", "docs/**", "package.json", "pyproject.toml", "Cargo.toml", ".xdd/**"],
+		inputs: [input("**/*.md", "仓库文档（如存在）"), input("**/*.png", "仓库图片参考（如存在）")],
+		// Init must not inspect implementation, but product documents and visual
+		// references may live outside README.md or docs/. Keep their extensions
+		// explicit so this remains a non-code allowlist instead of a broad read.
+		readScopes: [
+			"**/*.md", "**/*.mdx", "**/*.txt", "**/*.rst", "**/*.adoc", "**/*.asciidoc", "**/*.pdf", "**/*.doc", "**/*.docx",
+			"**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.svg", "**/*.avif", "**/*.bmp", "**/*.ico",
+			"package.json", "pyproject.toml", "Cargo.toml", ".xdd/**",
+		],
 		writeScopes: [".xdd/**"],
 		gatePolicy: "explicit-soft",
 		rollbackTarget: "none",
@@ -156,17 +163,20 @@ export const STAGES: readonly XddStageSpec[] = [
 		exit: "goal_complete",
 		allowedTools: [...READ_TOOLS, ...CONTROLLER_TOOLS],
 		desiredState: [
+			"已核对 Controller 生成的 .xdd/design/README.md、.xdd/runs/README.md、.xdd/archive/README.md 脚手架说明，并将它们作为 init 结构证据提交",
 			"已读仓库现有文档（README / docs/ / .xdd/design/ 如存在），对项目目标有 3-5 句话的总结",
 			"已与用户确认或在 prompt 中明示了本次 run 的目标边界（在 init 末尾向用户复述一遍即可）",
 			"已选好本次用到的 xdd 技能子集（xdd_list_skills -> xdd_load_skill）",
 			"已自我攻击：检查是否遗漏了仓库现有约束/技术债/目标边界模糊，并记录结论",
 		],
-		deliverablePaths: [],
+		// These controller-owned markers make init's structural evidence
+		// observable without granting this read-only stage write permissions.
+		deliverablePaths: [".xdd/design/README.md", ".xdd/runs/README.md", ".xdd/archive/README.md"],
 		noCodeReading: true,
-		aigateStandard: `审查 init 阶段：
-1. .xdd/ 目录结构是否完整（runs/ design/ archive/）
-2. 是否有占位符或空壳（不能只有目录没有 README/说明）
-3. goals.md 占位是否合理（待 brainstorm 替换）`,
+		aigateStandard: `审查 init 阶段的 Controller 脚手架证据：
+1. .xdd/design/README.md、.xdd/runs/README.md、.xdd/archive/README.md 是否都存在且说明各自目录用途
+2. 说明是否明确边界：init 不生成 intent.md、design.md、goals.md 或 status.md；这些业务设计/迭代产物归后续阶段所有
+3. 不要求 init 生成或提交业务设计内容；若 intent.md 不存在，“规格偏离攻击”应标记为 N/A 并说明 init 尚未具备意图锚`,
 				gate: async () => softPass(),
 	},
 	{

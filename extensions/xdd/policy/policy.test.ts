@@ -10,6 +10,7 @@ import { ensureVerifySnapshot, diffVerifySnapshot } from "./verify-snapshot.ts";
 
 const verify = STAGES.find((stage) => stage.name === "verify")!;
 const spec = STAGES.find((stage) => stage.name === "spec")!;
+const init = STAGES.find((stage) => stage.name === "init")!;
 
 describe("xdd policy", () => {
 	it("allows every stage to use the lifecycle and recovery tools named in prompts", () => {
@@ -76,6 +77,27 @@ describe("xdd policy", () => {
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
+	});
+
+	it("allows init to read product documents and image references without source reads", () => {
+		const cwd = mkdtempSync(join(tmpdir(), "xdd-policy-"));
+		try {
+			for (const path of ["prd.md", "product/brief.pdf", "assets/login-flow.png", "docs/logo.svg"]) {
+				expect(checkStagePathAccess(cwd, init, path, "read").ok).toBe(true);
+			}
+			expect(checkStagePathAccess(cwd, init, "src/app.ts", "read").ok).toBe(false);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("declares controller-owned scaffold markers as init evidence without granting writes", () => {
+		expect(init.deliverablePaths).toEqual([
+			".xdd/design/README.md",
+			".xdd/runs/README.md",
+			".xdd/archive/README.md",
+		]);
+		expect(init.allowedTools).not.toContain("write");
 	});
 
 	it("blocks spec source reads by contract", () => {
