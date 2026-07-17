@@ -71,32 +71,31 @@ const CONTRACT_META: Record<XddStageName, {
 	spec: {
 		inputs: [input(".xdd/design/design.md", "收敛设计决策"), input(".xdd/design/intent.md", "意图锚与成功标准")],
 		readScopes: [".xdd/design/**", ".xdd/runs/**"],
-		writeScopes: [".xdd/design/spec/**"],
+		// Design is iterative: each design stage may refine any design artifact
+		// discovered to need improvement, without gaining access to source code
+		// or run-scoped implementation artifacts.
+		writeScopes: [".xdd/design/**"],
 		gatePolicy: "hard",
 		rollbackTarget: "understand",
 	},
 	architecture: {
 		inputs: [input(".xdd/design/spec/**", "业务规则与验收场景")],
 		readScopes: [".xdd/design/**", "README*", "docs/**", "package.json", "pyproject.toml", "Cargo.toml"],
-		// Architecture may document an upstream inconsistency, but it must not
-		// silently rewrite project intent or converged product decisions. The
-		// change request lives with the architecture evidence and is handled by
-		// the owning upstream stage after an explicit rollback.
-		writeScopes: [".xdd/design/architecture/**"],
+		writeScopes: [".xdd/design/**"],
 		gatePolicy: "hard",
 		rollbackTarget: "spec",
 	},
 	wire: {
 		inputs: [input(".xdd/design/spec/**", "页面/交互来源规则"), input(".xdd/design/architecture/**", "架构约束")],
 		readScopes: [".xdd/design/**"],
-		writeScopes: [".xdd/design/wire/**"],
+		writeScopes: [".xdd/design/**"],
 		gatePolicy: "hard",
 		rollbackTarget: "architecture",
 	},
 	resilience: {
 		inputs: [input(".xdd/design/spec/**", "规则与异常路径"), input(".xdd/design/architecture/**", "架构与失败模式")],
-		readScopes: [".xdd/design/spec/**", ".xdd/design/architecture/**"],
-		writeScopes: [".xdd/design/architecture/**/resilience/**"],
+		readScopes: [".xdd/design/**"],
+		writeScopes: [".xdd/design/**"],
 		gatePolicy: "hard",
 		rollbackTarget: "architecture",
 	},

@@ -54,13 +54,17 @@ describe("xdd policy", () => {
 		}
 	});
 
-	it("keeps upstream anchors read-only in architecture while allowing a durable change request", () => {
+	it("allows all design stages to iteratively update design artifacts", () => {
 		const cwd = mkdtempSync(join(tmpdir(), "xdd-policy-"));
-		const architecture = STAGES.find((stage) => stage.name === "architecture")!;
 		try {
-			expect(checkStagePathAccess(cwd, architecture, ".xdd/design/intent.md", "write").ok).toBe(false);
-			expect(checkStagePathAccess(cwd, architecture, ".xdd/design/design.md", "write").ok).toBe(false);
-			expect(checkStagePathAccess(cwd, architecture, ".xdd/design/architecture/upstream-change-requests.md", "write").ok).toBe(true);
+			for (const stageName of ["understand", "spec", "architecture", "wire", "resilience"] as const) {
+				const stage = STAGES.find((candidate) => candidate.name === stageName)!;
+				expect(checkStagePathAccess(cwd, stage, ".xdd/design/personas/P3-项目主管.md", "write").ok).toBe(true);
+				expect(checkStagePathAccess(cwd, stage, ".xdd/design/intent.md", "write").ok).toBe(true);
+				expect(checkStagePathAccess(cwd, stage, ".xdd/design/architecture/overview.md", "write").ok).toBe(true);
+				expect(checkStagePathAccess(cwd, stage, ".xdd/design/personas/P3-项目主管.md", "read").ok).toBe(true);
+				expect(checkStagePathAccess(cwd, stage, "src/app.ts", "write").ok).toBe(false);
+			}
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
@@ -104,6 +108,18 @@ describe("xdd policy", () => {
 		const cwd = mkdtempSync(join(tmpdir(), "xdd-policy-"));
 		try {
 			expect(checkStagePathAccess(cwd, spec, "src/app.ts", "read").ok).toBe(false);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("allows spec edit calls to update personas and other design artifacts", () => {
+		const cwd = mkdtempSync(join(tmpdir(), "xdd-policy-"));
+		try {
+			expect(checkStagePathAccess(cwd, spec, ".xdd/design/personas/P3-项目主管.md", "write").ok).toBe(true);
+			const state = { cwd, currentStage: () => spec } as any;
+			expect(() => enforceToolCallPolicy(state, { toolName: "edit", input: { path: ".xdd/design/personas/P3-项目主管.md" } })).not.toThrow();
+			expect(() => enforceToolCallPolicy(state, { toolName: "edit", input: { path: ".xdd/design/intent.md" } })).not.toThrow();
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
