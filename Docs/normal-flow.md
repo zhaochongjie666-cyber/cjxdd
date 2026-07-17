@@ -12,8 +12,8 @@
 | **阶段数** | 5（explore → spec → plan → implement → verify） |
 | **工具数** | 6（`nf_observe`、`nf_desired_state`、`nf_difference`、`nf_submit_artifact`、`nf_advance`、`nf_rollback`） |
 | **复用** | xdd 的 `XddController` + `RuntimeStore` + Audit + Harness + Policy |
-| **砍掉** | AIGate、Hooks、Blind Journey、Group Gates、Renderers、双预算 |
-| **代码量** | ~1000 行（xdd 的 ~7500 行的 1/7） |
+| **砍掉** | AIGate、外部可编程 Hooks、Blind Journey、Group Gates、Renderers、双预算 |
+| **代码量** | ~1200 行 NF + 小型共享生命周期抽象 |
 
 **用户操作**：输 `/normal-flow <任务>`，系统按 explore → spec → plan → implement → verify 顺序跑，每个阶段 gate 通过就推进。任意阶段卡住调 `nf_rollback`。完成后自动归档。
 
@@ -49,18 +49,25 @@
               └────────────────────────────────────────────┘
 ```
 
-NF 没有自己的 Controller 状态机 —— **完全复用** `extensions/xdd/core/controller.ts` 的 `XddController` 类。NF 只新增：
+NF 没有自己的 Controller 状态机 —— **完全复用** `extensions/xdd/core/controller.ts` 的 `XddController` 类。为避免把 NF 恢复成 10 阶段 xdd run，先将 xdd 的启动/恢复生命周期抽成可注入 `stages`、extension activate 函数和用户面文案的共享 helper；`/normal-flow-resume` 绝不能调用当前固定 `STAGES` 的 `/xdd-resume` 路径。
+
+NF 新增：
 
 - 5 个 stage 定义（`stages.ts`）
 - 6 个 `nf_*` 工具（`tools/`）
 - 1 个 slash command（`flow.ts`）
 - extension 事件注册（`extension.ts`）
 
+并对共享层做两项小型抽象：
+
+- `StartOptions` / runtime 初始化接受 `maxSelfHealPerStage`、`flowRollbackLimit` 和 `iterLabel`；NF 显式传入 3 / 7 / `iter-N`，而不是继承 xdd 的 5 次默认值。
+- `resumeFlow()` 从 checkpoint 重建**调用方传入的** stage plan 并 activate 对应 extension；session-start 检测也由 NF 自己注册。生命周期 hook 仅用于 pause/resume/归档，不向用户暴露外部可编程 hook 点。
+
 ---
 
 ## 4. 5 阶段契约
 
-沿用 xdd 的 `XddStageSpec` 结构（`role` / `skill` / `exit` / `allowedTools` / `deliverablePaths` / `inputs` / `outputs` / `readScopes` / `writeScopes` / `gatePolicy` / `rollbackPolicy` / `desiredState` / `gate`）。
+沿用 xdd 的 `XddStageSpec` 结构（`role` / `skill` / `exit` / `allowedTools` / `deliverablePaths` / `inputs` / `outputs` / `readScopes` / `writeScopes` / `gatePolicy` / `rollbackPolicy` / `desiredState` / `gate`）。当前类型的 `aigateStandard` 仍是必填字段：共享类型应将其改为仅在 `aiGate.enabled` 时必填，或 NF stage 必须显式填写一个“NF 不启用 AIGate”的占位标准；不能照下方简写遗漏该字段直接实现。
 
 | 阶段 | xdd 名 | role | skill | 写入 |
 |------|--------|------|-------|------|
@@ -71,7 +78,7 @@ NF 没有自己的 Controller 状态机 —— **完全复用** `extensions/xdd/
 | **verify** | `verify` | Auditor | `xdd-verify` | `.xdd/runs/iter-N/verify-report.md` |
 
 > **为什么用 xdd 名而不是新名**：复用 `XddStageSpec.name` 字段 + runtime.json schema。display name 在 prompt 层翻译，runtime 不变。
-> 
+>
 > 详细映射见第 8 节。
 
 ### 4.1 explore 契约
@@ -87,6 +94,7 @@ NF 没有自己的 Controller 状态机 —— **完全复用** `extensions/xdd/
   writeScopes: [".xdd/design/**", ".xdd/runs/**"],
   gatePolicy: "hard",
   rollbackPolicy: { target: "init", reason: "explore 默认回退到 init" },
+  aigateStandard: "NF 不启用 AIGate；语义质量由 verify 阶段证据审查负责。",
 
   desiredState: [
     "已读完前序产物（仓库 README / docs/）",
@@ -219,7 +227,7 @@ T+40m   runComplete=true → 自动归档
 
 ### 7.2 分支（辅助能力）
 
-- **跳过 stage**：在 prompt 中明确"跳过 wire"，通过 `nf_advance` 手动推进（gate 失败时不会强制阻断）
+- **可观察的跳过**：NF 没有 `wire` 阶段。默认不允许用 prompt 跳过任一 NF 阶段；`nf_advance` 必须先收到对应 hard gate 的完成信号。未来若增加可跳阶段，必须在 stage contract 中声明 `skippableWhen`，并由 Controller 可观察的文件/配置条件、audit 事件和用户面原因共同证明。
 - **指定 rollback target**：调 `nf_rollback` 时传 targetStage，默认由 Controller 推断
 - **状态查询**：任何 turn 调 `nf_observe` 看完整状态
 
@@ -236,7 +244,7 @@ T+30s  用户：/normal-flow-resume
        agent：继续 explore 阶段
 ```
 
-实现：复用 xdd 的 `pauseNotified` / `continuationEpoch` / `paused` 机制（Controller 已有），不需要 NF 重新实现。
+实现：复用 xdd runtime 的 `pauseNotified` / `continuationEpoch` / `paused` 字段和 `RESUME` 状态转换；NF 自己通过 `resumeFlow({ stages: NF_STAGES, activate: activateNormalFlowExtension })` 重建 5 阶段 in-memory plan。不得复用会固定装载 `STAGES` 和 xdd extension 的 `/xdd-resume` handler。
 
 ### 7.4 意外（失败处理）
 
@@ -332,7 +340,7 @@ attempt 2: agent 修了 3 个实现 bug → 重提 → exit 0 → PASS
 
 | 预算 | 默认值 | 配置位置 |
 |------|-------|---------|
-| 自愈预算（每阶段） | 3 | `types.ts` `maxSelfHealPerStage` |
+| 自愈预算（每阶段） | 3 | NF `START` options → `runtime.json` `maxSelfHealPerStage` |
 | Flow 回退预算（整个 run） | 7 | `runtime.json` `flowRollbackLimit` |
 | 流 USD 预算 | $500 | `XDD_FLOW_BUDGET_USD` env |
 
@@ -347,16 +355,17 @@ attempt 2: agent 修了 3 个实现 bug → 重提 → exit 0 → PASS
 | AIGate | ✅（10 min timeout，per stage） | ❌ |
 | 双预算（hard + ai） | ✅ | ❌（只 hard_gate） |
 | Group Gates | ✅（4 组） | ❌ |
-| Hooks | ✅（4 hook points） | ❌ |
+| 外部可编程 Hooks | ✅（4 hook points） | ❌ |
+| 内部生命周期事件（暂停/恢复/归档） | ✅ | ✅（最小必需） |
 | Blind Journey | ✅ | ❌ |
 | Renderers（TUI） | ✅ | ❌ |
 | Stage role 数量 | 10 角色 | 5 角色 |
 | `pendingGroupApproval` | 死代码（实现保留） | 不实现 |
-| 总 LoC | ~7500 | ~1000 |
+| 总 LoC | ~7500 | ~1200 + 小型共享生命周期抽象 |
 
 **为什么砍**：
 - **AIGate**：单次 10 分钟超时 + 高 LLM 成本，对"快 + 简单"场景是负担；需要时切到 xdd
-- **Hooks**：简单流不需要外部可编程介入点
+- **外部可编程 Hooks**：简单流不需要外部可编程介入点；但 pause/resume/归档仍需要最小的内部生命周期事件
 - **Group Gates**：5 阶段不需要组级聚合
 - **Blind Journey**：仅 UI 项目需要
 - **Renderers**：非必需
@@ -372,7 +381,7 @@ extensions/normal-flow/
 ├── README.md                   # 用户面使用文档（启动 / 命令 / 故障排查）
 ├── index.ts                    # re-export + default factory
 ├── extension.ts                # pi InlineExtension factory（事件 + 工具注册）
-├── flow.ts                     # /normal-flow 等斜杠命令 + start 流程
+├── flow.ts                     # /normal-flow、/normal-flow-resume 等命令 + start/resume 流程
 ├── stages.ts                   # 5 阶段定义（role / skill / gate / desiredState）
 ├── gate.ts                     # re-export 硬 gate helpers + NF-specific
 ├── types.ts                    # NormalFlow 类型别名（薄）
@@ -386,7 +395,7 @@ extensions/normal-flow/
     └── nf-rollback.ts
 ```
 
-约 **1000 行**（其中 stages.ts 300 行 / 6 tools 600 行 / extension+flow 200 行 / 其他 100 行）。
+约 **1200 行**（其中 stages.ts 300 行 / 6 tools 600 行 / extension+flow 250 行 / 共享 lifecycle 抽象与测试约 150 行）。
 
 ---
 
@@ -409,8 +418,9 @@ extensions/normal-flow/
 | `enforceToolCallPolicy` | `extensions/xdd/policy/tool-policy.ts` |
 | `checkStagePathAccess` | `extensions/xdd/policy/path-policy.ts` |
 | `applyStageBashPolicy` | `extensions/xdd/policy/bash-policy.ts` |
+| `resumeFlow`（新增共享 helper） | 从 `extensions/xdd/run.ts` 提取；注入 stages / activate / 文案 |
 
-**新增量**：5 个 stage 定义、6 个 nf_* 工具、1 个 slash command、extension 事件 wiring。其他文件大部分 re-export。
+**新增量**：5 个 stage 定义、6 个 nf_* 工具、start/resume 命令、extension 事件 wiring，以及可参数化的共享 lifecycle helper。其他文件大部分 re-export。
 
 ---
 
@@ -423,17 +433,21 @@ extensions/normal-flow/
 | 5 阶段对复杂项目粒度过粗 | 复杂项目用 xdd；NF 定位为「快 + 简单」场景，文档中明确说明 |
 | 自愈预算 3 次太少 | 3 次 = 1 次原始 + 2 次重试；如需更多可在 `runtime.json` 调 `maxSelfHealPerStage` |
 | display name ↔ xdd stage name 映射造成日志混淆 | 所有用户面（prompt / tool 输出 / 文档）使用 display name；runtime.json 保留 xdd 名（向后兼容） |
+| checkpoint 恢复错误装载 xdd 的 10 阶段 | `resumeFlow` 强制注入 `NF_STAGES` 和 NF activate 函数；跨进程恢复测试断言 plan 恒为 5 阶段 |
+| NF 预算意外继承 xdd 的 5 次默认值 | `START` options 显式持久化 3 / 7；启动和恢复测试断言 runtime 预算不漂移 |
 
 ---
 
 ## 14. 验证清单（实现后必跑）
 
 - [ ] `extension.ts` 注册 6 个工具 + 1 个 slash 命令，无 TS 编译错
+- [ ] NF stage contracts 通过 TypeScript 和 `validateStageContracts`；`aigateStandard` 的可选性/占位策略有单测
 - [ ] `stages.ts` 的 5 个 gate 全部能在空仓库上「应失败」
 - [ ] 故意写空 `intent.md` → explore gate 报缺 `design.md`
 - [ ] `npm test` 在 `implement` 阶段失败时，gate 报 exit code + stderr 前 800 字
-- [ ] verify 阶段 5 次 budget 耗尽后，触发自动 ROLLBACK 到 implement
-- [ ] 关闭 pi 后重新启动 → checkpoint 提示恢复 → `/normal-flow-resume` 续跑
+- [ ] verify 阶段 3 次 hard-gate budget 耗尽后，触发自动 ROLLBACK 到 implement；flow rollback 预算为 7
+- [ ] 关闭 pi 后重新启动 → checkpoint 提示恢复 → `/normal-flow-resume` 重建且只重建 5 阶段 plan
+- [ ] 启动、暂停、恢复后 `maxSelfHealPerStage=3`、`flowRollbackLimit=7` 不变
 - [ ] 同 cwd 已有 xdd run 时启动 NF → 提示冲突并拒绝启动
 
 ---
