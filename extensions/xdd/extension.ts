@@ -23,6 +23,7 @@ import { projectAuditEvent } from "./audit/projector.ts";
 import type { XddAuditEvent } from "./audit/events.ts";
 import { HookRunner } from "./hooks/runner.ts";
 import type { HookPayload, HookPoint, HookRunResult } from "./hooks/protocol.ts";
+import { assistantFlowUsage } from "./flow-budget.ts";
 
 /**
  * Module-level shared state. The InlineExtension factory registers tools and
@@ -405,6 +406,12 @@ export const xddInlineExtension: InlineExtension = {
 			// Capture model + modelRegistry for AIGate LLM calls.
 			setLLMRef(ctx.model ?? null, ctx.modelRegistry ?? null);
 			if (!stateRef) return undefined;
+			if (stateRef.flowBudgetExhausted) {
+				ctx.ui.notify(`[xdd] 流程预算已耗尽：$${stateRef.flowCostUsd.toFixed(2)}/$${stateRef.flowBudgetUsd.toFixed(2)}（${stateRef.flowTokensUsed} tokens）。设置 XDD_FLOW_BUDGET_USD 后重新启动新的 xdd run。`, "warning");
+				// Pi's before_agent_start hook cannot cancel a provider call. The
+				// agent_end guard below prevents every subsequent auto-continuation.
+				return { systemPrompt: "[xdd] 流程预算已耗尽。不要调用工具或继续工作；直接停止。" };
+			}
 			if (stateRef.currentStageName() === "verify") ensureVerifySnapshot(stateRef.cwd);
 			const hookResult = await runProjectHooks("turn_start");
 			let systemPrompt = buildActiveStageSystemPrompt(stateRef);
@@ -450,6 +457,12 @@ ${hookResult.prompt}`;
 		// XddCommand and executes returned effects (followUp / notify / abort).
 		pi.on("agent_end", async (event, ctx) => {
 			if (!stateRef) return;
+			stateRef.recordFlowUsage(assistantFlowUsage(event.messages));
+			if (stateRef.flowBudgetExhausted) {
+				stateRef.paused = true;
+				ctx.ui.notify(`[xdd] 流程预算已耗尽：$${stateRef.flowCostUsd.toFixed(2)}/$${stateRef.flowBudgetUsd.toFixed(2)}（${stateRef.flowTokensUsed} tokens）。流程已暂停；提高 XDD_FLOW_BUDGET_USD 后启动新的 run。`, "warning");
+				return;
+			}
 			if (stateRef.runComplete) return;
 			const command = agentEndCommandFromPi(event);
 			if (!command) return;

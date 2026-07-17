@@ -425,6 +425,28 @@ export class XddRunnerState {
 	set rollbackOutcome(v: { from: XddStageName; to: XddStageName; reason: string } | undefined) { this.mutRt("rollbackOutcome", v ?? null); }
 	get pendingGroupApproval(): { group: string; gateLabel: string } | undefined { return this.loadRt().pendingGroupApproval ?? undefined; }
 	set pendingGroupApproval(v: { group: string; gateLabel: string } | undefined) { this.mutRt("pendingGroupApproval", v ?? null); }
+	get flowBudgetUsd(): number { return this.loadRt().flowBudgetUsd ?? 500; }
+	set flowBudgetUsd(v: number) { this.mutRt("flowBudgetUsd", v); }
+	get flowCostUsd(): number { return this.loadRt().flowCostUsd ?? 0; }
+	get flowTokensUsed(): number { return this.loadRt().flowTokensUsed ?? 0; }
+	get flowBudgetExhausted(): boolean { return this.flowCostUsd >= this.flowBudgetUsd; }
+	/** Records each Pi assistant response once, even when lifecycle hooks replay it. */
+	recordFlowUsage(entries: ReadonlyArray<{ timestamp: number; tokens: number; costUsd: number }>): void {
+		const rt = this.loadRt();
+		const seen = new Set(rt.flowBudgetMessageTimestamps ?? []);
+		let cost = rt.flowCostUsd ?? 0;
+		let tokens = rt.flowTokensUsed ?? 0;
+		for (const entry of entries) {
+			if (seen.has(entry.timestamp)) continue;
+			seen.add(entry.timestamp);
+			cost += entry.costUsd;
+			tokens += entry.tokens;
+		}
+		rt.flowCostUsd = cost;
+		rt.flowTokensUsed = tokens;
+		rt.flowBudgetMessageTimestamps = [...seen];
+		this.saveRt(rt);
+	}
 
 	// ── Collection accessors ─────────────────────────────────────────────
 	get ledger(): XddLedgerEntry[] { return this.loadRt().ledger ?? []; }
@@ -784,6 +806,12 @@ export interface XddCheckpointData {
 	lastCompactionAt?: number;
 	// Phase 5 (E.2): AIGate attempts (independent of hard-Gate)
 	aiGateUsed?: Record<string, number>;
+	/** Whole-run LLM spending guard. Amounts are USD and include Pi-reported calls. */
+	flowBudgetUsd?: number;
+	flowCostUsd?: number;
+	flowTokensUsed?: number;
+	/** Assistant-message timestamps already charged to the run budget. */
+	flowBudgetMessageTimestamps?: number[];
 }
 
 /**
@@ -845,6 +873,8 @@ function defaultRt(runId: string = ""): XddCheckpointData {
 		// the context hook (sliceByEpoch) treats it as passthrough.
 		stageEpoch: runId ? `${runId}:?:0` : "", lastCompactionAt: 0,
 		aiGateUsed: {},
+		flowBudgetUsd: 500, flowCostUsd: 0, flowTokensUsed: 0,
+		flowBudgetMessageTimestamps: [],
 	};
 }
 
