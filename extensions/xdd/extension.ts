@@ -446,14 +446,23 @@ export const xddInlineExtension: InlineExtension = {
 								if (pendingText) {
 									stateRef.continuationQueued = true;
 									stateRef.continuationReason = `compacted:${outcome}`;
-									pi.sendUserMessage(pendingText, { deliverAs: "followUp" })
-										.catch((err) => {
+									// P-fix: pi.sendUserMessage returns void (per
+									// ExtensionAPI type), so .catch() on the raw
+									// return value throws "Cannot read properties
+									// of undefined". Wrap with Promise.resolve so
+									// the .catch is always on a Promise -- the
+									// SDK already routes async send errors via
+									// runner.emitError, this is a defensive guard
+									// for any future Promise return.
+									Promise.resolve(pi.sendUserMessage(pendingText, { deliverAs: "followUp" })).catch(
+										(err) => {
 											stateRef.continuationQueued = false;
 											ctx.ui.notify(
 												`[xdd] 自动推进消息发送失败: ${err instanceof Error ? err.message : String(err)}。可能 run 卡住，需人工干预。`,
 												"error",
 											);
-										});
+										},
+									);
 								}
 							},
 							onError: () => {
@@ -464,14 +473,18 @@ export const xddInlineExtension: InlineExtension = {
 								if (stateRef.continuationQueued) return;
 								if (pendingText) {
 									stateRef.continuationQueued = true;
-									pi.sendUserMessage(pendingText, { deliverAs: "followUp" })
-										.catch((err) => {
+									// P-fix: pi.sendUserMessage returns void;
+									// wrap with Promise.resolve so .catch() is
+									// safe (see onComplete above for details).
+									Promise.resolve(pi.sendUserMessage(pendingText, { deliverAs: "followUp" })).catch(
+										(err) => {
 											stateRef.continuationQueued = false;
 											ctx.ui.notify(
 												`[xdd] 压缩失败后回退 followUp 发送失败: ${err instanceof Error ? err.message : String(err)}。run 可能卡住。`,
 												"error",
 											);
-										});
+										},
+									);
 								}
 							},
 						});
