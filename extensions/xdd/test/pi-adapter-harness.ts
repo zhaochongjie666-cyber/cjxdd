@@ -77,6 +77,7 @@ export class FakePiAdapterHarness {
 		getContextUsage: () => this.contextUsage,
 		compact: (options: any) => {
 			this.compactCalls.push(options);
+			options?.onComplete?.({});
 		},
 		get signal() {
 			return { aborted: false };

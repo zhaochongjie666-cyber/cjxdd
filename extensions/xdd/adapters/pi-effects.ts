@@ -11,7 +11,7 @@ export interface PiEffectRuntime {
 		abort?: () => unknown;
 		isIdle?: () => boolean;
 		hasPendingMessages?: () => boolean;
-		compact?: (options?: unknown) => Promise<unknown> | unknown;
+		compact?: (options?: { customInstructions?: string; onComplete?: (result: unknown) => void; onError?: (error: Error) => void }) => Promise<unknown> | unknown;
 	};
 	getState?: () => XddRunnerState | null | undefined;
 }
@@ -95,23 +95,46 @@ function recordEffectAudit(runtime: PiEffectRuntime, effect: XddEffect["type"], 
 
 async function runCompactionEffect(instructions: string, runtime: PiEffectRuntime): Promise<void> {
 	const state = runtime.getState?.();
-	try {
-		await runtime.ctx.compact?.({ instructions });
-		if (state) {
+	let settled = false;
+	const finish = async (success: boolean, error?: unknown): Promise<void> => {
+		if (settled) return;
+		settled = true;
+		if (!success) {
+			runtime.ctx.ui?.notify?.(`[xdd] compaction 失败：${error instanceof Error ? error.message : String(error ?? "unknown error")}`, "warning");
+		}
+		if (!state) return;
+		try {
 			const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
-			const result = controller.dispatch({ type: "COMPACTION_DONE", success: true });
+			const result = controller.dispatch({ type: "COMPACTION_DONE", success });
 			await executePiEffects(result.effects, runtime);
+		} catch (dispatchError) {
+			// Completion callbacks run outside the original event handler in Pi.
+			// Never let their failure become an uncaught exception in the session loop.
+			runtime.ctx.ui?.notify?.(`[xdd] compaction 后续推进失败：${dispatchError instanceof Error ? dispatchError.message : String(dispatchError)}`, "warning");
+		}
+	};
+
+	if (!runtime.ctx.compact) {
+		await finish(false, new Error("Pi runtime does not provide ctx.compact"));
+		return;
+	}
+
+	try {
+		const result = runtime.ctx.compact({
+			customInstructions: instructions,
+			onComplete: () => { void finish(true); },
+			onError: (error) => { void finish(false, error); },
+		});
+		// Pi 0.80.x starts compaction asynchronously and reports completion through
+		// callbacks. Support promise-returning runtimes as well without claiming
+		// completion before their compaction actually finishes.
+		if (result && typeof (result as Promise<unknown>).then === "function") {
+			await (result as Promise<unknown>).then(
+				() => finish(true),
+				(error) => finish(false, error),
+			);
 		}
 	} catch (error) {
-		runtime.ctx.ui?.notify?.(`[xdd] compaction 失败：${error instanceof Error ? error.message : String(error)}`, "warning");
-		if (state) {
-			try {
-				const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
-				const result = controller.dispatch({ type: "COMPACTION_DONE", success: false });
-				await executePiEffects(result.effects, runtime);
-			} catch {
-				// Best-effort only; the warning above already surfaced the failure.
-			}
-		}
+		await finish(false, error);
 	}
 }
