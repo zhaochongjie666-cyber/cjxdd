@@ -447,6 +447,14 @@ export class XddRunnerState {
 		rt.flowBudgetMessageTimestamps = [...seen];
 		this.saveRt(rt);
 	}
+	/** Reset the consumed whole-flow budget so /xdd-continue can explicitly continue with a fresh allowance. */
+	resetFlowBudgetUsage(): void {
+		const rt = this.loadRt();
+		rt.flowCostUsd = 0;
+		rt.flowTokensUsed = 0;
+		rt.flowBudgetMessageTimestamps = [];
+		this.saveRt(rt);
+	}
 
 	// ── Collection accessors ─────────────────────────────────────────────
 	get ledger(): XddLedgerEntry[] { return this.loadRt().ledger ?? []; }
