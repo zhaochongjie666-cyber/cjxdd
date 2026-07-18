@@ -9,7 +9,7 @@ import type { EmptyDetails, GetXddState } from "./index.ts";
 
 const schema = Type.Object({
 	targetStage: Type.Optional(Type.String({
-		description: "回退目标阶段名（须早于当前阶段且在执行计划内）。可选：不传则按当前阶段默认（verify→execute、execute/cleanup/plan→execute、resilience/architecture/wire→architecture、spec→spec、其它→understand）",
+		description: "回退目标阶段名（只能在 verify 阶段调用，且目标须早于 verify 并在执行计划内）。可选：不传则默认 verify→execute",
 	})),
 	reason: Type.String({ description: "回退根因（具体、可操作）" }),
 });
@@ -29,7 +29,7 @@ export function createXddRollbackTool(getState: GetXddState): ToolDefinition {
 		name: "xdd_rollback",
 		label: "xdd: rollback to earlier stage",
 		description:
-			"回退到更早的 xdd 阶段重做。须提供 targetStage（早于当前阶段）与 reason。超过该阶段回退上限时会被拒绝。",
+			"只能在 verify 阶段回退到更早的 xdd 阶段重做。须提供 reason；targetStage 可选（默认 execute）。非 verify 阶段调用会被拒绝。",
 		parameters: schema,
 		async execute(_toolCallId, params: XddRollbackInput): Promise<AgentToolResult<EmptyDetails>> {
 			const state = getState();
@@ -37,11 +37,9 @@ export function createXddRollbackTool(getState: GetXddState): ToolDefinition {
 			if (!from) {
 				throw new Error("[xdd_rollback] 无活跃阶段");
 			}
-			// Phase 5 (E.5): default the rollback target based on the current
-			// stage. Verify -> execute is the most common pattern (the
-			// spec/architecture was correct; it's the implementation that's
-			// wrong). The agent can still override with an explicit
-			// targetStage if they need a different destination.
+			// Rollback is intentionally verify-only: earlier stages must repair
+			// inside their own stage instead of jumping the flow backward. Verify
+			// may route defects back to the owning earlier stage.
 			let target: XddStageName;
 			if (params.targetStage) {
 				if (!isStageName(params.targetStage)) {
@@ -49,18 +47,7 @@ export function createXddRollbackTool(getState: GetXddState): ToolDefinition {
 				}
 				target = params.targetStage as XddStageName;
 			} else {
-				// Default by current stage
-				if (from === "verify") {
-					target = "execute";
-				} else if (from === "execute" || from === "cleanup" || from === "plan") {
-					target = "execute";
-				} else if (from === "resilience" || from === "architecture" || from === "wire") {
-					target = "architecture";
-				} else if (from === "spec") {
-					target = "spec";
-				} else {
-					target = "understand";
-				}
+				target = "execute";
 			}
 			const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
 			try {
