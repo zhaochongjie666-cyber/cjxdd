@@ -6,8 +6,7 @@ import { createNfTools } from "./tools/index.ts";
 import { compileStageContracts } from "../xdd/core/stage-contract.ts";
 import { agentEndCommandFromPi } from "../xdd/adapters/pi-controller.ts";
 import { enforceToolCallPolicy } from "../xdd/policy/tool-policy.ts";
-import { XddController } from "../xdd/core/controller.ts";
-import { RuntimeStore } from "../xdd/storage/runtime-store.ts";
+import { createNormalFlowRuntimeStore } from "./runtime-store.ts";
 import { assistantFlowUsage } from "../xdd/flow-budget.ts";
 import { archiveRun } from "../xdd/archive.ts";
 import type { XddRunnerState } from "../xdd/types.ts";
@@ -17,7 +16,7 @@ import { planStageNamesAreNf } from "./types.ts";
 /**
  * Module-level shared state。跟 extensions/xdd/extension.ts 的 stateRef 是各自
  * 独立的模块级变量（不同文件），两个 InlineExtension 可以在同一个 pi 进程里
- * 并存而不互相覆盖对方的 stateRef。真正的隔离边界是 cwd 上的 .xdd/runtime.json
+ * 并存而不互相覆盖对方的 stateRef。真正的隔离边界是 cwd 上的 .xdd/normal-flow-runtime.json
  * ——见 planStageNamesAreNf() 和 flow.ts 里的启动/恢复冲突检查。
  */
 let stateRef: XddRunnerState | null = null;
@@ -38,9 +37,9 @@ export function getState(): XddRunnerState {
 	return stateRef;
 }
 
-/** cwd 上的 runtime.json 是否属于 Normal Flow（阶段名全部落在 NF 的 5 阶段集合内）。 */
+/** cwd 上的 normal-flow-runtime.json 是否属于 Normal Flow（阶段名全部落在 NF 的 5 阶段集合内）。 */
 export function isNfOwnedRuntime(cwd: string): boolean {
-	const rt = new RuntimeStore(cwd).load();
+	const rt = createNormalFlowRuntimeStore(cwd).load();
 	if (!rt) return false;
 	return planStageNamesAreNf(rt.plan ?? []);
 }
@@ -144,14 +143,14 @@ export const normalFlowInlineExtension: InlineExtension = {
 			await dispatchNfCommand(stateRef, { type: "COMPACTION_DONE", success }, { pi, ctx, getState: () => stateRef });
 		});
 
-		// Checkpoint 检测：只在 runtime.json 属于 Normal Flow 时才提示
+		// Checkpoint 检测：只在 normal-flow-runtime.json 属于 Normal Flow 时才提示
 		// /normal-flow-resume，避免对 xdd 建的 checkpoint 误报（Docs/normal-flow.md §13）。
 		pi.on("session_start", async (event, ctx) => {
 			if (event.reason !== "startup" && event.reason !== "reload") return;
 			try {
 				const cwd = process.cwd();
 				if (!isNfOwnedRuntime(cwd)) return;
-				const rt = new RuntimeStore(cwd).load();
+				const rt = createNormalFlowRuntimeStore(cwd).load();
 				if (rt && !rt.runComplete) {
 					ctx.ui.notify(
 						`[normal-flow] 检测到未完成的 Normal Flow run（${rt.runId}）。输入 /normal-flow-resume 恢复，或忽略开始新对话。`,

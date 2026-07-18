@@ -2,7 +2,7 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { type Static, Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { XddController } from "../../xdd/core/controller.ts";
-import { RuntimeStore } from "../../xdd/storage/runtime-store.ts";
+import { createNormalFlowRuntimeStore } from "../runtime-store.ts";
 import type { XddStageName } from "../../xdd/types.ts";
 import { NF_STAGE_NAMES } from "../types.ts";
 import type { EmptyDetails, GetNfState } from "./index.ts";
@@ -47,7 +47,7 @@ export function createNfRollbackTool(getState: GetNfState): ToolDefinition {
 			} else {
 				target = DEFAULT_ROLLBACK_TARGET[from] ?? "understand";
 			}
-			const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
+			const controller = new XddController(createNormalFlowRuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
 			try {
 				const rollback = controller.dispatch({ type: "ROLLBACK", target, reason: String(params.reason ?? "") });
 				if (rollback.state.status === "failed") {

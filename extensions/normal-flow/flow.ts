@@ -12,7 +12,7 @@ import { activateNormalFlowExtension, getState } from "./extension.ts";
 import { loadXddSkills } from "../xdd/skill-loader.ts";
 import { controllerInitScaffold } from "../xdd/init-scaffold.ts";
 import { XddController } from "../xdd/core/controller.ts";
-import { RuntimeStore } from "../xdd/storage/runtime-store.ts";
+import { createNormalFlowRuntimeStore } from "./runtime-store.ts";
 import { configuredFlowBudgetUsd } from "../xdd/flow-budget.ts";
 import { dispatchNfCommand } from "./adapter.ts";
 
@@ -26,7 +26,7 @@ const NF_MAX_SELF_HEAL_PER_STAGE = 3;
 
 /** cwd 上已有一个非 NF（即 xdd）的未完成 run 时，返回冲突提示；否则 undefined。 */
 function nfStartConflictMessage(cwd: string): string | undefined {
-	const rt = new RuntimeStore(cwd).load();
+	const rt = createNormalFlowRuntimeStore(cwd).load();
 	if (!rt || !rt.plan || rt.plan.length === 0 || rt.runComplete) return undefined;
 	if (planStageNamesAreNf(rt.plan)) {
 		return `[normal-flow] cwd 已有未完成的 Normal Flow run（${rt.runId}，当前阶段 ${rt.plan[rt.planIndex]?.stageName ?? "?"}）。请先 /normal-flow-resume 恢复或 /normal-flow-stop 中断，避免覆盖现有检查点。`;
@@ -50,7 +50,7 @@ export async function startNormalFlow(args: string, cwd: string, pi: ExtensionAP
 	// NF 没有 init 阶段：用跟 xdd 一样的 Controller-owned 骨架脚本先建好 .xdd/
 	// 目录，模型不需要用 bash 建目录，直接从 explore 阶段开始写 intent.md/design.md。
 	const scaffold = controllerInitScaffold(cwd);
-	const controller = new XddController(new RuntimeStore(cwd), NF_STAGES);
+	const controller = new XddController(createNormalFlowRuntimeStore(cwd), NF_STAGES);
 	controller.dispatch({ type: "START", task, options: { cwd, runId } });
 	const state = new XddRunnerState({ runId, cwd, userInput: task });
 	state.flowBudgetUsd = configuredFlowBudgetUsd();
@@ -91,8 +91,8 @@ export async function resumeNormalFlow(args: string, cwd: string, pi: ExtensionA
 		return;
 	}
 
-	// 跨进程恢复：从 runtime.json 重建。
-	const rt = new RuntimeStore(cwd).load();
+	// 跨进程恢复：从 normal-flow-runtime.json 重建。
+	const rt = createNormalFlowRuntimeStore(cwd).load();
 	if (!rt || rt.runComplete) {
 		await pi.sendUserMessage("[normal-flow] 无可恢复的 Normal Flow run。");
 		return;

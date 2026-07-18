@@ -10,7 +10,7 @@
 import { XddController } from "../xdd/core/controller.ts";
 import type { XddCommand } from "../xdd/core/commands.ts";
 import type { XddEffect } from "../xdd/core/effects.ts";
-import { RuntimeStore } from "../xdd/storage/runtime-store.ts";
+import { createNormalFlowRuntimeStore } from "./runtime-store.ts";
 import { executePiEffects, type PiEffectRuntime } from "../xdd/adapters/pi-effects.ts";
 import type { XddRunnerState } from "../xdd/types.ts";
 import { translateXddText } from "./xdd-text-bridge.ts";
@@ -30,7 +30,7 @@ export async function dispatchNfCommand(
 	command: XddCommand,
 	runtime: PiEffectRuntime,
 ): Promise<void> {
-	const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
+	const controller = new XddController(createNormalFlowRuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
 	const result = controller.dispatch(command);
 	await executePiEffects(translateEffects(result.effects), runtime);
 }
