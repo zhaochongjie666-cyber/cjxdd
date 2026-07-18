@@ -88,6 +88,9 @@ describe("XddController transition", () => {
 		expect(state.runSelfAttack).toBe("specific risk note for audit");
 		expect(state.stageEpoch).toBe("r1:init:0");
 		expect(state.esg?.at(-1)).toMatchObject({ type: "review", stage: "init" });
+		state = transition(state, { type: "RECORD_ARTIFACT_REVIEW", stage: "understand", artifacts: [".xdd/design/design.md"], selfAttack: "retry risk note after AIGate feedback" }).state;
+		expect(state.runSelfAttack).toBe("retry risk note after AIGate feedback");
+		expect(state.esg?.filter((node) => node.type === "review")).toHaveLength(2);
 		state = transition(state, { type: "RECORD_SIGNAL", signal: "complete" }).state;
 		state = transition(state, { type: "RECORD_SIGNAL", signal: "complete" }).state;
 		expect(state.signals).toEqual(["complete"]);

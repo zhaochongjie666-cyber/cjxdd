@@ -126,7 +126,7 @@ describe("XddRunnerState artifacts and self-attack", () => {
 		expect(arts[0].paths).toEqual(["docs/spec.md"]);
 	});
 
-	it("records one run-level self-attack", () => {
+	it("records the latest AIGate-coupled self-attack", () => {
 		const state = makeState();
 		state.recordRunSelfAttack("checked cross-stage assumptions and failure paths");
 		expect(state.getRunSelfAttack()).toBe("checked cross-stage assumptions and failure paths");
