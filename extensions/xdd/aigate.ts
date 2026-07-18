@@ -706,6 +706,37 @@ function isRetryable(err: unknown): boolean {
 	return false;
 }
 
+/** Merge headers with priority: earlier < later. */
+function mergeHeaders(...sources: Array<Record<string, string> | undefined>): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const src of sources) {
+		if (!src) continue;
+		for (const [k, v] of Object.entries(src)) {
+			if (v !== undefined && v !== null) out[k] = v;
+		}
+	}
+	return out;
+}
+
+/** Check whether headers already include an auth-ish key. */
+function hasAuthHeader(headers: Record<string, string>): boolean {
+	const lower = Object.keys(headers).map((k) => k.toLowerCase());
+	return lower.some((k) => k === "authorization" || k === "x-api-key" || k === "x-goog-api-key" || k === "api-key");
+}
+
+/** OpenAI-compatible endpoint construction: don't blindly append /chat/completions when baseUrl already contains it. */
+function openAICompatUrl(baseUrl: string): string {
+	const clean = baseUrl.replace(/\/$/, "");
+	if (clean.endsWith("/chat/completions")) return clean;
+	return `${clean}/chat/completions`;
+}
+
+async function readJSONResponse(res: Response, label: string): Promise<any> {
+	const raw = await res.text();
+	if (!res.ok) throw new Error(`${label} API ${res.status}: ${raw}`);
+	return parseLLMJson(raw, `${label} API`);
+}
+
 async function callLLM(
 	model: Model<any>,
 	apiKey: string | undefined,
@@ -733,7 +764,8 @@ async function callLLM(
 				// Some OpenAI-compatible gateways have not implemented JSON Schema.
 				// Fall back to the explicit prompt + balanced parser instead of making
 				// AIGate unavailable solely because the optional enhancement is absent.
-				if (api === "anthropic-messages" || !isStructuredOutputRejection(e)) throw e;
+				const isOpenAICompat = api !== "anthropic-messages" && api !== "google-generative-ai" && api !== "google-vertex" && api !== "bedrock-converse-stream";
+				if (!isOpenAICompat || !isStructuredOutputRejection(e)) throw e;
 				text = await callLLMOnce(ac, api, baseUrl, model, apiKey, extraHeaders, systemPrompt, userMessage, false);
 			}
 			return text;
@@ -753,7 +785,7 @@ async function callLLM(
 }
 
 function isStructuredOutputRejection(err: unknown): boolean {
-	return err instanceof Error && /LLM API 400:.*(?:response_format|json_schema|schema|structured)/is.test(err.message);
+	return err instanceof Error && /(?:LLM API 400:.*(?:response_format|json_schema|schema|structured)|LLM API non-JSON response.*(?:<!doctype|<html|structured|json_schema|response_format))/is.test(err.message);
 }
 
 async function callLLMOnce(
@@ -767,15 +799,17 @@ async function callLLMOnce(
 	userMessage: string,
 	useStructuredOutput: boolean,
 ): Promise<string> {
+	const modelHeaders = (model as any).headers as Record<string, string> | undefined;
+
 	if (api === "anthropic-messages") {
+		const headers = mergeHeaders(
+			modelHeaders,
+			{ "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+			extraHeaders,
+		);
 		const res = await fetch(`${baseUrl}/messages`, {
 			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-				"x-api-key": apiKey,
-				"anthropic-version": "2023-06-01",
-				...(extraHeaders ?? {}),
-			},
+			headers,
 			body: JSON.stringify({
 				model: model.id,
 				max_tokens: configuredMaxTokens() ?? 64_000,
@@ -784,19 +818,44 @@ async function callLLMOnce(
 			}),
 			signal: ac.signal,
 		});
-		if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${await res.text()}`);
-		const data = await res.json();
-		return data.content?.map((c: any) => c.text).join("") ?? "";
+		const data = await readJSONResponse(res, "Anthropic");
+		return extractAnthropicText(data);
 	}
 
+	if (api === "google-generative-ai" || api === "google-vertex") {
+		const modelId = model.id.startsWith("models/") ? model.id : `models/${model.id}`;
+		const headers = mergeHeaders(
+			modelHeaders,
+			api === "google-vertex"
+				? { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` }
+				: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+			extraHeaders,
+		);
+		const body: Record<string, unknown> = {
+			contents: [{ role: "user", parts: [{ text: userMessage }] }],
+			generationConfig: { temperature: 0 },
+		};
+		if (systemPrompt) body.systemInstruction = { parts: [{ text: systemPrompt }] };
+		const maxT = configuredMaxTokens();
+		if (maxT) (body.generationConfig as Record<string, unknown>).maxOutputTokens = maxT;
+		const res = await fetch(`${baseUrl}/${modelId}:generateContent`, { method: "POST", headers, body: JSON.stringify(body), signal: ac.signal });
+		const data = await readJSONResponse(res, "Google");
+		return extractGoogleText(data);
+	}
+
+	if (api === "bedrock-converse-stream") {
+		throw new Error("AIGate 不支持 Bedrock API（bedrock-converse-stream）。Bedrock 需要 AWS SDK 签名，换用其他模型。");
+	}
+
+	const baseHeaders = mergeHeaders(modelHeaders, { "Content-Type": "application/json" });
+	if (!hasAuthHeader(baseHeaders) && !hasAuthHeader(extraHeaders ?? {})) {
+		baseHeaders.Authorization = `Bearer ${apiKey}`;
+	}
+	const headers = mergeHeaders(baseHeaders, extraHeaders);
 	const maxTokens = configuredMaxTokens();
-	const res = await fetch(`${baseUrl}/chat/completions`, {
+	const res = await fetch(openAICompatUrl(baseUrl), {
 		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			Authorization: `Bearer ${apiKey}`,
-			...(extraHeaders ?? {}),
-		},
+		headers,
 		body: JSON.stringify({
 			model: model.id,
 			messages: [
@@ -815,9 +874,44 @@ async function callLLMOnce(
 		}),
 		signal: ac.signal,
 	});
-	if (!res.ok) throw new Error(`LLM API ${res.status}: ${await res.text()}`);
-	const data = await res.json();
-	return data.choices?.[0]?.message?.content ?? "";
+	const data = await readJSONResponse(res, "LLM");
+	return extractOpenAICompatibleText(data);
+}
+
+function parseLLMJson(raw: string, label: string): any {
+	try {
+		return JSON.parse(raw);
+	} catch (e) {
+		const preview = raw.trim().slice(0, 120) || "<empty response>";
+		const reason = e instanceof Error ? e.message : String(e);
+		throw new Error(`${label} non-JSON response: ${reason}; preview=${preview}`);
+	}
+}
+
+function extractAnthropicText(data: any): string {
+	if (typeof data?.content === "string") return data.content;
+	if (Array.isArray(data?.content)) {
+		return data.content
+			.map((c: any) => typeof c === "string" ? c : c?.text ?? "")
+			.join("");
+	}
+	return "";
+}
+
+function extractGoogleText(data: any): string {
+	return data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text ?? "").join("") ?? "";
+}
+
+function extractOpenAICompatibleText(data: any): string {
+	const message = data?.choices?.[0]?.message;
+	const content = message?.content;
+	if (typeof content === "string") return content;
+	if (Array.isArray(content)) {
+		return content.map((part: any) => typeof part === "string" ? part : part?.text ?? part?.content ?? "").join("");
+	}
+	if (typeof data?.output_text === "string") return data.output_text;
+	if (typeof data?.content === "string") return data.content;
+	return "";
 }
 
 // ── Verdict formatting ─────────────────────────────────────────────────

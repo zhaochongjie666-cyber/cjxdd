@@ -147,14 +147,15 @@ describe("AIGate retry loop", () => {
 		expect(keepAliveBlock).not.toContain("terminate: true");
 	});
 
-	it("AIGate degradation keeps the turn alive and preserves retry budgets", () => {
+	it("AIGate degradation keeps the turn alive and uses bounded degraded budget", () => {
 		const submitSrc = readFileSync(join(SRC_DIR, "tools", "xdd-submit-artifact.ts"), "utf8");
 		const degradedBlock = submitSrc.slice(
 			submitSrc.indexOf("if (aiResult.degraded)"),
 			submitSrc.indexOf("// A semantic AIGate failure"),
 		);
 		expect(degradedBlock).not.toContain("beginSelfHealAttempt");
-		expect(degradedBlock).not.toContain("beginAiGateAttempt");
+		expect(degradedBlock).toContain("beginAiGateAttempt");
+		expect(degradedBlock).toContain("degradedBudget.exhausted");
 		expect(degradedBlock).toContain("clearSubmitFingerprint");
 		expect(degradedBlock).toContain("无需修改产物");
 		expect(degradedBlock).not.toContain("terminate: true");
