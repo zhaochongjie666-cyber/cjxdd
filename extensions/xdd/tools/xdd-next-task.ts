@@ -30,7 +30,8 @@ function buildCompletionCriteria(stage: XddStageSpec): string[] {
 	return [
 		`产物满足 ${stage.name} desiredState，并能被 xdd_difference 判定为 met`,
 		"正向路径有可复现证据，兜底/失败路径被攻击检查过或明确记录不适用原因",
-		"没有遗留未处理差距；若仍有差距，下一轮 xdd_next_task 会指向新的具体差距",
+		"收到本指令后直接执行具体任务；不要再调用 xdd_observe 或 xdd_next_task 做二次确认，避免 observe/next_task 空转循环",
+		"完成具体任务后只调用 xdd_submit_artifact 提交证据；若 Gate 已通过且 complete 已记录，只调用 xdd_advance",
 	];
 }
 

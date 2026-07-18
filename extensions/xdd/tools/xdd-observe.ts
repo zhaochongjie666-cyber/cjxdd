@@ -41,6 +41,7 @@ export function createXddObserveTool(getState: GetXddState): ToolDefinition {
 			const runtime = new RuntimeStore(state.cwd).load() ?? state.toCheckpoint(state.status, state.rollbackCount) as never;
 			const auditStatus = renderAuditView(buildAuditView(runtime));
 			const lines = [
+				"[防循环指令] xdd_observe 只用于读取状态；不要把 observe 后的默认下一步设为 xdd_next_task。请基于下方状态直接执行工作，或调用 xdd_difference 定位差距，完成后提交/推进。",
 				`run: ${state.runId}`,
 				`阶段: ${stage.name}（计划第 ${state.planIndex + 1}/${state.plan.length}）`,
 				`模式: ${state.mode}`,
