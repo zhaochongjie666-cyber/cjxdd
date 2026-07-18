@@ -73,7 +73,7 @@ export function transition(
 		case "AGENT_ENDED":
 			return agentEndedTransition(next, command, stages, effects);
 		case "SUBMIT":
-			return submitTransition(next, command.submission.pass === true, command.submission.error, command.submission.gateKind, effects);
+			return submitTransition(next, command.submission.pass === true, command.submission.error, command.submission.gateKind, stages, effects);
 		case "ADVANCE":
 			return advanceTransition(next, stages, effects);
 		case "APPROVE":
@@ -222,8 +222,8 @@ function buildControllerCompactionInstructions(state: RuntimeStateV2, stages: re
 	return lines.join("\n");
 }
 
-function submitTransition(state: RuntimeStateV2, passed: boolean, error: string | undefined, gateKind: "hard_gate" | "ai_gate" | undefined, effects: XddEffect[]): ControllerTransitionResult {
-	const stage = currentStageName(state, STAGES) ?? "init";
+function submitTransition(state: RuntimeStateV2, passed: boolean, error: string | undefined, gateKind: "hard_gate" | "ai_gate" | undefined, stages: readonly XddStageSpec[], effects: XddEffect[]): ControllerTransitionResult {
+	const stage = currentStageName(state, stages) ?? "init";
 	const stageIndex = state.plan[state.planIndex]?.originalIndex ?? state.planIndex;
 	if (passed) {
 		state.stageOutcome = "gate_passed";

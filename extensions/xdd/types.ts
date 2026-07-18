@@ -1,5 +1,5 @@
 import type { Skill } from "@earendil-works/pi-coding-agent";
-import { RuntimeStore } from "./storage/runtime-store.ts";
+import { RuntimeStore, type RuntimeStoreOptions } from "./storage/runtime-store.ts";
 
 /** The 10 xdd software-development stages, in execution order. */
 export type XddStageName =
@@ -262,22 +262,28 @@ export class XddRunnerState {
 	readonly cwd: string;
 	readonly runId: string;
 	readonly userInput: string;
+	readonly runtimeStoreOptions: RuntimeStoreOptions;
 	skills: Skill[] = [];
 	plan: Array<{ stage: XddStageSpec; originalIndex: number }> = [];
 
-	constructor(opts: { runId: string; cwd: string; userInput: string }) {
+	constructor(opts: { runId: string; cwd: string; userInput: string; runtimeStoreOptions?: RuntimeStoreOptions }) {
 		this.runId = opts.runId;
 		this.cwd = opts.cwd;
 		this.userInput = opts.userInput;
+		this.runtimeStoreOptions = opts.runtimeStoreOptions ?? {};
 	}
 
 	// ── File I/O ─────────────────────────────────────────────────────────
+	private runtimeStore(): RuntimeStore {
+		return new RuntimeStore(this.cwd, this.runtimeStoreOptions);
+	}
+
 	private loadRt(): XddCheckpointData {
-		return new RuntimeStore(this.cwd).load(defaultRt(this.runId)) ?? defaultRt(this.runId);
+		return this.runtimeStore().load(defaultRt(this.runId)) ?? defaultRt(this.runId);
 	}
 
 	private saveRt(data: XddCheckpointData): void {
-		new RuntimeStore(this.cwd).save(data);
+		this.runtimeStore().save(data);
 	}
 
 	private mutRt<K extends keyof XddCheckpointData>(key: K, value: XddCheckpointData[K]): void {

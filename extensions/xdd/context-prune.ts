@@ -133,13 +133,18 @@ function neutralizeOrphanAnthropicToolResultsInPlace(messages: AgentMessage[]): 
 		const previousToolUses = previous?.role === "assistant" ? toolUseIds(previous) : new Set<string>();
 		const hasOrphan = resultIds.some((id) => !previousToolUses.has(id));
 		if (!hasOrphan) continue;
-		messages[index] = {
-			...raw,
-			content: [{ type: "text", text: `[历史工具结果已转为普通文本；原 tool_result 缺少相邻 tool_use，避免提供商拒绝请求]\n${extractToolText(raw)}` }],
-		};
+		messages[index] = toolResultAsPlainTextMessage(raw);
 		changed = true;
 	}
 	return changed;
+}
+
+function toolResultAsPlainTextMessage(raw: any): AgentMessage {
+	return {
+		...raw,
+		role: "user",
+		content: [{ type: "text", text: `[历史工具结果已转为普通文本；原 tool_result 缺少相邻 tool_use，避免提供商拒绝请求]\n${extractToolText(raw)}` }],
+	};
 }
 
 function stripAssistantThinking(message: AgentMessage): AgentMessage {
