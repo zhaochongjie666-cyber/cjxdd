@@ -18,9 +18,10 @@
  * gate's *content* failure (LLM says "this angle found bugs") blocks;
  * errors (network/parse) are reported as `degraded` with `passed: false`.
  */
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Model } from "@earendil-works/pi-ai/compat";
-import { readCappedFiles, resolveGlobs } from "./glob-resolver.ts";
+import { resolveGlobs, safeRealpath } from "./glob-resolver.ts";
 import type { XddGateResult } from "./types.ts";
 
 /**
@@ -30,14 +31,19 @@ import type { XddGateResult } from "./types.ts";
  */
 const MIN_LLM_TIMEOUT_MS = 15_000;
 const MAX_LLM_TIMEOUT_MS = 600_000;
-const MAX_AIGATE_ARTIFACT_CHARS = 32_000;
-const MAX_AIGATE_CONTEXT_CHARS = 32_000;
 const DEFAULT_LLM_TIMEOUT_MS = configuredTimeoutMs();
 
 function configuredTimeoutMs(): number {
 	const value = Number.parseInt(process.env.XDD_AIGATE_TIMEOUT_MS ?? "", 10);
 	if (!Number.isFinite(value)) return 600_000;
 	return Math.min(MAX_LLM_TIMEOUT_MS, Math.max(MIN_LLM_TIMEOUT_MS, value));
+}
+
+function configuredMaxTokens(): number | undefined {
+	const raw = process.env.XDD_AIGATE_MAX_TOKENS;
+	if (!raw || raw.trim().toLowerCase() === "none" || raw.trim() === "0") return undefined;
+	const value = Number.parseInt(raw, 10);
+	return Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 // ── Types ───────────────────────────────────────────────────────────────
@@ -58,6 +64,8 @@ export interface AIGateInput {
 	mechanicalCheckResult: XddGateResult;
 	cwd: string;
 	intentAnchor?: string;
+	contextPatterns?: readonly string[];
+	submissionSummary?: string;
 }
 
 export type XddAIGateAngleStatus = boolean | "N/A";
@@ -405,50 +413,59 @@ const STAGE_ANGLES: Record<string, AttackAngle[]> = {
  *
  * Phase 6 (D) refactor: now delegates to glob-resolver.ts for:
  *   - shared glob pattern matching (resolveGlobs)
- *   - per-file + total size caps (DEFAULT_MAX_FILE_CHARS, DEFAULT_MAX_TOTAL_CHARS)
- *   - path-traversal safety (safeRealpath inside readCappedFiles)
+ *   - path-traversal safety (safeRealpath)
+ *
+ * The gate intentionally does not impose xdd-level character caps here: large
+ * projects need the full declared context, and provider/model limits should be
+ * surfaced by the LLM call rather than silently truncating review evidence.
  */
-function readContextFiles(cwd: string, stageName: string): string[] {
+function readFilesUncapped(cwd: string, patterns: readonly string[]): string[] {
 	const contexts: string[] = [];
-	const MAX_TOTAL = MAX_AIGATE_CONTEXT_CHARS;
-
-	// Helper: read a list of patterns and append to contexts.
-	const readPats = (pats: readonly string[]): void => {
-		const rels = resolveGlobs(cwd, pats);
-		const result = readCappedFiles(cwd, rels, { maxTotalChars: MAX_TOTAL });
-		for (const f of result.files) {
-			contexts.push(`--- ${f.rel} ---\n${f.content}`);
+	const unsafeFiles: string[] = [];
+	for (const rel of resolveGlobs(cwd, patterns)) {
+		const real = safeRealpath(cwd, rel);
+		if (!real) {
+			unsafeFiles.push(rel);
+			continue;
 		}
-		if (result.unsafeFiles.length > 0) {
-			contexts.push(`--- [AIGate] ${result.unsafeFiles.length} 个路径不安全（跳出 cwd 或不可读）---\n${result.unsafeFiles.join("\n")}`);
+		try {
+			contexts.push(`--- ${rel} ---\n${readFileSync(real, "utf8")}`);
+		} catch {
+			unsafeFiles.push(rel);
 		}
-	};
+	}
+	if (unsafeFiles.length > 0) {
+		contexts.push(`--- [AIGate] ${unsafeFiles.length} 个路径不安全（跳出 cwd 或不可读）---\n${unsafeFiles.join("\n")}`);
+	}
+	return contexts;
+}
 
+function defaultContextPatterns(stageName: string): readonly string[] {
 	switch (stageName) {
 		case "spec":
 			// Read personas for traceability attack (recursive into any depth)
-			readPats([".xdd/design/personas/**/*.md"]);
-			break;
+			return [".xdd/design/personas/**/*.md"];
 		case "architecture":
 			// Read spec rules for consistency attack (recursive -- spec/<bxx>/rules.md
 			// and spec/<bxx>/sub/rules.md).
-			readPats([".xdd/design/spec/**/*.md", ".xdd/design/spec/_landscape.md"]);
-			break;
+			return [".xdd/design/spec/**/*.md", ".xdd/design/spec/_landscape.md"];
 		case "execute":
 			// Read spec rules + architecture for implementation attack (recursive)
-			readPats([".xdd/design/spec/**/*.md", ".xdd/design/architecture/**/*.md"]);
-			break;
+			return [".xdd/design/spec/**/*.md", ".xdd/design/architecture/**/*.md"];
 		case "verify":
 			// Read spec + architecture + plan for consistency attack (recursive)
-			readPats([".xdd/design/spec/**/*.md", ".xdd/design/architecture/**/*.md", ".xdd/design/wire/**/*.md"]);
-			break;
+			return [".xdd/design/spec/**/*.md", ".xdd/design/architecture/**/*.md", ".xdd/design/wire/**/*.md"];
 		case "resilience":
 			// Read architecture for failure mode coverage check (recursive)
-			readPats([".xdd/design/architecture/**/*.md"]);
-			break;
+			return [".xdd/design/architecture/**/*.md"];
+		default:
+			return [];
 	}
+}
 
-	return contexts;
+function readContextFiles(cwd: string, stageName: string, contextPatterns?: readonly string[]): string[] {
+	const patterns = contextPatterns && contextPatterns.length > 0 ? contextPatterns : defaultContextPatterns(stageName);
+	return readFilesUncapped(cwd, patterns);
 }
 
 // ── Prompt building ────────────────────────────────────────────────────
@@ -519,8 +536,9 @@ function buildAttackUserMessage(params: {
 	contexts: string[];
 	mechanicalCheckResult: XddGateResult;
 	intentAnchor?: string;
+	submissionSummary?: string;
 }): string {
-	const { stageName, skillName, aigateStandard, outputContract, angles, artifacts, contexts, mechanicalCheckResult, intentAnchor } = params;
+	const { stageName, skillName, aigateStandard, outputContract, angles, artifacts, contexts, mechanicalCheckResult, intentAnchor, submissionSummary } = params;
 
 	const outputText = outputContract && outputContract.length > 0
 		? outputContract.map((o, i) => `${i + 1}. ${o.pattern} -- ${o.description}`).join("\n")
@@ -556,6 +574,8 @@ ${angleText}
 ## 阶段审查标准（额外逐条检查）：
 ${aigateStandard}
 
+${submissionSummary ? `## xdd_submit_artifact.summary（提交者自述，必须与产物一致）：\n${submissionSummary}\n` : ""}
+
 ${intentAnchor ? `## 意图锚（intent.md，产物必须与此一致）：\n${intentAnchor}\n` : ""}
 
 ${contexts.length > 0 ? `## 跨产物上下文（用于一致性/可追溯性攻击）：\n${contexts.join("\n\n")}\n` : ""}
@@ -577,22 +597,16 @@ export function formatMechanicalCheckResult(result: XddGateResult): string {
 // ── Main entry ─────────────────────────────────────────────────────────
 
 export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
-	const { model, apiKey, headers, stageName, skillName, aigateStandard, artifactPaths, outputContract, mechanicalCheckResult, cwd, intentAnchor } = input;
+	const { model, apiKey, headers, stageName, skillName, aigateStandard, artifactPaths, outputContract, mechanicalCheckResult, cwd, intentAnchor, contextPatterns, submissionSummary } = input;
 
-	// Phase 6 (D): use shared resolver for artifacts. Applies realpath
-	// safety + per-file + total size caps. Symlinks pointing outside cwd
-	// are silently dropped and reported as `unsafeFiles`.
-	// Bound the full request while retaining enough architecture and spec context
-	// for a complete cross-artifact review.
-	const artifactResult = readCappedFiles(cwd, artifactPaths, { maxFileChars: 8_000, maxTotalChars: MAX_AIGATE_ARTIFACT_CHARS });
-	const artifacts: string[] = artifactResult.files.map((f) => `--- ${f.rel} ---\n${f.content}`);
+	// Use shared glob resolution and realpath safety for artifacts, but do
+	// not impose xdd-level character caps: AIGate must review the full
+	// submitted files for large projects.
+	const artifacts: string[] = readFilesUncapped(cwd, artifactPaths);
 
 	// Understand stage also reads personas (for traceability attack).
 	if (stageName === "understand") {
-		const personaResult = readCappedFiles(cwd, [".xdd/design/personas/**/*.md"], { maxTotalChars: 8_000 });
-		for (const f of personaResult.files) {
-			artifacts.push(`--- ${f.rel} ---\n${f.content}`);
-		}
+		artifacts.push(...readFilesUncapped(cwd, [".xdd/design/personas/**/*.md"]));
 	}
 
 	if (artifacts.length === 0) {
@@ -605,7 +619,7 @@ export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
 	}
 
 	// Read cross-artifact context for attack angles
-	const contexts = readContextFiles(cwd, stageName);
+	const contexts = readContextFiles(cwd, stageName, contextPatterns);
 
 	// Build unified attack angles. The mechanical check is evidence and a
 	// required dimension of AIGate -- it no longer makes a separate verdict.
@@ -623,6 +637,7 @@ export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
 		contexts,
 		mechanicalCheckResult,
 		intentAnchor,
+		submissionSummary,
 	});
 
 	// Call LLM. Phase 6 (D) failure semantics: LLM error / timeout /
@@ -763,7 +778,7 @@ async function callLLMOnce(
 			},
 			body: JSON.stringify({
 				model: model.id,
-				max_tokens: 12_000,
+				max_tokens: configuredMaxTokens() ?? 64_000,
 				system: systemPrompt,
 				messages: [{ role: "user", content: userMessage }],
 			}),
@@ -774,6 +789,7 @@ async function callLLMOnce(
 		return data.content?.map((c: any) => c.text).join("") ?? "";
 	}
 
+	const maxTokens = configuredMaxTokens();
 	const res = await fetch(`${baseUrl}/chat/completions`, {
 		method: "POST",
 		headers: {
@@ -788,7 +804,7 @@ async function callLLMOnce(
 				{ role: "user", content: userMessage },
 			],
 			temperature: 0,
-			max_tokens: 12_000,
+			...(maxTokens ? { max_tokens: maxTokens } : {}),
 			...(useStructuredOutput
 				? {
 					// OpenAI-compatible providers that implement structured outputs return

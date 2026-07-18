@@ -218,7 +218,7 @@ describe("unified AI Gate", () => {
 		}
 	});
 
-	it("bounds architecture review request and response budgets", async () => {
+	it("does not impose xdd-level AIGate context, artifact, or OpenAI response caps", async () => {
 		const cwd = mkdtempSync(join(tmpdir(), "xdd-aigate-"));
 		writeFileSync(join(cwd, "architecture.md"), "x".repeat(40_000));
 		mkdirSync(join(cwd, ".xdd/design/spec"), { recursive: true });
@@ -240,9 +240,10 @@ describe("unified AI Gate", () => {
 				apiKey: "test-key", stageName: "architecture", aigateStandard: "test standard",
 				artifactPaths: ["architecture.md"], mechanicalCheckResult: { ok: true }, cwd,
 			});
-			expect(body.max_tokens).toBe(12_000);
+			expect(body.max_tokens).toBeUndefined();
 			expect(body.response_format).toMatchObject({ type: "json_schema", json_schema: { name: "aigate_verdict", strict: true } });
-			expect(body.messages[1].content.length).toBeLessThan(75_000);
+			expect(body.messages[1].content).toContain("x".repeat(40_000));
+			expect(body.messages[1].content).toContain("y".repeat(40_000));
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
