@@ -127,14 +127,24 @@ function neutralizeOrphanAnthropicToolResultsInPlace(messages: AgentMessage[]): 
 	let changed = false;
 	for (let index = 0; index < messages.length; index++) {
 		const raw: any = messages[index];
+		if (!Array.isArray(raw?.content)) continue;
 		const resultIds = contentToolResultIds(raw);
 		if (!resultIds.length) continue;
 		const previous = messages[index - 1] as any;
 		const previousToolUses = previous?.role === "assistant" ? toolUseIds(previous) : new Set<string>();
-		const hasOrphan = resultIds.some((id) => !previousToolUses.has(id));
-		if (!hasOrphan) continue;
-		messages[index] = toolResultAsPlainTextMessage(raw);
-		changed = true;
+		let convertedOrphanText = "";
+		const content = raw.content.flatMap((part: any) => {
+			if (part?.type !== "tool_result" || !part.tool_use_id || previousToolUses.has(String(part.tool_use_id))) return [part];
+			convertedOrphanText += `${convertedOrphanText ? "\n" : ""}${extractContentPartText(part)}`;
+			changed = true;
+			return [];
+		});
+		if (!convertedOrphanText) continue;
+		const textPart = {
+			type: "text",
+			text: `[历史工具结果已转为普通文本；原 tool_result 缺少相邻 tool_use，避免提供商拒绝请求]\n${convertedOrphanText}`,
+		};
+		messages[index] = { ...raw, content: [...content, textPart] };
 	}
 	return changed;
 }
@@ -183,13 +193,14 @@ function toolResultTextLength(message: AgentMessage): number {
 function extractToolText(message: AgentMessage): string {
 	const content = (message as any).content;
 	if (typeof content === "string") return content;
-	if (Array.isArray(content)) {
-		return content.map((part: any) => {
-			if (typeof part === "string") return part;
-			return part?.text ?? part?.content ?? "";
-		}).join("\n");
-	}
+	if (Array.isArray(content)) return content.map(extractContentPartText).join("\n");
 	return String(content ?? "");
+}
+
+function extractContentPartText(part: any): string {
+	if (typeof part === "string") return part;
+	const content = part?.text ?? part?.content ?? "";
+	return typeof content === "string" ? content : JSON.stringify(content) ?? String(content ?? "");
 }
 
 function stubToolResult(message: AgentMessage): AgentMessage {
