@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EPOCH_MARKER_PREFIX, sliceByEpoch } from "./epoch-slicer.ts";
-import { BASH_OUTPUT_STUB, TEXT_CONTENT_STUB, TOOL_OUTPUT_STUB, buildXddCompactionInstructions, pruneContextMessages } from "./context-prune.ts";
+import { BASH_OUTPUT_STUB, TEXT_CONTENT_STUB, TOOL_OUTPUT_STUB, buildXddCompactionInstructions, contextPruneOptionsFromEnv, pruneContextMessages } from "./context-prune.ts";
 
 function user(text: string) { return { role: "user", content: text }; }
 function assistant(text: string, extra: Record<string, unknown> = {}) { return { role: "assistant", content: text, ...extra }; }
@@ -264,6 +264,22 @@ describe("T10 context pruning", () => {
 		const out = pruneContextMessages(messages as any);
 
 		expect((out[1] as any).content[0].content).toContain("current output");
+	});
+
+	it("builds opt-in token saving options from environment with safe floors", () => {
+		expect(contextPruneOptionsFromEnv({})).toEqual({});
+		expect(contextPruneOptionsFromEnv({
+			XDD_CONTEXT_TEXT_BUDGET: "12000",
+			XDD_TOOL_RESULT_STUB_THRESHOLD: "800",
+		})).toEqual({ maxTotalTextChars: 12000, bashResultStubThreshold: 800 });
+		expect(contextPruneOptionsFromEnv({
+			XDD_CONTEXT_TEXT_BUDGET: "100",
+			XDD_TOOL_RESULT_STUB_THRESHOLD: "50",
+		})).toEqual({ maxTotalTextChars: 4000, bashResultStubThreshold: 200 });
+		expect(contextPruneOptionsFromEnv({
+			XDD_CONTEXT_TEXT_BUDGET: "not-a-number",
+			XDD_TOOL_RESULT_STUB_THRESHOLD: "0",
+		})).toEqual({});
 	});
 
 	it("builds compaction instructions with stage, gate, modified files and harness guidance", () => {

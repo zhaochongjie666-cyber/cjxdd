@@ -1,6 +1,6 @@
 import type { InlineExtension } from "@earendil-works/pi-coding-agent";
 import { buildActiveNfStageSystemPrompt } from "./context.ts";
-import { pruneContextMessages } from "../xdd/context-prune.ts";
+import { contextPruneOptionsFromEnv, pruneContextMessages } from "../xdd/context-prune.ts";
 import { sliceByEpoch, EPOCH_MARKER_PREFIX } from "../xdd/epoch-slicer.ts";
 import { createNfTools } from "./tools/index.ts";
 import { compileStageContracts } from "../xdd/core/stage-contract.ts";
@@ -11,6 +11,7 @@ import { assistantFlowUsage } from "../xdd/flow-budget.ts";
 import { archiveRun } from "../xdd/archive.ts";
 import type { XddRunnerState } from "../xdd/types.ts";
 import { dispatchNfCommand } from "./adapter.ts";
+import { buildDocumentHandoffMessages } from "../xdd/context-document-handoff.ts";
 import { planStageNamesAreNf } from "./types.ts";
 
 /**
@@ -190,9 +191,13 @@ export const normalFlowInlineExtension: InlineExtension = {
 		pi.on("context", async (event) => {
 			if (!stateRef) return undefined;
 			const sliced = sliceByEpoch(event.messages, stateRef.stageEpoch);
-			const pruned = pruneContextMessages(sliced);
-			if (sliced === event.messages && pruned === sliced) return undefined;
-			return { messages: pruned };
+			const pruned = pruneContextMessages(sliced, contextPruneOptionsFromEnv());
+			const stage = stateRef.currentStage();
+			const handedOff = stage
+				? await buildDocumentHandoffMessages({ cwd: stateRef.cwd, stage: stage.name, inputs: stage.inputs, messages: pruned })
+				: pruned;
+			if (sliced === event.messages && pruned === sliced && handedOff === pruned) return undefined;
+			return { messages: handedOff };
 		});
 
 		pi.on("agent_end", async (event, ctx) => {
