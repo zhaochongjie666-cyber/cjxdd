@@ -26,6 +26,13 @@ describe("translateXddText", () => {
 		expect(translateXddText("[xdd] run nf-123 启动。当前阶段: understand。")).toBe("[normal-flow] run nf-123 启动。当前阶段: understand。");
 	});
 
+	it("keeps Normal Flow conflict guidance free of xdd command/tool suggestions", () => {
+		const conflict = "[normal-flow] cwd 已被另一个流程 run（xdd-1）占用（阶段 init → understand）。Normal Flow 不会调用或提示 xdd 工具；请先在对应流程里结束该 run，或换一个 cwd 后再启动 Normal Flow。";
+		const resume = "[normal-flow] cwd 上的 checkpoint 属于另一个流程 run（xdd-1）。Normal Flow 不会调用或提示 xdd 工具；请在对应流程中恢复该 run，或换一个 cwd 后再使用 /normal-flow-resume。";
+		expect(conflict).not.toMatch(/\/xdd-[\w-]+|\bxdd_\w+/);
+		expect(resume).not.toMatch(/\/xdd-[\w-]+|\bxdd_\w+/);
+	});
+
 	it("leaves unrelated text untouched", () => {
 		const text = "spec 阶段的 rules.md 缺少关键词。";
 		expect(translateXddText(text)).toBe(text);

@@ -31,7 +31,7 @@ function nfStartConflictMessage(cwd: string): string | undefined {
 	if (planStageNamesAreNf(rt.plan)) {
 		return `[normal-flow] cwd 已有未完成的 Normal Flow run（${rt.runId}，当前阶段 ${rt.plan[rt.planIndex]?.stageName ?? "?"}）。请先 /normal-flow-resume 恢复或 /normal-flow-stop 中断，避免覆盖现有检查点。`;
 	}
-	return `[normal-flow] cwd 已被 xdd run（${rt.runId}）占用（阶段 ${rt.plan.map((e) => e.stageName).join(" → ")}）。请先 /xdd-stop 或换一个 cwd 再启动 Normal Flow。`;
+	return `[normal-flow] cwd 已被另一个流程 run（${rt.runId}）占用（阶段 ${rt.plan.map((e) => e.stageName).join(" → ")}）。Normal Flow 不会调用或提示 xdd 工具；请先在对应流程里结束该 run，或换一个 cwd 后再启动 Normal Flow。`;
 }
 
 /** /normal-flow <task> -- 启动一个新的 Normal Flow run。 */
@@ -98,7 +98,7 @@ export async function resumeNormalFlow(args: string, cwd: string, pi: ExtensionA
 		return;
 	}
 	if (!planStageNamesAreNf(rt.plan ?? [])) {
-		await pi.sendUserMessage(`[normal-flow] cwd 上的 checkpoint 属于 xdd run（${rt.runId}），请用 /xdd-resume 恢复，而不是 /normal-flow-resume。`);
+		await pi.sendUserMessage(`[normal-flow] cwd 上的 checkpoint 属于另一个流程 run（${rt.runId}）。Normal Flow 不会调用或提示 xdd 工具；请在对应流程中恢复该 run，或换一个 cwd 后再使用 /normal-flow-resume。`);
 		return;
 	}
 	const newState = new XddRunnerState({ runId: rt.runId, cwd, userInput: rt.userInput });
