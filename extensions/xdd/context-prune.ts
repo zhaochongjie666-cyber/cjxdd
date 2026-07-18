@@ -149,6 +149,14 @@ function neutralizeOrphanAnthropicToolResultsInPlace(messages: AgentMessage[]): 
 	return changed;
 }
 
+function toolResultAsPlainTextMessage(raw: any): AgentMessage {
+	return {
+		...raw,
+		role: "user",
+		content: [{ type: "text", text: `[历史工具结果已转为普通文本；原 tool_result 缺少相邻 tool_use，避免提供商拒绝请求]\n${extractToolText(raw)}` }],
+	};
+}
+
 function stripAssistantThinking(message: AgentMessage): AgentMessage {
 	const raw = message as any;
 	if (raw?.role !== "assistant") return message;

@@ -3,8 +3,9 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RuntimeStore } from "../xdd/storage/runtime-store.ts";
-import type { XddCheckpointData } from "../xdd/types.ts";
-import { createNormalFlowRuntimeStore, NORMAL_FLOW_RUNTIME_FILE } from "./runtime-store.ts";
+import { XddRunnerState, type XddCheckpointData } from "../xdd/types.ts";
+import { createNormalFlowRuntimeStore, NORMAL_FLOW_RUNTIME_FILE, NORMAL_FLOW_V1_BACKUP_FILE } from "./runtime-store.ts";
+import { NF_STAGES } from "./stages.ts";
 
 let cwd = "";
 
@@ -60,5 +61,33 @@ describe("Normal Flow RuntimeStore", () => {
 		xddStore.save(baseRuntime("xdd-only"));
 
 		expect(createNormalFlowRuntimeStore(cwd).load()).toBeUndefined();
+	});
+
+	it("lets Normal Flow runner state read the same runtime file as the controller", () => {
+		const nfStore = createNormalFlowRuntimeStore(cwd);
+		nfStore.save({
+			...baseRuntime("nf-run"),
+			plan: NF_STAGES.map((stage, originalIndex) => ({ stageName: stage.name, originalIndex })),
+			signals: ["complete"],
+		});
+		new RuntimeStore(cwd).save({
+			...baseRuntime("xdd-run"),
+			signals: [],
+		});
+
+		const state = new XddRunnerState({
+			runId: "nf-run",
+			cwd,
+			userInput: "test",
+			runtimeStoreOptions: {
+				runtimeFileName: NORMAL_FLOW_RUNTIME_FILE,
+				legacyCheckpointFileName: false,
+				v1BackupFileName: NORMAL_FLOW_V1_BACKUP_FILE,
+			},
+		});
+		state.plan = NF_STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
+
+		expect(state.currentStage()?.name).toBe("understand");
+		expect(state.getSignals().has("complete")).toBe(true);
 	});
 });

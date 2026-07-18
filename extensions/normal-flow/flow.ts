@@ -12,7 +12,7 @@ import { activateNormalFlowExtension, getState } from "./extension.ts";
 import { loadXddSkills } from "../xdd/skill-loader.ts";
 import { controllerInitScaffold } from "../xdd/init-scaffold.ts";
 import { XddController } from "../xdd/core/controller.ts";
-import { createNormalFlowRuntimeStore } from "./runtime-store.ts";
+import { createNormalFlowRuntimeStore, NORMAL_FLOW_RUNTIME_FILE, NORMAL_FLOW_V1_BACKUP_FILE } from "./runtime-store.ts";
 import { configuredFlowBudgetUsd } from "../xdd/flow-budget.ts";
 import { dispatchNfCommand } from "./adapter.ts";
 
@@ -52,7 +52,7 @@ export async function startNormalFlow(args: string, cwd: string, pi: ExtensionAP
 	const scaffold = controllerInitScaffold(cwd);
 	const controller = new XddController(createNormalFlowRuntimeStore(cwd), NF_STAGES);
 	controller.dispatch({ type: "START", task, options: { cwd, runId } });
-	const state = new XddRunnerState({ runId, cwd, userInput: task });
+	const state = new XddRunnerState({ runId, cwd, userInput: task, runtimeStoreOptions: { runtimeFileName: NORMAL_FLOW_RUNTIME_FILE, legacyCheckpointFileName: false, v1BackupFileName: NORMAL_FLOW_V1_BACKUP_FILE } });
 	state.flowBudgetUsd = configuredFlowBudgetUsd();
 	state.maxSelfHealPerStage = NF_MAX_SELF_HEAL_PER_STAGE;
 	state.skills = loadXddSkills(cwd);
@@ -101,7 +101,7 @@ export async function resumeNormalFlow(args: string, cwd: string, pi: ExtensionA
 		await pi.sendUserMessage(`[normal-flow] cwd 上的 checkpoint 属于另一个流程 run（${rt.runId}）。Normal Flow 不会调用或提示 xdd 工具；请在对应流程中恢复该 run，或换一个 cwd 后再使用 /normal-flow-resume。`);
 		return;
 	}
-	const newState = new XddRunnerState({ runId: rt.runId, cwd, userInput: rt.userInput });
+	const newState = new XddRunnerState({ runId: rt.runId, cwd, userInput: rt.userInput, runtimeStoreOptions: { runtimeFileName: NORMAL_FLOW_RUNTIME_FILE, legacyCheckpointFileName: false, v1BackupFileName: NORMAL_FLOW_V1_BACKUP_FILE } });
 	newState.skills = loadXddSkills(cwd);
 	// 强制注入 NF 自己的 5 阶段 plan，绝不落到 xdd 固定的 STAGES。
 	newState.plan = NF_STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
