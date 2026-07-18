@@ -7,6 +7,12 @@ function assistant(text: string, extra: Record<string, unknown> = {}) { return {
 function assistantTool(id: string, name = "bash") {
 	return { role: "assistant", content: "", tool_calls: [{ id, type: "function", function: { name, arguments: "{}" } }] };
 }
+function anthropicAssistantTool(id: string, name = "bash", text = "I will run it.") {
+	return { role: "assistant", content: [{ type: "text", text }, { type: "tool_use", id, name, input: {} }] };
+}
+function anthropicToolResult(id: string, text: string) {
+	return { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: text }] };
+}
 function tool(id: string, name: string, content: string) { return { role: "tool", tool_call_id: id, name, content }; }
 function summary(text: string) { return { role: "compactionSummary", summary: text, tokensBefore: 123, timestamp: Date.now() }; }
 
@@ -77,6 +83,29 @@ describe("T10 context pruning", () => {
 		expect((out[0] as any).tool_calls[0].id).toBe("call-keep");
 		expect((out[1] as any).tool_call_id).toBe("call-keep");
 		expect((out[1] as any).content).toBe(BASH_OUTPUT_STUB);
+	});
+
+	it("caps text without deleting Anthropic content tool_use/tool_result pairs", () => {
+		const messages = [
+			user("old " + "u".repeat(4_000)),
+			anthropicAssistantTool("call-anthropic", "bash", "a".repeat(4_000)),
+			anthropicToolResult("call-anthropic", "r".repeat(4_000)),
+			user("latest"),
+		];
+		const out = pruneContextMessages(messages as any, { currentTurnStartIndex: messages.length, maxTotalTextChars: 1_000 });
+
+		expect((out[1] as any).content).toContainEqual({ type: "tool_use", id: "call-anthropic", name: "bash", input: {} });
+		expect((out[2] as any).content).toContainEqual({ type: "tool_result", tool_use_id: "call-anthropic", content: "r".repeat(4_000) });
+	});
+
+	it("detects Anthropic content tool_use as the current turn boundary", () => {
+		const messages = [
+			anthropicAssistantTool("call-current"),
+			anthropicToolResult("call-current", "current output".repeat(500)),
+		];
+		const out = pruneContextMessages(messages as any);
+
+		expect((out[1] as any).content[0].content).toContain("current output");
 	});
 
 	it("builds compaction instructions with stage, gate, modified files and harness guidance", () => {

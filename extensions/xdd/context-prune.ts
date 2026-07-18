@@ -85,7 +85,18 @@ export function findCurrentToolTurnStart(messages: readonly AgentMessage[]): num
 
 function hasToolCalls(message: any): boolean {
 	return Array.isArray(message?.tool_calls) && message.tool_calls.length > 0 ||
-		Array.isArray(message?.toolCalls) && message.toolCalls.length > 0;
+		Array.isArray(message?.toolCalls) && message.toolCalls.length > 0 ||
+		hasContentPart(message, "tool_use");
+}
+
+function hasToolResults(message: any): boolean {
+	return message?.role === "tool" ||
+		message?.role === "tool_result" ||
+		hasContentPart(message, "tool_result");
+}
+
+function hasContentPart(message: any, type: string): boolean {
+	return Array.isArray(message?.content) && message.content.some((part: any) => part?.type === type);
 }
 
 function stripAssistantThinking(message: AgentMessage): AgentMessage {
@@ -181,10 +192,25 @@ function findLatestUserMessageIndex(messages: readonly AgentMessage[]): number {
 function stubMessageText(message: AgentMessage): AgentMessage {
 	const raw: any = message;
 	if (raw?.role === "tool" || raw?.role === "tool_result") return stubToolResult(message);
-	if (raw?.role === "assistant" && hasToolCalls(raw)) {
-		return { ...raw, content: Array.isArray(raw.content) ? [{ type: "text", text: TEXT_CONTENT_STUB }] : TEXT_CONTENT_STUB };
-	}
+	if (raw?.role === "assistant" && hasToolCalls(raw)) return stubStructuredContentText(raw);
+	if (hasToolResults(raw)) return stubStructuredContentText(raw);
 	if (raw?.role === "compactionSummary") return { ...raw, summary: TEXT_CONTENT_STUB };
 	if ("content" in raw) return { ...raw, content: Array.isArray(raw.content) ? [{ type: "text", text: TEXT_CONTENT_STUB }] : TEXT_CONTENT_STUB };
 	return message;
+}
+
+function stubStructuredContentText(raw: any): AgentMessage {
+	if (!Array.isArray(raw.content)) return { ...raw, content: TEXT_CONTENT_STUB };
+	let insertedTextStub = false;
+	const content = raw.content.flatMap((part: any) => {
+		const type = String(part?.type ?? "");
+		if (type === "tool_use" || type === "tool_result") return [part];
+		if (THINKING_CONTENT_TYPES.has(type)) return [];
+		if (!insertedTextStub) {
+			insertedTextStub = true;
+			return [{ type: "text", text: TEXT_CONTENT_STUB }];
+		}
+		return [];
+	});
+	return { ...raw, content };
 }
