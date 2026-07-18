@@ -133,6 +133,24 @@ describe("production pi adapter lifecycle", () => {
 		});
 	});
 
+	it("degraded AIGate infrastructure failure steers a bounded retry instead of idling", async () => {
+		harness.state.lastStageError = "[AIGate LLM 调用失败] LLM API 504";
+		harness.state.beginAiGateAttempt("init");
+
+		await harness.emit("tool_result", {
+			type: "tool_result",
+			toolName: "xdd_submit_artifact",
+			content: [{ type: "text", text: "⚠️ [AIGate degraded 1/5] init 审查服务/响应格式异常（基础设施故障）：\n本 turn 继续。请恢复审查服务或模型配置后重新调用 xdd_submit_artifact；无需修改产物。" }],
+		});
+
+		expect(harness.sentMessages).toHaveLength(1);
+		expect(harness.sentMessages[0]).toMatchObject({
+			text: expect.stringContaining("立即重新调用 xdd_submit_artifact"),
+			options: { deliverAs: "steer" },
+		});
+		expect(harness.sentMessages[0]?.text).toContain("不要停在等待状态");
+	});
+
 	it("exhausted AIGate failure does not steer because it must diagnose or roll back", async () => {
 		harness.state.stageOutcome = "hard_gate_failed";
 		harness.state.lastStageError = "semantic review failed";
