@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EPOCH_MARKER_PREFIX, sliceByEpoch } from "./epoch-slicer.ts";
-import { BASH_OUTPUT_STUB, TEXT_CONTENT_STUB, buildXddCompactionInstructions, pruneContextMessages } from "./context-prune.ts";
+import { BASH_OUTPUT_STUB, TEXT_CONTENT_STUB, TOOL_OUTPUT_STUB, buildXddCompactionInstructions, pruneContextMessages } from "./context-prune.ts";
 
 function user(text: string) { return { role: "user", content: text }; }
 function assistant(text: string, extra: Record<string, unknown> = {}) { return { role: "assistant", content: text, ...extra }; }
@@ -35,6 +35,21 @@ describe("T10 context pruning", () => {
 		expect((out[5] as any).content).toContain("current output");
 	});
 
+	it("stubs oversized historical read output while preserving the tool call id", () => {
+		const messages = [
+			assistantTool("call-read-1", "read"),
+			tool("call-read-1", "read", "file output".repeat(500)),
+			assistantTool("call-current", "bash"),
+			tool("call-current", "bash", "current output"),
+		];
+		const out = pruneContextMessages(messages as any);
+
+		expect((out[1] as any).role).toBe("tool");
+		expect((out[1] as any).tool_call_id).toBe("call-read-1");
+		expect((out[1] as any).content).toBe(TOOL_OUTPUT_STUB);
+		expect((out[3] as any).content).toBe("current output");
+	});
+
 	it("removes historical assistant thinking without touching normal content", () => {
 		const out = pruneContextMessages([
 			assistant("answer", { thinking: "hidden", content: [{ type: "thinking", text: "secret" }, { type: "text", text: "visible" }] }),
@@ -59,6 +74,19 @@ describe("T10 context pruning", () => {
 		expect((pruned[1] as any).reasoning).toBeUndefined();
 		// The old bash pair was summarized away by epoch/compaction slicing.
 		expect(pruned.some((message: any) => message.tool_call_id === "old-bash")).toBe(false);
+	});
+
+	it("does not perform semantic text pruning by default because Pi owns compaction", () => {
+		const messages = [
+			user("old user " + "u".repeat(4_000)),
+			assistant("old assistant " + "a".repeat(4_000)),
+			user("latest instruction must stay"),
+		];
+		const out = pruneContextMessages(messages as any);
+
+		expect(out).toBe(messages);
+		expect((out[0] as any).content).toContain("old user");
+		expect((out[1] as any).content).toContain("old assistant");
 	});
 
 	it("caps total historical text while preserving the latest user instruction", () => {
@@ -121,6 +149,34 @@ describe("T10 context pruning", () => {
 		expect((out[2] as any).tool_call_id).toBe("call-two");
 	});
 
+	it("neutralizes a tool message when Pi tail trim kept the assistant text but dropped tool_calls", () => {
+		const messages = [
+			assistant("I will read the file, but the serialized tool_calls array was trimmed away."),
+			tool("call-trimmed-away", "read", "file content from an orphaned read result"),
+			user("latest"),
+		];
+		const out = pruneContextMessages(messages as any, { currentTurnStartIndex: messages.length });
+
+		expect((out[1] as any).role).toBe("user");
+		expect((out[1] as any).content[0].text).toContain("file content from an orphaned read result");
+		expect((out[1] as any).content[0].text).toContain("缺少相邻 tool_use");
+	});
+
+	it("neutralizes a content tool_result when the preceding assistant kept text but lost tool_use", () => {
+		const messages = [
+			{ role: "assistant", content: [{ type: "text", text: "thinking/text survived but tool_use was trimmed" }] },
+			anthropicToolResult("call-content-trimmed-away", "orphaned content result"),
+			user("latest"),
+		];
+		const out = pruneContextMessages(messages as any, { currentTurnStartIndex: messages.length });
+
+		expect((out[1] as any).content).toEqual([{
+			type: "text",
+			text: expect.stringContaining("orphaned content result"),
+		}]);
+		expect((out[1] as any).content[0].text).toContain("缺少相邻 tool_use");
+	});
+
 	it("neutralizes OpenAI-style tool messages when their adjacent tool call was sliced away", () => {
 		const messages = [
 			user("current epoch starts after the tool call"),
@@ -148,6 +204,32 @@ describe("T10 context pruning", () => {
 		expect((out[1] as any).content).toEqual([{
 			type: "text",
 			text: expect.stringContaining("orphaned output"),
+		}]);
+		expect((out[1] as any).content[0].text).toContain("缺少相邻 tool_use");
+	});
+
+	it("normalizes valid Anthropic tool_result camelCase ids to provider snake_case", () => {
+		const messages = [
+			anthropicAssistantTool("call-valid-camel"),
+			{ role: "user", content: [{ type: "tool_result", toolUseId: "call-valid-camel", content: "valid camel" }] },
+		];
+		const out = pruneContextMessages(messages as any, { currentTurnStartIndex: messages.length });
+
+		expect((out[1] as any).content).toContainEqual({ type: "tool_result", tool_use_id: "call-valid-camel", content: "valid camel" });
+		expect((out[1] as any).content[0]).not.toHaveProperty("toolUseId");
+	});
+
+	it("neutralizes Anthropic tool_result blocks that use camelCase ids when their adjacent tool_use is missing", () => {
+		const messages = [
+			user("current epoch starts after the tool_use"),
+			{ role: "user", content: [{ type: "tool_result", toolUseId: "call-orphan-camel", content: "camel orphan" }] },
+			user("latest"),
+		];
+		const out = pruneContextMessages(messages as any, { currentTurnStartIndex: messages.length });
+
+		expect((out[1] as any).content).toEqual([{
+			type: "text",
+			text: expect.stringContaining("camel orphan"),
 		}]);
 		expect((out[1] as any).content[0].text).toContain("缺少相邻 tool_use");
 	});

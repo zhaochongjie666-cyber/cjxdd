@@ -1,9 +1,10 @@
 import type { AgentMessage } from "@earendil-works/pi-coding-agent";
 
 export const BASH_OUTPUT_STUB = "[bash 输出已压缩；命令仍保留在对应 tool call，结论见 stage summary 或 evidence 文件]";
+export const TOOL_OUTPUT_STUB = "[历史工具输出已压缩；工具调用配对元数据保留，必要结论见 stage summary 或落盘产物]";
 export const TEXT_CONTENT_STUB = "[历史对话内容已压缩；xdd 状态以 .xdd/runtime.json、阶段产物和 stage summary 为准]";
 
-const DEFAULT_CONTEXT_TEXT_BUDGET = 80_000;
+const DEFAULT_CONTEXT_TEXT_BUDGET = Number.POSITIVE_INFINITY;
 
 const THINKING_CONTENT_TYPES = new Set(["thinking", "reasoning", "thought"]);
 
@@ -12,7 +13,10 @@ export interface ContextPruneOptions {
 	currentTurnStartIndex?: number;
 	/** Preserve at most this many text characters before replacing a bash result. */
 	bashResultStubThreshold?: number;
-	/** Keep total message text under this budget by stubbing oldest non-current text. */
+	/**
+	 * Optional emergency cap for tests/headless callers. Runtime xdd leaves
+	 * semantic compaction to Pi and only performs tool-invariant safety fixes.
+	 */
 	maxTotalTextChars?: number;
 }
 
@@ -29,9 +33,11 @@ export interface CompactionInstructionArgs {
 /**
  * Prune context without breaking provider tool-call invariants.
  *
- * The function never deletes messages. It only removes historical assistant
- * thinking payloads and stubs historical bash tool results, so every assistant
- * tool call still has its corresponding tool result message.
+ * Runtime xdd relies on Pi's own compaction/pruning for semantic context
+ * reduction. This adapter only performs provider-invariant safety fixes:
+ * remove historical assistant thinking, stub oversized historical tool
+ * results while preserving their ids, and neutralize/normalize tool_result blocks that would otherwise
+ * make a provider reject the request. It never deletes messages.
  */
 export function pruneContextMessages(
 	messages: readonly AgentMessage[],
@@ -44,7 +50,7 @@ export function pruneContextMessages(
 	const next = messages.map((message, index) => {
 		let pruned = stripAssistantThinking(message);
 		if (pruned !== message) changed = true;
-		if (isHistoricalBashToolResult(pruned, index, currentTurnStartIndex) && toolResultTextLength(pruned) > threshold) {
+		if (isHistoricalToolResult(pruned, index, currentTurnStartIndex) && toolResultTextLength(pruned) > threshold) {
 			pruned = stubToolResult(pruned);
 			changed = true;
 		}
@@ -120,8 +126,22 @@ function toolUseIds(message: any): Set<string> {
 function contentToolResultIds(message: any): string[] {
 	if (!Array.isArray(message?.content)) return [];
 	return message.content
-		.filter((part: any) => part?.type === "tool_result" && part.tool_use_id)
-		.map((part: any) => String(part.tool_use_id));
+		.filter((part: any) => part?.type === "tool_result" && contentToolResultId(part))
+		.map((part: any) => String(contentToolResultId(part)));
+}
+
+function contentToolResultId(part: any): string | undefined {
+	const id = part?.tool_use_id ?? part?.toolUseId ?? part?.tool_call_id ?? part?.toolCallId;
+	return id === undefined || id === null ? undefined : String(id);
+}
+
+function normalizeToolResultPartId(part: any, id: string): any {
+	if (part?.tool_use_id === id) return part;
+	const { toolUseId: _toolUseId, tool_call_id: _toolCallIdSnake, toolCallId: _toolCallIdCamel, ...rest } = part;
+	void _toolUseId;
+	void _toolCallIdSnake;
+	void _toolCallIdCamel;
+	return { ...rest, tool_use_id: id };
 }
 
 function neutralizeOrphanAnthropicToolResultsInPlace(messages: AgentMessage[]): boolean {
@@ -135,12 +155,21 @@ function neutralizeOrphanAnthropicToolResultsInPlace(messages: AgentMessage[]): 
 		const previousToolUses = previous?.role === "assistant" ? toolUseIds(previous) : new Set<string>();
 		let convertedOrphanText = "";
 		const content = raw.content.flatMap((part: any) => {
-			if (part?.type !== "tool_result" || !part.tool_use_id || previousToolUses.has(String(part.tool_use_id))) return [part];
+			const id = contentToolResultId(part);
+			if (part?.type !== "tool_result" || !id) return [part];
+			if (previousToolUses.has(id)) {
+				const normalized = normalizeToolResultPartId(part, id);
+				if (normalized !== part) changed = true;
+				return [normalized];
+			}
 			convertedOrphanText += `${convertedOrphanText ? "\n" : ""}${extractContentPartText(part)}`;
 			changed = true;
 			return [];
 		});
-		if (!convertedOrphanText) continue;
+		if (!convertedOrphanText) {
+			if (content.some((part: any, partIndex: number) => part !== raw.content[partIndex])) messages[index] = { ...raw, content };
+			continue;
+		}
 		const textPart = {
 			type: "text",
 			text: `[历史工具结果已转为普通文本；原 tool_result 缺少相邻 tool_use，避免提供商拒绝请求]\n${convertedOrphanText}`,
@@ -202,12 +231,10 @@ function stripAssistantThinking(message: AgentMessage): AgentMessage {
 	return changed ? copy : message;
 }
 
-function isHistoricalBashToolResult(message: AgentMessage, index: number, currentTurnStartIndex: number): boolean {
+function isHistoricalToolResult(message: AgentMessage, index: number, currentTurnStartIndex: number): boolean {
 	if (index >= currentTurnStartIndex) return false;
 	const raw = message as any;
-	if (raw?.role !== "tool" && raw?.role !== "tool_result") return false;
-	const name = raw.name ?? raw.toolName ?? raw.tool_name;
-	return name === "bash" || String(raw.tool_call_id ?? raw.toolCallId ?? "").includes("bash");
+	return raw?.role === "tool" || raw?.role === "tool_result";
 }
 
 function toolResultTextLength(message: AgentMessage): number {
@@ -230,13 +257,21 @@ function extractContentPartText(part: any): string {
 function stubToolResult(message: AgentMessage): AgentMessage {
 	const raw: any = message;
 	const copy: any = { ...raw };
+	const stub = toolResultStubText(raw);
 	if (Array.isArray(raw.content)) {
-		copy.content = [{ type: "text", text: BASH_OUTPUT_STUB }];
+		copy.content = [{ type: "text", text: stub }];
 	} else {
-		copy.content = BASH_OUTPUT_STUB;
+		copy.content = stub;
 	}
 	if ("isError" in raw) copy.isError = raw.isError;
 	return copy;
+}
+
+function toolResultStubText(raw: any): string {
+	const name = raw.name ?? raw.toolName ?? raw.tool_name;
+	return name === "bash" || String(raw.tool_call_id ?? raw.toolCallId ?? "").includes("bash")
+		? BASH_OUTPUT_STUB
+		: TOOL_OUTPUT_STUB;
 }
 
 function totalMessageTextLength(messages: readonly AgentMessage[]): number {
