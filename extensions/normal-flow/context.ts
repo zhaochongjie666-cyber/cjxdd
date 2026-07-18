@@ -29,7 +29,7 @@ const NF_PREAMBLE = `[Normal Flow · reconcile 范式]
   2. 按差距工作
   3. nf_submit_artifact -- 提交产物，触发硬 Gate（不调用 AIGate；语义质量由 verify 阶段的证据审查负责）
   4. Gate 通过后调 nf_advance 推进到下一阶段
-失败时：Gate 未通过可在预算内反复修复重提；预算耗尽后，verify 阶段会自动回退到 implement（消耗一次流程回退预算），其他阶段自动软通过并记录告警——不需要你手动诊断，除非你想主动用 nf_rollback 回到更早阶段重做。
+失败时：Gate 未通过可在预算内反复修复重提；预算耗尽后，只有 verify 阶段可以跳回前序流程自愈（不传 targetStage 默认回 execute/implement；若验证证明规格或需求设计错误，可显式回 spec 或 understand；每次消耗一次流程回退预算）。其他阶段不会跨阶段回退，预算耗尽后自动软通过并记录告警。
 
 [职责解耦]
 每个阶段都会标注你的角色（Requirements Analyst / API Designer / Project Manager / Implementer / Auditor）。同一模型切换 focus；不要用另一个角色的方式做这一阶段的事。

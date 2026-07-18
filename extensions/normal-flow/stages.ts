@@ -25,9 +25,12 @@ import {
 	requireGlobs,
 	requireGlobsWithKeywords,
 	requireGlobsWithMinSize,
-	requirePatternInSource,
 	requireTestsPass,
 } from "./gate.ts";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { buildTraceCoverage, observeFilesystem } from "../xdd/observe-fs.ts";
+import { globToRegExp, hasGlobMeta, walkRel } from "../xdd/gate.ts";
 import { STAGE_ROLES } from "../xdd/types.ts";
 import type { ArtifactRule, XddGate, XddStageName, XddStageSpec } from "../xdd/types.ts";
 
@@ -117,7 +120,43 @@ const NF_CONTRACT_META: Record<NfXddStageName, NfContractMeta> = {
 
 /** NF 不启用 AIGate；这段占位标准写死在每个阶段，满足 aigateStandard 必填约束。 */
 const NF_NO_AIGATE_STANDARD =
-	"NF 不启用 AIGate；语义质量由 verify 阶段的证据审查（verify-report.md 逐 RXX 举证）负责，不做多角度 LLM 攻击审查。";
+	"NF 不启用 AIGate；语义质量由 spec/plan/execute/verify 的攻击清单、TDD 证据和硬 Gate 协同负责，不做外部多角度 LLM 审查。";
+
+const NF_ATTACK_KEYWORDS = ["Attack", "攻击", "异常", "失败", "拒绝", "无权限", "冲突"] as const;
+const NF_PLAN_DISCIPLINE_KEYWORDS = ["回指 RXX", "Expected:", "Files:", "Attack", "攻击", "Gate"] as const;
+const NF_VERIFY_ATTACK_KEYWORDS = ["攻击", "Attack", "失败假设", "P0", "P1", "证据", "spec↔code"] as const;
+
+function matchingFiles(cwd: string, patterns: readonly string[]): string[] {
+	let walked: string[] | undefined;
+	const out = new Set<string>();
+	for (const pattern of patterns) {
+		if (!hasGlobMeta(pattern)) {
+			out.add(pattern);
+			continue;
+		}
+		if (walked === undefined) walked = walkRel(cwd);
+		const re = globToRegExp(pattern);
+		for (const file of walked) {
+			const rel = file.replace(/\\/g, "/");
+			if (re.test(rel)) out.add(rel);
+		}
+	}
+	return [...out];
+}
+
+function readMatchedText(cwd: string, patterns: readonly string[]): string {
+	return matchingFiles(cwd, patterns).map((rel) => {
+		try {
+			return readFileSync(join(cwd, rel), "utf8");
+		} catch {
+			return "";
+		}
+	}).join("\n");
+}
+
+function missingKeywords(content: string, keywords: readonly string[]): string[] {
+	return keywords.filter((keyword) => !content.includes(keyword));
+}
 
 function withNfStageContract(stage: XddStageSpec): XddStageSpec {
 	const meta = NF_CONTRACT_META[stage.name as NfXddStageName];
@@ -160,14 +199,32 @@ const specGate: XddGate = async ({ cwd }) => {
 	if (!rulesOk.ok) return { ok: false, reason: "spec Gate: 缺少或过短的 .xdd/design/spec/**/rules.md（RXX 规则目录）" };
 	const featOk = await requireGlobs(cwd, [".xdd/design/spec/**/*.feature"]);
 	if (!featOk.ok) return { ok: false, reason: "spec Gate: 缺少 .xdd/design/spec/**/*.feature（每条 RXX 至少 1 个场景）" };
+	const coverage = buildTraceCoverage(observeFilesystem(cwd, []));
+	if (coverage.specRxx.length === 0) return { ok: false, reason: "spec Gate: rules.md 中未发现 RXX 规则编号；请声明至少一条 R01 或 B01-R01 形式的可追溯规则" };
+	const specText = readMatchedText(cwd, [".xdd/design/spec/**/rules.md", ".xdd/design/spec/**/*.feature"]);
+	if (!/(@covers-)?(?:B\d{2}-)?R\d{2}/.test(specText)) return { ok: false, reason: "spec Gate: Feature/规则未显式绑定 RXX，开发无法按锚实现" };
+	if (!NF_ATTACK_KEYWORDS.some((keyword) => specText.includes(keyword))) return { ok: false, reason: "spec Gate: 缺少攻击/异常路径描述；每条核心规则至少要有拒绝、失败、冲突或无权限等反例" };
 	return { ok: true };
 };
 
-const planGate: XddGate = async ({ cwd }) => requireGlobsWithMinSize(cwd, [".xdd/runs/**/plan.md"], 100);
+const planGate: XddGate = async ({ cwd }) => {
+	const planOk = await requireGlobsWithMinSize(cwd, [".xdd/runs/**/plan.md"], 100);
+	if (!planOk.ok) return planOk;
+	const coverage = buildTraceCoverage(observeFilesystem(cwd, []));
+	if (coverage.specRxx.length === 0) return { ok: false, reason: "plan Gate: 未发现 spec RXX，不能产出可追溯开发计划" };
+	const planText = readMatchedText(cwd, [".xdd/runs/**/plan.md"]);
+	const missingPlan = missingKeywords(planText, NF_PLAN_DISCIPLINE_KEYWORDS);
+	if (missingPlan.length > 0) return { ok: false, reason: `plan Gate: plan.md 缺少开发↔Gate 协同字段：${missingPlan.join(", ")}` };
+	return { ok: true };
+};
 
 const implementGate: XddGate = async ({ cwd }) => {
-	const implementsOk = await requirePatternInSource(cwd, /@implements\s+R\d/i, 1);
-	if (!implementsOk.ok) return { ok: false, reason: "implement Gate: 源码中未见 @implements RXX 标注（每条实现须回指规则编号）" };
+	const coverage = buildTraceCoverage(observeFilesystem(cwd, []));
+	if (coverage.specRxx.length === 0) return { ok: false, reason: "implement Gate: 未发现 spec RXX，不能验证实现追溯；请先回到 spec 阶段产出规则编号" };
+	if (coverage.unimplemented.length > 0) return { ok: false, reason: `implement Gate: 以下 spec RXX 尚无源码 @implements 标注：${coverage.unimplemented.join(", ")}` };
+	const planText = readMatchedText(cwd, [".xdd/runs/**/plan.md"]);
+	const missingPlan = missingKeywords(planText, NF_PLAN_DISCIPLINE_KEYWORDS);
+	if (missingPlan.length > 0) return { ok: false, reason: `implement Gate: 开发计划缺少攻击/TDD/Gate 协同字段：${missingPlan.join(", ")}` };
 	const testsOk = await requireTestsPass(cwd);
 	if (!testsOk.ok) return testsOk;
 	return { ok: true };
@@ -178,8 +235,18 @@ const verifyGate: XddGate = async ({ cwd }) => {
 	if (!reportOk.ok) return { ok: false, reason: "verify Gate: 缺少或过短的 .xdd/runs/iter-N/verify-report.md" };
 	const testsOk = await requireTestsPass(cwd);
 	if (!testsOk.ok) return testsOk;
-	const traceOk = await requirePatternInSource(cwd, /@implements\s+R\d/i, 1);
-	if (!traceOk.ok) return { ok: false, reason: "verify Gate: 源码中未见 @implements RXX 标注，spec↔code 追溯未闭合" };
+	const coverage = buildTraceCoverage(observeFilesystem(cwd, []));
+	if (coverage.specRxx.length === 0) return { ok: false, reason: "verify Gate: 未发现 spec RXX，无法证明 spec↔code 追溯闭合" };
+	const verifyText = readMatchedText(cwd, [".xdd/runs/*/verify-report.md"]);
+	const missingVerify = missingKeywords(verifyText, NF_VERIFY_ATTACK_KEYWORDS);
+	if (missingVerify.length > 0) return { ok: false, reason: `verify Gate: verify-report.md 缺少攻击验证证据字段：${missingVerify.join(", ")}` };
+	if (coverage.unimplemented.length > 0 || coverage.orphan.length > 0) {
+		const gaps = [
+			coverage.unimplemented.length > 0 ? `未实现: ${coverage.unimplemented.join(", ")}` : "",
+			coverage.orphan.length > 0 ? `孤儿标注: ${coverage.orphan.join(", ")}` : "",
+		].filter(Boolean).join("；");
+		return { ok: false, reason: `verify Gate: spec↔code 追溯未闭合（${gaps}）` };
+	}
 	return { ok: true };
 };
 
@@ -209,6 +276,7 @@ export const NF_STAGES: readonly XddStageSpec[] = [
 		desiredState: [
 			"已产出可验收的业务规则（RXX）+ Gherkin 场景（.xdd/design/spec/{bxx}/rules.md + *.feature）",
 			"每条 RXX 规则至少 1 个 Feature 覆盖（含正向 + 异常 Scenario）",
+			"已把攻击面写入规则：拒绝/失败/冲突/无权限/边界反例，而不是只写 happy path",
 			"规则与 explore 阶段澄清的需求点逐条对应（无遗漏假设）",
 		],
 		deliverablePaths: [".xdd/design/spec/**/rules.md", ".xdd/design/spec/**/*.feature"],
@@ -226,6 +294,7 @@ export const NF_STAGES: readonly XddStageSpec[] = [
 			"已产出执行计划文档（.xdd/runs/iter-N/plan.md）",
 			"每项工作项标明：依赖前序产出、预计产物、改动文件范围",
 			"每个工作项关联至少 1 条 spec RXX",
+			"每个工作项写清 TDD 验证命令/Expected 结果、改动 Files、Gate 通过条件和攻击用例",
 		],
 		deliverablePaths: [".xdd/runs/**/plan.md"],
 		aigateStandard: NF_NO_AIGATE_STANDARD,
@@ -241,6 +310,7 @@ export const NF_STAGES: readonly XddStageSpec[] = [
 			"已按 plan 工作项完成实现",
 			"每条 spec RXX 都有对应的 @implements RXX 标注",
 			"测试通过（npm test / go test / make test，按仓库类型自动探测）",
+			"实现按 plan 的攻击用例补了失败测试，且 Gate 失败原因能回指到具体 RXX/Task",
 		],
 		deliverablePaths: [],
 		aigateStandard: NF_NO_AIGATE_STANDARD,
@@ -257,6 +327,7 @@ export const NF_STAGES: readonly XddStageSpec[] = [
 			"已对 spec 的每条 RXX 规则至少跑一次验证",
 			"已写 .xdd/runs/iter-N/verify-report.md，逐 RXX 举证",
 			"测试通过；spec↔code 追溯闭合（@implements RXX 齐全）",
+			"verify-report.md 包含攻击验证、P0/P1 判定、失败假设和证据路径，能驱动回 execute 或更早阶段",
 		],
 		deliverablePaths: [".xdd/runs/*/verify-report.md"],
 		aigateStandard: NF_NO_AIGATE_STANDARD,

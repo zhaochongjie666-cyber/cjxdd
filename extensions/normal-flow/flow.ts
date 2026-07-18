@@ -28,7 +28,9 @@ const NF_MAX_SELF_HEAL_PER_STAGE = 3;
 function nfStartConflictMessage(cwd: string): string | undefined {
 	const rt = new RuntimeStore(cwd).load();
 	if (!rt || !rt.plan || rt.plan.length === 0 || rt.runComplete) return undefined;
-	if (planStageNamesAreNf(rt.plan)) return undefined;
+	if (planStageNamesAreNf(rt.plan)) {
+		return `[normal-flow] cwd 已有未完成的 Normal Flow run（${rt.runId}，当前阶段 ${rt.plan[rt.planIndex]?.stageName ?? "?"}）。请先 /normal-flow-resume 恢复或 /normal-flow-stop 中断，避免覆盖现有检查点。`;
+	}
 	return `[normal-flow] cwd 已被 xdd run（${rt.runId}）占用（阶段 ${rt.plan.map((e) => e.stageName).join(" → ")}）。请先 /xdd-stop 或换一个 cwd 再启动 Normal Flow。`;
 }
 
