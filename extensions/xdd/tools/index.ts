@@ -18,6 +18,7 @@ import { createXddLoadSkillTool } from "./xdd-load-skill.ts";
 import { createXddNextTaskTool } from "./xdd-next-task.ts";
 import { createXddObserveTool } from "./xdd-observe.ts";
 import { createXddRollbackTool } from "./xdd-rollback.ts";
+import { createXddResetBudgetTool } from "./xdd-reset-budget.ts";
 import { createXddBlindJourneyTool } from "./xdd-blind-journey.ts";
 import { createXddSubmitArtifactTool } from "./xdd-submit-artifact.ts";
 import { createXddTraceTool } from "./xdd-trace.ts";
@@ -34,6 +35,7 @@ export function createXddTools(getState: GetXddState): ToolDefinition[] {
 		createXddNextTaskTool(getState),
 		createXddDiagnoseTool(getState),
 		createXddRollbackTool(getState),
+		createXddResetBudgetTool(getState),
 		createXddListSkillsTool(getState),
 		createXddLoadSkillTool(getState),
 		createXddTraceTool(getState),
