@@ -147,6 +147,20 @@ describe("AIGate retry loop", () => {
 		expect(keepAliveBlock).not.toContain("terminate: true");
 	});
 
+	it("AIGate repair steering requires a real repair loop before resubmission", () => {
+		const steerBlock = EXT_SRC.slice(
+			EXT_SRC.indexOf("async function sendAIGateRepairSteering"),
+			EXT_SRC.indexOf("function isXddAdvanceNextStage"),
+		);
+		expect(steerBlock).toContain("禁止立刻再次调用 xdd_submit_artifact");
+		expect(steerBlock).toContain("repair turn loop");
+		expect(steerBlock).toContain("xdd_observe/xdd_difference");
+		expect(steerBlock).toContain("检查并修改相关产物/代码");
+		expect(steerBlock).toContain("运行正向验证和兜底/攻击检查");
+		expect(steerBlock).toContain("才重新调用 xdd_submit_artifact");
+		expect(steerBlock).toContain("deliverAs: \"steer\"");
+	});
+
 	it("AIGate degradation keeps the turn alive and uses bounded degraded budget", () => {
 		const submitSrc = readFileSync(join(SRC_DIR, "tools", "xdd-submit-artifact.ts"), "utf8");
 		const degradedBlock = submitSrc.slice(
@@ -189,7 +203,11 @@ describe("Rollback retry loop", () => {
 	it("rollback keeps the current turn alive at the recovered target stage", () => {
 		const rollbackSrc = readFileSync(join(SRC_DIR, "tools", "xdd-rollback.ts"), "utf8");
 		expect(rollbackSrc).toContain("leaves the turn alive");
-		expect(rollbackSrc).not.toContain("terminate: true");
+		const successfulRollbackBlock = rollbackSrc.slice(
+			rollbackSrc.lastIndexOf("return {"),
+			rollbackSrc.lastIndexOf("};"),
+		);
+		expect(successfulRollbackBlock).not.toContain("terminate: true");
 	});
 });
 
@@ -236,7 +254,7 @@ describe("Stage repair exhaustion policy", () => {
 		expect(submitSrc).toContain('if (stage.exit !== "verdict")');
 		expect(submitSrc).toContain('signal: "complete"');
 		expect(submitSrc).toContain("handleExhaustedVerifyFailure");
-		expect(submitSrc).toContain("consumeFlowRollbackBudget");
+		expect(submitSrc).toContain("flowRollbackCount");
 		expect(submitSrc).toContain('type: "ROLLBACK"');
 	});
 
