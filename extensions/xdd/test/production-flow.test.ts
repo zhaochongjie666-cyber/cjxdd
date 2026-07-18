@@ -268,7 +268,7 @@ describe("production pi adapter lifecycle", () => {
 	});
 
 
-	it("context hook runs epoch slicing and safe pruning together", async () => {
+	it("context hook preserves epoch history while applying safe pruning", async () => {
 		harness.state.stageEpoch = "harness:verify:1";
 		const messages = [
 			{ role: "user", content: "old stage" },
@@ -280,12 +280,13 @@ describe("production pi adapter lifecycle", () => {
 			{ role: "tool", tool_call_id: "current-bash", name: "bash", content: "current".repeat(800) },
 		];
 		const [result] = await harness.emit("context", { messages });
-		expect(result.messages).toHaveLength(6);
-		expect(result.messages[0].content).toContain(EPOCH_MARKER_PREFIX);
-		expect(result.messages[2].tool_call_id).toBe("old-bash");
-		expect(result.messages[2].content).toBe(BASH_OUTPUT_STUB);
-		expect(result.messages[3].content).toEqual([{ type: "text", text: "keep" }]);
-		expect(result.messages[5].content).toContain("current");
+		expect(result.messages).toHaveLength(7);
+		expect(result.messages[0].content).toBe("old stage");
+		expect(result.messages[1].content).toContain(EPOCH_MARKER_PREFIX);
+		expect(result.messages[3].tool_call_id).toBe("old-bash");
+		expect(result.messages[3].content).toBe(BASH_OUTPUT_STUB);
+		expect(result.messages[4].content).toEqual([{ type: "text", text: "keep" }]);
+		expect(result.messages[6].content).toContain("current");
 	});
 
 	it("waits for Pi's compaction callback before queuing the continuation", async () => {

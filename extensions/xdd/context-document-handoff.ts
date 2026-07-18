@@ -18,8 +18,9 @@ export function shouldUseDocumentHandoff(stage: XddStageName): boolean {
 }
 
 /**
- * For design stages, replace chat/tool history with the stage's document inputs.
- * Implementation stages keep normal context because source edits and test output matter.
+ * For design stages, add the stage's document inputs without deleting chat/tool
+ * history. Pi owns semantic compaction; xdd may enrich context, but must not
+ * directly erase remembered conversation state.
  */
 export async function buildDocumentHandoffMessages(args: {
 	cwd: string;
@@ -34,9 +35,15 @@ export async function buildDocumentHandoffMessages(args: {
 	const latestUser = findLatestUserMessage(args.messages);
 	const handoff: AgentMessage = {
 		role: "user",
-		content: `[xdd document handoff] ${args.stage} 阶段上下文已切换为落盘文档；历史工具调用/输出已从模型上下文移除。以下是本阶段输入文档摘录，若信息不足请重新 read 对应文件。\n\n${docContext}`,
+		content: `[xdd document handoff] ${args.stage} 阶段补充落盘文档上下文；不删除历史对话/工具消息，语义压缩仅由 Pi compaction 负责。以下是本阶段输入文档摘录，若信息不足请重新 read 对应文件。\n\n${docContext}`,
 	} as AgentMessage;
-	return latestUser ? [handoff, latestUser] as AgentMessage[] : [handoff] as AgentMessage[];
+	if (!latestUser) return [...args.messages, handoff] as AgentMessage[];
+	const latestUserIndex = args.messages.lastIndexOf(latestUser);
+	return [
+		...args.messages.slice(0, latestUserIndex),
+		handoff,
+		...args.messages.slice(latestUserIndex),
+	] as AgentMessage[];
 }
 
 async function readDocumentContext(cwd: string, inputs: readonly ArtifactRule[], options: DocumentHandoffOptions = {}): Promise<string> {
