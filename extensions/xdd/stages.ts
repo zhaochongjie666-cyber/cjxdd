@@ -56,8 +56,8 @@ const CONTRACT_META: Record<XddStageName, {
 			"**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.svg", "**/*.avif", "**/*.bmp", "**/*.ico",
 			"package.json", "pyproject.toml", "Cargo.toml", ".xdd/**",
 		],
-		writeScopes: [".xdd/**"],
-		gatePolicy: "explicit-soft",
+		writeScopes: [".xdd/runs/xdd_run/init.md"],
+		gatePolicy: "hard",
 		rollbackTarget: "none",
 	},
 	understand: {
@@ -161,22 +161,27 @@ export const STAGES: readonly XddStageSpec[] = [
 		role: roleFor("init"),
 		skill: "xdd-init",
 		exit: "goal_complete",
-		allowedTools: [...READ_TOOLS, ...CONTROLLER_TOOLS],
+		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, ...CONTROLLER_TOOLS],
 		desiredState: [
-			"已核对 Controller 生成的 .xdd/design/README.md、.xdd/runs/README.md、.xdd/archive/README.md 脚手架说明，并将它们作为 init 结构证据提交",
+			"已核对 Controller 生成的 .xdd/design/README.md、.xdd/runs/README.md、.xdd/archive/README.md 只是脚手架说明，不能把它们当作 init 已完成",
 			"已读仓库现有文档（README / docs/ / .xdd/design/ 如存在），对项目目标有 3-5 句话的总结",
-			"已与用户确认或在 prompt 中明示了本次 run 的目标边界（在 init 末尾向用户复述一遍即可）",
+			"已与用户确认或在 prompt 中明示了本次 run 的目标边界，并记录明确不做什么",
 			"已选好本次用到的 xdd 技能子集（xdd_list_skills -> xdd_load_skill）",
+			"已把调研摘要、目标边界、技能选择与下一步交接写入 .xdd/runs/xdd_run/init.md",
 		],
-		// These controller-owned markers make init's structural evidence
-		// observable without granting this read-only stage write permissions.
-		deliverablePaths: [".xdd/design/README.md", ".xdd/runs/README.md", ".xdd/archive/README.md"],
+		deliverablePaths: [".xdd/runs/xdd_run/init.md"],
 		noCodeReading: true,
-		aigateStandard: `审查 init 阶段的 Controller 脚手架证据：
-1. .xdd/design/README.md、.xdd/runs/README.md、.xdd/archive/README.md 是否都存在且说明各自目录用途
-2. 说明是否明确边界：init 不生成 intent.md、design.md、goals.md 或 status.md；这些业务设计/run 产物归后续阶段所有
-3. 不要求 init 生成或提交业务设计内容；若 intent.md 不存在，“规格偏离攻击”应标记为 N/A 并说明 init 尚未具备意图锚`,
-				gate: async () => softPass(),
+		aigateStandard: `审查 init 阶段的真实调研产物：
+1. .xdd/runs/xdd_run/init.md 是否基于已读文档/用户 prompt 写出项目目标摘要，而不是只复述脚手架存在
+2. 是否明确本次 run 的目标边界、非目标/暂不做事项
+3. 是否记录已选择的 xdd 技能子集与选择理由
+4. 是否说明 .xdd/design/README.md、.xdd/runs/README.md、.xdd/archive/README.md 只是 Controller 脚手架证据，不是业务设计产物`,
+		gate: async ({ cwd }) => {
+			const path = [".xdd/runs/xdd_run/init.md"];
+			const size = await requireGlobsWithMinSize(cwd, path, 300);
+			if (!size.ok) return size;
+			return requireGlobsWithKeywords(cwd, path, ["目标", "边界", "非目标", "技能", "调研", "README", "下一步"], 4);
+		},
 	},
 	{
 		name: "understand",

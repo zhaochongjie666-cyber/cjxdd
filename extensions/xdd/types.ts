@@ -795,7 +795,7 @@ export interface XddCheckpointData {
 	submittedArtifacts: Record<string, string[]>;
 	/** Legacy per-stage notes retained only for reading older runtime files. */
 	selfAttackNotes: Record<string, string>;
-	/** One self-attack conclusion for the whole run; never a design artifact. */
+	/** Latest AIGate-coupled self-attack conclusion; never a design artifact. Full history is in ESG review nodes. */
 	runSelfAttack?: string;
 	esg: XddEsgNode[];
 	at: string;

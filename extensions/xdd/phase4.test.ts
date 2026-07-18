@@ -136,6 +136,16 @@ describe("F.6 verify noCodeModification enforced", () => {
 		expect(src).toMatch(/sourceCodePattern/);
 		expect(src).toMatch(/src\|lib\|tests/);
 	});
+
+	it("xdd_submit_artifact discloses AIGate AI inference and timing", () => {
+		const src = require("node:fs").readFileSync(
+			require("node:path").join(import.meta.dirname, "tools/xdd-submit-artifact.ts"),
+			"utf8",
+		);
+		expect(src).toContain("会继续调用 LLM 做 AI 语义审查");
+		expect(src).toContain("AIGate/AI 推理");
+		expect(src).toContain("formatSubmitTimings");
+	});
 });
 
 // ── F.9: optional human approval controller support ───────────────────

@@ -95,13 +95,9 @@ describe("xdd policy", () => {
 		}
 	});
 
-	it("declares controller-owned scaffold markers as init evidence without granting writes", () => {
-		expect(init.deliverablePaths).toEqual([
-			".xdd/design/README.md",
-			".xdd/runs/README.md",
-			".xdd/archive/README.md",
-		]);
-		expect(init.allowedTools).not.toContain("write");
+	it("requires an init research handoff instead of treating scaffold markers as completion", () => {
+		expect(init.deliverablePaths).toEqual([".xdd/runs/xdd_run/init.md"]);
+		expect(init.allowedTools).toContain("write");
 	});
 
 	it("blocks spec source reads by contract", () => {

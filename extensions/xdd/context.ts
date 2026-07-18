@@ -91,8 +91,8 @@ export function buildStageSystemPrompt(args: BuildStagePromptArgs): string {
 	}
 	sections.push(`[允许工具] ${[...stage.allowedTools, ...STAGE_ORCHESTRATION_TOOLS].join(", ")}`);
 	const gateHint = stage.exit === "verdict"
-		? "xdd_submit_artifact(summary, artifacts, pass；若本 run 尚未记录 selfAttack，则一并提交)"
-		: "xdd_submit_artifact(summary, artifacts；selfAttack 仅本 run 首次提交时附带)";
+		? "xdd_submit_artifact(summary, artifacts, pass；随本次 AIGate 审查一并提交 selfAttack)"
+		: "xdd_submit_artifact(summary, artifacts；AIGate 阶段每次提交都附带 selfAttack)";
 	sections.push(
 		`[完成方式 / reconcile] 让所有 desiredState 为真 -> 调 ${gateHint} -> gate 通过后调 xdd_advance 推进。闸门失败可重试，预算见状态；预算耗尽后请调 xdd_diagnose 进入反思。`,
 	);
@@ -115,8 +115,8 @@ export function buildReflectSystemPrompt(args: { userInput: string; cwd: string 
 export function buildSeed(stage: XddStageSpec, userInput: string): string {
 	const desired = stage.desiredState.map((d, i) => `  ${i + 1}. ${d}`).join("\n");
 	const gateHint = stage.exit === "verdict"
-		? "xdd_submit_artifact（summary, artifacts, pass；若本 run 尚未记录 selfAttack，则一并提交）"
-		: "xdd_submit_artifact（summary, artifacts；selfAttack 仅本 run 首次提交时附带）";
+		? "xdd_submit_artifact（summary, artifacts, pass；随本次 AIGate 审查一并提交 selfAttack）"
+		: "xdd_submit_artifact（summary, artifacts；AIGate 阶段每次提交都附带 selfAttack）";
 	const lines = [
 		`进入 xdd 阶段：${stage.name}。`,
 		`本阶段角色：${stage.role}。`,

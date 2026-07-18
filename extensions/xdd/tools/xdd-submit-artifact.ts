@@ -12,11 +12,22 @@ import { join } from "node:path";
 import { evaluateVerifyEvidenceGateFull } from "../evidence/verify-gate.ts";
 import { routeVerifyFailure } from "../verify-failure-routing.ts";
 
+function elapsedMs(start: number): number {
+	return Math.max(0, Math.round(performance.now() - start));
+}
+
+function formatSubmitTimings(timings: { hardGateMs?: number; aiGateMs?: number; aiGateEnabled?: boolean }): string {
+	const parts = [`硬 Gate ${timings.hardGateMs ?? 0}ms`];
+	if (timings.aiGateEnabled) parts.push(`AIGate/AI 推理 ${timings.aiGateMs ?? 0}ms`);
+	else parts.push("AIGate 已跳过");
+	return `耗时：${parts.join("；")}`;
+}
+
 const schema = Type.Object({
 	summary: Type.String({ description: "本阶段完成内容与产物路径摘要" }),
 	artifacts: Type.Array(Type.String(), { description: "提交的产物文件路径列表" }),
 	selfAttack: Type.Optional(Type.String({
-		description: "本次 run 唯一一次自我攻击结论；仅记录在 run/runtime，绝不写入 design",
+		description: "本次 AIGate 提交对应的自我攻击结论；随 AIGate 每次语义审查提交，记录在 runtime，绝不写入 design",
 	})),
 	pass: Type.Optional(Type.Boolean({ description: "仅 verify 阶段：是否通过验证" })),
 });
@@ -74,7 +85,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 		name: "xdd_submit_artifact",
 		label: "xdd: submit artifact",
 		description:
-			"提交阶段产物并触发 Gate 验证。每个 run 仅提交一次 selfAttack（记录在 runtime，不是 design 产物）；verify 需附 pass。Gate 通过后调 xdd_advance 推进。",
+			"提交阶段产物并触发硬 Gate；硬 Gate 通过且阶段启用 AIGate 时，会继续调用 LLM 做 AI 语义审查（因此可能较慢）。selfAttack 随每次 AIGate 语义审查提交；verify 需附 pass。Gate 通过后调 xdd_advance 推进。",
 		parameters: schema,
 		async execute(_toolCallId, params: XddSubmitArtifactInput): Promise<AgentToolResult<EmptyDetails>> {
 			const state: XddRunnerState = getState();
@@ -95,7 +106,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					);
 				}
 			}
-			// Self-attack is one run-level review, never a design-stage deliverable.
+			// Self-attack is an AIGate-coupled review note, never a design-stage deliverable.
 			if (selfAttack && selfAttack.length < 20) {
 				throw new Error(
 					`[xdd_submit_artifact] selfAttack 过短（${selfAttack.length} 字符）：必须记录本次 run 检查过的反例/风险/边界及结论（至少 20 字符）`,
@@ -106,12 +117,6 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 				throw new Error(
 					`[xdd_submit_artifact] selfAttack 内容无效（"${selfAttack}"）：必须记录本次 run 检查过的反例/风险/边界及结论`,
 				);
-			}
-			if (selfAttack && state.getRunSelfAttack()) {
-				throw new Error("[xdd_submit_artifact] 本次 run 已记录 selfAttack；自我攻击只能记录一次，请不要重复提交。");
-			}
-			if (stage.exit === "verdict" && !selfAttack && !state.getRunSelfAttack()) {
-				throw new Error("[xdd_submit_artifact] verify 前必须为本次 run 提交一次 selfAttack；它只记录在 runtime，不应写入 design。");
 			}
 			// Bug 1: verify declared artifacts exist on disk before recording them.
 			// Gives the agent immediate, specific feedback instead of a vague gate
@@ -144,8 +149,10 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					);
 				}
 			}
-			dispatchToController(state, { type: "RECORD_ARTIFACT_REVIEW", stage: stage.name, artifacts, selfAttack });
+			dispatchToController(state, { type: "RECORD_ARTIFACT_REVIEW", stage: stage.name, artifacts });
+			const hardGateStartedAt = performance.now();
 			const mechanicalCheckResult = await stage.gate({ cwd: state.cwd, summary, desiredState: stage.desiredState });
+			const hardGateMs = elapsedMs(hardGateStartedAt);
 			// A failed hard Gate and a semantic AIGate failure have independent
 			// five-attempt budgets. A hard failure stops before AIGate so one
 			// submission can never consume both counters.
@@ -168,8 +175,15 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 				return handleExhaustedVerifyFailure(state, error, "硬 Gate", hardUsed, hardBudget.limit, diagnosedVerifyRollbackTarget(state));
 			}
 			// --- AIGate: semantic review after the hard Gate passes ---
-			const llmInfo = await getAIGateLLM();
-			if (!llmInfo) {
+			const aiGateEnabled = stage.aiGate?.enabled !== false;
+			if (aiGateEnabled && !selfAttack) {
+				throw new Error("[xdd_submit_artifact] AIGate 语义审查必须随本次提交提供 selfAttack；每次 AIGate 重提都要写本轮攻击检查，不是整个 run 只能一次。");
+			}
+			if (selfAttack) {
+				dispatchToController(state, { type: "RECORD_ARTIFACT_REVIEW", stage: stage.name, artifacts, selfAttack });
+			}
+			const llmInfo = aiGateEnabled ? await getAIGateLLM() : null;
+			if (aiGateEnabled && !llmInfo) {
 				// AIGate infrastructure failures are retryable and consume neither budget.
 				state.clearSubmitFingerprint(stage.name);
 				const mechanicalDetail = mechanicalCheckResult.ok
@@ -178,11 +192,13 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 				const error = `AIGate 模型不可用，无法执行统一审查；${mechanicalDetail}`;
 				dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error } });
 				return {
-					content: [{ type: "text", text: `⚠️ [AIGate] ${error}。机械检查结果为：${mechanicalCheckResult.ok ? "通过" : "未通过"}${mechanicalCheckResult.reason ? `（${mechanicalCheckResult.reason}）` : ""}\n本 turn 继续。请恢复模型配置后重新调用 xdd_submit_artifact；无需修改产物。` }],
+					content: [{ type: "text", text: `⚠️ [AIGate] ${error}。机械检查结果为：${mechanicalCheckResult.ok ? "通过" : "未通过"}${mechanicalCheckResult.reason ? `（${mechanicalCheckResult.reason}）` : ""}\n本 turn 继续。${formatSubmitTimings({ hardGateMs, aiGateMs: 0, aiGateEnabled })}。请恢复模型配置后重新调用 xdd_submit_artifact；无需修改产物。` }],
 					details: {},
 				};
 			}
+			let aiGateMs = 0;
 			if (llmInfo) {
+				const aiGateStartedAt = performance.now();
 				let intentAnchor: string | undefined;
 				const intentPath = join(state.cwd, ".xdd/design/intent.md");
 				if (existsSync(intentPath)) {
@@ -204,6 +220,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					contextPatterns: stage.aiGate?.contextPatterns,
 					submissionSummary: summary,
 				});
+				aiGateMs = elapsedMs(aiGateStartedAt);
 				// Transport and JSON-format failures are not findings about the
 				// submitted artifacts. Do not spend the semantic-review budget, but
 				// DO consume a degraded-attempt counter to prevent infinite retry
@@ -221,7 +238,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 						return ok(`⚠️ [AIGate ${degradedUsed}/${degradedBudget.limit}] ${stage.name} 审查连续不可用（基础设施故障），告警已记录，现软通过。
 原因：${aiError}
 ${angleText}
-硬 Gate 已通过，产物机械验证合格。请调用 xdd_advance 自动推进。`);
+硬 Gate 已通过，产物机械验证合格。${formatSubmitTimings({ hardGateMs, aiGateMs, aiGateEnabled })}。请调用 xdd_advance 自动推进。`);
 					}
 					dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error: aiError } });
 					const retryAdvice = /timeout/i.test(aiError)
@@ -232,7 +249,7 @@ ${angleText}
 原因：${aiError}
 ${angleText}
 剩余 degraded 预算：${degradedBudget.remaining}/${degradedBudget.limit}（耗尽后将软通过）
-本 turn 继续。${retryAdvice}` }],
+本 turn 继续。${formatSubmitTimings({ hardGateMs, aiGateMs, aiGateEnabled })}。${retryAdvice}` }],
 						details: {},
 					};
 				}
@@ -257,14 +274,14 @@ ${angleText}
 						}
 						dispatchToController(state, { type: "RECORD_SIGNAL", signal: "complete" });
 						dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
-						return ok(`⚠️ [AIGate ${aiUsed}/${aiBudget.limit}] ${stage.name} 统一审查未通过且预算耗尽：\n${angleText}${suggText}\nAIGate 告警已记录，现软通过；请调用 xdd_advance 自动推进。`);
+						return ok(`⚠️ [AIGate ${aiUsed}/${aiBudget.limit}] ${stage.name} 统一审查未通过且预算耗尽：\n${angleText}${suggText}\nAIGate 告警已记录，现软通过；${formatSubmitTimings({ hardGateMs, aiGateMs, aiGateEnabled })}。请调用 xdd_advance 自动推进。`);
 					}
 					// Layer 2: AIGate failed with budget remaining -- keep the
 					// same agent turn alive. Semantic review feedback is actionable
 					// context for the model; terminating here forced users to start a
 					// new turn even though AIGate retry budget remains.
 					return {
-						content: [{ type: "text", text: `❌ [AIGate ${aiUsed}/${state.maxSelfHealPerStage}] ${stage.name} 多角度攻击未通过：\n${angleText}${suggText}\n剩余 AIGate 自愈预算：${aiRemaining}/${aiBudget.limit}\n本轮提交失败，但本 turn 继续。请根据审查反馈修复产物后重新调用 xdd_submit_artifact。` }],
+						content: [{ type: "text", text: `❌ [AIGate ${aiUsed}/${state.maxSelfHealPerStage}] ${stage.name} 多角度攻击未通过：\n${angleText}${suggText}\n剩余 AIGate 自愈预算：${aiRemaining}/${aiBudget.limit}\n本轮提交失败，但本 turn 继续。${formatSubmitTimings({ hardGateMs, aiGateMs, aiGateEnabled })}。请根据审查反馈修复产物后重新调用 xdd_submit_artifact。` }],
 						details: {},
 					};
 				}
@@ -298,13 +315,13 @@ ${angleText}
 				}
 				dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
 				return ok(
-					`${stage.name} verdict: pass - ${summary}\n剩余硬 Gate 自愈预算：${state.stageSelfHealBudget(stage.name, "hard_gate").remaining}/${state.maxSelfHealPerStage}\n剩余 AIGate 自愈预算：${state.stageSelfHealBudget(stage.name, "ai_gate").remaining}/${state.maxSelfHealPerStage}${llmInfo ? "\nAIGate: 通过 ✅" : ""}`,
+					`${stage.name} verdict: pass - ${summary}\n剩余硬 Gate 自愈预算：${state.stageSelfHealBudget(stage.name, "hard_gate").remaining}/${state.maxSelfHealPerStage}\n剩余 AIGate 自愈预算：${state.stageSelfHealBudget(stage.name, "ai_gate").remaining}/${state.maxSelfHealPerStage}${llmInfo ? "\nAIGate: 通过 ✅" : ""}\n${formatSubmitTimings({ hardGateMs, aiGateMs, aiGateEnabled })}`,
 				);
 			}
 			dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
 			dispatchToController(state, { type: "RECORD_SIGNAL", signal: "complete" });
 			return ok(
-				`${stage.name} 完成${mechanicalCheckResult.soft ? "（机械检查软通过）" : ""}：${summary}\n剩余硬 Gate 自愈预算：${state.stageSelfHealBudget(stage.name, "hard_gate").remaining}/${state.maxSelfHealPerStage}\n剩余 AIGate 自愈预算：${state.stageSelfHealBudget(stage.name, "ai_gate").remaining}/${state.maxSelfHealPerStage}\nAIGate: 通过 ✅`,
+				`${stage.name} 完成${mechanicalCheckResult.soft ? "（机械检查软通过）" : ""}：${summary}\n剩余硬 Gate 自愈预算：${state.stageSelfHealBudget(stage.name, "hard_gate").remaining}/${state.maxSelfHealPerStage}\n剩余 AIGate 自愈预算：${state.stageSelfHealBudget(stage.name, "ai_gate").remaining}/${state.maxSelfHealPerStage}${aiGateEnabled ? "\nAIGate: 通过 ✅" : "\nAIGate: 已按阶段契约跳过"}\n${formatSubmitTimings({ hardGateMs, aiGateMs, aiGateEnabled })}`,
 			);
 		},
 	};

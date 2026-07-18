@@ -18,7 +18,7 @@ export function decideFollowUp(
 	switch (outcome) {
 		case "idle":
 		case "working":
-			return `[xdd 自动推进] 继续 ${stageName} 阶段。请调 xdd_submit_artifact 提交产物（summary + artifacts；selfAttack 整个 run 只提交一次）。`;
+			return `[xdd 自动推进] 继续 ${stageName} 阶段。请调 xdd_submit_artifact 提交产物（summary + artifacts；若下一次会触发 AIGate，请附本轮 selfAttack）。`;
 
 		case "hard_gate_failed":
 			{
