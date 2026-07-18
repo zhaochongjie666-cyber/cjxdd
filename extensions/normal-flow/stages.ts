@@ -1,7 +1,7 @@
 /**
  * Normal Flow 的 5 阶段定义。复用 xdd 的 XddStageSpec/XddStageName 类型和 gate
  * helper，只用其中 5 个 xdd 阶段名（understand/spec/plan/execute/verify），不
- * 引入新的 stage 名字面量，保持 runtime.json 与 xdd 完全兼容（见 types.ts）。
+ * 引入新的 stage 名字面量，保持 Normal Flow runtime schema 与 xdd 兼容（见 types.ts）。
  *
  * NF 没有 init/architecture/wire/resilience/cleanup 阶段：
  *  - 没有 init：flow.ts 的 start 流程直接调 xdd 的 controllerInitScaffold() 建

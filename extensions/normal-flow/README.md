@@ -18,7 +18,7 @@ Renderers，只保留 reconcile 范式（desired state + 硬 gate）+ Controller
 
 **纯新增，不修改 `extensions/xdd/` 任何文件。** NF 复用 xdd 的：
 
-- `XddController` / `RuntimeStore` / `.xdd/runtime.json`（同一份 schema）
+- `XddController` / `RuntimeStore` schema；运行时写入 `.xdd/normal-flow-runtime.json`，不与 xdd 的 `.xdd/runtime.json` 共用
 - 硬 Gate helper（`requireGlobs*` / `requireTestsPass` / `requirePatternInSource`）
 - Policy（`enforceToolCallPolicy` 等）、Audit、Harness、`archiveRun`
 - `epoch-slicer.ts` / `context-prune.ts`（上下文裁剪）
@@ -49,7 +49,7 @@ NF **不**复用 xdd 的 `context.ts`（system prompt 构建）和
 - **`[抽象动作]` 分类不精确**：system prompt 复用 xdd 的 `mapToolToAbstraction`
   作为参考，但它按精确字符串匹配 `xdd_*` 工具名，NF 的 `nf_*` 工具都会落到默认
   的 "Orchestrate" 分类，不影响功能，只是提示语没有 xdd 那么细。
-- **归档**：`session_start`/`/normal-flow-resume` 只在 `.xdd/runtime.json` 的
+- **归档**：`session_start`/`/normal-flow-resume` 只在 `.xdd/normal-flow-runtime.json` 的
   `plan[].stageName` 全部落在 NF 的 5 阶段集合内时才生效；否则提示该 cwd 已被
   xdd run 占用（或反之提示改用 `/xdd-resume`）。
 

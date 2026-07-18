@@ -3,7 +3,7 @@ import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { computeStageDifference, renderStageDifference } from "../../xdd/stage-diff.ts";
 import { XddController } from "../../xdd/core/controller.ts";
-import { RuntimeStore } from "../../xdd/storage/runtime-store.ts";
+import { createNormalFlowRuntimeStore } from "../runtime-store.ts";
 import { type EmptyDetails, type GetNfState, ok } from "./index.ts";
 
 const schema = Type.Object({});
@@ -27,7 +27,7 @@ export function createNfDifferenceTool(getState: GetNfState): ToolDefinition {
 			const artifacts = state.getSubmittedArtifactsForStage(stage.name) ?? [];
 			const remaining = state.remainingSelfHealBudget(stage.name);
 			const diff = await computeStageDifference(state.cwd, stage, { artifacts });
-			new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage: plannedStage }) => plannedStage)).dispatch({
+			new XddController(createNormalFlowRuntimeStore(state.cwd), state.plan.map(({ stage: plannedStage }) => plannedStage)).dispatch({
 				type: "RECORD_ESG",
 				nodeType: "task",
 				stage: stage.name,

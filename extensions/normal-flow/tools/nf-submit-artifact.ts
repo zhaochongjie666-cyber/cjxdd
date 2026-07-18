@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { type Static, Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { XddController } from "../../xdd/core/controller.ts";
-import { RuntimeStore } from "../../xdd/storage/runtime-store.ts";
+import { createNormalFlowRuntimeStore } from "../runtime-store.ts";
 import type { XddRunnerState, XddStageName } from "../../xdd/types.ts";
 import { type EmptyDetails, type GetNfState, ok } from "./index.ts";
 
@@ -17,7 +17,7 @@ const schema = Type.Object({
 export type NfSubmitArtifactInput = Static<typeof schema>;
 
 function dispatchToController(state: XddRunnerState, command: Parameters<XddController["dispatch"]>[0]) {
-	const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
+	const controller = new XddController(createNormalFlowRuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
 	return controller.dispatch(command);
 }
 

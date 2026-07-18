@@ -11,7 +11,7 @@ export type { XddStageName, XddStageSpec } from "../xdd/types.ts";
 
 /**
  * NF 用到的 xdd stage 名子集，按执行顺序排列。display name（explore/spec/plan/
- * implement/verify）只在用户面文案里出现，见 NF_DISPLAY_NAME；runtime.json /
+ * implement/verify）只在用户面文案里出现，见 NF_DISPLAY_NAME；normal-flow-runtime.json /
  * StageContract / Controller 全程只认这里的 xdd 名，不引入新 type literal。
  */
 export const NF_STAGE_NAMES = ["understand", "spec", "plan", "execute", "verify"] as const;
@@ -28,7 +28,7 @@ export const NF_DISPLAY_NAME: Readonly<Record<NfStageName, string>> = {
 };
 
 /**
- * 判断一份 runtime.json 的 plan 是否"属于" Normal Flow（阶段名全部落在 NF 的
+ * 判断一份 Normal Flow runtime 的 plan 是否"属于" Normal Flow（阶段名全部落在 NF 的
  * 5 阶段集合内）。用于：
  *  - flow.ts 启动/恢复前检查 cwd 是否已被 xdd run 占用；
  *  - extension.ts 的 session_start 只在 checkpoint 属于 NF 时才提示

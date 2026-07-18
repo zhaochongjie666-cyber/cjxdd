@@ -2,7 +2,7 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { XddController } from "../../xdd/core/controller.ts";
-import { RuntimeStore } from "../../xdd/storage/runtime-store.ts";
+import { createNormalFlowRuntimeStore } from "../runtime-store.ts";
 import { type EmptyDetails, type GetNfState, ok } from "./index.ts";
 
 const schema = Type.Object({});
@@ -26,7 +26,7 @@ export function createNfAdvanceTool(getState: GetNfState): ToolDefinition {
 				);
 			}
 			const prevStageName = stage.name;
-			const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage: plannedStage }) => plannedStage));
+			const controller = new XddController(createNormalFlowRuntimeStore(state.cwd), state.plan.map(({ stage: plannedStage }) => plannedStage));
 			controller.dispatch({ type: "ADVANCE" });
 			if (state.runComplete) {
 				return {

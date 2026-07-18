@@ -8,23 +8,34 @@ export interface RuntimeStoreSaveOptions {
 	simulateCrashBeforeRename?: boolean;
 }
 
+export interface RuntimeStoreOptions {
+	/** Runtime JSON file name under .xdd/. Defaults to xdd's runtime.json. */
+	runtimeFileName?: string;
+	/** Optional legacy checkpoint file name under .xdd/ for fallback migration. */
+	legacyCheckpointFileName?: string | false;
+	/** Optional v1 backup file name under .xdd/ for migrated runtime files. */
+	v1BackupFileName?: string;
+}
+
 export class RuntimeStore {
 	readonly cwd: string;
 	readonly runtimePath: string;
 	readonly legacyCheckpointPath: string;
 	readonly v1BackupPath: string;
 
-	constructor(cwd: string) {
+	constructor(cwd: string, options: RuntimeStoreOptions = {}) {
 		this.cwd = cwd;
-		this.runtimePath = join(cwd, ".xdd", "runtime.json");
-		this.legacyCheckpointPath = join(cwd, ".xdd", "checkpoint.json");
-		this.v1BackupPath = join(cwd, ".xdd", "runtime.v1.backup.json");
+		this.runtimePath = join(cwd, ".xdd", options.runtimeFileName ?? "runtime.json");
+		this.legacyCheckpointPath = options.legacyCheckpointFileName === false
+			? ""
+			: join(cwd, ".xdd", options.legacyCheckpointFileName ?? "checkpoint.json");
+		this.v1BackupPath = join(cwd, ".xdd", options.v1BackupFileName ?? "runtime.v1.backup.json");
 	}
 
 	load(defaults: Partial<XddCheckpointData> = {}): RuntimeStateV2 | undefined {
 		const source = existsSync(this.runtimePath)
 			? this.runtimePath
-			: existsSync(this.legacyCheckpointPath)
+			: this.legacyCheckpointPath && existsSync(this.legacyCheckpointPath)
 				? this.legacyCheckpointPath
 				: undefined;
 		if (!source) return undefined;
