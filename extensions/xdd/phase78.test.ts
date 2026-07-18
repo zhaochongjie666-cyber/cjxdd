@@ -104,6 +104,14 @@ describe("H.1 xdd_next_task uses computeStageDifference", () => {
 		expect(src).toMatch(/diff\.gate\.ok/);
 		expect(src).toMatch(/diff\.unmetCount/);
 	});
+
+	it("renders objective, concrete tasks, and completion criteria to avoid next-task loops", () => {
+		const src = readFileSync(join(SRC_DIR, "tools/xdd-next-task.ts"), "utf8");
+		expect(src).toContain("目标: ${objective}");
+		expect(src).toContain("具体任务:");
+		expect(src).toContain("完成标准:");
+		expect(src).toContain("完成后调用 xdd_submit_artifact 提交产物与证据");
+	});
 });
 
 // ── H.2: sendUserMessage failures surfaced ────────────────────────────
