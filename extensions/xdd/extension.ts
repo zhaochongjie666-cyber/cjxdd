@@ -156,7 +156,7 @@ async function sendAIGateDegradedRetrySteering(
 	const reason = state.lastStageError ?? "AIGate 审查服务/响应格式异常";
 	try {
 		await pi.sendUserMessage?.(
-			`[xdd aigate degraded steering] ${stage} 阶段 AIGate 基础设施不可用：${reason}。硬 Gate 已通过，但统一审查还没有形成产物判定；立即重新调用 xdd_submit_artifact 提交同一批产物以消耗有界 degraded 重试预算，不要停在等待状态，也不要把基础设施 504 包装成产物已完成。`,
+			`[xdd aigate steering] degraded ${stage} 阶段 AIGate 基础设施不可用：${reason}。硬 Gate 已通过，但统一审查还没有形成产物判定；立即重新调用 xdd_submit_artifact 提交同一批产物以消耗有界 degraded 重试预算，不要停在等待状态，也不要把基础设施 504 包装成产物已完成。`,
 			{ deliverAs: "steer" },
 		);
 	} catch (error) {

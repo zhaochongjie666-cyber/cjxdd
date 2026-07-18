@@ -46,6 +46,7 @@ export interface AIGateInput {
 	model: Model<any>;
 	apiKey?: string;
 	headers?: Record<string, string>;
+	env?: Record<string, string>;
 	stageName: string;
 	skillName?: string;
 	aigateStandard: string;
@@ -563,7 +564,7 @@ export function formatMechanicalCheckResult(result: XddGateResult): string {
 // ── Main entry ─────────────────────────────────────────────────────────
 
 export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
-	const { model, apiKey, headers, stageName, skillName, aigateStandard, artifactPaths, outputContract, mechanicalCheckResult, cwd, intentAnchor, contextPatterns, submissionSummary } = input;
+	const { model, apiKey, headers, env, stageName, skillName, aigateStandard, artifactPaths, outputContract, mechanicalCheckResult, cwd, intentAnchor, contextPatterns, submissionSummary } = input;
 
 	// Use shared glob resolution and realpath safety for artifacts, but do
 	// not impose xdd-level character caps: AIGate must review the full
@@ -612,7 +613,7 @@ export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
 	// retry manually. We do NOT soft-pass.
 	let responseText: string;
 	try {
-		responseText = await callLLM(model, apiKey, headers, ATTACKER_SYSTEM_PROMPT, userMessage);
+		responseText = await callLLM(model, apiKey, headers, env, ATTACKER_SYSTEM_PROMPT, userMessage);
 	} catch (e) {
 		const msg = e instanceof Error ? e.message : String(e);
 		return {
@@ -630,7 +631,7 @@ export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
 	// caller to resubmit unchanged artifacts or consuming the self-heal budget.
 	if (parsed.degraded) {
 		try {
-			responseText = await callLLM(model, apiKey, headers, ATTACKER_SYSTEM_PROMPT, `${userMessage}${JSON_RETRY_INSTRUCTION}`);
+			responseText = await callLLM(model, apiKey, headers, env, ATTACKER_SYSTEM_PROMPT, `${userMessage}${JSON_RETRY_INSTRUCTION}`);
 			parsed = parseVerdict(responseText, angles);
 		} catch {
 			// Keep the original parse diagnostic; the retry is best-effort.
@@ -661,11 +662,13 @@ async function callLLM(
 	model: Model<any>,
 	apiKey: string | undefined,
 	extraHeaders: Record<string, string> | undefined,
+	env: Record<string, string> | undefined,
 	systemPrompt: string,
 	userMessage: string,
 	timeoutMs: number = DEFAULT_LLM_TIMEOUT_MS,
 ): Promise<string> {
-	if (!apiKey) throw new Error("无 API key（modelRegistry 未解析到凭证）");
+	const hasHeaderAuth = hasAuthHeader(extraHeaders);
+	if (!apiKey && !hasHeaderAuth) throw new Error("无 API key 或认证 header（modelRegistry 未解析到凭证）");
 
 	let lastErr: unknown = undefined;
 	for (let attempt = 1; attempt <= MAX_LLM_ATTEMPTS; attempt++) {
@@ -676,8 +679,9 @@ async function callLLM(
 				systemPrompt,
 				messages: [{ role: "user", content: userMessage, timestamp: Date.now() }],
 			}, {
-				apiKey,
+				apiKey: hasHeaderAuth ? undefined : apiKey,
 				headers: extraHeaders,
+				env,
 				temperature: 0,
 				timeoutMs,
 				maxRetries: 0,
@@ -693,6 +697,11 @@ async function callLLM(
 		}
 	}
 	throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
+function hasAuthHeader(headers: Record<string, string> | undefined): boolean {
+	if (!headers) return false;
+	return Object.keys(headers).some((name) => /^(?:authorization|api-key|x-api-key)$/i.test(name));
 }
 
 function extractPiAssistantText(message: AssistantMessage): string {

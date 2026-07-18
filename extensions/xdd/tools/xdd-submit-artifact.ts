@@ -192,6 +192,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					model: llmInfo.model,
 					apiKey: llmInfo.apiKey,
 					headers: llmInfo.headers,
+					env: llmInfo.env,
 					stageName: stage.name,
 					skillName: stage.skill,
 					aigateStandard: stage.aigateStandard,
