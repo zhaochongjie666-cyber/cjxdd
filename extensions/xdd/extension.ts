@@ -334,6 +334,14 @@ export const xddInlineExtension: InlineExtension = {
 				await ctx.waitForIdle();
 			},
 		});
+		pi.registerCommand("xdd-rest", {
+			description: "重置当前 xdd run 的流程预算和阶段预算；传 all 重置全部阶段预算",
+			handler: async (args, ctx) => {
+				const { xddRest } = await import("./run.ts");
+				await xddRest(args, ctx.cwd, pi);
+				await ctx.waitForIdle();
+			},
+		});
 		pi.registerCommand("xdd-stop", {
 			description: "中断当前 xdd run（支持 Esc Esc 后恢复）",
 			handler: async (_args, ctx) => {

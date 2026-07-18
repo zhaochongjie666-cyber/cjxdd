@@ -175,6 +175,33 @@ export async function xddStatus(_args: string, _cwd: string, pi: ExtensionAPI): 
 	);
 }
 
+
+/** /xdd-rest -- reset flow and stage budgets for the active run. */
+export async function xddRest(args: string, _cwd: string, pi: ExtensionAPI): Promise<void> {
+	let state: XddRunnerState;
+	try {
+		state = getState();
+	} catch {
+		await pi.sendUserMessage("[xdd-rest] 无活跃 xdd run。");
+		return;
+	}
+	const stage = state.currentStage();
+	if (!stage) {
+		await pi.sendUserMessage("[xdd-rest] 无活跃阶段。");
+		return;
+	}
+	const scope = args.trim() === "all" ? "all" : "current";
+	const beforeFlowRollback = `${state.remainingFlowRollbackBudget()}/${state.flowRollbackLimit}`;
+	const beforeFlowUsage = `$${state.flowCostUsd.toFixed(2)} / $${state.flowBudgetUsd.toFixed(2)} (${state.flowTokensUsed} tokens)`;
+	state.resetFlowBudgetUsage();
+	state.resetFlowRollbackBudget();
+	if (scope === "all") state.resetAllStageBudgets();
+	else state.resetSelfHealBudget(stage.name);
+	await pi.sendUserMessage(
+		`[xdd-rest] 已重置预算（阶段范围: ${scope}）。流程用量预算: ${beforeFlowUsage} -> $${state.flowCostUsd.toFixed(2)} / $${state.flowBudgetUsd.toFixed(2)} (${state.flowTokensUsed} tokens)；流程回退预算: ${beforeFlowRollback} -> ${state.remainingFlowRollbackBudget()}/${state.flowRollbackLimit}；阶段预算: hard-Gate/AIGate 已重置。`,
+	);
+}
+
 /** /xdd-archive -- manually archive a completed run (summarize runs/<iter>/ + delete it). */
 export async function archiveXdd(args: string, cwd: string, pi: ExtensionAPI): Promise<void> {
 	const iterLabel = args.trim() || undefined; // undefined = pick most recent runs/*/

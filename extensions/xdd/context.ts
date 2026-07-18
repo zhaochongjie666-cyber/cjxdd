@@ -163,6 +163,7 @@ export function reflectAllowedTools(): string[] {
 		"xdd_next_task",
 		"xdd_diagnose",
 		"xdd_rollback",
+		"xdd_reset_budget",
 	];
 }
 
@@ -185,7 +186,8 @@ export function mapToolToAbstraction(tool: string): "Understand" | "Modify" | "V
 		tool === "bash" ||
 		tool === "xdd_submit_artifact" ||
 		tool === "xdd_diagnose" ||
-		tool === "xdd_rollback"
+		tool === "xdd_rollback" ||
+		tool === "xdd_reset_budget"
 	)
 		return "Verify";
 	return "Orchestrate";

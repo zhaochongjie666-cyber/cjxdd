@@ -26,6 +26,7 @@ const CONTROLLER_TOOLS = [
 	"xdd_advance",
 	"xdd_diagnose",
 	"xdd_rollback",
+	"xdd_reset_budget",
 	"xdd_list_skills",
 	"xdd_load_skill",
 	"xdd_harness_get",

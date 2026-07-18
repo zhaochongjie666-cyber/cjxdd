@@ -319,9 +319,15 @@ export class XddRunnerState {
 	/** @deprecated compatibility alias for the single flow rollback budget. */
 	get flowRollbackLimitTier2(): number { return this.loadRt().flowRollbackLimit ?? 7; }
 	set flowRollbackLimitTier2(v: number) { this.mutRt("flowRollbackLimit", v); }
+	get flowRollbackLimit(): number { return this.loadRt().flowRollbackLimit ?? 7; }
+	set flowRollbackLimit(v: number) { this.mutRt("flowRollbackLimit", v); }
 	/** The flow-level rollback budget used by automatic verify recovery. */
 	remainingFlowRollbackBudget(): number {
 		return Math.max(0, this.flowRollbackLimitTier2 - this.flowRollbackCount);
+	}
+	/** Reset the consumed flow-level rollback budget. */
+	resetFlowRollbackBudget(): void {
+		this.flowRollbackCount = 0;
 	}
 	/** Atomically reserve one flow rollback; false means the flow is exhausted. */
 	consumeFlowRollbackBudget(): boolean {
@@ -526,6 +532,18 @@ export class XddRunnerState {
 		// artificially constrained.
 		if (rt.aiGateUsed) rt.aiGateUsed[stage] = 0;
 		if (rt.lastSubmitFingerprint) delete rt.lastSubmitFingerprint[stage];
+		this.saveRt(rt);
+	}
+	/** Reset both hard-Gate and AIGate budgets for every stage in the active plan. */
+	resetAllStageBudgets(): void {
+		const rt = this.loadRt();
+		const stages = this.plan.length > 0 ? this.plan.map(({ stage }) => stage.name) : Object.keys(rt.selfHealUsed) as XddStageName[];
+		if (!rt.aiGateUsed) rt.aiGateUsed = {};
+		for (const stage of stages) {
+			rt.selfHealUsed[stage] = 0;
+			rt.aiGateUsed[stage] = 0;
+			if (rt.lastSubmitFingerprint) delete rt.lastSubmitFingerprint[stage];
+		}
 		this.saveRt(rt);
 	}
 	checkAndRecordSubmitFingerprint(stage: XddStageName, fingerprint: string): boolean {
