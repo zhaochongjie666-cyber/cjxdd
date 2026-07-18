@@ -130,6 +130,8 @@ describe("xdd policy", () => {
 		expect(applyBashPolicy(input)).toBeNull();
 		expect(input.timeout).toBe(300);
 		expect(applyBashPolicy({ command: "find / -name x" })?.reason).toContain("find /");
+		expect(applyBashPolicy({ command: "rm -rf /*" })?.reason).toContain("rm -rf /");
+		expect(applyBashPolicy({ command: "echo secret >> /etc/profile" })?.reason).toContain("重定向");
 	});
 
 	it("does not let bash bypass scoped-stage write policy", () => {

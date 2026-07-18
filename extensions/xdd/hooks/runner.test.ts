@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { controllerInitScaffold } from "../init-scaffold.ts";
@@ -74,6 +74,23 @@ describe("HookRunner", () => {
 		}
 	});
 
+
+	it("does not execute hooks when the hooks root escapes through a symlink", async () => {
+		const cwd = mkdtempSync(join(tmpdir(), "xdd-hooks-"));
+		const outside = mkdtempSync(join(tmpdir(), "xdd-hooks-outside-"));
+		try {
+			mkdirSync(join(cwd, ".xdd"), { recursive: true });
+			mkdirSync(join(outside, "before_tools"), { recursive: true });
+			writeFileSync(join(outside, "before_tools", "01-block.js"), "process.stdin.resume(); process.stdin.on('end', () => console.log(JSON.stringify({action:'block', reason:'escaped'})));");
+			symlinkSync(outside, join(cwd, ".xdd", "hooks"), "dir");
+			const result = await new HookRunner(cwd).run("before_tools", payload);
+			expect(result.action).toBe("pass");
+			expect(result.records).toHaveLength(0);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+			rmSync(outside, { recursive: true, force: true });
+		}
+	});
 
 	it("aborts running hook process groups so reload leaves no hook process", async () => {
 		const cwd = tmpProject();

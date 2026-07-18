@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
-import { extname, join } from "node:path";
+import { existsSync, lstatSync, readdirSync, realpathSync } from "node:fs";
+import { extname, join, relative } from "node:path";
 import { HOOK_EXTENSIONS, type HookOutput, type HookPayload, type HookPoint, type HookRunResult, type HookExecutionRecord } from "./protocol.ts";
 
 export interface HookRunnerOptions {
@@ -59,10 +59,32 @@ export class HookRunner {
 export function discoverHookFiles(hooksRoot: string, point: HookPoint): string[] {
 	const dir = join(hooksRoot, point);
 	if (!existsSync(dir)) return [];
-	return readdirSync(dir, { withFileTypes: true })
+	if (isSymlink(hooksRoot) || isSymlink(dir)) return [];
+	const hooksRootReal = safeRealpath(hooksRoot);
+	const dirReal = safeRealpath(dir);
+	if (!hooksRootReal || !dirReal || !isWithinDirectory(hooksRootReal, dirReal)) return [];
+	return readdirSync(dirReal, { withFileTypes: true })
 		.filter((entry) => entry.isFile() && HOOK_EXTENSIONS.has(extname(entry.name)))
-		.map((entry) => join(dir, entry.name))
+		.map((entry) => join(dirReal, entry.name))
+		.filter((file) => {
+			const real = safeRealpath(file);
+			if (!real || !isWithinDirectory(hooksRootReal, real)) return false;
+			try { return lstatSync(real).isFile(); } catch { return false; }
+		})
 		.sort((a, b) => a.localeCompare(b));
+}
+
+function safeRealpath(path: string): string | null {
+	try { return realpathSync(path); } catch { return null; }
+}
+
+function isSymlink(path: string): boolean {
+	try { return lstatSync(path).isSymbolicLink(); } catch { return false; }
+}
+
+function isWithinDirectory(root: string, candidate: string): boolean {
+	const rel = relative(root, candidate);
+	return rel === "" || (!rel.startsWith("..") && !rel.startsWith(`/`) && !rel.startsWith(`\\`));
 }
 
 interface RunFileOptions {
