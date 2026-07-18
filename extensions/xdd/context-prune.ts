@@ -54,6 +54,7 @@ export function pruneContextMessages(
 		changed = pruneOldestTextInPlace(next, currentTurnStartIndex, maxTotalTextChars) || changed;
 	}
 	changed = neutralizeOrphanAnthropicToolResultsInPlace(next) || changed;
+	changed = neutralizeOrphanToolMessagesInPlace(next) || changed;
 	return changed ? next as AgentMessage[] : messages as AgentMessage[];
 }
 
@@ -145,6 +146,21 @@ function neutralizeOrphanAnthropicToolResultsInPlace(messages: AgentMessage[]): 
 			text: `[历史工具结果已转为普通文本；原 tool_result 缺少相邻 tool_use，避免提供商拒绝请求]\n${convertedOrphanText}`,
 		};
 		messages[index] = { ...raw, content: [...content, textPart] };
+	}
+	return changed;
+}
+
+function neutralizeOrphanToolMessagesInPlace(messages: AgentMessage[]): boolean {
+	let changed = false;
+	for (let index = 0; index < messages.length; index++) {
+		const raw: any = messages[index];
+		if (raw?.role !== "tool" && raw?.role !== "tool_result") continue;
+		const id = raw.tool_call_id ?? raw.toolCallId ?? raw.tool_use_id;
+		const previous = messages[index - 1] as any;
+		const previousToolUses = previous?.role === "assistant" ? toolUseIds(previous) : new Set<string>();
+		if (id && previousToolUses.has(String(id))) continue;
+		messages[index] = toolResultAsPlainTextMessage(raw);
+		changed = true;
 	}
 	return changed;
 }
