@@ -21,6 +21,8 @@ import { planStageNamesAreNf } from "./types.ts";
  */
 let stateRef: XddRunnerState | null = null;
 
+type NormalFlowCommandContext = { cwd: string; waitForIdle: () => Promise<void> } & Record<string, unknown>;
+
 export function activateNormalFlowExtension(state: XddRunnerState): void {
 	compileStageContracts(state.plan.map(({ stage }) => stage));
 	stateRef = state;
@@ -44,6 +46,52 @@ export function isNfOwnedRuntime(cwd: string): boolean {
 	return planStageNamesAreNf(rt.plan ?? []);
 }
 
+
+function toolResultText(event: { content?: Array<{ type?: string; text?: string }> }): string {
+	return (event.content ?? [])
+		.filter((part) => part.type === "text")
+		.map((part) => part.text ?? "")
+		.join("\n");
+}
+
+function isNfSubmitReadyToAdvance(event: { type?: string }, toolName: string, state: XddRunnerState): boolean {
+	if (event.type !== "tool_result" || toolName !== "nf_submit_artifact") return false;
+	if (state.runComplete || state.paused || state.stopRequested) return false;
+	const stage = state.currentStage();
+	if (!stage) return false;
+	const signals = state.getSignals();
+	return stage.exit === "verdict" ? signals.has("verdict_pass") : signals.has("complete");
+}
+
+function isNfAdvanceNextStage(event: { type?: string; content?: Array<{ type?: string; text?: string }> }, toolName: string, state: XddRunnerState): boolean {
+	if (event.type !== "tool_result" || toolName !== "nf_advance") return false;
+	if (state.runComplete || state.paused || state.stopRequested) return false;
+	const text = toolResultText(event);
+	return text.includes("[nf_advance]") && text.includes("进入下一阶段");
+}
+
+async function sendNfSubmitAdvanceSteering(
+	pi: { sendUserMessage?: (text: string, options?: unknown) => Promise<unknown> | unknown },
+	state: XddRunnerState,
+): Promise<void> {
+	const stage = state.currentStageName() ?? "当前";
+	await pi.sendUserMessage?.(
+		`[normal-flow submit steering] ${stage} 阶段产物已通过。立即调用 nf_advance 推进；不要停下来只汇报已提交。`,
+		{ deliverAs: "steer" },
+	);
+}
+
+async function sendNfAdvanceNextStageSteering(
+	pi: { sendUserMessage?: (text: string, options?: unknown) => Promise<unknown> | unknown },
+	state: XddRunnerState,
+): Promise<void> {
+	const stage = state.currentStageName() ?? "当前";
+	await pi.sendUserMessage?.(
+		`[normal-flow advance steering] 已进入 ${stage} 阶段。立即自动执行下一步：调用 nf_observe、nf_desired_state、nf_difference，按差距完成阶段产物；不要停下来只汇报已推进。`,
+		{ deliverAs: "steer" },
+	);
+}
+
 export const normalFlowInlineExtension: InlineExtension = {
 	name: "normal-flow",
 	factory(pi) {
@@ -51,35 +99,69 @@ export const normalFlowInlineExtension: InlineExtension = {
 			pi.registerTool(tool);
 		}
 
+		const startNormalFlowCommand = async (args: string, ctx: NormalFlowCommandContext) => {
+			const { startNormalFlow } = await import("./flow.ts");
+			await startNormalFlow(args, ctx.cwd, pi);
+			await ctx.waitForIdle();
+		};
 		pi.registerCommand("normal-flow", {
 			description: "启动 Normal Flow: /normal-flow <任务描述>",
-			handler: async (args, ctx) => {
-				const { startNormalFlow } = await import("./flow.ts");
-				await startNormalFlow(args, ctx.cwd, pi);
-				await ctx.waitForIdle();
-			},
+			handler: startNormalFlowCommand,
 		});
-		pi.registerCommand("normal-flow-resume", {
-			description: "从 checkpoint 恢复中断的 Normal Flow run",
+		pi.registerCommand("nf", {
+			description: "Normal Flow 快捷命令: /nf <任务描述>；无参数时恢复 checkpoint",
 			handler: async (args, ctx) => {
+				if (args.trim()) {
+					await startNormalFlowCommand(args, ctx);
+					return;
+				}
 				const { resumeNormalFlow } = await import("./flow.ts");
 				await resumeNormalFlow(args, ctx.cwd, pi);
 				await ctx.waitForIdle();
 			},
 		});
+		const resumeNormalFlowCommand = async (args: string, ctx: NormalFlowCommandContext) => {
+			const { resumeNormalFlow } = await import("./flow.ts");
+			await resumeNormalFlow(args, ctx.cwd, pi);
+			await ctx.waitForIdle();
+		};
+		pi.registerCommand("normal-flow-resume", {
+			description: "从 checkpoint 恢复中断的 Normal Flow run",
+			handler: resumeNormalFlowCommand,
+		});
+		pi.registerCommand("nf-resume", {
+			description: "从 checkpoint 恢复中断的 Normal Flow run（/normal-flow-resume 快捷命令）",
+			handler: resumeNormalFlowCommand,
+		});
+		const stopNormalFlowCommand = async (_args: string, ctx: NormalFlowCommandContext) => {
+			if (!stateRef) {
+				await pi.sendUserMessage("[normal-flow] 无活跃 run。");
+				return;
+			}
+			await dispatchNfCommand(stateRef, { type: "STOP", source: "command" }, {
+				pi,
+				ctx,
+				getState: () => stateRef,
+			});
+		};
 		pi.registerCommand("normal-flow-stop", {
 			description: "中断当前 Normal Flow run（可用 /normal-flow-resume 恢复）",
-			handler: async (_args, ctx) => {
-				if (!stateRef) {
-					await pi.sendUserMessage("[normal-flow] 无活跃 run。");
-					return;
-				}
-				await dispatchNfCommand(stateRef, { type: "STOP", source: "command" }, {
-					pi,
-					ctx,
-					getState: () => stateRef,
-				});
-			},
+			handler: stopNormalFlowCommand,
+		});
+		pi.registerCommand("nf-stop", {
+			description: "中断当前 Normal Flow run（/normal-flow-stop 快捷命令）",
+			handler: stopNormalFlowCommand,
+		});
+
+		pi.on("tool_result", async (event) => {
+			if (!stateRef) return;
+			const toolName = String(event.toolName ?? event.name ?? "?");
+			if (isNfSubmitReadyToAdvance(event, toolName, stateRef)) {
+				await sendNfSubmitAdvanceSteering(pi, stateRef);
+			}
+			if (isNfAdvanceNextStage(event, toolName, stateRef)) {
+				await sendNfAdvanceNextStageSteering(pi, stateRef);
+			}
 		});
 
 		// 阶段感知的工具/路径/bash 策略，直接复用 xdd 的实现（跟 stage 名无关，
