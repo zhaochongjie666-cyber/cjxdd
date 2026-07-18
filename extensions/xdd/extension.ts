@@ -1,6 +1,6 @@
 import type { InlineExtension } from "@earendil-works/pi-coding-agent";
 import { buildActiveStageSystemPrompt } from "./context.ts";
-import { pruneContextMessages } from "./context-prune.ts";
+import { contextPruneOptionsFromEnv, pruneContextMessages } from "./context-prune.ts";
 import { renderReflectEnd, renderReflectStart, renderRollback, renderStageBoundary } from "./renderers.ts";
 import { createXddTools } from "./tools/index.ts";
 import { readCheckpoint } from "./checkpoint.ts";
@@ -24,6 +24,7 @@ import type { XddAuditEvent } from "./audit/events.ts";
 import { HookRunner } from "./hooks/runner.ts";
 import type { HookPayload, HookPoint, HookRunResult } from "./hooks/protocol.ts";
 import { assistantFlowUsage } from "./flow-budget.ts";
+import { buildDocumentHandoffMessages } from "./context-document-handoff.ts";
 
 /**
  * Module-level shared state. The InlineExtension factory registers tools and
@@ -524,9 +525,13 @@ ${hookResult.prompt}`;
 		pi.on("context", async (event) => {
 			if (!stateRef) return undefined;
 			const sliced = sliceByEpoch(event.messages, stateRef.stageEpoch);
-			const pruned = pruneContextMessages(sliced);
-			if (sliced === event.messages && pruned === sliced) return undefined;
-			return { messages: pruned };
+			const pruned = pruneContextMessages(sliced, contextPruneOptionsFromEnv());
+			const stage = stateRef.currentStage();
+			const handedOff = stage
+				? await buildDocumentHandoffMessages({ cwd: stateRef.cwd, stage: stage.name, inputs: stage.inputs, messages: pruned })
+				: pruned;
+			if (sliced === event.messages && pruned === sliced && handedOff === pruned) return undefined;
+			return { messages: handedOff };
 		});
 
 		// Auto-continue: route Pi lifecycle into the Controller Core.

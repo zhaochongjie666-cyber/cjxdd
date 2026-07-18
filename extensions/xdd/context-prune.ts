@@ -5,8 +5,15 @@ export const TOOL_OUTPUT_STUB = "[历史工具输出已压缩；工具调用配�
 export const TEXT_CONTENT_STUB = "[历史对话内容已压缩；xdd 状态以 .xdd/runtime.json、阶段产物和 stage summary 为准]";
 
 const DEFAULT_CONTEXT_TEXT_BUDGET = Number.POSITIVE_INFINITY;
+const MIN_CONTEXT_TEXT_BUDGET = 4_000;
+const MIN_TOOL_STUB_THRESHOLD = 200;
 
 const THINKING_CONTENT_TYPES = new Set(["thinking", "reasoning", "thought"]);
+
+export interface ContextPruneEnv {
+	XDD_CONTEXT_TEXT_BUDGET?: string;
+	XDD_TOOL_RESULT_STUB_THRESHOLD?: string;
+}
 
 export interface ContextPruneOptions {
 	/** Keep tool results at or after this assistant tool-call boundary intact. */
@@ -18,6 +25,26 @@ export interface ContextPruneOptions {
 	 * semantic compaction to Pi and only performs tool-invariant safety fixes.
 	 */
 	maxTotalTextChars?: number;
+}
+
+/**
+ * Build runtime pruning options from environment. Defaults remain conservative:
+ * xdd lets Pi own semantic compaction unless an operator explicitly sets a cap.
+ */
+export function contextPruneOptionsFromEnv(env: ContextPruneEnv = (globalThis as any).process?.env ?? {}): ContextPruneOptions {
+	const options: ContextPruneOptions = {};
+	const maxTotalTextChars = parsePositiveIntegerEnv(env.XDD_CONTEXT_TEXT_BUDGET, MIN_CONTEXT_TEXT_BUDGET);
+	if (maxTotalTextChars !== undefined) options.maxTotalTextChars = maxTotalTextChars;
+	const bashResultStubThreshold = parsePositiveIntegerEnv(env.XDD_TOOL_RESULT_STUB_THRESHOLD, MIN_TOOL_STUB_THRESHOLD);
+	if (bashResultStubThreshold !== undefined) options.bashResultStubThreshold = bashResultStubThreshold;
+	return options;
+}
+
+function parsePositiveIntegerEnv(value: string | undefined, min: number): number | undefined {
+	if (value === undefined || value.trim() === "") return undefined;
+	const parsed = Number(value);
+	if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+	return Math.max(min, Math.floor(parsed));
 }
 
 export interface CompactionInstructionArgs {
