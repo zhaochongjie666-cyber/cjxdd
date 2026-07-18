@@ -94,6 +94,27 @@ describe("production pi adapter lifecycle", () => {
 		expect(harness.sentMessages[0]?.text).toContain("xdd_difference");
 	});
 
+	it("xdd_advance tool result steers the same turn to execute the next stage", async () => {
+		harness.controller.submitGatePassed();
+		const advance = harness.tools.find((tool) => tool.name === "xdd_advance");
+		expect(advance).toBeDefined();
+
+		const result = await advance.execute("advance", {});
+		expect(toolText(result)).toContain("进入下一阶段 understand");
+		await harness.emit("tool_result", {
+			type: "tool_result",
+			toolName: "xdd_advance",
+			content: result.content,
+		});
+
+		expect(harness.sentMessages).toHaveLength(1);
+		expect(harness.sentMessages[0]).toMatchObject({
+			text: expect.stringContaining("已进入 understand 阶段"),
+			options: { deliverAs: "steer" },
+		});
+		expect(harness.sentMessages[0]?.text).toContain("xdd_observe");
+	});
+
 
 	it("repairable unified AIGate failure steers the next model call to fix artifacts", async () => {
 		harness.state.stageOutcome = "hard_gate_failed";
