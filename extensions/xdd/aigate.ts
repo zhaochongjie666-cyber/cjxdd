@@ -721,7 +721,8 @@ function hasAuthHeader(headers: Record<string, string>): boolean {
 /** OpenAI-compatible endpoint construction: don't blindly append /chat/completions when baseUrl already contains it. */
 function openAICompatUrl(baseUrl: string, api: string): { url: string; kind: "chat" | "responses" } {
 	const clean = baseUrl.replace(/\/$/, "");
-	if (clean.endsWith("/responses") || api === "openai-responses") return { url: clean, kind: "responses" };
+	if (clean.endsWith("/responses")) return { url: clean, kind: "responses" };
+	if (api === "openai-responses") return { url: `${clean}/responses`, kind: "responses" };
 	if (clean.endsWith("/chat/completions")) return { url: clean, kind: "chat" };
 	return { url: `${clean}/chat/completions`, kind: "chat" };
 }

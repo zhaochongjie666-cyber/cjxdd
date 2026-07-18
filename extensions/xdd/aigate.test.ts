@@ -332,6 +332,37 @@ describe("unified AI Gate", () => {
 		}
 	});
 
+	it("appends Responses path for OpenAI Responses root base URLs", async () => {
+		const cwd = mkdtempSync(join(tmpdir(), "xdd-aigate-"));
+		writeFileSync(join(cwd, "artifact.md"), "real artifact content");
+		const verdict = {
+			passed: true,
+			angles: ["机械检查结果", "偷工减料攻击", "AI味攻击", "规格偏离攻击"].map((name) => ({ name, passed: true, findings: [] })),
+			issues: [], suggestions: [],
+		};
+		let url = "";
+		let body: any;
+		vi.stubGlobal("fetch", vi.fn(async (input: string, init: RequestInit) => {
+			url = input;
+			body = JSON.parse(String(init.body));
+			return new Response(JSON.stringify({ output_text: JSON.stringify(verdict) }));
+		}));
+
+		try {
+			const result = await runAIGate({
+				model: { api: "openai-responses", baseUrl: "https://api.openai.com/v1", id: "test" } as any,
+				apiKey: "test-key", stageName: "custom", aigateStandard: "test standard",
+				artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd,
+			});
+			expect(result.passed).toBe(true);
+			expect(url).toBe("https://api.openai.com/v1/responses");
+			expect(body.input).toEqual(expect.arrayContaining([expect.objectContaining({ role: "system" }), expect.objectContaining({ role: "user" })]));
+			expect(body.messages).toBeUndefined();
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
 	it("uses OpenAI Responses endpoint shape without xdd response caps", async () => {
 		const cwd = mkdtempSync(join(tmpdir(), "xdd-aigate-"));
 		writeFileSync(join(cwd, "artifact.md"), "real artifact content");
