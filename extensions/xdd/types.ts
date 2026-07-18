@@ -838,6 +838,8 @@ export interface XddCheckpointData {
 	flowTokensUsed?: number;
 	/** Assistant-message timestamps already charged to the run budget. */
 	flowBudgetMessageTimestamps?: number[];
+	/** Consecutive provider 429/insufficient-balance retry count for infinite backoff. */
+	provider429RetryCount?: number;
 }
 
 /**
@@ -901,6 +903,7 @@ function defaultRt(runId: string = ""): XddCheckpointData {
 		aiGateUsed: {},
 		flowBudgetUsd: 500, flowCostUsd: 0, flowTokensUsed: 0,
 		flowBudgetMessageTimestamps: [],
+		provider429RetryCount: 0,
 	};
 }
 

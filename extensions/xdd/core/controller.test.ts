@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RuntimeStore } from "../storage/runtime-store.ts";
 import { STAGES } from "../stages.ts";
-import { COMPACTION_THRESHOLD_PERCENT, transition, XddController, schedulerText, ControllerError } from "./controller.ts";
+import { COMPACTION_THRESHOLD_PERCENT, transition, XddController, schedulerText, ControllerError, provider429RetryDelayMs, isProvider429InsufficientBalance } from "./controller.ts";
 import type { RuntimeStateV2 } from "../storage/runtime-migrations.ts";
 
 function started(): RuntimeStateV2 {
@@ -40,6 +40,31 @@ describe("XddController transition", () => {
 		const result = transition(started(), { type: "AGENT_ENDED", stopReason: "error", providerError: "rate limit" });
 		expect(result.state.stageOutcome).toBe("provider_error");
 		expect(result.effects).toEqual([expect.objectContaining({ type: "NOTIFY", text: expect.stringContaining("等待 Pi 内建重试") })]);
+	});
+
+	it("429 insufficient balance provider errors enqueue infinite delayed retry", () => {
+		const state = started();
+		const first = transition(state, { type: "AGENT_ENDED", stopReason: "error", providerError: "429 insufficient balance" });
+		expect(first.state.stageOutcome).toBe("provider_error");
+		expect(first.state.provider429RetryCount).toBe(1);
+		expect(first.state.continuationQueued).toBe(true);
+		expect(first.effects).toEqual([
+			expect.objectContaining({ type: "NOTIFY", text: expect.stringContaining("不退出") }),
+			expect.objectContaining({ type: "SEND_FOLLOWUP", delayMs: 3_000, text: expect.stringContaining("不要退出") }),
+		]);
+
+		const later = transition({ ...first.state, provider429RetryCount: 10 }, { type: "AGENT_ENDED", stopReason: "error", providerError: "429 余额不足" });
+		expect(later.state.provider429RetryCount).toBe(11);
+		expect(later.effects[1]).toMatchObject({ type: "SEND_FOLLOWUP", delayMs: 180_000 });
+	});
+
+	it("detects only 429 balance failures and caps retry delay at three minutes", () => {
+		expect(isProvider429InsufficientBalance("429: 余额不足")).toBe(true);
+		expect(isProvider429InsufficientBalance("429 insufficient_quota credits exhausted")).toBe(true);
+		expect(isProvider429InsufficientBalance("429 rate limit")).toBe(false);
+		expect(provider429RetryDelayMs(1)).toBe(3_000);
+		expect(provider429RetryDelayMs(2)).toBe(6_000);
+		expect(provider429RetryDelayMs(99)).toBe(180_000);
 	});
 
 	it("SUBMIT records pass/fail outcomes through the Controller", () => {

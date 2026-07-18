@@ -119,6 +119,13 @@ function toolResultText(event: { content?: Array<{ type?: string; text?: string 
  * with remaining budget. Degraded/model-unavailable reviews did not decide the
  * artifact verdict, and exhausted verdict stages must diagnose or roll back.
  */
+function parseQueuedContinuationEpoch(text: string): number | null {
+	const match = text.match(/\[xdd epoch:(\d+)\]/);
+	if (!match) return null;
+	const value = Number.parseInt(match[1] ?? "", 10);
+	return Number.isFinite(value) ? value : null;
+}
+
 function isAIGateRepairFailure(
 	event: { type?: string; content?: Array<{ type?: string; text?: string }> },
 	toolName: string,
@@ -605,6 +612,7 @@ ${hookResult.prompt}`;
 			// Steering deliberately does not release the follow-up lock.
 			const isXddContinuation =
 				text.startsWith("[xdd 自动推进]") ||
+				text.startsWith("[xdd 自动重试]") ||
 				text.startsWith("[xdd] 阶段") || // stage-advance nudge (kept for legacy)
 				text.startsWith("[xdd] 连续"); // stall terminate nudge
 			if (!isAIGateSteering && !isXddContinuation) return { action: "continue" };
@@ -612,8 +620,16 @@ ${hookResult.prompt}`;
 			// must not receive additional work until /xdd-resume.
 			if (stateRef.paused) return { action: "handled" };
 			if (isAIGateSteering) return { action: "continue" };
-			// P26 lock cycle complete: a queued continuation has been delivered to
-			// the agent. Clear the lock so the next agent_end can queue a fresh one.
+			const queuedEpoch = parseQueuedContinuationEpoch(text);
+			// Clean old auto-continue/retry prompts out of Pi's queued input stream.
+			// Returning handled drops the stale message before it reaches the model,
+			// so repeated 429 retries do not accumulate hundreds of token-wasting
+			// continuation prompts. Legacy messages without an epoch are allowed so
+			// old persisted queues remain recoverable.
+			if (queuedEpoch !== null && queuedEpoch !== stateRef.continuationEpoch) return { action: "handled" };
+			// P26 lock cycle complete: the current queued continuation has been
+			// delivered to the agent. Clear the lock so the next agent_end can queue
+			// a fresh one.
 			stateRef.continuationQueued = false;
 			return { action: "continue" };
 		});

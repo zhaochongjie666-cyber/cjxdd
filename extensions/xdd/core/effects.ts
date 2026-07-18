@@ -1,5 +1,5 @@
 export type XddEffect =
-	| { type: "SEND_FOLLOWUP"; text: string; epoch: number }
+	| { type: "SEND_FOLLOWUP"; text: string; epoch: number; delayMs?: number }
 	| { type: "NOTIFY"; level: "info" | "warning" | "error"; text: string }
 	| { type: "ABORT_AGENT" }
 	| { type: "COMPACT"; instructions: string }

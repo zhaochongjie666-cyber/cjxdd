@@ -116,12 +116,30 @@ describe("Phase 0 input hook message classification", () => {
 			adapter.state.paused = true;
 			for (const text of [
 				"[xdd 自动推进] 继续 understand。",
+				"[xdd 自动重试] 推理上次遇到 429/余额不足。",
 				"[xdd] 阶段 understand 完成。",
 				"[xdd] 连续 6 轮僵死。",
 			]) {
 				const [result] = await adapter.emit("input", { source: "extension", text });
 				expect(result).toEqual({ action: "handled" });
 			}
+		} finally {
+			adapter.dispose();
+		}
+	});
+
+	it("drops stale epoch-marked auto retry prompts before the model sees them", async () => {
+		const adapter = new FakePiAdapterHarness();
+		try {
+			adapter.state.continuationQueued = true;
+			adapter.state.continuationEpoch = 8;
+			const [stale] = await adapter.emit("input", { source: "extension", text: "[xdd 自动重试] retry old\n\n[xdd epoch:7]" });
+			expect(stale).toEqual({ action: "handled" });
+			expect(adapter.state.continuationQueued).toBe(true);
+
+			const [current] = await adapter.emit("input", { source: "extension", text: "[xdd 自动重试] retry current\n\n[xdd epoch:8]" });
+			expect(current).toEqual({ action: "continue" });
+			expect(adapter.state.continuationQueued).toBe(false);
 		} finally {
 			adapter.dispose();
 		}
