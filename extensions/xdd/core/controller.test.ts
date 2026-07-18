@@ -192,23 +192,30 @@ describe("XddController transition", () => {
 		expect(approved.state.stageOutcome).toBe("advanced");
 	});
 
+	it("ROLLBACK rejects non-verify callers", () => {
+		const state = started();
+		state.planIndex = 2; // spec
+		expect(() => transition(state, { type: "ROLLBACK", target: "init", reason: "bad spec" })).toThrow(/only be triggered from verify stage/g);
+	});
+
 	it("ROLLBACK rejects non-earlier targets", () => {
 		const state = started();
+		state.planIndex = 9; // verify
 		expect(() => transition(state, { type: "ROLLBACK", target: "verify", reason: "bad" })).toThrow(ControllerError);
 	});
 
-	it("ROLLBACK moves to an earlier stage and stamps the target epoch", () => {
+	it("ROLLBACK moves from verify to an earlier stage and stamps the target epoch", () => {
 		const state = started();
-		state.planIndex = 3; // architecture
+		state.planIndex = 9; // verify
 		const result = transition(state, { type: "ROLLBACK", target: "spec", reason: "redo spec" });
 		expect(result.state.planIndex).toBe(2);
-		expect(result.state.rollbackOutcome).toMatchObject({ from: "architecture", to: "spec" });
+		expect(result.state.rollbackOutcome).toMatchObject({ from: "verify", to: "spec" });
 		expect(result.state.stageOutcome).toBe("advanced");
 		expect(result.state.stageEpoch).toContain(":spec:");
 	});
 	it("ROLLBACK resets target stage attempt counters and fingerprints", () => {
 		const state = started();
-		state.planIndex = 3; // architecture
+		state.planIndex = 9; // verify
 		state.selfHealUsed = { spec: 4 };
 		state.aiGateUsed = { spec: 2 };
 		state.lastSubmitFingerprint = { spec: "same-files" };
@@ -221,13 +228,13 @@ describe("XddController transition", () => {
 	it("ROLLBACK enforces a controller-owned per-target limit for every caller", () => {
 		let state = started();
 		state.maxRollbacksPerStage = 2;
-		state.planIndex = 3; // architecture
+		state.planIndex = 9; // verify
 		state = transition(state, { type: "ROLLBACK", target: "spec", reason: "first" }).state;
 		expect(state.rollbackAttempts?.spec).toBe(1);
-		state.planIndex = 3; // simulate re-entering architecture after repair
+		state.planIndex = 9; // simulate re-entering verify after repair
 		state = transition(state, { type: "ROLLBACK", target: "spec", reason: "second" }).state;
 		expect(state.rollbackAttempts?.spec).toBe(2);
-		state.planIndex = 3;
+		state.planIndex = 9;
 		expect(() => transition(state, { type: "ROLLBACK", target: "spec", reason: "third" }))
 			.toThrow(/ROLLBACK_LIMIT_REACHED|reached its limit/);
 	});
@@ -236,7 +243,7 @@ describe("XddController transition", () => {
 		let state = started();
 		state.maxRollbacksPerStage = 20;
 		for (let attempt = 1; attempt <= 7; attempt += 1) {
-			state.planIndex = 3; // architecture; the controller must own each increment
+			state.planIndex = 9; // verify; the controller must own each increment
 			state = transition(state, { type: "ROLLBACK", target: "spec", reason: `retry ${attempt}` }).state;
 			expect(state.flowRollbackLimit).toBe(7);
 			expect(state.flowRollbackCount).toBe(attempt);
@@ -246,7 +253,7 @@ describe("XddController transition", () => {
 
 	it("terminates the runtime instead of allowing an eighth flow rollback", () => {
 		const state = started();
-		state.planIndex = 3;
+		state.planIndex = 9;
 		state.maxRollbacksPerStage = 20;
 		state.flowRollbackCount = 7;
 		state.continuationQueued = true;
@@ -259,14 +266,11 @@ describe("XddController transition", () => {
 		expect(result.effects).toEqual([expect.objectContaining({ type: "NOTIFY", text: expect.stringContaining("流程预算耗尽，流程退出") })]);
 	});
 
-	it("applies the flow budget to a group Gate's automatic ROLLBACK command", () => {
+	it("rejects a non-verify group Gate rollback before consuming flow budget", () => {
 		const state = started();
-		state.planIndex = 2; // spec, whose discovery group rolls back to init
+		state.planIndex = 2; // spec, whose discovery group previously rolled back to init
 		state.flowRollbackCount = 7;
-		const result = transition(state, { type: "ROLLBACK", target: "init", reason: "Gate 1 failed" });
-		expect(result.state.status).toBe("failed");
-		expect(result.state.planIndex).toBe(2);
-		expect(result.state.lastStageError).toContain("流程预算耗尽，流程退出");
+		expect(() => transition(state, { type: "ROLLBACK", target: "init", reason: "Gate 1 failed" })).toThrow(/only be triggered from verify stage/g);
 	});
 
 	it("RELEASE_CONTINUATION clears a persisted continuation lock", () => {

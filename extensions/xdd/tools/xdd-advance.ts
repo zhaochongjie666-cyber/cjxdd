@@ -13,7 +13,7 @@ export function createXddAdvanceTool(getState: GetXddState): ToolDefinition {
 		name: "xdd_advance",
 		label: "xdd: advance to next stage",
 		description:
-			"推进 xdd 到下一阶段。前置：当前阶段须已调用 xdd_submit_artifact 并通过闸门。若为阶段组末尾阶段，会执行组级 Gate；失败则需 xdd_rollback 回退。",
+			"推进 xdd 到下一阶段。前置：当前阶段须已调用 xdd_submit_artifact 并通过闸门。若为阶段组末尾阶段，会执行组级 Gate；非 verify 阶段失败时停留本阶段修复，只有 verify 可回跳流程。",
 		parameters: schema,
 		async execute(): Promise<AgentToolResult<EmptyDetails>> {
 			const state = getState();
@@ -44,29 +44,8 @@ export function createXddAdvanceTool(getState: GetXddState): ToolDefinition {
 					});
 					if (!groupGate.ok) {
 						state.clearSignals();
-						// Phase 5 (E.4): atomically call goToStageName so the
-						// rollback lands even if the agent never calls
-						// xdd_rollback. We mark superseded ledger entries,
-						// move planIndex, and stamp the new epoch -- all in one
-						// step. The rollbackOutcome is also recorded for
-						// downstream audit/notify.
-						const from = stage.name;
-						const to = group.rollbackTarget;
-						const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage: plannedStage }) => plannedStage));
-						const rollback = controller.dispatch({
-							type: "ROLLBACK",
-							target: to,
-							reason: `${group.gateLabel} 未通过：${groupGate.reason ?? "未知"}`,
-						});
-						if (rollback.state.status === "failed") {
-							return {
-								content: [{ type: "text", text: `[xdd_advance] ${rollback.state.lastStageError ?? "流程预算耗尽，流程退出"}。` }],
-								details: {},
-								terminate: true,
-							};
-						}
 						return ok(
-							`[xdd_advance] 组级 ${group.gateLabel} 未通过，强制回退 ${stage.name} -> ${group.rollbackTarget}：${groupGate.reason ?? "未知"}`,
+							`[xdd_advance] 组级 ${group.gateLabel} 未通过，停留在 ${stage.name} 阶段修复；只有 verify 阶段允许 xdd_rollback 回跳流程：${groupGate.reason ?? "未知"}`,
 						);
 					}
 					groupGateLabel = group.gateLabel;

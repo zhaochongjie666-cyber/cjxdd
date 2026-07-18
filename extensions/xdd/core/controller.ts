@@ -320,6 +320,9 @@ export const MAX_FLOW_ROLLBACKS = 7;
 
 function rollbackTransition(state: RuntimeStateV2, target: XddStageName | undefined, reason: string, stages: readonly XddStageSpec[], effects: XddEffect[]): ControllerTransitionResult {
 	const from = currentStageName(state, stages) ?? "init";
+	if (from !== "verify") {
+		throw new ControllerError("ROLLBACK_ONLY_FROM_VERIFY", `rollback can only be triggered from verify stage; current stage is ${from}`);
+	}
 	const targetName = target ?? defaultRollbackTarget(state, stages);
 	const idx = state.plan.findIndex((entry) => entry.stageName === targetName);
 	if (idx < 0 || idx >= state.planIndex) throw new ControllerError("INVALID_ROLLBACK", `rollback target ${targetName} must be earlier than current stage`);

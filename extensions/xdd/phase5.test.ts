@@ -172,16 +172,14 @@ describe("E.6 Gate 3 runs build + tests", () => {
 	});
 });
 
-// ── E.4: group rollback is atomic (source check) ─────────────────────
+// ── E.4: group gate failures stay in-stage before verify ─────────────
 
-describe("E.4 group rollback atomicity", () => {
-	it("xdd_advance dispatches Controller ROLLBACK on group gate fail", () => {
+describe("E.4 group gate failure routing", () => {
+	it("xdd_advance does not dispatch Controller ROLLBACK on non-verify group gate fail", () => {
 		const src = readFileSync(join(import.meta.dirname, "tools/xdd-advance.ts"), "utf8");
-		// The controller owns the rollback limit, so group-gate failures must
-		// dispatch the same ROLLBACK command rather than mutate state directly.
-		const branch = src.slice(src.indexOf("groupGate.ok"));
-		expect(branch).toMatch(/type:\s*"ROLLBACK"/);
-		expect(branch).toMatch(/controller\.dispatch/);
+		const branch = src.slice(src.indexOf("groupGate.ok"), src.indexOf("groupGateLabel = group.gateLabel"));
+		expect(branch).toContain("只有 verify 阶段允许 xdd_rollback 回跳流程");
+		expect(branch).not.toMatch(/type:\s*"ROLLBACK"/);
 	});
 });
 
@@ -190,9 +188,8 @@ describe("E.4 group rollback atomicity", () => {
 describe("E.5 verify rollback default target", () => {
 	it("xdd_rollback source defaults verify -> execute", () => {
 		const src = readFileSync(join(import.meta.dirname, "tools/xdd-rollback.ts"), "utf8");
-		// The default-target branch must map verify -> execute
-		const defaultBlock = src.slice(src.indexOf("Default by current stage"));
-		expect(defaultBlock).toMatch(/from\s*===\s*"verify"/);
+		// The default-target branch must map omitted targetStage to execute.
+		const defaultBlock = src.slice(src.indexOf("} else {"));
 		expect(defaultBlock).toMatch(/target\s*=\s*"execute"/);
 	});
 
