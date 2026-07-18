@@ -1,6 +1,9 @@
 import type { AgentMessage } from "@earendil-works/pi-coding-agent";
 
 export const BASH_OUTPUT_STUB = "[bash 输出已压缩；命令仍保留在对应 tool call，结论见 stage summary 或 evidence 文件]";
+export const TEXT_CONTENT_STUB = "[历史对话内容已压缩；xdd 状态以 .xdd/runtime.json、阶段产物和 stage summary 为准]";
+
+const DEFAULT_CONTEXT_TEXT_BUDGET = 80_000;
 
 const THINKING_CONTENT_TYPES = new Set(["thinking", "reasoning", "thought"]);
 
@@ -9,6 +12,8 @@ export interface ContextPruneOptions {
 	currentTurnStartIndex?: number;
 	/** Preserve at most this many text characters before replacing a bash result. */
 	bashResultStubThreshold?: number;
+	/** Keep total message text under this budget by stubbing oldest non-current text. */
+	maxTotalTextChars?: number;
 }
 
 export interface CompactionInstructionArgs {
@@ -34,6 +39,7 @@ export function pruneContextMessages(
 ): AgentMessage[] {
 	const currentTurnStartIndex = options.currentTurnStartIndex ?? findCurrentToolTurnStart(messages);
 	const threshold = options.bashResultStubThreshold ?? 2_000;
+	const maxTotalTextChars = options.maxTotalTextChars ?? DEFAULT_CONTEXT_TEXT_BUDGET;
 	let changed = false;
 	const next = messages.map((message, index) => {
 		let pruned = stripAssistantThinking(message);
@@ -44,6 +50,9 @@ export function pruneContextMessages(
 		}
 		return pruned;
 	});
+	if (Number.isFinite(maxTotalTextChars) && totalMessageTextLength(next) > maxTotalTextChars) {
+		changed = pruneOldestTextInPlace(next, currentTurnStartIndex, maxTotalTextChars) || changed;
+	}
 	return changed ? next as AgentMessage[] : messages as AgentMessage[];
 }
 
@@ -131,4 +140,51 @@ function stubToolResult(message: AgentMessage): AgentMessage {
 	}
 	if ("isError" in raw) copy.isError = raw.isError;
 	return copy;
+}
+
+function totalMessageTextLength(messages: readonly AgentMessage[]): number {
+	return messages.reduce((total, message) => total + extractMessageText(message).length, 0);
+}
+
+function extractMessageText(message: AgentMessage): string {
+	const raw = message as any;
+	return [extractToolText(message), raw.summary, raw.thinking, raw.reasoning, raw.thought]
+		.filter((value) => typeof value === "string")
+		.join("\n");
+}
+
+function pruneOldestTextInPlace(messages: AgentMessage[], currentTurnStartIndex: number, maxTotalTextChars: number): boolean {
+	let total = totalMessageTextLength(messages);
+	let changed = false;
+	// Preserve current turn, tool-call/result pairing metadata, and the latest user instruction.
+	const latestUserIndex = findLatestUserMessageIndex(messages);
+	for (let index = 0; index < messages.length && total > maxTotalTextChars; index++) {
+		if (index >= currentTurnStartIndex || index === latestUserIndex) continue;
+		const before = extractMessageText(messages[index]).length;
+		if (before <= TEXT_CONTENT_STUB.length) continue;
+		const pruned = stubMessageText(messages[index]);
+		if (pruned === messages[index]) continue;
+		messages[index] = pruned;
+		total -= before - extractMessageText(pruned).length;
+		changed = true;
+	}
+	return changed;
+}
+
+function findLatestUserMessageIndex(messages: readonly AgentMessage[]): number {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		if ((messages[i] as any)?.role === "user") return i;
+	}
+	return -1;
+}
+
+function stubMessageText(message: AgentMessage): AgentMessage {
+	const raw: any = message;
+	if (raw?.role === "tool" || raw?.role === "tool_result") return stubToolResult(message);
+	if (raw?.role === "assistant" && hasToolCalls(raw)) {
+		return { ...raw, content: Array.isArray(raw.content) ? [{ type: "text", text: TEXT_CONTENT_STUB }] : TEXT_CONTENT_STUB };
+	}
+	if (raw?.role === "compactionSummary") return { ...raw, summary: TEXT_CONTENT_STUB };
+	if ("content" in raw) return { ...raw, content: Array.isArray(raw.content) ? [{ type: "text", text: TEXT_CONTENT_STUB }] : TEXT_CONTENT_STUB };
+	return message;
 }
