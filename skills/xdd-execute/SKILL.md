@@ -35,10 +35,11 @@ execute 是通用 TDD 主流程；专项 skill 补栈特定约定与检查。主
 
 - [ ] 当前不在 main/master（除非用户授权）
 - [ ] 工作目录干净
-- [ ] 依赖已装（`npm install` / `pip install` 等）
-- [ ] 测试框架可用（跑一次空测试确认）
-- [ ] Docker 服务起来（`docker compose up -d --wait`，每个 healthcheck 过）—— 用 `xdd-architecture` 的 docker-compose.yml
+- [ ] 依赖已装（`npm install` / `pip install` 等）；缺依赖时必须自行安装并重跑，不把“未安装”上报为阻塞
+- [ ] 测试框架可用（跑一次空测试确认）；浏览器/E2E 需要 Playwright/Selenium 时同步安装浏览器运行时
+- [ ] Docker 服务起来（`docker compose up -d --wait`，每个 healthcheck 过）—— 用 `xdd-architecture` 的 docker-compose.yml；缺 DB/队列/缓存就拉起或配置 test 替代
 - [ ] DB 迁移跑过（`alembic upgrade head` 或等价）
+- [ ] 原失败测试命令已重跑并留证据；环境修复不是终点，验证结果才是终点
 
 ## Step 1：加载与审计计划
 
@@ -134,7 +135,7 @@ on_block(problem):                      # 遇即暂停，不猜不跳
   if problem in [计划标"待确认", 文件不存在, 行号不匹配, 函数签名不一致, 缺未声明依赖, 计划外新发现]:
     report(problem)                     # 一次性上报，等修后重走；不自行修根本原因
 
-  # 测试结果异常：先分析根因再上报
+  # 测试结果异常：先分析根因再上报；若是依赖/服务/DB/浏览器缺失，先按 Step 0 自愈并重跑
   elif test.FAIL_but_actually_PASS:     # 断言不够严 / 实现已提前存在 / 测了错函数
     report("测试代码缺陷", evidence)
   elif test.PASS_but_actually_FAIL:     # 计划代码有 bug / 环境依赖缺 / 依赖 task 破坏了本 task

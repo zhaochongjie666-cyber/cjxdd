@@ -1,7 +1,23 @@
 # 验证方法论 — 漫游怎么走、4 维怎么查、双契约怎么判
 
 > 本文件是 `xdd-verify` 的深度参考。SKILL.md 列了"4 维审计 + 双契约 + 漫游 + 混沌"（**查什么**），这里讲**怎么查、怎么判通过**——验证最容易敷衍的地方（写个"通过"就交差）。
-> verify 的核心纪律是"禁偷懒归因"——失败要穷举 ≥3 假设，不能"我觉得是 X"就停。
+> verify 的核心纪律是"禁偷懒归因"和"环境自愈优先"——失败要穷举 ≥3 假设；依赖/服务/浏览器/数据库缺失时先修环境并重跑，不能"我觉得是 X"就停。
+
+---
+
+## 0. 测试环境自愈怎么做（验证的第一职责）
+
+环境失败不是免验证牌。看到 `ModuleNotFoundError`、`command not found`、端口未监听、DB 拒连、Playwright 浏览器缺失、docker 服务 unhealthy 时，按“发现 → 修复 → 重跑 → 留证据”闭环处理：
+
+| 失败现象 | 先查 | 自愈动作 | 重跑证据 |
+|---|---|---|---|
+| Python/Node 依赖缺失 | `pyproject.toml` / `requirements*.txt` / `package.json` | `pip install -r ...`、`npm install`、`pnpm install` | 原测试命令再次执行的输出 |
+| Playwright 缺失 | 测试 import / `playwright` 命令 | `pip install playwright` 或项目依赖安装；再 `python -m playwright install --with-deps chromium` | `pytest --collect-only` 不再 0 collected，E2E 真跑或进入下一失败 |
+| 服务未监听 | README/compose/入口文件、`ss -tlnp` | 启动应用；端口冲突则换端口/停无关进程 | `curl /healthz` 或真实端点响应 |
+| DB/队列未启动 | `docker-compose*.yml`、`DATABASE_URL`、迁移脚本 | `docker compose up -d --wait`，设置 test env，跑迁移 | 写→查或测试日志 |
+| compose 不健康 | `docker compose ps/logs` | 修 env、volume、端口、healthcheck；必要时重建 | `docker compose ps` healthy |
+
+自愈时可以改项目的测试说明、依赖清单或 compose 配置；但 verify 阶段若按流程只读源码，则应 rollback 到 execute 修复后再回来。只有在网络/权限/系统包不可得等外部限制被命令输出证明后，才把该项标为环境阻塞。
 
 ---
 
