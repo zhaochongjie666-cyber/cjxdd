@@ -27,6 +27,14 @@ describe("compileStageContracts", () => {
 		]);
 	});
 
+	it("keeps plan output directly under the fixed xdd run directory", () => {
+		const plan = compileStageContracts(STAGES).find((stage) => stage.name === "plan");
+		expect(plan?.outputs?.map((rule) => rule.pattern)).toEqual([
+			".xdd/runs/xdd_run/plan.md",
+		]);
+		expect(plan?.writeScopes).toEqual([".xdd/runs/xdd_run/plan.md"]);
+	});
+
 	it("rejects required outputs not covered by writeScopes", () => {
 		const stages = STAGES.map(clone);
 		const spec = stages.find((stage) => stage.name === "spec") as XddStageSpec;

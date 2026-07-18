@@ -103,26 +103,26 @@ const CONTRACT_META: Record<XddStageName, {
 	plan: {
 		inputs: [input(".xdd/design/**", "完整设计输入")],
 		readScopes: [".xdd/design/**", "README*", "docs/**", "package.json", "pyproject.toml", "Cargo.toml", "src/**", "lib/**", "app/**", "tests/**"],
-		writeScopes: [".xdd/runs/xdd_run/plan/**", ".xdd/runs/xdd_run/plan.md"],
+		writeScopes: [".xdd/runs/xdd_run/plan.md"],
 		gatePolicy: "hard",
 		rollbackTarget: "resilience",
 	},
 	execute: {
-		inputs: [input(".xdd/runs/xdd_run/**/plan.md", "当前 run 执行计划"), input(".xdd/design/**", "设计契约")],
+		inputs: [input(".xdd/runs/xdd_run/plan.md", "当前 run 执行计划"), input(".xdd/design/**", "设计契约")],
 		readScopes: ["**"],
 		writeScopes: ["**"],
 		gatePolicy: "hard",
 		rollbackTarget: "plan",
 	},
 	cleanup: {
-		inputs: [input(".xdd/runs/xdd_run/**/plan.md", "当前 run 执行计划"), input(".xdd/design/**", "设计契约")],
+		inputs: [input(".xdd/runs/xdd_run/plan.md", "当前 run 执行计划"), input(".xdd/design/**", "设计契约")],
 		readScopes: ["**"],
 		writeScopes: ["**"],
 		gatePolicy: "explicit-soft",
 		rollbackTarget: "execute",
 	},
 	verify: {
-		inputs: [input(".xdd/runs/xdd_run/**/plan.md", "当前 run 计划"), input(".xdd/design/spec/**", "业务验收规则"), input(".xdd/design/wire/**", "UI/Wire 证据要求")],
+		inputs: [input(".xdd/runs/xdd_run/plan.md", "当前 run 计划"), input(".xdd/design/spec/**", "业务验收规则"), input(".xdd/design/wire/**", "UI/Wire 证据要求")],
 		readScopes: ["**"],
 		writeScopes: [".xdd/runs/xdd_run/verify-report.md", ".xdd/runs/xdd_run/evidence/**"],
 		gatePolicy: "hard",
@@ -389,19 +389,19 @@ export const STAGES: readonly XddStageSpec[] = [
 		exit: "goal_complete",
 		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, ...CONTROLLER_TOOLS],
 		desiredState: [
-			"已产出执行计划文档（.xdd/runs/xdd_run/plan/{bxx}/plan.md）",
+			"已产出执行计划文档（.xdd/runs/xdd_run/plan.md）",
 			"计划按阶段组织：spec -> architecture -> wire -> resilience -> execute 每段至少一项具体工作项",
 			"每项工作项标明：依赖前序产出、预计产物、改动文件范围",
 			"识别关键路径与可并行项（不强制并行，但能标注）",
 		],
-		deliverablePaths: [".xdd/runs/xdd_run/**/plan.md", ".xdd/runs/xdd_run/plan.md"],
+		deliverablePaths: [".xdd/runs/xdd_run/plan.md"],
 		aigateStandard: `审查 plan 阶段：
 1. plan.md 的每个task是否有具体描述（不是"实现R01"敷衍，要有步骤）
 2. task是否覆盖了所有RXX规则（不能漏RXX）
 3. task粒度是否合理（不能一个task覆盖10个RXX，也不能太碎）
 4. task是否有优先级/依赖关系（不是无序列表）
 5. 每个task是否关联了G编号（goal回指）`,
-				gate: async ({ cwd }) => requireGlobsWithMinSize(cwd, [".xdd/runs/xdd_run/**/plan.md", ".xdd/runs/xdd_run/plan.md"], 100),
+				gate: async ({ cwd }) => requireGlobsWithMinSize(cwd, [".xdd/runs/xdd_run/plan.md"], 100),
 	},
 	{
 		name: "execute",
