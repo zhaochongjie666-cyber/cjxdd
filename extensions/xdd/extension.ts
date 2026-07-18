@@ -151,6 +151,31 @@ async function sendAIGateRepairSteering(
 	}
 }
 
+
+function isXddAdvanceNextStage(event: { type?: string; content?: Array<{ type?: string; text?: string }> }, toolName: string, state: XddRunnerState): boolean {
+	if (event.type !== "tool_result" || toolName !== "xdd_advance") return false;
+	if (state.runComplete || state.pendingGroupApproval || state.paused || state.stopRequested) return false;
+	const text = toolResultText(event);
+	return text.includes("[xdd_advance]") && text.includes("进入下一阶段");
+}
+
+async function sendAdvanceNextStageSteering(
+	pi: { sendUserMessage?: (text: string, options?: unknown) => Promise<unknown> | unknown },
+	state: XddRunnerState,
+): Promise<void> {
+	const stage = state.currentStageName() ?? "当前";
+	try {
+		await pi.sendUserMessage?.(
+			`[xdd advance steering] 已进入 ${stage} 阶段。立即自动执行下一步：调用 xdd_observe、xdd_desired_state、xdd_difference，按差距完成阶段产物；不要停下来只汇报已推进。`,
+			{ deliverAs: "steer" },
+		);
+	} catch (error) {
+		recordControllerAudit("finding", stage, "xdd_advance next-stage steering send failed", {
+			error: error instanceof Error ? error.message : String(error),
+		});
+	}
+}
+
 async function sendHookContinuePrompt(pi: { sendUserMessage?: (text: string, options?: unknown) => Promise<unknown> | unknown }, prompt: string): Promise<void> {
 	try {
 		await pi.sendUserMessage?.(`[xdd hook continue] ${prompt}`, { deliverAs: "followUp" });
@@ -332,6 +357,9 @@ export const xddInlineExtension: InlineExtension = {
 			// next model call to fix the reviewed artifacts.
 			if (isAIGateRepairFailure(event, toolName, stateRef)) {
 				await sendAIGateRepairSteering(pi, stateRef);
+			}
+			if (isXddAdvanceNextStage(event, toolName, stateRef)) {
+				await sendAdvanceNextStageSteering(pi, stateRef);
 			}
 			const hookResult = await runProjectHooks("tool_use_done", { toolCalls: [{ name: toolName, input: event.input }], toolResult: event });
 			if (hookResult?.action === "continue" && hookResult.prompt) {
