@@ -8,8 +8,31 @@ import { type EmptyDetails, type GetXddState, ok } from "./index.ts";
 import { HarnessStore } from "../harness/store.ts";
 import { buildAuditView, renderAuditView } from "../audit/projector.ts";
 import { RuntimeStore } from "../storage/runtime-store.ts";
+import type { XddStageSpec } from "../types.ts";
 
 const schema = Type.Object({});
+
+function buildNextTaskObjective(stage: XddStageSpec, action: string): string {
+	return `${stage.name} 阶段目标：${stage.desiredState[0] ?? action}`;
+}
+
+function buildConcreteTasks(gaps: readonly string[], action: string): string[] {
+	const tasks = gaps.length > 0
+		? gaps.slice(0, 5).map((gap, index) => `${index + 1}. ${gap}`)
+		: [`1. ${action}`];
+	return [
+		...tasks,
+		`${tasks.length + 1}. 完成后调用 xdd_submit_artifact 提交产物与证据；若 Gate 已通过且已记录 complete，则调用 xdd_advance。`,
+	];
+}
+
+function buildCompletionCriteria(stage: XddStageSpec): string[] {
+	return [
+		`产物满足 ${stage.name} desiredState，并能被 xdd_difference 判定为 met`,
+		"正向路径有可复现证据，兜底/失败路径被攻击检查过或明确记录不适用原因",
+		"没有遗留未处理差距；若仍有差距，下一轮 xdd_next_task 会指向新的具体差距",
+	];
+}
 
 export function createXddNextTaskTool(getState: GetXddState): ToolDefinition {
 	return {
@@ -89,10 +112,18 @@ export function createXddNextTaskTool(getState: GetXddState): ToolDefinition {
 				type: "RECORD_AUDIT_EVENT",
 				event: { type: "task_result", stage: stage.name, action, met: diff.metCount, unmet: diff.unmetCount },
 			});
+			const objective = buildNextTaskObjective(stage, action);
+			const concreteTasks = buildConcreteTasks(gaps, action);
+			const completionCriteria = buildCompletionCriteria(stage);
 			const lines = [
 				"[Controller 指令]",
 				`阶段: ${stage.name}（${stage.role}）`,
+				`目标: ${objective}`,
 				`下一步行动: ${action}`,
+				"具体任务:",
+				...concreteTasks.map((task) => `  - ${task}`),
+				"完成标准:",
+				...completionCriteria.map((criterion) => `  - ${criterion}`),
 				`差距（${gaps.length} 项）:`,
 				...gaps.map((g) => `  - ${g}`),
 				`硬 Gate: ${diff.gate.ok ? "✓ pass" : "❌ " + (diff.gate.reason ?? "")}`,
