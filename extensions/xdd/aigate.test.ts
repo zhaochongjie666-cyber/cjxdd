@@ -2,9 +2,14 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it, expect, vi } from "vitest";
+import { fauxAssistantMessage, registerFauxProvider, resetApiProviders, type Context, type StreamOptions } from "@earendil-works/pi-ai/compat";
 import { formatAIGateResult, formatMechanicalCheckResult, runAIGate, type AIGateResult } from "./aigate.ts";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+	vi.unstubAllGlobals();
+	resetApiProviders();
+});
+
 
 describe("formatAIGateResult", () => {
 	it("formats multi-angle breakdown with failed angles first", () => {
@@ -92,24 +97,32 @@ describe("formatMechanicalCheckResult", () => {
 });
 
 describe("unified AI Gate", () => {
-	it("parses the first balanced JSON object when the response contains extra objects", async () => {
+	function createCwd(): string {
 		const cwd = mkdtempSync(join(tmpdir(), "xdd-aigate-"));
 		writeFileSync(join(cwd, "artifact.md"), "real artifact content");
-		const verdict = {
-			passed: true,
-			angles: ["机械检查结果", "偷工减料攻击", "AI味攻击", "规格偏离攻击"].map((name) => ({ name, passed: true, findings: [] })),
-			issues: [], suggestions: [],
-		};
-		vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
-			choices: [{ message: { content: `审查完成。\n${JSON.stringify(verdict)}\n调试数据：${JSON.stringify({ ignored: true })}` } }],
-		}))));
+		return cwd;
+	}
 
+	function verdict(angleNames = ["机械检查结果", "偷工减料攻击", "AI味攻击", "规格偏离攻击"]): string {
+		return JSON.stringify({
+			passed: true,
+			angles: angleNames.map((name) => ({ name, passed: true, findings: [] })),
+			issues: [],
+			suggestions: [],
+		});
+	}
+
+	function fauxModelWithResponses(responses: string[]) {
+		const faux = registerFauxProvider({ tokensPerSecond: 0 });
+		faux.setResponses(responses.map((text) => fauxAssistantMessage(text)));
+		return faux.getModel();
+	}
+
+	it("parses the first balanced JSON object when the response contains extra objects", async () => {
+		const cwd = createCwd();
+		const model = fauxModelWithResponses([`审查完成。\n${verdict()}\n调试数据：${JSON.stringify({ ignored: true })}`]);
 		try {
-			const result = await runAIGate({
-				model: { api: "openai", baseUrl: "https://example.test", id: "test" } as any,
-				apiKey: "test-key", stageName: "custom", aigateStandard: "test standard",
-				artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd,
-			});
+			const result = await runAIGate({ model, apiKey: "test-key", stageName: "custom", aigateStandard: "test standard", artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd });
 			expect(result.passed).toBe(true);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
@@ -117,64 +130,28 @@ describe("unified AI Gate", () => {
 	});
 
 	it("retries once with a format correction after malformed JSON", async () => {
-		const cwd = mkdtempSync(join(tmpdir(), "xdd-aigate-"));
-		writeFileSync(join(cwd, "artifact.md"), "real artifact content");
-		const verdict = {
-			passed: true,
-			angles: ["机械检查结果", "偷工减料攻击", "AI味攻击", "规格偏离攻击"].map((name) => ({ name, passed: true, findings: [] })),
-			issues: [], suggestions: [],
-		};
-		const fetchMock = vi.fn()
-			.mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: '{"passed": true "angles": []}' } }] })))
-			.mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(verdict) } }] })));
-		vi.stubGlobal("fetch", fetchMock);
-
+		const cwd = createCwd();
+		const faux = registerFauxProvider({ tokensPerSecond: 0 });
+		faux.setResponses([fauxAssistantMessage('{"passed": true "angles": []}'), fauxAssistantMessage(verdict())]);
 		try {
-			const result = await runAIGate({
-				model: { api: "openai", baseUrl: "https://example.test", id: "test" } as any,
-				apiKey: "test-key", stageName: "custom", aigateStandard: "test standard",
-				artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd,
-			});
+			const result = await runAIGate({ model: faux.getModel(), apiKey: "test-key", stageName: "custom", aigateStandard: "test standard", artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd });
 			expect(result.passed).toBe(true);
-			expect(fetchMock).toHaveBeenCalledTimes(2);
-			const retryBody = JSON.parse(String(fetchMock.mock.calls[1][1].body));
-			expect(retryBody.messages[1].content).toContain("上一次输出无效");
+			expect(faux.state.callCount).toBe(2);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
 	});
 
 	it("makes a failed mechanical check fail the single AI Gate verdict even when the LLM says pass", async () => {
-		const cwd = mkdtempSync(join(tmpdir(), "xdd-aigate-"));
-		writeFileSync(join(cwd, "artifact.md"), "real artifact content");
+		const cwd = createCwd();
 		let prompt = "";
-		vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
-			prompt = String(JSON.parse(String(init.body)).messages[1].content);
-			return new Response(JSON.stringify({
-				choices: [{ message: { content: JSON.stringify({
-					passed: true,
-					angles: [
-						{ name: "机械检查结果", passed: true, findings: [] },
-						{ name: "偷工减料攻击", passed: true, findings: [] },
-						{ name: "AI味攻击", passed: true, findings: [] },
-						{ name: "规格偏离攻击", passed: true, findings: [] },
-					],
-					issues: [],
-					suggestions: [],
-				}) } }],
-			}));
-		}));
-
+		const faux = registerFauxProvider({ tokensPerSecond: 0 });
+		faux.setResponses([(_context: Context) => {
+			prompt = String(_context.messages[0]?.role === "user" ? _context.messages[0].content : "");
+			return fauxAssistantMessage(verdict());
+		}]);
 		try {
-			const result = await runAIGate({
-				model: { api: "openai", baseUrl: "https://example.test", id: "test" } as any,
-				apiKey: "test-key",
-				stageName: "custom",
-				aigateStandard: "test standard",
-				artifactPaths: ["artifact.md"],
-				mechanicalCheckResult: { ok: false, reason: "未找到必需产物" },
-				cwd,
-			});
+			const result = await runAIGate({ model: faux.getModel(), apiKey: "test-key", stageName: "custom", aigateStandard: "test standard", artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: false, reason: "未找到必需产物" }, cwd });
 			expect(prompt).toContain("机械检查结果");
 			expect(prompt).toContain("未找到必需产物");
 			expect(result.passed).toBe(false);
@@ -185,32 +162,20 @@ describe("unified AI Gate", () => {
 	});
 
 	it("does not coerce the string false into a passing angle", async () => {
-		const cwd = mkdtempSync(join(tmpdir(), "xdd-aigate-"));
-		writeFileSync(join(cwd, "artifact.md"), "real artifact content");
-		vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
-			choices: [{ message: { content: JSON.stringify({
-				passed: true,
-				angles: [
-					{ name: "机械检查结果", passed: true, findings: [] },
-					{ name: "偷工减料攻击", passed: "false", findings: ["发现问题"] },
-					{ name: "AI味攻击", passed: true, findings: [] },
-					{ name: "规格偏离攻击", passed: true, findings: [] },
-				],
-				issues: [],
-				suggestions: [],
-			}) } }],
-		}))));
-
+		const cwd = createCwd();
+		const badVerdict = JSON.stringify({
+			passed: true,
+			angles: [
+				{ name: "机械检查结果", passed: true, findings: [] },
+				{ name: "偷工减料攻击", passed: "false", findings: ["发现问题"] },
+				{ name: "AI味攻击", passed: true, findings: [] },
+				{ name: "规格偏离攻击", passed: true, findings: [] },
+			],
+			issues: [], suggestions: [],
+		});
+		const model = fauxModelWithResponses([badVerdict]);
 		try {
-			const result = await runAIGate({
-				model: { api: "openai", baseUrl: "https://example.test", id: "test" } as any,
-				apiKey: "test-key",
-				stageName: "custom",
-				aigateStandard: "test standard",
-				artifactPaths: ["artifact.md"],
-				mechanicalCheckResult: { ok: true },
-				cwd,
-			});
+			const result = await runAIGate({ model, apiKey: "test-key", stageName: "custom", aigateStandard: "test standard", artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd });
 			expect(result.passed).toBe(false);
 			expect(result.angles).toContainEqual({ name: "偷工减料攻击", passed: false, findings: ["发现问题"] });
 		} finally {
@@ -218,183 +183,43 @@ describe("unified AI Gate", () => {
 		}
 	});
 
-	it("does not impose xdd-level AIGate context, artifact, or OpenAI response caps", async () => {
-		const cwd = mkdtempSync(join(tmpdir(), "xdd-aigate-"));
-		writeFileSync(join(cwd, "architecture.md"), "x".repeat(40_000));
+	it("uses pi-ai complete with plain turn context and provider options", async () => {
+		const cwd = createCwd();
 		mkdirSync(join(cwd, ".xdd/design/spec"), { recursive: true });
 		writeFileSync(join(cwd, ".xdd/design/spec/rules.md"), "y".repeat(40_000));
-		let body: any;
-		vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
-			body = JSON.parse(String(init.body));
-			return new Response(JSON.stringify({
-				choices: [{ message: { content: JSON.stringify({
-					passed: true,
-					angles: ["机械检查结果", "偷工减料攻击", "AI味攻击", "规格偏离攻击", "安全攻击", "一致性攻击", "可运维攻击", "方案合理性攻击", "iter污染攻击"].map((name) => ({ name, passed: true, findings: [] })),
-					issues: [], suggestions: [],
-				}) } }],
-			}));
-		}));
+		let seenContext: Context | undefined;
+		let seenOptions: StreamOptions | undefined;
+		const faux = registerFauxProvider({ tokensPerSecond: 0 });
+		faux.setResponses([(context: Context, options: StreamOptions | undefined) => {
+			seenContext = context;
+			seenOptions = options;
+			return fauxAssistantMessage(verdict(["机械检查结果", "偷工减料攻击", "AI味攻击", "规格偏离攻击", "安全攻击", "一致性攻击", "可运维攻击", "方案合理性攻击", "iter污染攻击"]));
+		}]);
 		try {
-			await runAIGate({
-				model: { api: "openai", baseUrl: "https://example.test", id: "test" } as any,
-				apiKey: "test-key", stageName: "architecture", aigateStandard: "test standard",
-				artifactPaths: ["architecture.md"], mechanicalCheckResult: { ok: true }, cwd,
-			});
-			expect(body.max_tokens).toBeUndefined();
-			expect(body.max_output_tokens).toBeUndefined();
-			expect(body.response_format).toMatchObject({ type: "json_schema", json_schema: { name: "aigate_verdict", strict: true } });
-			expect(body.messages[1].content).toContain("x".repeat(40_000));
-			expect(body.messages[1].content).toContain("y".repeat(40_000));
-		} finally {
-			rmSync(cwd, { recursive: true, force: true });
-		}
-	});
-	it("falls back to plain OpenAI-compatible chat when structured output returns an HTML page", async () => {
-		const cwd = mkdtempSync(join(tmpdir(), "xdd-aigate-"));
-		writeFileSync(join(cwd, "artifact.md"), "real artifact content");
-		const verdict = {
-			passed: true,
-			angles: ["机械检查结果", "偷工减料攻击", "AI味攻击", "规格偏离攻击"].map((name) => ({ name, passed: true, findings: [] })),
-			issues: [], suggestions: [],
-		};
-		const fetchMock = vi.fn()
-			.mockResolvedValueOnce(new Response("<!doctype html><html>schema unsupported</html>"))
-			.mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(verdict) } }] })));
-		vi.stubGlobal("fetch", fetchMock);
-
-		try {
-			const result = await runAIGate({
-				model: { api: "openai", baseUrl: "https://example.test", id: "test" } as any,
-				apiKey: "test-key", stageName: "custom", aigateStandard: "test standard",
-				artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd,
-			});
+			const result = await runAIGate({ model: faux.getModel(), apiKey: "test-key", headers: { "x-extra": "1" }, stageName: "architecture", aigateStandard: "test standard", artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd });
 			expect(result.passed).toBe(true);
-			expect(fetchMock).toHaveBeenCalledTimes(2);
-			expect(JSON.parse(String(fetchMock.mock.calls[0][1].body)).response_format).toBeDefined();
-			expect(JSON.parse(String(fetchMock.mock.calls[1][1].body)).response_format).toBeUndefined();
+			expect(seenContext?.systemPrompt).toContain("多角度攻击审查者");
+			expect(String(seenContext?.messages[0]?.role === "user" ? seenContext.messages[0].content : "")).toContain("y".repeat(40_000));
+			expect(seenOptions).toMatchObject({ apiKey: "test-key", headers: { "x-extra": "1" }, temperature: 0, maxRetries: 0 });
+			expect((seenOptions as Record<string, unknown>).maxTokens).toBeUndefined();
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
 	});
 
-	it("accepts OpenAI-compatible array content parts", async () => {
-		const cwd = mkdtempSync(join(tmpdir(), "xdd-aigate-"));
-		writeFileSync(join(cwd, "artifact.md"), "real artifact content");
-		const verdict = {
-			passed: true,
-			angles: ["机械检查结果", "偷工减料攻击", "AI味攻击", "规格偏离攻击"].map((name) => ({ name, passed: true, findings: [] })),
-			issues: [], suggestions: [],
-		};
-		vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
-			choices: [{ message: { content: [{ type: "text", text: JSON.stringify(verdict) }] } }],
-		}))));
-
+	it("surfaces pi-ai complete error messages as degraded review failures", async () => {
+		const cwd = createCwd();
+		const faux = registerFauxProvider({ tokensPerSecond: 0 });
+		faux.setResponses([
+			fauxAssistantMessage([], { stopReason: "error", errorMessage: "upstream 504" }),
+			fauxAssistantMessage([], { stopReason: "error", errorMessage: "upstream 504" }),
+		]);
 		try {
-			const result = await runAIGate({
-				model: { api: "openai", baseUrl: "https://example.test", id: "test" } as any,
-				apiKey: "test-key", stageName: "custom", aigateStandard: "test standard",
-				artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd,
-			});
-			expect(result.passed).toBe(true);
+			const result = await runAIGate({ model: faux.getModel(), apiKey: "test-key", stageName: "custom", aigateStandard: "test standard", artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd });
+			expect(result.degraded).toBe(true);
+			expect(result.issues.join("\n")).toContain("upstream 504");
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
 	});
-
-	it("does not double-append chat completions and preserves custom auth headers", async () => {
-		const cwd = mkdtempSync(join(tmpdir(), "xdd-aigate-"));
-		writeFileSync(join(cwd, "artifact.md"), "real artifact content");
-		const verdict = {
-			passed: true,
-			angles: ["机械检查结果", "偷工减料攻击", "AI味攻击", "规格偏离攻击"].map((name) => ({ name, passed: true, findings: [] })),
-			issues: [], suggestions: [],
-		};
-		let url = "";
-		let headers: HeadersInit | undefined;
-		vi.stubGlobal("fetch", vi.fn(async (input: string, init: RequestInit) => {
-			url = input;
-			headers = init.headers;
-			return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(verdict) } }] }));
-		}));
-
-		try {
-			const result = await runAIGate({
-				model: { api: "openai", baseUrl: "https://example.test/v1/chat/completions", id: "test", headers: { "api-key": "model-key" } } as any,
-				apiKey: "test-key", headers: { "x-extra": "1" }, stageName: "custom", aigateStandard: "test standard",
-				artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd,
-			});
-			expect(result.passed).toBe(true);
-			expect(url).toBe("https://example.test/v1/chat/completions");
-			expect(headers).toMatchObject({ "api-key": "model-key", "x-extra": "1" });
-			expect(headers).not.toHaveProperty("Authorization");
-		} finally {
-			rmSync(cwd, { recursive: true, force: true });
-		}
-	});
-
-	it("uses OpenAI Responses endpoint shape without xdd response caps", async () => {
-		const cwd = mkdtempSync(join(tmpdir(), "xdd-aigate-"));
-		writeFileSync(join(cwd, "artifact.md"), "real artifact content");
-		const verdict = {
-			passed: true,
-			angles: ["机械检查结果", "偷工减料攻击", "AI味攻击", "规格偏离攻击"].map((name) => ({ name, passed: true, findings: [] })),
-			issues: [], suggestions: [],
-		};
-		let url = "";
-		let body: any;
-		vi.stubGlobal("fetch", vi.fn(async (input: string, init: RequestInit) => {
-			url = input;
-			body = JSON.parse(String(init.body));
-			return new Response(JSON.stringify({ output_text: JSON.stringify(verdict) }));
-		}));
-
-		try {
-			const result = await runAIGate({
-				model: { api: "openai-responses", baseUrl: "https://example.test/v1/responses", id: "test" } as any,
-				apiKey: "test-key", stageName: "custom", aigateStandard: "test standard",
-				artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd,
-			});
-			expect(result.passed).toBe(true);
-			expect(url).toBe("https://example.test/v1/responses");
-			expect(body.input).toEqual(expect.arrayContaining([expect.objectContaining({ role: "system" }), expect.objectContaining({ role: "user" })]));
-			expect(body.messages).toBeUndefined();
-			expect(body.response_format).toBeUndefined();
-			expect(body.max_tokens).toBeUndefined();
-			expect(body.max_output_tokens).toBeUndefined();
-		} finally {
-			rmSync(cwd, { recursive: true, force: true });
-		}
-	});
-
-	it("supports Google generateContent responses", async () => {
-		const cwd = mkdtempSync(join(tmpdir(), "xdd-aigate-"));
-		writeFileSync(join(cwd, "artifact.md"), "real artifact content");
-		const verdict = {
-			passed: true,
-			angles: ["机械检查结果", "偷工减料攻击", "AI味攻击", "规格偏离攻击"].map((name) => ({ name, passed: true, findings: [] })),
-			issues: [], suggestions: [],
-		};
-		let url = "";
-		let body: any;
-		vi.stubGlobal("fetch", vi.fn(async (input: string, init: RequestInit) => {
-			url = input;
-			body = JSON.parse(String(init.body));
-			return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(verdict) }] } }] }));
-		}));
-
-		try {
-			const result = await runAIGate({
-				model: { api: "google-generative-ai", baseUrl: "https://generativelanguage.googleapis.com/v1beta", id: "gemini-test" } as any,
-				apiKey: "test-key", stageName: "custom", aigateStandard: "test standard",
-				artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd,
-			});
-			expect(result.passed).toBe(true);
-			expect(url).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-test:generateContent");
-			expect(body.generationConfig).toEqual({ temperature: 0 });
-			expect(body.generationConfig.maxOutputTokens).toBeUndefined();
-		} finally {
-			rmSync(cwd, { recursive: true, force: true });
-		}
-	});
-
 });

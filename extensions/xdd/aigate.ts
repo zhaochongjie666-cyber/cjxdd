@@ -20,7 +20,7 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Model } from "@earendil-works/pi-ai/compat";
+import { complete, type AssistantMessage, type Model } from "@earendil-works/pi-ai/compat";
 import { resolveGlobs, safeRealpath } from "./glob-resolver.ts";
 import type { XddGateResult } from "./types.ts";
 
@@ -492,34 +492,6 @@ const JSON_RETRY_INSTRUCTION = `
 ## 上一次输出无效
 上一次响应不是可解析的单个 JSON verdict。请重新审查并只输出一个完整、严格有效的 JSON 对象。数组元素之间必须使用逗号；不要输出解释、Markdown 或第二个 JSON 对象。`;
 
-const AIGATE_RESPONSE_SCHEMA = {
-	name: "aigate_verdict",
-	strict: true,
-	schema: {
-		type: "object",
-		additionalProperties: false,
-		required: ["passed", "angles", "issues", "suggestions"],
-		properties: {
-			passed: { type: "boolean" },
-			angles: {
-				type: "array",
-				items: {
-					type: "object",
-					additionalProperties: false,
-					required: ["name", "passed", "findings"],
-					properties: {
-						name: { type: "string" },
-						passed: { anyOf: [{ type: "boolean" }, { type: "string", enum: ["N/A"] }] },
-						findings: { type: "array", items: { type: "string" } },
-					},
-				},
-			},
-			issues: { type: "array", items: { type: "string" } },
-			suggestions: { type: "array", items: { type: "string" } },
-		},
-	},
-} as const;
-
 function buildAttackUserMessage(params: {
 	stageName: string;
 	aigateStandard: string;
@@ -672,15 +644,7 @@ export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
 
 // ── LLM call ──────────────────────────────────────────────────────
 
-/** Phase 6 (D): retry policy. Only retry on transient errors:
- *   - network (TypeError, fetch failed)
- *   - 5xx HTTP
- *   - 429 rate limit
- * Do NOT retry a timeout: repeating the identical expensive request merely
- * makes the agent wait another full timeout and cannot yield a verdict.
- * Do NOT retry on 4xx other than 429 (auth failure, bad request won't get
- * better with another shot). Max 1 retry (2 attempts total) for transient
- * transport and server failures. */
+/** Phase 6 (D): retry policy. Keep one retry for transient provider failures. */
 const MAX_LLM_ATTEMPTS = 2;
 /** Delay before retry, in ms. */
 const RETRY_DELAY_MS = 1_000;
@@ -689,47 +653,8 @@ function isRetryable(err: unknown): boolean {
 	if (!(err instanceof Error)) return false;
 	// A timeout already consumed the complete request budget.
 	if (err.name === "AbortError" || err.message.includes("timeout")) return false;
-	// Network failures (fetch throws TypeError)
-	if (err.name === "TypeError") return true;
-	// 5xx / 429 in the error message we wrap
-	const m = /API (\d{3})/.exec(err.message);
-	if (m) {
-		const code = Number(m[1]);
-		return code >= 500 || code === 429;
-	}
-	return false;
-}
-
-/** Merge headers with priority: earlier < later. */
-function mergeHeaders(...sources: Array<Record<string, string> | undefined>): Record<string, string> {
-	const out: Record<string, string> = {};
-	for (const src of sources) {
-		if (!src) continue;
-		for (const [k, v] of Object.entries(src)) {
-			if (v !== undefined && v !== null) out[k] = v;
-		}
-	}
-	return out;
-}
-
-/** Check whether headers already include an auth-ish key. */
-function hasAuthHeader(headers: Record<string, string>): boolean {
-	const lower = Object.keys(headers).map((k) => k.toLowerCase());
-	return lower.some((k) => k === "authorization" || k === "x-api-key" || k === "x-goog-api-key" || k === "api-key");
-}
-
-/** OpenAI-compatible endpoint construction: don't blindly append /chat/completions when baseUrl already contains it. */
-function openAICompatUrl(baseUrl: string, api: string): { url: string; kind: "chat" | "responses" } {
-	const clean = baseUrl.replace(/\/$/, "");
-	if (clean.endsWith("/responses") || api === "openai-responses") return { url: clean, kind: "responses" };
-	if (clean.endsWith("/chat/completions")) return { url: clean, kind: "chat" };
-	return { url: `${clean}/chat/completions`, kind: "chat" };
-}
-
-async function readJSONResponse(res: Response, label: string): Promise<any> {
-	const raw = await res.text();
-	if (!res.ok) throw new Error(`${label} API ${res.status}: ${raw}`);
-	return parseLLMJson(raw, `${label} API`);
+	if (/\b(?:5\d\d|429)\b/.test(err.message)) return true;
+	return /fetch failed|network|ECONNRESET|ETIMEDOUT|EAI_AGAIN/i.test(err.message);
 }
 
 async function callLLM(
@@ -742,190 +667,44 @@ async function callLLM(
 ): Promise<string> {
 	if (!apiKey) throw new Error("无 API key（modelRegistry 未解析到凭证）");
 
-	const api = model.api;
-	const baseUrl = model.baseUrl.replace(/\/$/, "");
-
 	let lastErr: unknown = undefined;
 	for (let attempt = 1; attempt <= MAX_LLM_ATTEMPTS; attempt++) {
-		// AbortController + timeout: without this, a stuck LLM call
-		// would hang the entire xdd run forever.
 		const ac = new AbortController();
 		const timer = setTimeout(() => ac.abort(new Error(`AIGate LLM call timeout after ${timeoutMs}ms`)), timeoutMs);
 		try {
-			let text: string;
-			try {
-				text = await callLLMOnce(ac, api, baseUrl, model, apiKey, extraHeaders, systemPrompt, userMessage, true);
-			} catch (e) {
-				// Some OpenAI-compatible gateways have not implemented JSON Schema.
-				// Fall back to the explicit prompt + balanced parser instead of making
-				// AIGate unavailable solely because the optional enhancement is absent.
-				const isOpenAICompat = api !== "anthropic-messages" && api !== "google-generative-ai" && api !== "google-vertex" && api !== "bedrock-converse-stream";
-				if (!isOpenAICompat || !isStructuredOutputRejection(e)) throw e;
-				text = await callLLMOnce(ac, api, baseUrl, model, apiKey, extraHeaders, systemPrompt, userMessage, false);
-			}
-			return text;
+			const message = await complete(model, {
+				systemPrompt,
+				messages: [{ role: "user", content: userMessage, timestamp: Date.now() }],
+			}, {
+				apiKey,
+				headers: extraHeaders,
+				temperature: 0,
+				timeoutMs,
+				maxRetries: 0,
+				signal: ac.signal,
+			});
+			return extractPiAssistantText(message);
 		} catch (e) {
 			lastErr = e;
-			if (attempt >= MAX_LLM_ATTEMPTS || !isRetryable(e)) {
-				throw e;
-			}
-			// Backoff before retry
+			if (attempt >= MAX_LLM_ATTEMPTS || !isRetryable(e)) throw e;
 			await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
 		} finally {
 			clearTimeout(timer);
 		}
 	}
-	// Unreachable (loop either returns or throws on last attempt).
 	throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
-function isStructuredOutputRejection(err: unknown): boolean {
-	return err instanceof Error && /(?:LLM API 400:.*(?:response_format|json_schema|schema|structured)|LLM API non-JSON response.*(?:<!doctype|<html|structured|json_schema|response_format))/is.test(err.message);
-}
-
-async function callLLMOnce(
-	ac: AbortController,
-	api: string,
-	baseUrl: string,
-	model: Model<any>,
-	apiKey: string,
-	extraHeaders: Record<string, string> | undefined,
-	systemPrompt: string,
-	userMessage: string,
-	useStructuredOutput: boolean,
-): Promise<string> {
-	const modelHeaders = (model as any).headers as Record<string, string> | undefined;
-
-	if (api === "anthropic-messages") {
-		const headers = mergeHeaders(
-			modelHeaders,
-			{ "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-			extraHeaders,
-		);
-		const res = await fetch(`${baseUrl}/messages`, {
-			method: "POST",
-			headers,
-			body: JSON.stringify({
-				model: model.id,
-				// Anthropic Messages requires max_tokens; OpenAI/Google-compatible
-				// AIGate paths below do not add xdd response caps and leave provider
-				// limits to the active pi model/provider configuration.
-				max_tokens: 64_000,
-				system: systemPrompt,
-				messages: [{ role: "user", content: userMessage }],
-			}),
-			signal: ac.signal,
-		});
-		const data = await readJSONResponse(res, "Anthropic");
-		return extractAnthropicText(data);
+function extractPiAssistantText(message: AssistantMessage): string {
+	if (message.stopReason === "error" || message.stopReason === "aborted") {
+		throw new Error(message.errorMessage || `AIGate pi-ai complete failed: ${message.stopReason}`);
 	}
-
-	if (api === "google-generative-ai" || api === "google-vertex") {
-		const modelId = model.id.startsWith("models/") ? model.id : `models/${model.id}`;
-		const headers = mergeHeaders(
-			modelHeaders,
-			api === "google-vertex"
-				? { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` }
-				: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-			extraHeaders,
-		);
-		const body: Record<string, unknown> = {
-			contents: [{ role: "user", parts: [{ text: userMessage }] }],
-			generationConfig: { temperature: 0 },
-		};
-		if (systemPrompt) body.systemInstruction = { parts: [{ text: systemPrompt }] };
-		const res = await fetch(`${baseUrl}/${modelId}:generateContent`, { method: "POST", headers, body: JSON.stringify(body), signal: ac.signal });
-		const data = await readJSONResponse(res, "Google");
-		return extractGoogleText(data);
-	}
-
-	if (api === "bedrock-converse-stream") {
-		throw new Error("AIGate 不支持 Bedrock API（bedrock-converse-stream）。Bedrock 需要 AWS SDK 签名，换用其他模型。");
-	}
-
-	const baseHeaders = mergeHeaders(modelHeaders, { "Content-Type": "application/json" });
-	if (!hasAuthHeader(baseHeaders) && !hasAuthHeader(extraHeaders ?? {})) {
-		baseHeaders.Authorization = `Bearer ${apiKey}`;
-	}
-	const headers = mergeHeaders(baseHeaders, extraHeaders);
-	const endpoint = openAICompatUrl(baseUrl, api);
-	const body = endpoint.kind === "responses"
-		? {
-			model: model.id,
-			input: [
-				{ role: "system", content: systemPrompt },
-				{ role: "user", content: userMessage },
-			],
-			temperature: 0,
-			// Pi-compatible safety: do not synthesize response cap fields.
-			// AIGate leaves output limits to the active pi model/provider configuration.
-		}
-		: {
-			model: model.id,
-			messages: [
-				{ role: "system", content: systemPrompt },
-				{ role: "user", content: userMessage },
-			],
-			temperature: 0,
-			...(useStructuredOutput
-				? {
-					// OpenAI-compatible providers that implement structured outputs return
-					// a syntactically valid verdict instead of relying on prompt wording.
-					response_format: { type: "json_schema", json_schema: AIGATE_RESPONSE_SCHEMA },
-				}
-				: {}),
-		};
-	const res = await fetch(endpoint.url, {
-		method: "POST",
-		headers,
-		body: JSON.stringify(body),
-		signal: ac.signal,
-	});
-	const data = await readJSONResponse(res, "LLM");
-	return extractOpenAICompatibleText(data);
-}
-
-function parseLLMJson(raw: string, label: string): any {
-	try {
-		return JSON.parse(raw);
-	} catch (e) {
-		const preview = raw.trim().slice(0, 120) || "<empty response>";
-		const reason = e instanceof Error ? e.message : String(e);
-		throw new Error(`${label} non-JSON response: ${reason}; preview=${preview}`);
-	}
-}
-
-function extractAnthropicText(data: any): string {
-	if (typeof data?.content === "string") return data.content;
-	if (Array.isArray(data?.content)) {
-		return data.content
-			.map((c: any) => typeof c === "string" ? c : c?.text ?? "")
-			.join("");
-	}
-	return "";
-}
-
-function extractGoogleText(data: any): string {
-	return data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text ?? "").join("") ?? "";
-}
-
-function extractOpenAICompatibleText(data: any): string {
-	if (typeof data?.output_text === "string") return data.output_text;
-	if (Array.isArray(data?.output)) {
-		const text = data.output
-			.flatMap((item: any) => Array.isArray(item?.content) ? item.content : [])
-			.map((part: any) => typeof part === "string" ? part : part?.text ?? part?.content ?? "")
-			.join("\n");
-		if (text.trim()) return text;
-	}
-	const message = data?.choices?.[0]?.message;
-	const content = message?.content;
-	if (typeof content === "string") return content;
-	if (Array.isArray(content)) {
-		return content.map((part: any) => typeof part === "string" ? part : part?.text ?? part?.content ?? "").join("");
-	}
-	if (typeof data?.content === "string") return data.content;
-	return "";
+	const text = message.content
+		.filter((part): part is { type: "text"; text: string } => part.type === "text")
+		.map((part) => part.text)
+		.join("\n");
+	if (!text.trim()) throw new Error("AIGate pi-ai complete returned no text content");
+	return text;
 }
 
 
@@ -934,16 +713,10 @@ function extractOpenAICompatibleText(data: any): string {
 /** Format AIGate results as a readable multi-angle breakdown for the agent. */
 export function formatAIGateResult(aiResult: AIGateResult): string {
 	if (aiResult.angles.length === 0) {
-		// No angle breakdown (LLM parse failure or no artifacts)
 		return aiResult.issues.length > 0
 			? aiResult.issues.map((i, n) => `${n + 1}. ${i}`).join("\n")
 			: "AIGate 判定不通过（未给出具体问题）";
 	}
-	// Do not use truthiness here: the string "N/A" is truthy, but it means
-	// the review did not produce a verdict for that angle. Treating it as a
-	// green pass was especially misleading for transport failures: the tool
-	// reported "0/N issues" and every angle as passed while the gate correctly
-	// returned `passed: false`.
 	const failed = aiResult.angles.filter((a) => a.passed === false);
 	const passed = aiResult.angles.filter((a) => a.passed === true);
 	const unavailable = aiResult.angles.filter((a) => a.passed === "N/A");
@@ -970,10 +743,6 @@ export function formatAIGateResult(aiResult: AIGateResult): string {
 
 // ── Verdict parsing + re-derivation ──────────────────────────────────
 
-/** Parse the LLM response. Phase 6 (D) failure semantics: any parse
- *  error (no JSON, JSON.parse throws) returns a hard-fail result with
- *  `degraded: true` and ALL angles marked as failed. The caller
- *  (rederivePassed) will then fail the gate. */
 function jsonObjectCandidates(text: string): string[] {
 	const candidates: string[] = [];
 	for (let start = text.indexOf("{"); start !== -1; start = text.indexOf("{", start + 1)) {
