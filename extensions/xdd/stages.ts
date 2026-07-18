@@ -72,7 +72,7 @@ const CONTRACT_META: Record<XddStageName, {
 	spec: {
 		inputs: [input(".xdd/design/design.md", "收敛设计决策"), input(".xdd/design/intent.md", "意图锚与成功标准")],
 		readScopes: [".xdd/design/**", ".xdd/runs/**"],
-		// Design is iterative: each design stage may refine any design artifact
+		// Design is refinable: each design stage may refine any design artifact
 		// discovered to need improvement, without gaining access to source code
 		// or run-scoped implementation artifacts.
 		writeScopes: [".xdd/design/**"],
@@ -103,28 +103,28 @@ const CONTRACT_META: Record<XddStageName, {
 	plan: {
 		inputs: [input(".xdd/design/**", "完整设计输入")],
 		readScopes: [".xdd/design/**", "README*", "docs/**", "package.json", "pyproject.toml", "Cargo.toml", "src/**", "lib/**", "app/**", "tests/**"],
-		writeScopes: [".xdd/runs/**/plan/**", ".xdd/runs/**/plan.md"],
+		writeScopes: [".xdd/runs/xdd_run/plan/**", ".xdd/runs/xdd_run/plan.md"],
 		gatePolicy: "hard",
 		rollbackTarget: "resilience",
 	},
 	execute: {
-		inputs: [input(".xdd/runs/**/plan.md", "当前迭代执行计划"), input(".xdd/design/**", "设计契约")],
+		inputs: [input(".xdd/runs/xdd_run/**/plan.md", "当前 run 执行计划"), input(".xdd/design/**", "设计契约")],
 		readScopes: ["**"],
 		writeScopes: ["**"],
 		gatePolicy: "hard",
 		rollbackTarget: "plan",
 	},
 	cleanup: {
-		inputs: [input(".xdd/runs/**/plan.md", "当前迭代执行计划"), input(".xdd/design/**", "设计契约")],
+		inputs: [input(".xdd/runs/xdd_run/**/plan.md", "当前 run 执行计划"), input(".xdd/design/**", "设计契约")],
 		readScopes: ["**"],
 		writeScopes: ["**"],
 		gatePolicy: "explicit-soft",
 		rollbackTarget: "execute",
 	},
 	verify: {
-		inputs: [input(".xdd/runs/**/plan.md", "当前迭代计划"), input(".xdd/design/spec/**", "业务验收规则"), input(".xdd/design/wire/**", "UI/Wire 证据要求")],
+		inputs: [input(".xdd/runs/xdd_run/**/plan.md", "当前 run 计划"), input(".xdd/design/spec/**", "业务验收规则"), input(".xdd/design/wire/**", "UI/Wire 证据要求")],
 		readScopes: ["**"],
-		writeScopes: [".xdd/runs/**/verify-report.md", ".xdd/runs/**/evidence/**"],
+		writeScopes: [".xdd/runs/xdd_run/verify-report.md", ".xdd/runs/xdd_run/evidence/**"],
 		gatePolicy: "hard",
 		rollbackTarget: "execute",
 	},
@@ -174,7 +174,7 @@ export const STAGES: readonly XddStageSpec[] = [
 		noCodeReading: true,
 		aigateStandard: `审查 init 阶段的 Controller 脚手架证据：
 1. .xdd/design/README.md、.xdd/runs/README.md、.xdd/archive/README.md 是否都存在且说明各自目录用途
-2. 说明是否明确边界：init 不生成 intent.md、design.md、goals.md 或 status.md；这些业务设计/迭代产物归后续阶段所有
+2. 说明是否明确边界：init 不生成 intent.md、design.md、goals.md 或 status.md；这些业务设计/run 产物归后续阶段所有
 3. 不要求 init 生成或提交业务设计内容；若 intent.md 不存在，“规格偏离攻击”应标记为 N/A 并说明 init 尚未具备意图锚`,
 				gate: async () => softPass(),
 	},
@@ -192,11 +192,11 @@ export const STAGES: readonly XddStageSpec[] = [
 			"已梳理用户旅途（主线/分支/迂回/意外/探索 5 层次），写入 .xdd/design/notes/ 或向用户复述确认",
 			"已做用户角色模拟：按 7 类（主用户/管理用户/间接用户/外部系统/审计合规/开发运维/边缘角色）自主发散布全角色，每角色产出深度档案（10 维度），写入 .xdd/design/personas/",
 			"已产出意图锚对（.xdd/design/intent.md 定位+成功标准+非目标 + .xdd/design/design.md 5 段收敛决策：Selected/Alternatives/Assumptions/Out of Scope/Open Questions）",
-			"已产出本 iter 高层目标（.xdd/runs/iter-N/goals.md，分配 G 编号供 plan 回指）",
+			"已产出本 run 高层目标（.xdd/runs/xdd_run/goals.md，分配 G 编号供 plan 回指）",
 			"已与用户就最关键 2-3 个模糊点达成一致，或在 prompt 中明确声明无法澄清时的合理默认",
-			"design/ 产物不引用 iter-N（design 是持久锚，跨 iter 保留，不关心具体迭代编号）",
+			"design/ 产物不引用具体 run 目录（design 是持久锚，长期保留，不关心运行目录）",
 		],
-		deliverablePaths: [".xdd/design/design.md", ".xdd/design/intent.md", ".xdd/runs/*/goals.md", ".xdd/design/personas/_index.md"],
+		deliverablePaths: [".xdd/design/design.md", ".xdd/design/intent.md", ".xdd/runs/xdd_run/goals.md", ".xdd/design/personas/_index.md"],
 		noCodeReading: true,
 		aigateStandard: `审查 understand 阶段（最严格）：
 1. intent.md 的"1句话定位"是否有实质业务语义（不是"做一个系统"这种废话）
@@ -220,8 +220,8 @@ export const STAGES: readonly XddStageSpec[] = [
 			if (!intentOk.ok) return { ok: false, reason: "understand Gate: 缺少 .xdd/design/intent.md（定位+成功标准+非目标）" };
 			const designOk = await requireGlobsWithKeywords(cwd, [".xdd/design/design.md"], ["Selected", "Alternatives", "Assumptions", "Out of Scope", "Open Questions"], 4);
 			if (!designOk.ok) return { ok: false, reason: "understand Gate: .xdd/design/design.md 缺少收敛决策 5 段（Selected/Alternatives/Assumptions/Out of Scope/Open Questions，至少 3 段）" };
-			const goalsOk = await requireGlobs(cwd, [".xdd/runs/*/goals.md"]);
-			if (!goalsOk.ok) return { ok: false, reason: "understand Gate: 缺少 .xdd/runs/*/goals.md（G 编号，plan 的上游）" };
+			const goalsOk = await requireGlobs(cwd, [".xdd/runs/xdd_run/goals.md"]);
+			if (!goalsOk.ok) return { ok: false, reason: "understand Gate: 缺少 .xdd/runs/xdd_run/goals.md（G 编号，plan 的上游）" };
 			const personasOk = await requirePersonas(cwd);
 			if (!personasOk.ok) return personasOk;
 			return { ok: true };
@@ -238,7 +238,7 @@ export const STAGES: readonly XddStageSpec[] = [
 			"每条 RXX 规则至少 1 个 Feature 覆盖（含正向 + 异常 Scenario）",
 			"规则与 understand 阶段澄清的需求点逐条对应（无遗漏假设）",
 			"已列已知/未知四象限（已知的已知 / 已知的未知 / 未知的已知 / 未知的未知）并标注每项处置",
-			"design/ 产物不引用 iter-N（design 是持久锚，跨 iter 保留）",
+			"design/ 产物不引用具体 run 目录（design 是持久锚，长期保留）",
 		],
 		deliverablePaths: [".xdd/design/spec/**/rules.md", ".xdd/design/spec/**/*.feature"],
 			noCodeReading: true,
@@ -275,7 +275,7 @@ export const STAGES: readonly XddStageSpec[] = [
 			"明确每个模块对应 spec 中的哪条 RXX 规则",
 			"识别至少 1 个失败模式 / 风险点（与 resilience 阶段的关注点对接）",
 			"若发现 intent.md/design.md 与架构约束冲突：在 .xdd/design/architecture/upstream-change-requests.md 记录证据、影响、备选方案和建议回退阶段；不得直接修改上游锚。规则/验收问题回退 spec，项目意图/范围/成功标准/项目级约束问题回退 understand",
-			"design/ 产物不引用 iter-N（design 是持久锚，跨 iter 保留）",
+			"design/ 产物不引用具体 run 目录（design 是持久锚，长期保留）",
 		],
 		deliverablePaths: [
 			".xdd/design/architecture/**/architecture.md",
@@ -332,7 +332,7 @@ export const STAGES: readonly XddStageSpec[] = [
 			"已产出页面线框（.xdd/design/wire/{page}.md），每页含布局 + 元素清单 + 6 操作态 + review",
 			"页面清单跟 spec 的 RXX 规则一一对应（不多不少）",
 			"每个元素标了 @covers-RXX（有存在意义，无混淆）",
-			"design/ 产物不引用 iter-N（design 是持久锚，跨 iter 保留）",
+			"design/ 产物不引用具体 run 目录（design 是持久锚，长期保留）",
 		],
 		deliverablePaths: [".xdd/design/wire/*.md"],
 		noCodeReading: true,
@@ -358,7 +358,7 @@ export const STAGES: readonly XddStageSpec[] = [
 			"覆盖 architecture 中识别的失败模式：每个失败模式的检测 / 隔离 / 恢复策略",
 			"记录依赖超时 / 重试 / 降级 / 资源限制等通用容错决策",
 			"已产出韧性测试计划（resilience-test-plan.md），含失败模式 × 自动化/手工/巡检矩阵",
-			"design/ 产物不引用 iter-N（design 是持久锚，跨 iter 保留）",
+			"design/ 产物不引用具体 run 目录（design 是持久锚，长期保留）",
 		],
 		deliverablePaths: [
 			".xdd/design/architecture/**/resilience/failure-modes.md",
@@ -389,19 +389,19 @@ export const STAGES: readonly XddStageSpec[] = [
 		exit: "goal_complete",
 		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, ...CONTROLLER_TOOLS],
 		desiredState: [
-			"已产出执行计划文档（.xdd/runs/iter-N/plan/{bxx}/plan.md）",
+			"已产出执行计划文档（.xdd/runs/xdd_run/plan/{bxx}/plan.md）",
 			"计划按阶段组织：spec -> architecture -> wire -> resilience -> execute 每段至少一项具体工作项",
 			"每项工作项标明：依赖前序产出、预计产物、改动文件范围",
 			"识别关键路径与可并行项（不强制并行，但能标注）",
 		],
-		deliverablePaths: [".xdd/runs/**/plan.md"],
+		deliverablePaths: [".xdd/runs/xdd_run/**/plan.md", ".xdd/runs/xdd_run/plan.md"],
 		aigateStandard: `审查 plan 阶段：
 1. plan.md 的每个task是否有具体描述（不是"实现R01"敷衍，要有步骤）
 2. task是否覆盖了所有RXX规则（不能漏RXX）
 3. task粒度是否合理（不能一个task覆盖10个RXX，也不能太碎）
 4. task是否有优先级/依赖关系（不是无序列表）
 5. 每个task是否关联了G编号（goal回指）`,
-				gate: async ({ cwd }) => requireGlobsWithMinSize(cwd, [".xdd/runs/**/plan.md"], 100),
+				gate: async ({ cwd }) => requireGlobsWithMinSize(cwd, [".xdd/runs/xdd_run/**/plan.md", ".xdd/runs/xdd_run/plan.md"], 100),
 	},
 	{
 		name: "execute",
@@ -441,7 +441,7 @@ export const STAGES: readonly XddStageSpec[] = [
 			"已统一格式（参考 plan 约定的风格 / linter）",
 			"已剔除未被引用的死代码 / 死文件",
 			"已更新 README / docs 反映最终接口与使用方式",
-			"已做迭代沉淀：本 iter 验证过的新规则/模式/失败模式提升到 design/（不引用 iter-N），pilot/实验留在 runs/",
+			"已做运行沉淀：本 run 验证过的新规则/模式/失败模式提升到 design/（不引用 具体 run 目录），pilot/实验留在 runs/",
 		],
 		deliverablePaths: [],
 		aigateStandard: `审查 cleanup 阶段：
@@ -449,7 +449,7 @@ export const STAGES: readonly XddStageSpec[] = [
 2. 是否有未使用的import/依赖（-> 不通过）
 3. 是否有死代码（注释掉的大段代码 -> 不通过）
 4. 代码格式是否一致（import顺序/命名风格）
-5. 迭代沉淀：验证过的新规则/模式/失败模式是否提升到 design/？PoC/实验是否留在 runs/？design/ 是否仍不引用 iter-N？`,
+5. 运行沉淀：验证过的新规则/模式/失败模式是否提升到 design/？PoC/实验是否留在 runs/？design/ 是否仍不引用 具体 run 目录？`,
 				gate: async () => softPass(),
 	},
 	{
@@ -469,7 +469,7 @@ export const STAGES: readonly XddStageSpec[] = [
 			"未在 verify 阶段改动契约或架构（仅验证，不修改）",
 			"已执行盲测用户验收（Blind Journey）：定义角色、用 xdd_blind_journey 工具执行 Actor/Judge 两阶段、记录结果、生成覆盖报告（纯后端项目跳过）",
 		],
-		deliverablePaths: [".xdd/runs/*/verify-report.md"],
+		deliverablePaths: [".xdd/runs/xdd_run/verify-report.md"],
 		aigateStandard: `审查 verify 阶段（最严格，全链路不断裂）：
 1. verify-report.md 是否逐条验证了RXX规则（不能只写"全部通过"）
 2. 每条验证是否有具体证据（测试名/测试结果/代码位置，不是"已测试"敷衍）
@@ -487,8 +487,8 @@ export const STAGES: readonly XddStageSpec[] = [
 			if (!evidenceOk.ok) return evidenceOk;
 			const specOk = await requireGlobs(cwd, [".xdd/design/spec/**/rules.md"]);
 			if (!specOk.ok) return { ok: false, reason: "verify Gate: 缺少 spec rules.md，无法验证验收标准" };
-			const reportOk = await requireGlobsWithMinSize(cwd, [".xdd/runs/*/verify-report.md"], 100);
-			if (!reportOk.ok) return { ok: false, reason: "verify Gate: 缺少验证报告 .xdd/runs/iter-N/verify-report.md（含健康检查+漫游+全链路审计+双契约）" };
+			const reportOk = await requireGlobsWithMinSize(cwd, [".xdd/runs/xdd_run/verify-report.md"], 100);
+			if (!reportOk.ok) return { ok: false, reason: "verify Gate: 缺少验证报告 .xdd/runs/xdd_run/verify-report.md（含健康检查+漫游+全链路审计+双契约）" };
 			return { ok: true };
 		},
 	},

@@ -1,14 +1,14 @@
 /**
- * xdd run archive: 归档 runs/iter-N/ 的产物（避免 runs/ 越积越多），
+ * xdd run archive: 归档 runs/<run>/ 的产物（避免 runs/ 越积越多），
  * design/ 是项目设计，永不删。
  *
  * 设计原则（用户指定）：
- *   - 归档的对象是 `<runs/<iter>/>` （单个 run 的产物：goals/plan/verify-report 等）
+ *   - 归档的对象是 `<runs/<run>/>` （单个 run 的产物：goals/plan/verify-report 等）
  *   - design/ 是项目的设计，永远不删
  *   - 归档 = 总结 + 删原本，不是搬到归档目录
- *   - 归档路径：写到 .xdd/archive/<iter>.md （持久，runs/ 被删也不丢）
+ *   - 归档路径：写到 .xdd/archive/<run>.md （持久，runs/ 被删也不丢）
  *
- * runs/<iter>/ 下所有文件读全；design/ 下只读，不删；写摘要到 archive.md；最后删 runs/<iter>/
+ * runs/<run>/ 下所有文件读全；design/ 下只读，不删；写摘要到 archive.md；最后删 runs/<run>/
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -22,13 +22,13 @@ export interface ArchiveResult {
 }
 
 /**
- * Archive a completed run (runs/<iter>/) by summarizing it into .xdd/archive/<iter>.md
- * and deleting the original runs/<iter>/. NEVER touches design/.
+ * Archive a completed run (runs/<run>/) by summarizing it into .xdd/archive/<run>.md
+ * and deleting the original runs/<run>/. NEVER touches design/.
  *
  * @param cwd         repo root (where .xdd/ lives)
- * @param iterLabel   the run dir name (e.g., "iter-1", "xdd-1742..."). Empty = pick most recently modified runs subdir
+ * @param runLabel   the run dir name (e.g., "xdd_run", "normal_run"). Empty = pick most recently modified runs subdir
  */
-export function archiveRun(cwd: string, iterLabel?: string): ArchiveResult {
+export function archiveRun(cwd: string, runLabel?: string): ArchiveResult {
 	const runsDir = join(cwd, ".xdd/runs");
 	const designDir = join(cwd, ".xdd/design");
 	const archiveDir = join(cwd, ".xdd/archive");
@@ -36,8 +36,8 @@ export function archiveRun(cwd: string, iterLabel?: string): ArchiveResult {
 
 	// Resolve target runs dir
 	let sourceRunsDir: string;
-	if (iterLabel) {
-		sourceRunsDir = join(runsDir, iterLabel);
+	if (runLabel) {
+		sourceRunsDir = join(runsDir, runLabel);
 	} else {
 		// pick the most recently modified runs/*/ subdirectory
 		sourceRunsDir = pickMostRecentRunsDir(runsDir);
@@ -54,7 +54,7 @@ export function archiveRun(cwd: string, iterLabel?: string): ArchiveResult {
 	sections.push(`> runs/*/ 删除归档，避免污染。design/* 仅读取（项目设计永久保留）。`);
 	sections.push("");
 
-	// -- 1. Reads from runs/<iter>/ (full read, will be deleted after) --
+	// -- 1. Reads from runs/<run>/ (full read, will be deleted after) --
 	const runsFiles = listFilesRecursive(sourceRunsDir);
 	const designReadFiles: string[] = []; // 设计文件被读取，但不修改，记录在 summary 里
 
@@ -135,7 +135,7 @@ export function archiveRun(cwd: string, iterLabel?: string): ArchiveResult {
 	const archivePath = join(archiveDir, archiveFileName);
 	writeFileSync(archivePath, sections.join("\n"), "utf8");
 
-	// Delete the runs/<iter>/ directory (the whole run record)
+	// Delete the runs/<run>/ directory (the whole run record)
 	const deletedPaths: string[] = [];
 	function recurseDelete(dir: string) {
 		if (!existsSync(dir)) return;
@@ -184,13 +184,13 @@ function pickMostRecentRunsDir(runsDir: string): string {
 	}
 	const all = readdirSync(runsDir, { withFileTypes: true }).filter((e) => e.isDirectory());
 	if (all.length === 0) {
-		throw new Error(`runs 目录 ${runsDir} 下没有任何 iter-* 子目录`);
+		throw new Error(`runs 目录 ${runsDir} 下没有任何 run 子目录`);
 	}
 	all.sort((a, b) => statSync(join(runsDir, b.name)).mtimeMs - statSync(join(runsDir, a.name)).mtimeMs);
 	return join(runsDir, all[0].name);
 }
 
-/** Summarize all files under runs/<iter>/ for the archive. */
+/** Summarize all files under runs/<run>/ for the archive. */
 function collectRunsSummary(runsDir: string, fullRunsDir: string): string | null {
 	const files = listFilesRecursive(runsDir);
 	if (files.length === 0) return null;

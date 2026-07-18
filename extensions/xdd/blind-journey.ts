@@ -16,6 +16,7 @@ import type {
 	XddBlindJourneyIssue,
 	XddParsedScenario,
 } from "./types.ts";
+import { XDD_RUN_DIR } from "./init-scaffold.ts";
 
 // ── Gherkin parsing ─────────────────────────────────────────────────────
 
@@ -302,19 +303,7 @@ ${params.resultReportPath}
 
 /** Base directory for blind journey artifacts under the current run. */
 export function blindJourneyDir(cwd: string): string {
-	// Find the most recent runs/iter-* directory
-	const runsDir = join(cwd, ".xdd", "runs");
-	let iterDir = "";
-	try {
-		const entries = readdirSync(runsDir, { withFileTypes: true });
-		const iters = entries
-			.filter((e) => e.isDirectory() && e.name.startsWith("iter-"))
-			.sort()
-			.reverse();
-		if (iters.length > 0) iterDir = iters[0].name;
-	} catch { /* no runs dir */ }
-	if (!iterDir) iterDir = "iter-1";
-	return join(cwd, ".xdd", "runs", iterDir, "blind-journey");
+	return join(cwd, ".xdd", "runs", XDD_RUN_DIR, "blind-journey");
 }
 
 /** Journey report path for a specific role + scenario. */

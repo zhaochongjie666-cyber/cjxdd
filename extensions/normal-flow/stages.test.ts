@@ -43,15 +43,15 @@ describe("Normal Flow stage contracts", () => {
 		const explore = NF_STAGES.find((s) => s.name === "understand");
 		expect(explore?.writeScopes).toContain(".xdd/design/**");
 		const verify = NF_STAGES.find((s) => s.name === "verify");
-		expect(verify?.writeScopes).toContain(".xdd/runs/**/verify-report.md");
+		expect(verify?.writeScopes).toContain(".xdd/runs/normal_run/verify-report.md");
 	});
 });
 
 describe("Normal Flow traceability gates", () => {
 	function writePlan(cwd: string): void {
-		mkdirSync(join(cwd, ".xdd", "runs", "iter-1"), { recursive: true });
+		mkdirSync(join(cwd, ".xdd", "runs", "normal_run"), { recursive: true });
 		writeFileSync(
-			join(cwd, ".xdd", "runs", "iter-1", "plan.md"),
+			join(cwd, ".xdd", "runs", "normal_run", "plan.md"),
 			[
 				"# Plan",
 				"## Task 1",
@@ -66,9 +66,9 @@ describe("Normal Flow traceability gates", () => {
 	}
 
 	function writeVerifyReport(cwd: string): void {
-		mkdirSync(join(cwd, ".xdd", "runs", "iter-1"), { recursive: true });
+		mkdirSync(join(cwd, ".xdd", "runs", "normal_run"), { recursive: true });
 		writeFileSync(
-			join(cwd, ".xdd", "runs", "iter-1", "verify-report.md"),
+			join(cwd, ".xdd", "runs", "normal_run", "verify-report.md"),
 			"攻击 Attack 失败假设 P0 P1 证据 spec↔code ".repeat(8),
 		);
 	}
@@ -108,7 +108,7 @@ describe("Normal Flow traceability gates", () => {
 	it("rejects plan when attack/TDD/Gate coordination fields are missing", async () => {
 		const cwd = fixture();
 		try {
-			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "plan.md"), "# Plan\n**回指 RXX:** R01\n".repeat(10));
+			writeFileSync(join(cwd, ".xdd", "runs", "normal_run", "plan.md"), "# Plan\n**回指 RXX:** R01\n".repeat(10));
 			const plan = NF_STAGES.find((stage) => stage.name === "plan")!;
 			await expect(plan.gate({ cwd, summary: "", desiredState: plan.desiredState })).resolves.toMatchObject({
 				ok: false,

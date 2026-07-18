@@ -194,20 +194,12 @@ function parsePlanTaskCounts(content: string): XddPlanTaskCounts {
 	return counts;
 }
 
-/** Find the active iter's plan.md files under .xdd/runs/ and sum task counts. */
+/** Find xdd_run plan.md files under .xdd/runs/ and sum task counts. */
 function scanXddPlan(cwd: string): XddPlanTaskCounts {
 	const runsDir = join(cwd, ".xdd", "runs");
 	if (!existsSync(runsDir)) return EMPTY_PLAN_TASKS;
-	let activeIter: string | undefined;
-	const pointerPath = join(cwd, ".xdd", "current-iteration");
-	try {
-		activeIter = readFileSync(pointerPath, "utf8").trim();
-	} catch {
-		activeIter = undefined;
-	}
-
 	const planFiles: string[] = [];
-	const searchRoots = activeIter ? [join(runsDir, activeIter)] : [runsDir];
+	const searchRoots = [join(runsDir, "xdd_run")];
 	const stack = [...searchRoots];
 	while (stack.length > 0) {
 		const current = stack.pop() as string;

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # xdd-init/scripts/init.sh — 一键初始化 xdd 项目（三层设计锚骨架）
-# 生成 .xdd/design/ (持久锚) + .xdd/runs/iter-N/ (单轮工作记录) + status.md + current-iteration
+# 生成 .xdd/design/ (持久锚) + .xdd/runs/xdd_run/ (单轮工作记录) + status.md + current-run
 # + inject：cp WORKFLOW.md 模板 + rules/ 模板 + 往 AGENTS.md/CLAUDE.md 注入 pointer
 # 平台中立，无 hook 依赖。详见 skills/xdd-init/SKILL.md
 
@@ -10,18 +10,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMPLATES_DIR="$SCRIPT_DIR/../templates"
 
-ITER=1
+RUN_DIR="xdd_run"
 FORCE=false
 BIZLINES=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --iter) ITER="$2"; shift 2 ;;
     --force) FORCE=true; shift ;;
     --bizlines) BIZLINES="$2"; shift 2 ;;
     -h|--help)
-      echo "用法: bash init.sh [--iter N] [--force] [--bizlines B01-鉴权,B02-订单]"
-      echo "  --iter N        iter 号（默认 1）。iter 只能前进，不能倒退。"
+      echo "用法: bash init.sh [--force] [--bizlines B01-鉴权,B02-订单]"
       echo "  --force         强制覆盖（会丢 status）。也用于绕过存量代码检测。"
       echo "  --bizlines B01-x,B02-y  预生成多条业务线 spec 占位（无此参数则建默认 B01）"
       exit 0 ;;
@@ -46,24 +44,14 @@ detect_existing_codebase() {
   [ "$signals" -gt 0 ]
 }
 
-# === 三态分流：全新 / iter 前进迁移 / 重复或倒退 ===
+# === 已存在项目分流：不再创建 run，只保留固定 xdd_run ===
 NEW_PROJECT=true
 if [ -d ".xdd" ]; then
-  OLD_ITER="$(cat .xdd/current-iteration 2>/dev/null || echo "")"
-  OLD_NUM="$(echo "$OLD_ITER" | grep -oE '[0-9]+$' || echo 0)"
   if [ "$FORCE" = "true" ]; then
-    echo "⚠️  --force 强制覆盖（会丢 status）。"
+    echo "⚠️  --force 强制覆盖（会重写 xdd_run/status/goals，design 持久锚只在缺失时补）。"
     NEW_PROJECT=true
-  elif [ -n "$OLD_ITER" ] && [ "$OLD_ITER" != "iter-$ITER" ] && [ "$ITER" -gt "$OLD_NUM" ]; then
-    # iter 前进迁移
-    NEW_PROJECT=false
-    echo "=== iter 迁移：$OLD_ITER → iter-$ITER ==="
-    echo "✓ 归档 $OLD_ITER（runs/$OLD_ITER/ 保留作历史，design/ 持久锚不动）"
-  elif [ -n "$OLD_ITER" ] && [ "$ITER" -le "$OLD_NUM" ]; then
-    echo "❌ 不能倒退或重复：当前 $OLD_ITER，你要 iter-$ITER。iter 只能前进（--iter $((OLD_NUM+1))），或 --force 强制覆盖。"
-    exit 1
   else
-    echo "❌ .xdd/ 已存在且就是 iter-$ITER。换 iter 号（--iter $((ITER+1))）做迁移，或 --force 强制覆盖（会丢 status）。"
+    echo "❌ .xdd/ 已存在。xdd 只使用固定 run 目录 .xdd/runs/xdd_run；继续已有项目请直接用 walker / 下一个 skill，或 --force 重建运行骨架。"
     exit 1
   fi
 else
@@ -77,15 +65,15 @@ else
 fi
 
 # === 建目录结构 ===
-# design/ 持久锚（跨 iter 保留）；runs/iter-N/ 单轮工作记录
+# design/ 持久锚；runs/xdd_run/ 固定单 run 工作记录
 mkdir -p .xdd/design/{spec,architecture,wire,notes}
-mkdir -p ".xdd/runs/iter-$ITER/plan"
-mkdir -p ".xdd/runs/iter-$ITER/audits"
-mkdir -p ".xdd/runs/iter-$ITER/evidence/screenshots"
-mkdir -p ".xdd/runs/iter-$ITER/evidence/snapshots"
-mkdir -p ".xdd/runs/iter-$ITER/evidence/responses"
+mkdir -p ".xdd/runs/$RUN_DIR/plan"
+mkdir -p ".xdd/runs/$RUN_DIR/audits"
+mkdir -p ".xdd/runs/$RUN_DIR/evidence/screenshots"
+mkdir -p ".xdd/runs/$RUN_DIR/evidence/snapshots"
+mkdir -p ".xdd/runs/$RUN_DIR/evidence/responses"
 
-# === 持久锚占位（仅全新项目写，iter 迁移保留已有）===
+# === 持久锚占位（仅全新项目写；--force 时保留已有设计文件）===
 if [ "$NEW_PROJECT" = "true" ]; then
 
 # intent.md（意图锚占位，xdd-brainstorm 填）
@@ -168,17 +156,17 @@ fi
 
 fi  # end NEW_PROJECT
 
-# === gitkeep + status.md（每次都写 status；iter 迁移时写新 iter 的）===
+# === gitkeep + status.md（每次都写固定 xdd_run 的 status）===
 touch .xdd/design/spec/.gitkeep
 touch .xdd/design/architecture/.gitkeep
 touch .xdd/design/wire/.gitkeep
 touch .xdd/design/notes/.gitkeep
-touch ".xdd/runs/iter-$ITER/plan/.gitkeep"
-touch ".xdd/runs/iter-$ITER/audits/.gitkeep"
+touch ".xdd/runs/$RUN_DIR/plan/.gitkeep"
+touch ".xdd/runs/$RUN_DIR/audits/.gitkeep"
 
-# status.md（本 iter 的进度，落在 runs/iter-$ITER/）
-cat > ".xdd/runs/iter-$ITER/status.md" <<EOF
-# Pipeline Status — iter-$ITER
+# status.md（本 run 的进度，落在 runs/xdd_run/）
+cat > ".xdd/runs/$RUN_DIR/status.md" <<EOF
+# Pipeline Status — xdd_run
 
 > 三层骨架：设计层（锚）→ 桥接 → 代码层。每层用 ✅/⏳ 标。
 > 多业务线项目按 ## BXX 分段。
@@ -192,9 +180,9 @@ cat > ".xdd/runs/iter-$ITER/status.md" <<EOF
 | 设计·架构 | ⏳ | xdd-architecture | design/architecture/{bxx-slug}/ |
 | 设计·前端 | ⏳ | xdd-wire | design/wire/{page}/（纯后端跳过）|
 | 设计·韧性 | ⏳ | xdd-resilience | design/architecture/{bxx-slug}/resilience/ |
-| 桥接·计划 | ⏳ | xdd-plan | runs/iter-$ITER/plan/{bxx-slug}/plan.md |
+| 桥接·计划 | ⏳ | xdd-plan | runs/xdd_run/plan/{bxx-slug}/plan.md |
 | 代码·实现 | ⏳ | xdd-execute | 代码 @implements RXX |
-| 代码·验证 | ⏳ | xdd-verify | runs/iter-$ITER/verify-report.md |
+| 代码·验证 | ⏳ | xdd-verify | runs/xdd_run/verify-report.md |
 
 ## 上下文地图
 
@@ -210,9 +198,9 @@ cat > ".xdd/runs/iter-$ITER/status.md" <<EOF
 - 自检: —
 EOF
 
-# goals.md（本 iter 的高层目标清单，per-iter；ACK 的 G 区指向下表 G 编号）
+# goals.md（本 run 的高层目标清单，per-run；ACK 的 G 区指向下表 G 编号）
 # 从 template 复制（G 编号由 xdd-brainstorm 生成分配）
-sed "s/{iter}/$ITER/g" "$TEMPLATES_DIR/goals.md" > ".xdd/runs/iter-$ITER/goals.md"
+sed "s/{run}/$RUN_DIR/g" "$TEMPLATES_DIR/goals.md" > ".xdd/runs/$RUN_DIR/goals.md"
 
 # === inject 段：WORKFLOW.md + rules/ + AGENTS.md/CLAUDE.md pointer ===
 inject_xdd_section() {
@@ -266,7 +254,7 @@ inject_xdd_section() {
     fi
     if [ ! -f "$f" ]; then
       # 全新空仓库 + AGENTS.md/CLAUDE.md 都缺：直接拼「inject 块 + 占位」一步建好 CLAUDE.md，
-      # 让全局 rule + ACK 在入口就落地（iter 迁移/已有项目不建；AGENTS.md 由用户自建或软链）
+      # 让全局 rule + ACK 在入口就落地（run 迁移/已有项目不建；AGENTS.md 由用户自建或软链）
       # 直接拼而不走下方 grep 分支，避免占位文案误含 marker 字面时被当成"已注入"跳过
       if [ "$f" = "CLAUDE.md" ] && [ ! -e "AGENTS.md" ] && [ "$NEW_PROJECT" = "true" ]; then
         tmp="$(mktemp)"
@@ -307,10 +295,10 @@ self_check() {
   echo
   echo "=== 自检 ==="
   local ok=0
-  for f in .xdd/current-iteration .xdd/WORKFLOW.md .xdd/workflows.md \
+  for f in .xdd/current-run .xdd/WORKFLOW.md .xdd/workflows.md \
            .xdd/design/intent.md .xdd/design/design.md .xdd/design/notes \
-           ".xdd/runs/iter-$ITER/status.md" ".xdd/runs/iter-$ITER/goals.md" \
-           ".xdd/runs/iter-$ITER/plan" ".xdd/runs/iter-$ITER/audits"; do
+           ".xdd/runs/$RUN_DIR/status.md" ".xdd/runs/$RUN_DIR/goals.md" \
+           ".xdd/runs/$RUN_DIR/plan" ".xdd/runs/$RUN_DIR/audits"; do
     if [ -e "$f" ]; then
       echo "  ✅ $f"
     else
@@ -327,7 +315,7 @@ self_check() {
     if grep -q '.xdd/runs' .gitignore 2>/dev/null; then
       echo "  ✅ .gitignore 已含 .xdd/runs 规则"
     else
-      echo "  ℹ️  提醒：.xdd/runs/iter-N/audits/ 可按需加入 .gitignore"
+      echo "  ℹ️  提醒：.xdd/runs/xdd_run/audits/ 可按需加入 .gitignore"
     fi
   fi
   for f in AGENTS.md CLAUDE.md; do
@@ -337,13 +325,12 @@ self_check() {
   done
   return $ok
 }
+# current-run 指针（最后写，确保结构都建好）
+echo "$RUN_DIR" > .xdd/current-run
 self_check || echo "  ⚠️  自检发现问题（见上）"
 
-# current-iteration 指针（最后写，确保结构都建好）
-echo "iter-$ITER" > .xdd/current-iteration
-
 echo
-echo "✅ xdd-init 完成 (iter-$ITER)"
+echo "✅ xdd-init 完成 ($RUN_DIR)"
 echo
 echo "=== .xdd/ 结构 ==="
 find .xdd -type d | sort

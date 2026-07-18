@@ -144,14 +144,14 @@ function mechanicalCheckAngle(result: XddGateResult): AttackAngle {
 	};
 }
 
-/** Design-layer angle: design/ is persistent across iters, must not reference iter-N. */
+/** Design-layer angle: design/ is persistent, must not reference a concrete run directory. */
 const ITER_POLLUTION_ANGLE: AttackAngle = {
-	name: "iter污染攻击",
-	description: "design/ 是持久锚，跨 iter 保留，不引用 iter-N",
+	name: "run污染攻击",
+	description: "design/ 是持久锚，不引用具体 run 目录",
 	checks: [
-		"design/ 下的产物是否引用了 iter-N？（如 .xdd/runs/iter-N/goals.md 路径出现在 design.md/rules.md/architecture.md/wire/*.md 中）",
-		"产物是否用 iter 编号限定持久设计？（如 'iter-1 的架构' 应该是 '架构'，不绑定 iter）",
-		"design/ 下的文件路径是否指向 runs/iter-N/？（design 层不该关心具体 iter 编号）",
+		"design/ 下的产物是否引用了具体 run 目录？（如 .xdd/runs/xdd_run/goals.md 路径出现在 design.md/rules.md/architecture.md/wire/*.md 中）",
+		"产物是否用 run 名限定持久设计？（如 '本 run 的架构' 应该是 '架构'，不绑定 run）",
+		"design/ 下的文件路径是否指向 runs/xdd_run/？（design 层不该关心具体 run 目录）",
 	],
 };
 
@@ -358,13 +358,13 @@ const STAGE_ANGLES: Record<string, AttackAngle[]> = {
 		},
 		{
 			name: "沉淀攻击",
-			description: "迭代结束时，验证过的“感悟”是否提升到 design/，pilot 的留在 runs/",
+			description: "run 结束时，验证过的“感悟”是否提升到 design/，pilot 的留在 runs/",
 			checks: [
-				"本 iter 验证中发现的新规则/约束是否提升到 design/spec/rules.md？",
+				"本 run 验证中发现的新规则/约束是否提升到 design/spec/rules.md？",
 				"架构中发现的新模式/反模式是否提升到 design/architecture/？",
 				"失败模式/兜底策略是否提升到 design/architecture/*/resilience/？",
-				"PoC/实验结果/临时方案是否留在 runs/iter-N/（未提升到 design/）？",
-				"design/ 产物是否仍不引用 iter-N（提升的内容是跨 iter 结论，不绑定迭代编号）？",
+				"PoC/实验结果/临时方案是否留在 runs/xdd_run/（未提升到 design/）？",
+				"design/ 产物是否仍不引用具体 run 目录（提升的内容是长期结论，不绑定 run）？",
 			],
 		},
 	],

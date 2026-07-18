@@ -422,7 +422,7 @@ export const xddInlineExtension: InlineExtension = {
 						code: "VERIFY_MUTATED_CONTRACT",
 						message: "verify Gate: verify 阶段修改了源码或设计契约文件",
 						files: [...diff.changed, ...diff.added, ...diff.deleted],
-						remediation: `回滚到 execute 或对应设计阶段修复；verify 只允许写当前 iteration 的 report/evidence。变更: ${formatVerifySnapshotDiff(diff)}`,
+						remediation: `回滚到 execute 或对应设计阶段修复；verify 只允许写当前 run 的 report/evidence。变更: ${formatVerifySnapshotDiff(diff)}`,
 					};
 					recordControllerAudit("finding", "verify", failure.message, { diff, failure });
 					const controller = new XddController(new RuntimeStore(stateRef.cwd), stateRef.plan.map(({ stage }) => stage));

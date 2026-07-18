@@ -25,7 +25,7 @@ prompt ->
 ## 2. 每层做什么
 
 ### 入口：xdd-init
-生成 `.xdd/` 骨架（`design/` + `runs/iter-N/` + `status.md` + `current-iteration`）+ 本文件 + `.xdd/rules/`。
+生成 `.xdd/` 骨架（`design/` + `runs/xdd_run/` + `status.md` + `current-run`）+ 本文件 + `.xdd/rules/`。
 
 ### 设计层（5 skill，每个产出一个"锚"）
 
@@ -40,7 +40,7 @@ design_layer():
 ```
 
 ### 桥接：xdd-plan
-设计层 → 可执行 TDD 计划。每个 task 显式**回指 RXX**（plan task → RXX → design 意图）。禁占位符。产出 `runs/iter-N/plan/{bxx-slug}/plan.md`。
+设计层 → 可执行 TDD 计划。每个 task 显式**回指 RXX**（plan task → RXX → design 意图）。禁占位符。产出 `runs/xdd_run/plan/{bxx-slug}/plan.md`。
 
 ### 代码层（2 skill）
 
@@ -74,13 +74,13 @@ trace_chain():
 
 ## 4. 三层模型 + 业务线层（BXX）
 
-目录分三层，对应「项目 → 业务线 → 迭代」：
+目录分三层，对应「项目 → 业务线 → 运行」：
 
-| 层 | 落点 | 内容 | 跨 iter？ |
+| 层 | 落点 | 内容 | 长期？ |
 |----|------|------|-----------|
 | **项目层** | `design/intent.md` + `design.md` | 项目总意图 + 跨业务线的全局决策（技术栈/错误码/auth）| 是（持久锚）|
 | **业务线层** | `design/spec/{bxx-slug}/` + `architecture/{bxx-slug}/` + `wire/` | 每条业务线的规则/结构/前端 | 是（持久锚）|
-| **迭代层** | `runs/iter-N/` | 单轮 plan/报告/审计 | 否（单轮）|
+| **运行层** | `runs/xdd_run/` | 单轮 plan/报告/审计 | 否（单轮）|
 
 **始终用 BXX**：单业务线 = 一个 B01，多业务线 = B01/B02/...。单→多演进零重构。业务线内多功能靠 RXX 编号（B01-R01/R02）区分，不增设子目录。
 
@@ -98,9 +98,9 @@ for each BXX:
 
 ## 5. status.md（walker 的工作内存）
 
-walker 每切换一层就更新 `.xdd/runs/iter-N/status.md`：上一层 ✅，下一层 ⏳，更新"当前层 / 本层必读 / 上游指针"。让 status.md 替模型记，不靠脑子。
+walker 每切换一层就更新 `.xdd/runs/xdd_run/status.md`：上一层 ✅，下一层 ⏳，更新"当前层 / 本层必读 / 上游指针"。让 status.md 替模型记，不靠脑子。
 
-**ACK 索引源**：回复开头的 ACK `%>R.. G.. T.. W..%` 四区指向 —— R 指本仓库的全局 rule；G 指 `.xdd/runs/iter-N/goals.md` 的 G 编号；T 指 `runs/iter-N/plan/{bxx-slug}/plan.md` 的 task 编号；W 指 `.xdd/workflows.md` 的 W 编号。status.md 仍是 walker 进度内存，goals.md / plan.md / workflows.md 是 ACK 的索引源（职责不同，不混）。
+**ACK 索引源**：回复开头的 ACK `%>R.. G.. T.. W..%` 四区指向 —— R 指本仓库的全局 rule；G 指 `.xdd/runs/xdd_run/goals.md` 的 G 编号；T 指 `runs/xdd_run/plan/{bxx-slug}/plan.md` 的 task 编号；W 指 `.xdd/workflows.md` 的 W 编号。status.md 仍是 walker 进度内存，goals.md / plan.md / workflows.md 是 ACK 的索引源（职责不同，不混）。
 
 ## 6. 单工匠 vs 多 agent
 
@@ -121,9 +121,9 @@ walker 每切换一层就更新 `.xdd/runs/iter-N/status.md`：上一层 ✅，�
 ## 8. 卡住回退
 
 ```
-# 起点：同一 task 连续 3 试没过（计数见 runs/iter-N/failure-log.md 该 task 出现次数）
+# 起点：同一 task 连续 3 试没过（计数见 runs/xdd_run/failure-log.md 该 task 出现次数）
 if 同一 task 3 试没过:
-  写 runs/iter-N/failure-log.md（命令 + 错误 + 试过什么）
+  写 runs/xdd_run/failure-log.md（命令 + 错误 + 试过什么）
   rollback(根因):                    # 判定（那个产物缺了什么）→ 回到的锚
     空状态/页面缺（wire/{page}/ 缺该状态）-> wire
     工作流卡点（design.md 该决策缺失）     -> understand

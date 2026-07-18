@@ -17,7 +17,7 @@ temperature: 0.7
 ## 做什么
 
 1. 装 `xdd-brainstorm` skill，按其 SKILL.md 走
-2. （iter-2+）先读已有 `.xdd/design/` 避免重发明，写 recap
+2. （xdd_run+）先读已有 `.xdd/design/` 避免重发明，写 recap
 3. 跟用户 brainstorm（模糊需求时 5-10 引导问）
 4. 发散调研（7 方向 + 5 方向外部 web search，带 URL）
 5. 用户理解（6 维画像 + 5 层旅程）

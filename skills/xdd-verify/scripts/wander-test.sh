@@ -9,25 +9,25 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 XDD_DIR=".xdd"
 [[ ! -d "$XDD_DIR" ]] && { echo "❌ 无 .xdd/"; exit 1; }
 
-ITER=0
-MAX_ITER="${XDD_LOOP_MAX_ITER:-3}"
+ATTEMPT=0
+MAX_ATTEMPTS="${XDD_LOOP_MAX_ATTEMPTS:-3}"
 REPORT=".xdd/reports/wander-loop-$(date +%Y%m%d-%H%M%S).log"
 mkdir -p .xdd/reports
 
 # 证据保留: 截图 (screenshots/) + curl 响应体 (responses/)，供 verify-report.md 引用
-CUR_ITER="$(cat .xdd/current-iteration 2>/dev/null || echo iter-1)"
-EVIDENCE_DIR=".xdd/runs/$CUR_ITER/evidence"
+RUN_DIR="xdd_run"
+EVIDENCE_DIR=".xdd/runs/$RUN_DIR/evidence"
 mkdir -p "$EVIDENCE_DIR/screenshots" "$EVIDENCE_DIR/snapshots" "$EVIDENCE_DIR/responses"
 
-echo "[xdd] === 回环 7 L6 部署验证 wander-test (max iter: $MAX_ITER) ===" | tee "$REPORT"
+echo "[xdd] === 回环 7 L6 部署验证 wander-test (max attempts: $MAX_ATTEMPTS) ===" | tee "$REPORT"
 
 # 找 base URL
 BASE_URL="${XDD_WANDER_BASE_URL:-http://localhost:8000}"
 
-while [[ $ITER -lt $MAX_ITER ]]; do
-    ITER=$((ITER + 1))
+while [[ $ATTEMPT -lt $MAX_ATTEMPTS ]]; do
+    ATTEMPT=$((ATTEMPT + 1))
     echo "" | tee -a "$REPORT"
-    echo "=== iter $ITER / $MAX_ITER (base: $BASE_URL) ===" | tee -a "$REPORT"
+    echo "=== attempt $ATTEMPT / $MAX_ATTEMPTS (base: $BASE_URL) ===" | tee -a "$REPORT"
 
     # === 部分 A: 真实漫游 - curl 所有 arch 端点 ===
     arch_file="$XDD_DIR/arch/architecture.md"
@@ -136,28 +136,27 @@ while [[ $ITER -lt $MAX_ITER ]]; do
 
     if [[ $total_fail -eq 0 ]]; then
         echo "" | tee -a "$REPORT"
-        echo "[xdd] ✓ 回环 7 L6 wander 通过 (iter $ITER)" | tee -a "$REPORT"
+        echo "[xdd] ✓ 回环 7 L6 wander 通过 (attempt $ATTEMPT)" | tee -a "$REPORT"
         exit 0
     fi
 
     echo "" | tee -a "$REPORT"
-    echo "--- 修 (iter $ITER) ---" | tee -a "$REPORT"
+    echo "--- 修 (attempt $ATTEMPT) ---" | tee -a "$REPORT"
     echo "phase-verifier 修: 补 RXX 实施 / 修端点 / 起服务" | tee -a "$REPORT"
 done
 
 # 3 试未过 → 卡住回退（写 failure-log，停下问用户）
-# 定位当前 iter 的 runs 目录（读 current-iteration 指针）
-CUR_ITER="$(cat .xdd/current-iteration 2>/dev/null || echo iter-1)"
-FAILURE_LOG=".xdd/runs/$CUR_ITER/failure-log.md"
+# 固定 xdd run 目录
+FAILURE_LOG=".xdd/runs/$RUN_DIR/failure-log.md"
 mkdir -p "$(dirname "$FAILURE_LOG")"
 echo "" | tee -a "$REPORT"
-echo "[xdd] ❌ wander $MAX_ITER 试未过, 写 $FAILURE_LOG, 停下问用户" | tee -a "$REPORT"
+echo "[xdd] ❌ wander $MAX_ATTEMPTS 试未过, 写 $FAILURE_LOG, 停下问用户" | tee -a "$REPORT"
 
 cat > "$FAILURE_LOG" <<EOF
 # FAILURE-LOG — 卡在 代码·验证
 
 - 子 agent: phase-verify
-- 卡点: wander + 4 维一致性 $MAX_ITER 试未过
+- 卡点: wander + 4 维一致性 $MAX_ATTEMPTS 试未过
 - 试过: 详见 $REPORT
 - 建议回退: 回 xdd-execute 修缺 RXX / 缺端点 / 起服务；若根因在设计层，回 spec/architecture
 EOF

@@ -160,12 +160,12 @@ describe("buildTraceCoverage", () => {
 });
 
 describe("observeFilesystem - .xdd plan tasks", () => {
-	it("parses task checkboxes from the active iter plan.md", () => {
+	it("parses task checkboxes from xdd_run plan.md", () => {
 		const dir = makeTmpDir();
 		try {
-			mkdirSync(join(dir, ".xdd", "runs", "iter-1", "plan", "B01-auth"), { recursive: true });
+			mkdirSync(join(dir, ".xdd", "runs", "xdd_run", "plan", "B01-auth"), { recursive: true });
 			writeFileSync(
-				join(dir, ".xdd", "runs", "iter-1", "plan", "B01-auth", "plan.md"),
+				join(dir, ".xdd", "runs", "xdd_run", "plan", "B01-auth", "plan.md"),
 				[
 					"- [ ] Task 1 pending",
 					"- [~] Task 2 in progress",
@@ -175,7 +175,6 @@ describe("observeFilesystem - .xdd plan tasks", () => {
 					"regular text line",
 				].join("\n"),
 			);
-			writeFileSync(join(dir, ".xdd", "current-iteration"), "iter-1");
 			const snap = observeFilesystem(dir, []);
 			expect(snap.planTasks.total).toBe(5);
 			expect(snap.planTasks.pending).toBe(1);

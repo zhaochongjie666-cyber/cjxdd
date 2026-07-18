@@ -79,7 +79,7 @@ temperature: 0.8
 **入口**：
 | 工具 | 干什么 | 什么时候装 |
 |------|--------|-----------|
-| `xdd-init` | 生成 `.xdd/` 三层骨架 | 新项目第一步、切 iter |
+| `xdd-init` | 生成 `.xdd/` 三层骨架 | 新项目第一步、固定 run 初始化 |
 
 **设计层（锚）**：
 | 工具 | 锚定什么 | 什么时候装 |
@@ -119,7 +119,7 @@ temperature: 0.8
 ### 接到活
 
 1. **听明白** —— 用户要什么、为什么、完事是什么样
-2. **看看现场** —— `.xdd/` 有什么、当前 iter、已有哪些产物
+2. **看看现场** —— `.xdd/` 有什么、当前 run、已有哪些产物
 3. **判断类型**：
 
 | 类型 | 判断信号 | 从哪开始 |
@@ -131,12 +131,12 @@ temperature: 0.8
 | 逆推 | 有代码没 `.xdd/` | xdd-reverse |
 | 多工种新做 | ≥3 明确工种 | 设计层自己干完，代码层派 phase 子 agent 并行 |
 
-4. **`.xdd/` 不存在** → 跑 `bash skills/xdd-init/scripts/init.sh`（`--bizlines B01-x,B02-y` 多业务线、`--iter N` 新 iter、`--force` 覆盖）
+4. **`.xdd/` 不存在** → 跑 `bash skills/xdd-init/scripts/init.sh`（`--bizlines B01-x,B02-y` 多业务线、`--force` 覆盖）
 5. **拿出第一个工具**
 
 ### 三层流程（标准项目）
 
-> **调用纪律（核心）**：每进一个流程节点，**先 `use skill: <name>` 装对应 skill 再干**（skill 注入"怎么做"的流程，不装就干 = 跳步）。`.xdd/runs/iter-N/status.md` 的「skill」列就是当前该装的 skill。上层没 ✅ 不装下层。
+> **调用纪律（核心）**：每进一个流程节点，**先 `use skill: <name>` 装对应 skill 再干**（skill 注入"怎么做"的流程，不装就干 = 跳步）。`.xdd/runs/xdd_run/status.md` 的「skill」列就是当前该装的 skill。上层没 ✅ 不装下层。
 
 ```text
 [入口]   xdd-init            ── 生成 .xdd/ 骨架
@@ -184,7 +184,7 @@ rollback(根因):
 
 ### 切换工具时
 
-更新 `.xdd/runs/iter-N/status.md`（N = `current-iteration`）：上一层 ✅，下一层 ⏳；更新"当前层 / 本层必读 / 上游指针"。让 status.md 替我记，不靠脑子。
+更新 `.xdd/runs/xdd_run/status.md`（固定 run）：上一层 ✅，下一层 ⏳；更新"当前层 / 本层必读 / 上游指针"。让 status.md 替我记，不靠脑子。
 
 ## 三面手原则（所有 skill 的元约束）
 
@@ -219,7 +219,7 @@ commit 前跑 `bash skills/xdd-execute/scripts/no-stub-check.sh <刚改的文件
 
 ```
 on_failure(n):                          # n = 同一处连续失败次数
-  append .xdd/runs/iter-N/failure-log.md:   # n==1 起每试都记一行（持久化，防上下文压缩后计数丢失）
+  append .xdd/runs/xdd_run/failure-log.md:   # n==1 起每试都记一行（持久化，防上下文压缩后计数丢失）
     [n=N] 命令 / 错误摘要 / 试过什么
   if   n == 1: 重跑仔细点（看错误输出）
   elif n == 2: 换路子（重读 SKILL.md 对应子节 + references/，换实现方式）
@@ -247,7 +247,7 @@ on_failure(n):                          # n = 同一处连续失败次数
 
 ### 交付内容
 
-- `.xdd/runs/iter-N/status.md` 全 ✅
+- `.xdd/runs/xdd_run/status.md` 全 ✅
 - 简短交付报告：做了什么、关键证据在哪（文件路径 + 命令输出）
 - 不主动写"DONE" —— 让用户用了觉得好才是真的完成
 
@@ -256,7 +256,7 @@ on_failure(n):                          # n = 同一处连续失败次数
 骨架（init 生成，三层 × 业务线）：
 
 ```markdown
-# Pipeline Status — iter-N
+# Pipeline Status — xdd_run
 
 ## 项目层
 | 层 | 状态 | skill | 产出 |
@@ -266,9 +266,9 @@ on_failure(n):                          # n = 同一处连续失败次数
 | 设计·架构 | ⏳ | xdd-architecture | design/architecture/{bxx-slug}/ |
 | 设计·前端 | ⏳ | xdd-wire | design/wire/{page}/ |
 | 设计·韧性 | ⏳ | xdd-resilience | design/architecture/{bxx-slug}/resilience/ |
-| 桥接·计划 | ⏳ | xdd-plan | runs/iter-N/plan/{bxx-slug}/plan.md |
+| 桥接·计划 | ⏳ | xdd-plan | runs/xdd_run/plan/{bxx-slug}/plan.md |
 | 代码·实现 | ⏳ | xdd-execute | 代码 @implements RXX |
-| 代码·验证 | ⏳ | xdd-verify | runs/iter-N/verify-report.md |
+| 代码·验证 | ⏳ | xdd-verify | runs/xdd_run/verify-report.md |
 
 ## 上下文地图
 ### 当前

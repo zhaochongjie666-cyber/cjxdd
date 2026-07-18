@@ -9,15 +9,15 @@ import { executePiEffects } from "../adapters/pi-effects.ts";
 let harness: FakePiAdapterHarness;
 
 function writeVerifyTraceGapFixture(cwd: string): void {
-	mkdirSync(join(cwd, ".xdd", "runs", "iter-1", "plan", "task"), { recursive: true });
-	mkdirSync(join(cwd, ".xdd", "runs", "iter-1", "evidence"), { recursive: true });
+	mkdirSync(join(cwd, ".xdd", "runs", "xdd_run", "plan", "task"), { recursive: true });
+	mkdirSync(join(cwd, ".xdd", "runs", "xdd_run", "evidence"), { recursive: true });
 	mkdirSync(join(cwd, ".xdd", "design", "spec", "b01"), { recursive: true });
-	writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "plan", "task", "plan.md"), "- [x] done\n", "utf8");
+	writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "plan", "task", "plan.md"), "- [x] done\n", "utf8");
 	writeFileSync(join(cwd, ".xdd", "design", "spec", "b01", "rules.md"), "| ID | Rule |\n| R01 | rule |\n", "utf8");
-	writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "evidence", "runtime.txt"), "ok", "utf8");
+	writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "evidence", "runtime.txt"), "ok", "utf8");
 	writeFileSync(
-		join(cwd, ".xdd", "runs", "iter-1", "verify-report.md"),
-		`# Verify Report\n\nRuntime evidence npm test exited 0. HTTP evidence curl GET /api/items returned status 200. Evidence .xdd/runs/iter-1/evidence/runtime.txt\n\n${"真实验证说明".repeat(80)}`,
+		join(cwd, ".xdd", "runs", "xdd_run", "verify-report.md"),
+		`# Verify Report\n\nRuntime evidence npm test exited 0. HTTP evidence curl GET /api/items returned status 200. Evidence .xdd/runs/xdd_run/evidence/runtime.txt\n\n${"真实验证说明".repeat(80)}`,
 		"utf8",
 	);
 }

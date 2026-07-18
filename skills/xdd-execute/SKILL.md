@@ -15,7 +15,7 @@ description: |
 
 | | |
 |---|---|
-| **上游** | `xdd-plan`（`.xdd/runs/iter-N/plan/{bxx-slug}/plan.md` task DAG + RXX 回指） |
+| **上游** | `xdd-plan`（`.xdd/runs/xdd_run/plan/{bxx-slug}/plan.md` task DAG + RXX 回指） |
 | **我产出** | 代码（每处 `@implements RXX`）+ 测试（每个 RXX 至少 1 个）+ 执行报告 |
 | **下游消费者** | `xdd-verify`（按 Feature 验收 + 真实可用契约） |
 | **回溯锚** | 代码注释 `@implements RXX` ← plan task ← spec 规则 ← design 意图 |
@@ -43,7 +43,7 @@ execute 是通用 TDD 主流程；专项 skill 补栈特定约定与检查。主
 
 ## Step 1：加载与审计计划
 
-1. 读 `.xdd/runs/iter-N/plan/{bxx-slug}/plan.md`，提取：文件结构表、依赖关系表、RXX 覆盖追踪表、所有 task
+1. 读 `.xdd/runs/xdd_run/plan/{bxx-slug}/plan.md`，提取：文件结构表、依赖关系表、RXX 覆盖追踪表、所有 task
 2. 逐项审计：每个 task 有精确文件路径？声明了依赖？标了回指 RXX？代码步骤是完整代码非占位符？验证步骤有精确命令+预期？
 3. 分类问题：**结构性**（缺文件/占位符/类型不一致/缺依赖）→ 一次性上报全部，等修后重走 Step 1；**微小**（拼写/路径笔误）→ 记微调清单，不影响执行
 
@@ -159,7 +159,7 @@ on_block(problem):                      # 遇即暂停，不猜不跳
 
 ```
 on_failure(n):                          # n = 同一 task 连续失败次数
-  append runs/iter-N/failure-log.md:    # n==1 起每试记一行（持久化，防压缩后计数丢失）
+  append runs/xdd_run/failure-log.md:    # n==1 起每试记一行（持久化，防压缩后计数丢失）
     [n=N] task / 命令 / 错误摘要 / 试过什么
   if   n == 1: 重跑仔细点
   elif n == 2: 重读 plan 对应 step + references，换实现方式

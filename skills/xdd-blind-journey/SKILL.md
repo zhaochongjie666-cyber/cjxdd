@@ -69,7 +69,7 @@ Judge 在 Actor 执行结束后运行。它可以读取：
 
 ### 1. 定义角色
 
-在 `.xdd/runs/iter-N/blind-journey/roles/` 下为每个角色创建定义文件：
+在 `.xdd/runs/xdd_run/blind-journey/roles/` 下为每个角色创建定义文件：
 
 ```yaml
 # roles/project_admin.yaml
@@ -159,7 +159,7 @@ xdd_blind_journey(action="record", scenarioId="AC-01", roleId="project_admin", v
 xdd_blind_journey(action="coverage")
 ```
 
-工具生成 `.xdd/runs/iter-N/blind-journey/coverage-report.md`，含每个角色的场景覆盖矩阵和总体结论。
+工具生成 `.xdd/runs/xdd_run/blind-journey/coverage-report.md`，含每个角色的场景覆盖矩阵和总体结论。
 
 ## 验收结果（只能选一个）
 
@@ -228,7 +228,7 @@ open / navigate / screenshot / click / double_click / type / keypress / scroll /
 ## 产出
 
 ```
-.xdd/runs/iter-N/blind-journey/
+.xdd/runs/xdd_run/blind-journey/
   ├── roles/                          # 角色定义
   │   ├── project_admin.yaml
   │   └── annotator.yaml

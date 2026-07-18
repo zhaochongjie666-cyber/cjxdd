@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
+import { XDD_RUN_DIR } from "../init-scaffold.ts";
 import type { XddGateResult } from "../types.ts";
 import { readResults } from "../blind-journey.ts";
 import { HarnessStore } from "../harness/store.ts";
@@ -12,7 +13,7 @@ import { detectEvidenceCategories, extractEvidenceReferences, hasUnfinishedPlanC
 const execFileAsync = promisify(execFile);
 
 export type EvidenceGateFailureCode =
-	| "ITERATION_MISSING"
+	| "RUN_DIR_MISSING"
 	| "REPORT_MISSING"
 	| "REPORT_TOO_SHORT"
 	| "PLAN_UNFINISHED"
@@ -41,17 +42,17 @@ export function evidenceFailureToGateResult(failure: EvidenceGateFailure): Verif
 }
 
 export function evaluateVerifyEvidenceGate(cwd: string): VerifyEvidenceGateResult {
-	const iteration = currentIteration(cwd);
-	if (!iteration) return fail("ITERATION_MISSING", "verify Gate: 无法解析当前 iteration 目录", [".xdd/runs"], "创建 .xdd/runs/iter-N 并把本轮 plan/report/evidence 写入该目录。");
-	const iterDir = join(cwd, ".xdd", "runs", iteration);
-	const reportRel = `.xdd/runs/${iteration}/verify-report.md`;
+	const runDir = currentRunDir(cwd);
+	if (!runDir) return fail("RUN_DIR_MISSING", "verify Gate: 无法解析当前 xdd run 目录", [".xdd/runs/xdd_run"], "创建 .xdd/runs/xdd_run 并把本轮 plan/report/evidence 写入该目录。");
+	const activeRunDir = join(cwd, ".xdd", "runs", runDir);
+	const reportRel = `.xdd/runs/${runDir}/verify-report.md`;
 	const reportAbs = join(cwd, reportRel);
-	if (!existsSync(reportAbs)) return fail("REPORT_MISSING", "verify Gate: 缺少当前 iteration 的 verify-report.md", [reportRel], "在当前 iter 写入 verify-report.md，不能复用旧 iteration 报告。");
+	if (!existsSync(reportAbs)) return fail("REPORT_MISSING", "verify Gate: 缺少当前 run 的 verify-report.md", [reportRel], "在当前 run 写入 verify-report.md，不能复用其它 run 报告。");
 	const report = readFileSync(reportAbs, "utf8");
 	if (report.trim().length < 300) return fail("REPORT_TOO_SHORT", "verify Gate: verify-report.md 正文过短，缺少真实验证说明", [reportRel], "补充真实命令、接口/UI/边界证据与结果，正文至少 300 字符。");
-	const unfinished = unfinishedPlanFiles(iterDir, cwd);
-	if (unfinished.length > 0) return fail("PLAN_UNFINISHED", "verify Gate: 当前 iteration 仍有未完成 plan checkbox", unfinished, "完成或明确移除当前 iter plan.md 中的 - [ ] 项，代码块示例不计。");
-	const evidenceFailure = validateEvidenceRefs(cwd, iteration, report);
+	const unfinished = unfinishedPlanFiles(activeRunDir, cwd);
+	if (unfinished.length > 0) return fail("PLAN_UNFINISHED", "verify Gate: 当前 run 仍有未完成 plan checkbox", unfinished, "完成或明确移除当前 run plan.md 中的 - [ ] 项，代码块示例不计。");
+	const evidenceFailure = validateEvidenceRefs(cwd, runDir, report);
 	if (evidenceFailure) return evidenceFailure;
 	const categories = detectEvidenceCategories(report);
 	if (categories.length < 2) return fail("EVIDENCE_INSUFFICIENT", "verify Gate: 报告至少需要覆盖两类证据", [reportRel], "至少覆盖 runtime/http/ui/db/auth/boundary/chaos/stub 中两类，并引用 evidence 文件。");
@@ -86,7 +87,7 @@ export function evaluateVerifyMutation(cwd: string): VerifyEvidenceGateResult {
 		"VERIFY_MUTATED_CONTRACT",
 		"verify Gate: verify 阶段修改了源码或设计契约文件",
 		files,
-		`回滚到 execute 或对应设计阶段修复；verify 只允许写当前 iteration 的 report/evidence。变更: ${formatVerifySnapshotDiff(diff)}`,
+		`回滚到 execute 或对应设计阶段修复；verify 只允许写当前 run 的 report/evidence。变更: ${formatVerifySnapshotDiff(diff)}`,
 	);
 }
 
@@ -161,36 +162,31 @@ async function runValidationCommand(cwd: string, command: string): Promise<{ ok:
 function blindJourneyRolesExist(cwd: string): boolean {
 	const runsDir = join(cwd, ".xdd", "runs");
 	try {
-		for (const iter of readdirSync(runsDir, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name.startsWith("iter-")).sort((a, b) => b.name.localeCompare(a.name))) {
-			const rolesDir = join(runsDir, iter.name, "blind-journey", "roles");
-			if (existsSync(rolesDir) && readdirSync(rolesDir).some((f) => f.endsWith(".yaml") || f.endsWith(".yml") || f.endsWith(".md"))) return true;
-		}
+		const rolesDir = join(runsDir, XDD_RUN_DIR, "blind-journey", "roles");
+		if (existsSync(rolesDir) && readdirSync(rolesDir).some((f) => f.endsWith(".yaml") || f.endsWith(".yml") || f.endsWith(".md"))) return true;
 	} catch { /* no runs dir */ }
 	return false;
 }
 
-function currentIteration(cwd: string): string | null {
+function currentRunDir(cwd: string): string | null {
 	const runs = join(cwd, ".xdd", "runs");
-	try {
-		const dirs = readdirSync(runs, { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^iter-\d+/.test(entry.name)).map((entry) => entry.name).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-		return dirs.at(-1) ?? null;
-	} catch {
-		return null;
-	}
+	const xddRun = join(runs, XDD_RUN_DIR);
+	if (existsSync(xddRun) && statSync(xddRun).isDirectory()) return XDD_RUN_DIR;
+	return null;
 }
 
-function unfinishedPlanFiles(iterDir: string, cwd: string): string[] {
-	const planFiles = walk(iterDir).filter((file) => file.endsWith("plan.md"));
+function unfinishedPlanFiles(activeRunDir: string, cwd: string): string[] {
+	const planFiles = walk(activeRunDir).filter((file) => file.endsWith("plan.md"));
 	return planFiles.filter((file) => hasUnfinishedPlanCheckbox(readFileSync(file, "utf8"))).map((file) => relative(cwd, file));
 }
 
-function validateEvidenceRefs(cwd: string, iteration: string, report: string): VerifyEvidenceGateResult | null {
+function validateEvidenceRefs(cwd: string, runDir: string, report: string): VerifyEvidenceGateResult | null {
 	const refs = extractEvidenceReferences(report);
-	if (refs.length === 0) return fail("EVIDENCE_MISSING", "verify Gate: verify-report.md 未引用当前 iteration evidence 文件", [`.xdd/runs/${iteration}/evidence`], "把命令输出、HTTP 响应、截图/DOM 等证据写入 evidence 目录，并在报告中引用路径。");
-	const evidenceRoot = realpathOrResolve(join(cwd, ".xdd", "runs", iteration, "evidence"));
+	if (refs.length === 0) return fail("EVIDENCE_MISSING", "verify Gate: verify-report.md 未引用当前 run evidence 文件", [`.xdd/runs/${runDir}/evidence`], "把命令输出、HTTP 响应、截图/DOM 等证据写入 evidence 目录，并在报告中引用路径。");
+	const evidenceRoot = realpathOrResolve(join(cwd, ".xdd", "runs", runDir, "evidence"));
 	const missing: string[] = [];
 	for (const ref of refs) {
-		if (!ref.startsWith(`.xdd/runs/${iteration}/evidence/`)) {
+		if (!ref.startsWith(`.xdd/runs/${runDir}/evidence/`)) {
 			missing.push(ref);
 			continue;
 		}
@@ -202,7 +198,7 @@ function validateEvidenceRefs(cwd: string, iteration: string, report: string): V
 		const real = realpathOrResolve(abs);
 		if (relative(evidenceRoot, real).startsWith("..")) missing.push(ref);
 	}
-	return missing.length > 0 ? fail("EVIDENCE_MISSING", "verify Gate: evidence 引用缺失、逃逸或来自旧 iteration", missing, "仅引用当前 iter evidence 目录中真实存在的文件。") : null;
+	return missing.length > 0 ? fail("EVIDENCE_MISSING", "verify Gate: evidence 引用缺失、逃逸或来自其它 run", missing, "仅引用当前 run evidence 目录中真实存在的文件。") : null;
 }
 
 function hasWireArtifacts(cwd: string): boolean {

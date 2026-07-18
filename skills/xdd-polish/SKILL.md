@@ -4,7 +4,7 @@ description: |
   xdd 质询性评审 skill（按需手动调，不进默认流水线）。带批判/攻击态度，从两个角度挑刺，不放过、不轻易 PASS：
   ① 架构师视角：读 design/architecture/ + spec/ + design.md，质询架构方案本身是否合理（API 粒度/技术栈选型/替代方案/可部署可运维/事件驱动是否必要）。
   ② 用户视角：读 design/wire/{page}.md（含嵌入式 HTML 布局 + 6 操作态 + review），质询体验是否流畅、页面是否好看、6 态是否齐全。
-  产出 runs/iter-N/polish-report.md，列 P0/P1/P2 攻击项，严重项建议回设计层。
+  产出 runs/xdd_run/polish-report.md，列 P0/P1/P2 攻击项，严重项建议回设计层。
   与 xdd-verify 区分：verify 是符合性闸（代码是否符合契约），polish 是质询性评审（设计/体验本身好不好）。
   触发：打磨、polish、refine、批判、攻击式评审、架构批判、架构是否合理、UX 批判、体验好不好、页面好不好看、挑刺、red team、设计评审、帮我批判这个架构、帮我批判这个设计。
 ---
@@ -18,7 +18,7 @@ description: |
 | | |
 |---|---|
 | **上游** | `design/` 全套封存契约：`design.md`（意图/决策）、`spec/{bxx}/rules.md`（规则 RXX）、`architecture/{bxx}/architecture.md`（结构/端点/事件/运维）、`wire/{page}.md`（页面线框 + 6 操作态 + review，一个文件全含） |
-| **我产出** | `runs/iter-N/polish-report.md`（P0/P1/P2 攻击项 + 严重项建议回退到哪个设计层 skill） |
+| **我产出** | `runs/xdd_run/polish-report.md`（P0/P1/P2 攻击项 + 严重项建议回退到哪个设计层 skill） |
 | **下游消费者** | 用户（决策：接受 / 回设计层重做）。**不进默认流水线，按需手动调** |
 | **回溯锚** | 每条攻击点引用证据（`architecture.md:行号` / `wire/{page}.md:行号`） |
 
@@ -106,7 +106,7 @@ P0 = 架构级硬伤（交付即返工）；P1 = 设计缺陷（影响质量）�
 怎么改：{具体建议，指向 xdd-wire}
 ```
 
-**截图取证**（UX 批判的可见证据）：对每个被批判的页面取证，存 `runs/iter-N/evidence/`：截图 `screenshots/{page}.png`（像素证据）+ 结构化快照 `snapshots/{page}.yaml`（可访问性树 + 元素 ref，能看元素结构、a11y 层级）。polish 手动调时用 `xdd-verify/scripts/capture-evidence.sh <url> <png> <snapshot-yaml> <html>` 对 wire 产物或已部署页面取证（调微软 `playwright-cli`，缺失则降级 HTML 快照 `responses/{page}.html`）。报告里关键攻击点内联 `![](evidence/screenshots/{page}.png)` 直贴图，复杂结构问题附 snapshot 片段。
+**截图取证**（UX 批判的可见证据）：对每个被批判的页面取证，存 `runs/xdd_run/evidence/`：截图 `screenshots/{page}.png`（像素证据）+ 结构化快照 `snapshots/{page}.yaml`（可访问性树 + 元素 ref，能看元素结构、a11y 层级）。polish 手动调时用 `xdd-verify/scripts/capture-evidence.sh <url> <png> <snapshot-yaml> <html>` 对 wire 产物或已部署页面取证（调微软 `playwright-cli`，缺失则降级 HTML 快照 `responses/{page}.html`）。报告里关键攻击点内联 `![](evidence/screenshots/{page}.png)` 直贴图，复杂结构问题附 snapshot 片段。
 
 ### Step 3 · 产出 polish-report.md
 
@@ -114,7 +114,7 @@ P0 = 架构级硬伤（交付即返工）；P1 = 设计缺陷（影响质量）�
 - **结论先行**：敢交付 / 有 P0 必改 / 有 P1 待修（一句话定性）。
 - 架构批判表 + UX 批判表分两节，每条攻击点带三件套。
 - **建议回退**：P0/P1 触发回哪个设计层 skill 重做（`xdd-architecture` / `xdd-wire` / `xdd-spec` / `xdd-resilience`）。跟 verify 的回退语义对齐。
-- 落 `runs/iter-N/polish-report.md`（跟 `verify-report.md` 同层，工作记录单轮）。
+- 落 `runs/xdd_run/polish-report.md`（跟 `verify-report.md` 同层，工作记录单轮）。
 
 ## 自检
 
@@ -127,12 +127,12 @@ P0 = 架构级硬伤（交付即返工）；P1 = 设计缺陷（影响质量）�
 □ 没有轻易 PASS（要么列攻击点，要么明确「这维度没问题，证据 X」）？
 □ 每维度穷举了 ≥3 潜在攻击点（哪怕判无害）？
 □ P0/P1 攻击点建议了回退到具体哪个设计层 skill？
-□ 产物落 runs/iter-N/polish-report.md，证据引用了行号？
+□ 产物落 runs/xdd_run/polish-report.md，证据引用了行号？
 ```
 
 ## 什么时候用 polish
 
 - 设计层锚封存后、写代码前 → 想先质询方案站不站得住（省代码层返工）
 - verify 通过后、交付前 → 最后的质询把关
-- 多个 iter 跑下来感觉「差不多但说不清哪里不够好」→ polish 来挖
+- 多个 run 跑下来感觉「差不多但说不清哪里不够好」→ polish 来挖
 - **不要在 spec/architecture 还没封存时调 polish**（没判据，等于空审）

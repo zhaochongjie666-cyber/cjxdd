@@ -15,7 +15,10 @@ export function hasInitializedXddSkeleton(cwd: string): boolean {
 	return existsSync(join(cwd, ".xdd", "design")) && existsSync(join(cwd, ".xdd", "runs"));
 }
 
-export function controllerInitScaffold(cwd: string): { created: string[]; skipped: string[] } {
+export const XDD_RUN_DIR = "xdd_run";
+export const NORMAL_FLOW_RUN_DIR = "normal_run";
+
+export function controllerInitScaffold(cwd: string, runDirName = XDD_RUN_DIR): { created: string[]; skipped: string[] } {
 	const dirs = [
 		".xdd",
 		".xdd/design",
@@ -24,6 +27,7 @@ export function controllerInitScaffold(cwd: string): { created: string[]; skippe
 		".xdd/design/personas",
 		".xdd/design/wire",
 		".xdd/runs",
+		`.xdd/runs/${runDirName}`,
 		".xdd/archive",
 	];
 	const created: string[] = [];
@@ -62,7 +66,7 @@ Persistent product-design artifacts live here. The understand, spec, architectur
 `,
 	".xdd/runs/README.md": `# Run workspace
 
-Each XDD iteration stores its goals, plan, audits, and verification evidence under an iter-N directory. The understand stage creates the first iteration's business goals after the request is clarified.
+XDD stores the active run's goals, plan, audits, and verification evidence under xdd_run. Normal Flow uses normal_run so the two flows do not share run artifacts.
 `,
 	".xdd/archive/README.md": `# Archive workspace
 
