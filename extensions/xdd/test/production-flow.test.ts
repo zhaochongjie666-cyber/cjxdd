@@ -148,6 +148,7 @@ describe("production pi adapter lifecycle", () => {
 			text: expect.stringContaining("立即重新调用 xdd_submit_artifact"),
 			options: { deliverAs: "steer" },
 		});
+		expect(harness.sentMessages[0]?.text).toContain("[xdd aigate steering]");
 		expect(harness.sentMessages[0]?.text).toContain("不要停在等待状态");
 	});
 
@@ -403,5 +404,15 @@ describe("production pi adapter lifecycle", () => {
 		});
 		expect(resumedResult).toEqual({ action: "continue" });
 		expect(harness.state.continuationQueued).toBe(false);
+	});
+
+	it("drops queued degraded AIGate steering while paused", async () => {
+		harness.state.paused = true;
+		const [pausedResult] = await harness.emit("input", {
+			source: "extension",
+			text: "[xdd aigate steering] degraded init 阶段 AIGate 基础设施不可用：upstream 504。立即重新调用 xdd_submit_artifact。",
+		});
+
+		expect(pausedResult).toEqual({ action: "handled" });
 	});
 });

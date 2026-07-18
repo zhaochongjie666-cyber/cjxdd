@@ -207,6 +207,24 @@ describe("unified AI Gate", () => {
 		}
 	});
 
+	it("preserves header-only auth and forwards provider env", async () => {
+		const cwd = createCwd();
+		let seenOptions: StreamOptions | undefined;
+		const faux = registerFauxProvider({ tokensPerSecond: 0 });
+		faux.setResponses([(_context: Context, options: StreamOptions | undefined) => {
+			seenOptions = options;
+			return fauxAssistantMessage(verdict());
+		}]);
+		try {
+			const result = await runAIGate({ model: faux.getModel(), apiKey: "test-key", headers: { "api-key": "header-key", "x-extra": "1" }, env: { CLOUDFLARE_ACCOUNT_ID: "acct" }, stageName: "custom", aigateStandard: "test standard", artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd });
+			expect(result.passed).toBe(true);
+			expect(seenOptions).toMatchObject({ headers: { "api-key": "header-key", "x-extra": "1" }, env: { CLOUDFLARE_ACCOUNT_ID: "acct" } });
+			expect((seenOptions as Record<string, unknown>).apiKey).toBeUndefined();
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
 	it("surfaces pi-ai complete error messages as degraded review failures", async () => {
 		const cwd = createCwd();
 		const faux = registerFauxProvider({ tokensPerSecond: 0 });
