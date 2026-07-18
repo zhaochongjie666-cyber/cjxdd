@@ -63,6 +63,19 @@ export function createNfSubmitArtifactTool(getState: GetNfState): ToolDefinition
 					);
 				}
 			}
+			// 与 xdd_submit_artifact 保持一致：相同产物、相同磁盘内容的重复提交
+			// 不应继续消耗硬 Gate 自愈预算。glob 会先展开为真实文件集合，
+			// 避免只比较 pattern 字面量导致新增/删除文件被漏判。
+			if (artifacts.length > 0) {
+				const { computeArtifactFingerprint } = await import("../../xdd/tools/artifact-fingerprint.ts");
+				const fingerprint = computeArtifactFingerprint(state.cwd, artifacts);
+				const changed = state.checkAndRecordSubmitFingerprint(stage.name, fingerprint);
+				if (!changed) {
+					throw new Error(
+						`[nf_submit_artifact] 上次提交后磁盘产物未变化。请先产出/修改产物文件再重试，不要盲目重试相同内容。`,
+					);
+				}
+			}
 
 			dispatchToController(state, { type: "RECORD_ARTIFACT_REVIEW", stage: stage.name, artifacts });
 			const gateResult = await stage.gate({ cwd: state.cwd, summary, desiredState: stage.desiredState });
