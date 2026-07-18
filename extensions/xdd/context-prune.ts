@@ -53,6 +53,7 @@ export function pruneContextMessages(
 	if (Number.isFinite(maxTotalTextChars) && totalMessageTextLength(next) > maxTotalTextChars) {
 		changed = pruneOldestTextInPlace(next, currentTurnStartIndex, maxTotalTextChars) || changed;
 	}
+	changed = neutralizeOrphanAnthropicToolResultsInPlace(next) || changed;
 	return changed ? next as AgentMessage[] : messages as AgentMessage[];
 }
 
@@ -99,6 +100,48 @@ function hasContentPart(message: any, type: string): boolean {
 	return Array.isArray(message?.content) && message.content.some((part: any) => part?.type === type);
 }
 
+function toolUseIds(message: any): Set<string> {
+	const ids = new Set<string>();
+	for (const call of message?.tool_calls ?? []) {
+		if (call?.id) ids.add(String(call.id));
+	}
+	for (const call of message?.toolCalls ?? []) {
+		if (call?.id) ids.add(String(call.id));
+	}
+	if (Array.isArray(message?.content)) {
+		for (const part of message.content) {
+			if (part?.type === "tool_use" && part.id) ids.add(String(part.id));
+		}
+	}
+	return ids;
+}
+
+function contentToolResultIds(message: any): string[] {
+	if (!Array.isArray(message?.content)) return [];
+	return message.content
+		.filter((part: any) => part?.type === "tool_result" && part.tool_use_id)
+		.map((part: any) => String(part.tool_use_id));
+}
+
+function neutralizeOrphanAnthropicToolResultsInPlace(messages: AgentMessage[]): boolean {
+	let changed = false;
+	for (let index = 0; index < messages.length; index++) {
+		const raw: any = messages[index];
+		const resultIds = contentToolResultIds(raw);
+		if (!resultIds.length) continue;
+		const previous = messages[index - 1] as any;
+		const previousToolUses = previous?.role === "assistant" ? toolUseIds(previous) : new Set<string>();
+		const hasOrphan = resultIds.some((id) => !previousToolUses.has(id));
+		if (!hasOrphan) continue;
+		messages[index] = {
+			...raw,
+			content: [{ type: "text", text: `[历史工具结果已转为普通文本；原 tool_result 缺少相邻 tool_use，避免提供商拒绝请求]\n${extractToolText(raw)}` }],
+		};
+		changed = true;
+	}
+	return changed;
+}
+
 function stripAssistantThinking(message: AgentMessage): AgentMessage {
 	const raw = message as any;
 	if (raw?.role !== "assistant") return message;
@@ -136,7 +179,10 @@ function extractToolText(message: AgentMessage): string {
 	const content = (message as any).content;
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) {
-		return content.map((part: any) => typeof part === "string" ? part : part?.text ?? "").join("\n");
+		return content.map((part: any) => {
+			if (typeof part === "string") return part;
+			return part?.text ?? part?.content ?? "";
+		}).join("\n");
 	}
 	return String(content ?? "");
 }
