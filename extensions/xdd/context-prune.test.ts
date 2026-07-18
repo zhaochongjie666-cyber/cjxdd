@@ -113,6 +113,28 @@ describe("T10 context pruning", () => {
 		expect((out[1] as any).content[0].text).toContain("缺少相邻 tool_use");
 	});
 
+	it("neutralizes only orphan Anthropic tool_result blocks without dropping valid sibling results", () => {
+		const messages = [
+			anthropicAssistantTool("call-valid"),
+			{
+				role: "user",
+				content: [
+					{ type: "tool_result", tool_use_id: "call-valid", content: "valid output" },
+					{ type: "tool_result", tool_use_id: "call-orphan", content: "orphaned output" },
+				],
+			},
+			user("latest"),
+		];
+		const out = pruneContextMessages(messages as any, { currentTurnStartIndex: messages.length });
+
+		expect((out[1] as any).content).toContainEqual({ type: "tool_result", tool_use_id: "call-valid", content: "valid output" });
+		expect((out[1] as any).content).not.toContainEqual({ type: "tool_result", tool_use_id: "call-orphan", content: "orphaned output" });
+		expect((out[1] as any).content.at(-1)).toEqual({
+			type: "text",
+			text: expect.stringContaining("orphaned output"),
+		});
+	});
+
 	it("detects Anthropic content tool_use as the current turn boundary", () => {
 		const messages = [
 			anthropicAssistantTool("call-current"),
