@@ -111,6 +111,14 @@ describe("H.1 xdd_next_task uses computeStageDifference", () => {
 		expect(src).toContain("具体任务:");
 		expect(src).toContain("完成标准:");
 		expect(src).toContain("完成后调用 xdd_submit_artifact 提交产物与证据");
+		expect(src).toContain("不要再调用 xdd_observe 或 xdd_next_task 做二次确认");
+		expect(src).toContain("避免 observe/next_task 空转循环");
+	});
+
+	it("xdd_observe explicitly blocks observe/next_task ping-pong", () => {
+		const src = readFileSync(join(SRC_DIR, "tools/xdd-observe.ts"), "utf8");
+		expect(src).toContain("[防循环指令]");
+		expect(src).toContain("不要把 observe 后的默认下一步设为 xdd_next_task");
 	});
 });
 
