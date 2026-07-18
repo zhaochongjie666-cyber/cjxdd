@@ -45,7 +45,19 @@ Pi 的 **Session** 是一段可持久化、可切换并可压缩的会话树；�
 | `input` | 输入解析、skill/template 展开前 | 丢弃暂停的 AIGate repair steering / xdd continuation；仅已交付的 follow-up continuation 清除 continuation lock。`input` handler 维持 `async`，以兼容 Pi 的异步 extension runner。 |
 | `session_before_tree` | `/tree` 导航前 | 提供当前 xdd 阶段摘要。 |
 
-## 4. 实现与审查清单
+## 4. 压缩/长上下文裁剪边界：复用 Pi Pipeline AI
+
+xdd **不实现自己的对话压缩器**，也不调用外部总结模型来重写历史上下文；压缩能力由 Pi/Pipeline AI 的 session pipeline 拥有：
+
+- 主动压缩：`XddController` 只在 `agent_end` 看到 Pi 暴露的 `ctx.getContextUsage().percent` 达到阈值后发出 `COMPACT` effect；adapter 调用 Pi 的 `ctx.compact({ customInstructions, onComplete, onError })`。
+- 完成信号：无论主动压缩还是 Pi manual/threshold/overflow compaction，xdd 都只消费 `session_compact` / callback 完成信号，再向 Controller 派发 `COMPACTION_DONE`。
+- 压缩内容：xdd 只提供 `customInstructions`，说明必须保留目标、阶段、`stageEpoch`、Gate 失败、已修改文件、未完成任务和 Harness 变化；实际摘要/压缩由 Pi Pipeline AI 完成。
+- 长上下文裁剪：`context` hook 中的 `sliceByEpoch` + `pruneContextMessages` 是进入 Pi LLM context 前的安全适配层，只做“按阶段 epoch 截取、去掉历史 thinking、把历史大 bash/text 输出替换成 stub、修复孤儿 tool_result”。它不总结语义，不替代 Pi compaction，也不删除工具配对元数据。
+- 状态来源：xdd 的可修复点在 runtime/checkpoint、Controller command/effect、阶段产物与 Gate 证据中；聊天上下文只承载当前 turn 的执行材料。因此 XDD 失败应回到对应阶段/Gate/Controller 修，而不是在自建压缩摘要里找原因。
+
+审查原则：能绑定 Pi Turn Loop / Pipeline AI 的能力必须绑定；只有 Pi 不提供的基础能力（例如阶段 epoch slicer、tool-result 安全 stub、Gate evidence）才由 xdd 自己写。
+
+## 5. 实现与审查清单
 
 1. **不要在 `turn_end` 重复调度**：它是 turn 粒度，可能导致重复 continuation；使用 `agent_end` + `continuationQueued` 去重。
 2. **优先在 Controller 变更状态**：工具、command 和 event handler 不应各自复制状态机判断。
@@ -54,7 +66,7 @@ Pi 的 **Session** 是一段可持久化、可切换并可压缩的会话树；�
 5. **不要用 steering 代替停止**：用户 `/xdd-stop` 应 abort 并暂停，不能再注入工作指令。
 6. **验证时覆盖实际生命周期**：至少测试 AIGate 可修复失败触发 `deliverAs: "steer"`、AIGate 通过的正常 `agent_end` follow-up、预算耗尽不误 steering、以及 Controller 对所有 rollback 入口执行同一上限。
 
-## 5. 一手参考
+## 6. 一手参考
 
 - Pi extension lifecycle 与消息 API：<https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md>
 - Pi agent/core 类型（消息队列与 session）：<https://github.com/earendil-works/pi/tree/main/packages>
