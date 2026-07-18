@@ -1,11 +1,11 @@
 # Token 节省研究与落地方案
 
-本文聚焦 xdd / normal-flow 在 Pi 会话里的 token 消耗。结论：**默认仍应把语义压缩交给 Pi Pipeline AI**，xdd 只做不破坏 tool-call 配对的安全裁剪；当用户明确要省 token 时，通过环境变量启用更激进但有下限保护的上下文文本预算。
+本文聚焦 xdd / normal-flow 在 Pi 会话里的 token 消耗。结论：**默认把语义压缩交给 Pi compaction**，xdd 不直接删除聊天上下文，只做不破坏 tool-call 配对的安全归一化/压缩；当用户明确要省 token 时，通过环境变量启用更激进但有下限保护的上下文文本预算。
 
 ## 现状
 
-- `sliceByEpoch` 先按 `stageEpoch` 截掉前一阶段消息，避免跨阶段历史反复进入模型。
-- `pruneContextMessages` 默认移除历史 assistant thinking，并把超过阈值的历史 tool 输出替换成 stub，同时保留 tool call / result 元数据。
+- `context` hook 不再按 `stageEpoch` 截断历史消息，避免“记忆清太狠”导致 xdd 自动推进时丢失上游对话状态。
+- `pruneContextMessages` 默认移除历史 assistant thinking，并把超过阈值的历史 tool 输出替换成 stub，同时保留 tool call / result 元数据；普通语义历史默认不删。
 - Pi 自带 compaction 负责语义总结；xdd 的 compaction instructions 只声明必须保留的目标、阶段、Gate 失败、已改文件、未完成任务和 Harness 变化。
 
 ## Token 浪费来源
@@ -13,11 +13,11 @@
 1. 大量 `bash` / `read` 输出滞留在历史上下文中。
 2. 普通 user / assistant 长文本没有触发 Pi compaction 前，会继续占用窗口。
 3. 为了 provider 兼容性，不能简单删除单侧 tool message，否则会触发 tool_use / tool_result 配对错误。
-4. 阶段推进后如果没有按 epoch 切片，会把上一阶段设计/执行细节重复带入下一阶段。
+4. 阶段推进后历史会变长，但只能由 Pi compaction 做语义压缩，不能由 xdd 直接切掉历史。
 
 ## 正向策略
 
-- **阶段隔离优先**：继续依赖 `stageEpoch` 切片，前序阶段结论必须落盘到 `.xdd` 产物，而不是依赖聊天历史。
+- **保留上下文优先**：不再依赖 `stageEpoch` 切片删除历史；前序阶段结论仍必须落盘到 `.xdd` 产物，但聊天上下文只通过 Pi compaction 压缩。
 - **大工具输出 stub 化**：历史 tool result 超过阈值就用固定短文本替代，保留 id、role、name、`isError` 等配对/错误元数据。
 - **按需启用文本总预算**：新增 `XDD_CONTEXT_TEXT_BUDGET`，只有设置后才对历史普通文本做总量上限裁剪；默认不启用，避免替代 Pi 语义压缩。
 - **按需调低工具阈值**：新增 `XDD_TOOL_RESULT_STUB_THRESHOLD`，用于把历史工具输出更早替换为 stub。
@@ -50,12 +50,12 @@ export XDD_TOOL_RESULT_STUB_THRESHOLD=600
 
 ## Design 阶段文档交接
 
-Design 子阶段（`understand` / `spec` / `architecture` / `wire` / `resilience`）的可信上下文是落盘文档，而不是上一轮工具输出。进入这些阶段时，context hook 会把模型上下文折叠为：
+Design 子阶段（`understand` / `spec` / `architecture` / `wire` / `resilience`）的可信上下文是落盘文档 + 保留的对话历史。进入这些阶段时，context hook 会追加：
 
 1. 当前阶段 `inputs` 声明的文档摘录；
-2. 最新 user / steering 消息；
-3. 不再携带历史 assistant tool call 与 tool result。
+2. 原始 user / assistant / tool 消息（仅经过 provider-safe 的 thinking 移除、大工具输出 stub、孤儿 tool_result 修复）；
+3. 最新 user / steering 消息仍保持在最后，避免补充文档覆盖当前指令。
 
-这样做等价于“AI Gate / Gate 通过后把阶段交接物固化为文档，再把下一设计阶段上下文切换到文档”。`execute` / `cleanup` / `verify` 不启用该策略，因为代码实现、测试输出、失败日志和当前编辑轨迹本身就是后续判断的重要上下文。
+这样做等价于“AI Gate / Gate 通过后把阶段交接物固化为文档，并补充到下一设计阶段上下文”，但不替代 Pi compaction，也不删除历史消息。`execute` / `cleanup` / `verify` 不启用文档补充策略，因为代码实现、测试输出、失败日志和当前编辑轨迹本身就是后续判断的重要上下文。
 
 兜底边界：文档交接有总字符上限和单文件上限；如果文档不存在或 glob 没解析到文件，则退回原始上下文，避免空上下文启动阶段。信息不足时，阶段 prompt 仍要求 agent 主动 `read` 对应文件补齐。

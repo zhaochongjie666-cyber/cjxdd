@@ -10,7 +10,7 @@ import { archiveRun } from "./archive.ts";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, basename } from "node:path";
 import type { XddRunnerState, XddStageName, XddStageSpec } from "./types.ts";
-import { sliceByEpoch, EPOCH_MARKER_PREFIX } from "./epoch-slicer.ts";
+import { EPOCH_MARKER_PREFIX } from "./epoch-slicer.ts";
 import { resolveGlobs, hasGlobMeta } from "./glob-resolver.ts";
 import { compileStageContracts } from "./core/stage-contract.ts";
 import { agentEndCommandFromPi, PiControllerAdapter } from "./adapters/pi-controller.ts";
@@ -523,21 +523,17 @@ ${hookResult.prompt}`;
 			return finalPrompt === undefined ? undefined : { systemPrompt: finalPrompt };
 		});
 
-		// Fresh per-stage context: drop messages before the stage epoch.
-		// Phase 3 (C) P28: replaced the numeric boundary (which broke
-		// under compaction because message indices shift) with a string
-		// stageEpoch marker. The slicer finds the marker in the message
-		// stream and keeps only messages from that point forward, plus
-		// the most recent compaction summary if it postdates the marker.
+		// Context preservation policy: xdd must not directly delete chat history.
+		// Pi owns semantic compaction; this hook only applies provider-safe
+		// normalization/stubbing and may add document handoff context.
 		pi.on("context", async (event) => {
 			if (!stateRef) return undefined;
-			const sliced = sliceByEpoch(event.messages, stateRef.stageEpoch);
-			const pruned = pruneContextMessages(sliced, contextPruneOptionsFromEnv());
+			const pruned = pruneContextMessages(event.messages, contextPruneOptionsFromEnv());
 			const stage = stateRef.currentStage();
 			const handedOff = stage
 				? await buildDocumentHandoffMessages({ cwd: stateRef.cwd, stage: stage.name, inputs: stage.inputs, messages: pruned })
 				: pruned;
-			if (sliced === event.messages && pruned === sliced && handedOff === pruned) return undefined;
+			if (pruned === event.messages && handedOff === pruned) return undefined;
 			return { messages: handedOff };
 		});
 

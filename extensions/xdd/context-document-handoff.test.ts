@@ -9,7 +9,7 @@ function assistantTool(id: string) { return { role: "assistant", content: "", to
 function tool(id: string, content: string) { return { role: "tool", tool_call_id: id, name: "bash", content }; }
 
 describe("design document handoff context", () => {
-	it("collapses design-stage tool history into document inputs and latest user message", async () => {
+	it("adds design-stage document inputs while preserving tool history and latest user message", async () => {
 		const cwd = mkdtempSync(join(tmpdir(), "xdd-doc-handoff-"));
 		mkdirSync(join(cwd, ".xdd/design"), { recursive: true });
 		writeFileSync(join(cwd, ".xdd/design/design.md"), "# Design\nSelected: document truth");
@@ -27,12 +27,13 @@ describe("design document handoff context", () => {
 			messages: messages as any,
 		});
 
-		expect(out).toHaveLength(2);
-		expect((out[0] as any).content).toContain(".xdd/design/design.md");
-		expect((out[0] as any).content).toContain("Selected: document truth");
-		expect(out.some((message: any) => message.role === "tool")).toBe(false);
-		expect(out.some((message: any) => message.tool_calls)).toBe(false);
-		expect((out[1] as any).content).toBe("latest steering");
+		expect(out).toHaveLength(messages.length + 1);
+		expect((out[0] as any).content).toBe("old request");
+		expect(out.some((message: any) => message.role === "tool")).toBe(true);
+		expect(out.some((message: any) => message.tool_calls)).toBe(true);
+		expect((out.at(-2) as any).content).toContain(".xdd/design/design.md");
+		expect((out.at(-2) as any).content).toContain("Selected: document truth");
+		expect((out.at(-1) as any).content).toBe("latest steering");
 	});
 
 	it("does not collapse implementation stages", async () => {
