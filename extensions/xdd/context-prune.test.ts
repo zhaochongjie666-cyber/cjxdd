@@ -98,6 +98,29 @@ describe("T10 context pruning", () => {
 		expect((out[2] as any).content).toContainEqual({ type: "tool_result", tool_use_id: "call-anthropic", content: "r".repeat(4_000) });
 	});
 
+	it("preserves all OpenAI tool results for one assistant with multiple tool calls", () => {
+		const messages = [
+			{
+				role: "assistant",
+				content: "",
+				tool_calls: [
+					{ id: "call-one", type: "function", function: { name: "bash", arguments: "{}" } },
+					{ id: "call-two", type: "function", function: { name: "xdd_difference", arguments: "{}" } },
+				],
+			},
+			tool("call-one", "bash", "first output"),
+			tool("call-two", "xdd_difference", "second output"),
+			user("latest"),
+		];
+
+		const out = pruneContextMessages(messages as any, { currentTurnStartIndex: messages.length });
+
+		expect((out[1] as any).role).toBe("tool");
+		expect((out[1] as any).tool_call_id).toBe("call-one");
+		expect((out[2] as any).role).toBe("tool");
+		expect((out[2] as any).tool_call_id).toBe("call-two");
+	});
+
 	it("neutralizes OpenAI-style tool messages when their adjacent tool call was sliced away", () => {
 		const messages = [
 			user("current epoch starts after the tool call"),

@@ -156,13 +156,21 @@ function neutralizeOrphanToolMessagesInPlace(messages: AgentMessage[]): boolean 
 		const raw: any = messages[index];
 		if (raw?.role !== "tool" && raw?.role !== "tool_result") continue;
 		const id = raw.tool_call_id ?? raw.toolCallId ?? raw.tool_use_id;
-		const previous = messages[index - 1] as any;
-		const previousToolUses = previous?.role === "assistant" ? toolUseIds(previous) : new Set<string>();
-		if (id && previousToolUses.has(String(id))) continue;
+		const precedingToolUses = precedingOpenAIToolCallIds(messages, index);
+		if (id && precedingToolUses.has(String(id))) continue;
 		messages[index] = toolResultAsPlainTextMessage(raw);
 		changed = true;
 	}
 	return changed;
+}
+
+function precedingOpenAIToolCallIds(messages: readonly AgentMessage[], toolResultIndex: number): Set<string> {
+	for (let index = toolResultIndex - 1; index >= 0; index--) {
+		const previous: any = messages[index];
+		if (previous?.role === "tool" || previous?.role === "tool_result") continue;
+		return previous?.role === "assistant" ? toolUseIds(previous) : new Set<string>();
+	}
+	return new Set<string>();
 }
 
 function toolResultAsPlainTextMessage(raw: any): AgentMessage {
