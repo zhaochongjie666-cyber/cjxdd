@@ -54,6 +54,7 @@ describe("PiControllerAdapter", () => {
 		controllerFixture.submitGatePassed();
 		await adapter().dispatch({ type: "AGENT_ENDED", stopReason: "stop" });
 		expect(sent[0]?.text).toContain("xdd_advance");
+		expect(sent[0]?.text).toContain("[xdd epoch:2]");
 		expect(sent[0]?.options).toEqual({ deliverAs: "followUp" });
 	});
 

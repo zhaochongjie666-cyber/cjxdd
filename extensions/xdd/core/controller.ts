@@ -129,6 +129,20 @@ function startTransition(command: Extract<XddCommand, { type: "START" }>, stages
 	};
 }
 
+export function isProvider429InsufficientBalance(error: string | null | undefined): boolean {
+	const text = (error ?? "").toLowerCase();
+	return /(?:^|\D)429(?:\D|$)/.test(text) && /(余额不足|insufficient[_\s-]*(?:balance|quota|credits?)|balance[_\s-]*not[_\s-]*enough|quota[_\s-]*exceeded|credit)/i.test(error ?? "");
+}
+
+export function provider429RetryDelayMs(retryCount: number): number {
+	const safeCount = Math.max(1, Math.floor(retryCount));
+	return Math.min(180_000, 3_000 * (2 ** (safeCount - 1)));
+}
+
+function formatDelay(delayMs: number): string {
+	return delayMs >= 60_000 ? `${Math.round(delayMs / 60_000)} 分钟` : `${Math.round(delayMs / 1000)} 秒`;
+}
+
 function stopTransition(state: RuntimeStateV2, effects: XddEffect[]): ControllerTransitionResult {
 	if (runtimeStatus(state) === "paused") return { state: stamp(state), effects };
 	state.status = "paused" as never;
@@ -166,12 +180,35 @@ function agentEndedTransition(
 		state.stageOutcome = "provider_error";
 		state.lastStageError = command.providerError ?? "LLM provider error";
 		projectAuditEvent(state, { type: "provider_error", stage: currentStageName(state, stages) ?? "?", message: state.lastStageError });
-		// Pi owns provider retries. XDD deliberately does not enqueue another
+		if (isProvider429InsufficientBalance(state.lastStageError)) {
+			const retryCount = (state.provider429RetryCount ?? 0) + 1;
+			state.provider429RetryCount = retryCount;
+			state.continuationEpoch = (state.continuationEpoch ?? 0) + 1;
+			state.continuationQueued = true;
+			state.continuationReason = "provider_429_insufficient_balance_retry";
+			state.continuationStage = currentStageName(state, stages) as XddStageName | null;
+			const delayMs = provider429RetryDelayMs(retryCount);
+			effects.push({
+				type: "NOTIFY",
+				level: "warning",
+				text: `[xdd] 推理遇到 429/余额不足：${state.lastStageError}。将继续第 ${retryCount} 次重试，等待 ${formatDelay(delayMs)}；达到 3 分钟后会一直每 3 分钟重试，不退出。`,
+			});
+			effects.push({
+				type: "SEND_FOLLOWUP",
+				text: `[xdd 自动重试] 推理上次遇到 429/余额不足（${state.lastStageError}）。不要退出；继续当前 ${currentStageName(state, stages) ?? "阶段"} 阶段，从中断处重试。`,
+				epoch: state.continuationEpoch,
+				delayMs,
+			});
+			return { state: stamp(state), effects };
+		}
+		state.provider429RetryCount = 0;
+		// Pi owns other provider retries. XDD deliberately does not enqueue another
 		// model turn here: that could race Pi's retry/backoff policy. Make the
 		// wait visible to the user so an exhausted Pi retry can be resumed.
 		effects.push({ type: "NOTIFY", level: "warning", text: `[xdd] 模型提供商错误：${state.lastStageError}。等待 Pi 内建重试；若 Pi 未继续，请使用 /xdd-resume。` });
 		return { state: stamp(state), effects };
 	}
+	state.provider429RetryCount = 0;
 	if (command.stopReason === "aborted") return stopTransition(state, effects);
 	if (command.hasPendingMessages) return { state: stamp(state), effects };
 	// A terminating tool result makes Pi report `toolUse` as the stop reason.
