@@ -204,21 +204,41 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					submissionSummary: summary,
 				});
 				// Transport and JSON-format failures are not findings about the
-				// submitted artifacts. Do not spend either retry budget, and clear
-				// the fingerprint so the agent can retry the same valid artifacts.
+				// submitted artifacts. Do not spend the semantic-review budget, but
+				// DO consume a degraded-attempt counter to prevent infinite retry
+				// loops when the LLM API is persistently broken. Hard gate already
+				// passed, so the artifacts are mechanically valid.
 				if (aiResult.degraded) {
 					state.clearSubmitFingerprint(stage.name);
+					const degradedUsed = state.beginAiGateAttempt(stage.name);
+					const degradedBudget = state.stageSelfHealBudget(stage.name, "ai_gate");
 					const aiError = aiResult.issues.join("; ") || "AIGate 服务或响应格式异常";
-					dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error: aiError } });
 					const angleText = formatAIGateResult(aiResult);
+					if (degradedBudget.exhausted) {
+						dispatchToController(state, { type: "RECORD_SIGNAL", signal: "complete" });
+						dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
+						return ok(`⚠️ [AIGate ${degradedUsed}/${degradedBudget.limit}] ${stage.name} 审查连续不可用（基础设施故障），告警已记录，现软通过。
+原因：${aiError}
+${angleText}
+硬 Gate 已通过，产物机械验证合格。请调用 xdd_advance 自动推进。`);
+					}
+					dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error: aiError } });
 					const retryAdvice = /timeout/i.test(aiError)
 						? "审查请求已超时；请稍后重试，或调整 XDD_AIGATE_TIMEOUT_MS（15,000–600,000 毫秒）后重试；无需修改产物。"
 						: "请恢复审查服务或模型配置后重新调用 xdd_submit_artifact；无需修改产物。";
 					return {
-						content: [{ type: "text", text: `⚠️ [AIGate] ${stage.name} 审查服务/响应格式异常（未消耗自愈预算）：\n原因：${aiError}\n${angleText}\n本 turn 继续。${retryAdvice}` }],
+						content: [{ type: "text", text: `⚠️ [AIGate degraded ${degradedUsed}/${degradedBudget.limit}] ${stage.name} 审查服务/响应格式异常（基础设施故障）：
+原因：${aiError}
+${angleText}
+剩余 degraded 预算：${degradedBudget.remaining}/${degradedBudget.limit}（耗尽后将软通过）
+本 turn 继续。${retryAdvice}` }],
 						details: {},
 					};
 				}
+				// AIGate produced a real verdict (not degraded infrastructure failure).
+				// Reset the degraded-attempt counter so the next degraded episode
+				// starts fresh.
+				state.resetAiGateBudget(stage.name);
 				if (!aiResult.passed) {
 					// A semantic AIGate failure consumes only the AIGate retry budget.
 					const aiUsed = state.beginAiGateAttempt(stage.name);
@@ -253,6 +273,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			// as progress and reset consecutiveStalls to 0 on every failed submit,
 			// so the stall counter could climb to 40+ without ever triggering the
 			// 3-turn escalation nudge.
+			state.resetAiGateBudget(stage.name);
 			state.lastSubmitAt = Date.now();
 			if (stage.exit === "verdict") {
 				const pass = Boolean(params.pass);
