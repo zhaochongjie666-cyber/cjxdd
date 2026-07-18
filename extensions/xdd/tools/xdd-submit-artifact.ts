@@ -200,6 +200,8 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					mechanicalCheckResult,
 					cwd: state.cwd,
 					intentAnchor,
+					contextPatterns: stage.aiGate?.contextPatterns,
+					submissionSummary: summary,
 				});
 				// Transport and JSON-format failures are not findings about the
 				// submitted artifacts. Do not spend either retry budget, and clear
