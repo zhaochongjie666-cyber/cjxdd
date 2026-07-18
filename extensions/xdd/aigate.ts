@@ -39,12 +39,6 @@ function configuredTimeoutMs(): number {
 	return Math.min(MAX_LLM_TIMEOUT_MS, Math.max(MIN_LLM_TIMEOUT_MS, value));
 }
 
-function configuredMaxTokens(): number | undefined {
-	const raw = process.env.XDD_AIGATE_MAX_TOKENS;
-	if (!raw || raw.trim().toLowerCase() === "none" || raw.trim() === "0") return undefined;
-	const value = Number.parseInt(raw, 10);
-	return Number.isFinite(value) && value > 0 ? value : undefined;
-}
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -725,10 +719,11 @@ function hasAuthHeader(headers: Record<string, string>): boolean {
 }
 
 /** OpenAI-compatible endpoint construction: don't blindly append /chat/completions when baseUrl already contains it. */
-function openAICompatUrl(baseUrl: string): string {
+function openAICompatUrl(baseUrl: string, api: string): { url: string; kind: "chat" | "responses" } {
 	const clean = baseUrl.replace(/\/$/, "");
-	if (clean.endsWith("/chat/completions")) return clean;
-	return `${clean}/chat/completions`;
+	if (clean.endsWith("/responses") || api === "openai-responses") return { url: clean, kind: "responses" };
+	if (clean.endsWith("/chat/completions")) return { url: clean, kind: "chat" };
+	return { url: `${clean}/chat/completions`, kind: "chat" };
 }
 
 async function readJSONResponse(res: Response, label: string): Promise<any> {
@@ -812,7 +807,10 @@ async function callLLMOnce(
 			headers,
 			body: JSON.stringify({
 				model: model.id,
-				max_tokens: configuredMaxTokens() ?? 64_000,
+				// Anthropic Messages requires max_tokens; OpenAI/Google-compatible
+				// AIGate paths below do not add xdd response caps and leave provider
+				// limits to the active pi model/provider configuration.
+				max_tokens: 64_000,
 				system: systemPrompt,
 				messages: [{ role: "user", content: userMessage }],
 			}),
@@ -836,8 +834,6 @@ async function callLLMOnce(
 			generationConfig: { temperature: 0 },
 		};
 		if (systemPrompt) body.systemInstruction = { parts: [{ text: systemPrompt }] };
-		const maxT = configuredMaxTokens();
-		if (maxT) (body.generationConfig as Record<string, unknown>).maxOutputTokens = maxT;
 		const res = await fetch(`${baseUrl}/${modelId}:generateContent`, { method: "POST", headers, body: JSON.stringify(body), signal: ac.signal });
 		const data = await readJSONResponse(res, "Google");
 		return extractGoogleText(data);
@@ -852,18 +848,25 @@ async function callLLMOnce(
 		baseHeaders.Authorization = `Bearer ${apiKey}`;
 	}
 	const headers = mergeHeaders(baseHeaders, extraHeaders);
-	const maxTokens = configuredMaxTokens();
-	const res = await fetch(openAICompatUrl(baseUrl), {
-		method: "POST",
-		headers,
-		body: JSON.stringify({
+	const endpoint = openAICompatUrl(baseUrl, api);
+	const body = endpoint.kind === "responses"
+		? {
+			model: model.id,
+			input: [
+				{ role: "system", content: systemPrompt },
+				{ role: "user", content: userMessage },
+			],
+			temperature: 0,
+			// Pi-compatible safety: do not synthesize response cap fields.
+			// AIGate leaves output limits to the active pi model/provider configuration.
+		}
+		: {
 			model: model.id,
 			messages: [
 				{ role: "system", content: systemPrompt },
 				{ role: "user", content: userMessage },
 			],
 			temperature: 0,
-			...(maxTokens ? { max_tokens: maxTokens } : {}),
 			...(useStructuredOutput
 				? {
 					// OpenAI-compatible providers that implement structured outputs return
@@ -871,7 +874,11 @@ async function callLLMOnce(
 					response_format: { type: "json_schema", json_schema: AIGATE_RESPONSE_SCHEMA },
 				}
 				: {}),
-		}),
+		};
+	const res = await fetch(endpoint.url, {
+		method: "POST",
+		headers,
+		body: JSON.stringify(body),
 		signal: ac.signal,
 	});
 	const data = await readJSONResponse(res, "LLM");
@@ -903,16 +910,24 @@ function extractGoogleText(data: any): string {
 }
 
 function extractOpenAICompatibleText(data: any): string {
+	if (typeof data?.output_text === "string") return data.output_text;
+	if (Array.isArray(data?.output)) {
+		const text = data.output
+			.flatMap((item: any) => Array.isArray(item?.content) ? item.content : [])
+			.map((part: any) => typeof part === "string" ? part : part?.text ?? part?.content ?? "")
+			.join("\n");
+		if (text.trim()) return text;
+	}
 	const message = data?.choices?.[0]?.message;
 	const content = message?.content;
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) {
 		return content.map((part: any) => typeof part === "string" ? part : part?.text ?? part?.content ?? "").join("");
 	}
-	if (typeof data?.output_text === "string") return data.output_text;
 	if (typeof data?.content === "string") return data.content;
 	return "";
 }
+
 
 // ── Verdict formatting ─────────────────────────────────────────────────
 

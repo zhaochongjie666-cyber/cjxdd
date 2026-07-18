@@ -241,6 +241,7 @@ describe("unified AI Gate", () => {
 				artifactPaths: ["architecture.md"], mechanicalCheckResult: { ok: true }, cwd,
 			});
 			expect(body.max_tokens).toBeUndefined();
+			expect(body.max_output_tokens).toBeUndefined();
 			expect(body.response_format).toMatchObject({ type: "json_schema", json_schema: { name: "aigate_verdict", strict: true } });
 			expect(body.messages[1].content).toContain("x".repeat(40_000));
 			expect(body.messages[1].content).toContain("y".repeat(40_000));
@@ -331,6 +332,40 @@ describe("unified AI Gate", () => {
 		}
 	});
 
+	it("uses OpenAI Responses endpoint shape without xdd response caps", async () => {
+		const cwd = mkdtempSync(join(tmpdir(), "xdd-aigate-"));
+		writeFileSync(join(cwd, "artifact.md"), "real artifact content");
+		const verdict = {
+			passed: true,
+			angles: ["机械检查结果", "偷工减料攻击", "AI味攻击", "规格偏离攻击"].map((name) => ({ name, passed: true, findings: [] })),
+			issues: [], suggestions: [],
+		};
+		let url = "";
+		let body: any;
+		vi.stubGlobal("fetch", vi.fn(async (input: string, init: RequestInit) => {
+			url = input;
+			body = JSON.parse(String(init.body));
+			return new Response(JSON.stringify({ output_text: JSON.stringify(verdict) }));
+		}));
+
+		try {
+			const result = await runAIGate({
+				model: { api: "openai-responses", baseUrl: "https://example.test/v1/responses", id: "test" } as any,
+				apiKey: "test-key", stageName: "custom", aigateStandard: "test standard",
+				artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd,
+			});
+			expect(result.passed).toBe(true);
+			expect(url).toBe("https://example.test/v1/responses");
+			expect(body.input).toEqual(expect.arrayContaining([expect.objectContaining({ role: "system" }), expect.objectContaining({ role: "user" })]));
+			expect(body.messages).toBeUndefined();
+			expect(body.response_format).toBeUndefined();
+			expect(body.max_tokens).toBeUndefined();
+			expect(body.max_output_tokens).toBeUndefined();
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
 	it("supports Google generateContent responses", async () => {
 		const cwd = mkdtempSync(join(tmpdir(), "xdd-aigate-"));
 		writeFileSync(join(cwd, "artifact.md"), "real artifact content");
@@ -340,8 +375,10 @@ describe("unified AI Gate", () => {
 			issues: [], suggestions: [],
 		};
 		let url = "";
-		vi.stubGlobal("fetch", vi.fn(async (input: string) => {
+		let body: any;
+		vi.stubGlobal("fetch", vi.fn(async (input: string, init: RequestInit) => {
 			url = input;
+			body = JSON.parse(String(init.body));
 			return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(verdict) }] } }] }));
 		}));
 
@@ -353,6 +390,8 @@ describe("unified AI Gate", () => {
 			});
 			expect(result.passed).toBe(true);
 			expect(url).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-test:generateContent");
+			expect(body.generationConfig).toEqual({ temperature: 0 });
+			expect(body.generationConfig.maxOutputTokens).toBeUndefined();
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
