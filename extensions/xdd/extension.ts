@@ -174,7 +174,12 @@ async function sendAIGateRepairSteering(
 	const reason = state.lastStageError ?? "AIGate 未说明失败原因";
 	try {
 		await pi.sendUserMessage?.(
-			`[xdd aigate steering] ${stage} 阶段统一 AIGate 未通过：${reason}。立即阅读上一条 AIGate 审查反馈和修改建议，修复产物后重新调用 xdd_submit_artifact；不要推进下一阶段。`,
+			[
+				`[xdd aigate steering] ${stage} 阶段统一 AIGate 未通过：${reason}。`,
+				"这是修复指令，不是重提指令：禁止立刻再次调用 xdd_submit_artifact。",
+				"必须先完成 repair turn loop：读取上一条 AIGate 审查反馈和修改建议 -> 调 xdd_observe/xdd_difference 定位差距 -> 检查并修改相关产物/代码 -> 运行正向验证和兜底/攻击检查 -> 在 summary/selfAttack 中写明证据。",
+				"只有确认至少完成了上述修复与验证闭环后，才重新调用 xdd_submit_artifact；不要推进下一阶段。",
+			].join(""),
 			{ deliverAs: "steer" },
 		);
 	} catch (error) {
