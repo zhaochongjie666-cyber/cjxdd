@@ -72,6 +72,7 @@ export async function continueXdd(_args: string, _cwd: string, pi: ExtensionAPI)
 		await pi.sendUserMessage("[xdd] 当前无待确认的组级 Gate。");
 		return;
 	}
+	state.resetFlowBudgetUsage();
 	const approved = state.pendingGroupApproval;
 	const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
 	controller.dispatch({ type: "APPROVE", approvalId: approved.group });
