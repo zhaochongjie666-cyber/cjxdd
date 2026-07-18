@@ -15,9 +15,11 @@
 | **砍掉** | AIGate、外部可编程 Hooks、Blind Journey、Group Gates、Renderers、双预算 |
 | **代码量** | ~1300 行 NF（含自建 stage contract-meta 表）+ 小型共享生命周期抽象 |
 
-**用户操作**：输 `/normal-flow <任务>`，系统按 explore → spec → plan → implement → verify 顺序跑，每个阶段 gate 通过就推进。任意阶段卡住调 `nf_rollback`。完成后自动归档。
+**用户操作**：输 `/normal-flow <任务>`，系统按 explore → spec → plan → implement → verify 顺序跑，每个阶段 gate 通过就推进。非 verify 阶段只做本阶段内自愈；只有 verify 失败可用 `nf_rollback` 跳回前序流程自愈，且可按证据直接回到 spec 或 understand 修正错误设计。完成后自动归档。
 
 **与 xdd 的关系**：NF 不是替代品，是「想用 xdd 但觉得 10 阶段太重」的入口。复杂项目仍用 xdd。
+
+**NF 的核心打法（独立于 ChatDD Flow）**：NF 只负责轻量的“规则锚 → TDD 计划 → 代码回指 → 验证回流”闭环，不复用/承载 ChatDD Flow 的对话式核心。spec 先把 happy path 的反面（失败、拒绝、冲突、无权限、边界）写成 RXX 规则；plan 把每条 RXX 翻译成带 `Files`、`Expected`、`Attack`、`Gate` 的 TDD 工作项；execute 必须用 `@implements RXX` 和失败测试闭合规则；verify 再用攻击证据、P0/P1 判定、失败假设和 spec↔code 覆盖表决定是通过，还是回 execute、spec 或 understand 自愈。
 
 ---
 
@@ -157,7 +159,7 @@ const exploreGate: XddGate = async ({ cwd }) => {
 | `nf_difference` | `xdd_difference` | 起手 / 卡住 | 缺口分析（跑真硬 gate + 分类 desiredState） |
 | `nf_submit_artifact` | `xdd_submit_artifact`（去 AIGate） | 阶段收尾 | ❌/⚠️/✅ + 剩余预算 |
 | `nf_advance` | `xdd_advance` | gate 通过 | 进入下一阶段（或 run 完成） |
-| `nf_rollback` | `xdd_rollback` | 预算耗尽 / 跨阶段回退 | 回退到 X 阶段 |
+| `nf_rollback` | `xdd_rollback` | 仅 verify 阶段 | 默认回退 verify → execute/implement；也可显式回 spec/understand 修正设计；非 verify 阶段拒绝跨阶段跳转 |
 
 **与 xdd 工具的关键差异**：`nf_submit_artifact` **不调用 AIGate**。只有硬 gate（filesystem check）。语义审查靠硬 gate 的关键词 / 字节数下限。
 
@@ -175,7 +177,7 @@ const exploreGate: XddGate = async ({ cwd }) => {
      ④ agent 按缺口工作（read / write / edit / bash）
      ⑤ nf_submit_artifact  ← 提交产物 + 硬 gate
      ⑥ nf_advance          ← gate 通过后推进
-        卡住：nf_rollback  ← 回到上一个干净阶段
+        卡住：非 verify 阶段在本阶段修复；verify 可 nf_rollback 回 execute/spec/understand
    任意时刻：runtime.json  ← 状态唯一可信源（落盘）
 ```
 
@@ -245,7 +247,7 @@ T+40m   runComplete=true → 自动归档
 ### 7.2 分支（辅助能力）
 
 - **可观察的跳过**：NF 没有 `wire` 阶段。默认不允许用 prompt 跳过任一 NF 阶段；`nf_advance` 必须先收到对应 hard gate 的完成信号。未来若增加可跳阶段，必须在 stage contract 中声明 `skippableWhen`，并由 Controller 可观察的文件/配置条件、audit 事件和用户面原因共同证明。
-- **指定 rollback target**：调 `nf_rollback` 时传 targetStage，默认由 Controller 推断
+- **verify-only rollback**：只有 verify 阶段可调 `nf_rollback` 跳回前序流程；默认目标是 execute/implement，若验证证据证明规格或需求设计不对，可显式回 spec 或 understand。其他阶段只能在本阶段预算内修复，预算耗尽后软通过并记录 audit
 - **状态查询**：任何 turn 调 `nf_observe` 看完整状态
 
 ### 7.3 迂回（暂停 / 恢复）
@@ -277,7 +279,7 @@ agent 写完产物 → nf_submit_artifact
               │   agent 重做 → 重提 → 仍可继续
               │
               └─ 自愈预算耗尽
-                    ├─ verify 阶段：自动消耗 flow 回退预算（默认 7 次）→ 回退到 implement
+                    ├─ verify 阶段：自动消耗 flow 回退预算（默认 7 次）→ 默认回退到 implement；也可显式回 spec/understand
                     └─ 其他阶段：软通过到下一阶段（记录告警 audit）
 ```
 
