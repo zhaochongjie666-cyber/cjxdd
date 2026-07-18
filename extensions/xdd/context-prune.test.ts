@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EPOCH_MARKER_PREFIX, sliceByEpoch } from "./epoch-slicer.ts";
-import { BASH_OUTPUT_STUB, buildXddCompactionInstructions, pruneContextMessages } from "./context-prune.ts";
+import { BASH_OUTPUT_STUB, TEXT_CONTENT_STUB, buildXddCompactionInstructions, pruneContextMessages } from "./context-prune.ts";
 
 function user(text: string) { return { role: "user", content: text }; }
 function assistant(text: string, extra: Record<string, unknown> = {}) { return { role: "assistant", content: text, ...extra }; }
@@ -53,6 +53,30 @@ describe("T10 context pruning", () => {
 		expect((pruned[1] as any).reasoning).toBeUndefined();
 		// The old bash pair was summarized away by epoch/compaction slicing.
 		expect(pruned.some((message: any) => message.tool_call_id === "old-bash")).toBe(false);
+	});
+
+	it("caps total historical text while preserving the latest user instruction", () => {
+		const messages = [
+			user("old user " + "u".repeat(4_000)),
+			assistant("old assistant " + "a".repeat(4_000)),
+			user("latest instruction must stay"),
+		];
+		const out = pruneContextMessages(messages as any, { maxTotalTextChars: 1_000 });
+		expect((out[0] as any).content).toBe(TEXT_CONTENT_STUB);
+		expect((out[1] as any).content).toBe(TEXT_CONTENT_STUB);
+		expect((out[2] as any).content).toBe("latest instruction must stay");
+	});
+
+	it("caps text without deleting tool call/result pairs", () => {
+		const messages = [
+			assistantTool("call-keep", "bash"),
+			tool("call-keep", "bash", "z".repeat(4_000)),
+			user("latest"),
+		];
+		const out = pruneContextMessages(messages as any, { currentTurnStartIndex: messages.length, maxTotalTextChars: 1_000 });
+		expect((out[0] as any).tool_calls[0].id).toBe("call-keep");
+		expect((out[1] as any).tool_call_id).toBe("call-keep");
+		expect((out[1] as any).content).toBe(BASH_OUTPUT_STUB);
 	});
 
 	it("builds compaction instructions with stage, gate, modified files and harness guidance", () => {
