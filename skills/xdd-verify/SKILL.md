@@ -158,7 +158,7 @@ for round in 1..3:
         API/事件错（architecture.md 没覆盖）→ xdd-architecture
         兜底不够/错（resilience/ 没覆盖该失败模式）→ xdd-resilience
       → 沿 propagate 往下重做 → 回到 verify 重跑
-# 3 轮仍有 P1 → 写 runs/iter-N/failure-log.md，停下问用户
+# 3 轮仍有 P1 → 写 runs/xdd_run/failure-log.md，停下问用户
 ```
 
 > **关键**：实现缺陷（代码 bug / 端点缺失 / 测试失败）直接 rollback 到 `execute`，
@@ -170,14 +170,14 @@ for round in 1..3:
 
 ## 产出
 
-`.xdd/runs/iter-N/verify-report.md`（验证报告）+ `runs/iter-N/evidence/`（截图/快照/响应）。Gate 校验 verify-report.md 存在（min 100 字节）。
+`.xdd/runs/xdd_run/verify-report.md`（验证报告）+ `runs/xdd_run/evidence/`（截图/快照/响应）。Gate 校验 verify-report.md 存在（min 100 字节）。
 
 ```markdown
 ## 验证报告
 ### 健康检查
 [docker compose ps + curl /healthz 输出]
 ### 漫游测试
-每关键路径的证据（截图 + 结构化快照 + curl 响应体），存 `runs/iter-N/evidence/`：
+每关键路径的证据（截图 + 结构化快照 + curl 响应体），存 `runs/xdd_run/evidence/`：
 - 首页截图: `evidence/screenshots/home.png`（playwright-cli 整页渲染）；结构化快照: `evidence/snapshots/home.yaml`（可访问性树 + 元素 ref）
 - 降级（无 playwright-cli）: `evidence/responses/home.html`（curl HTML 快照）
 - 端点 `/api/xxx`: `evidence/responses/api-xxx.html` · HTTP {code}

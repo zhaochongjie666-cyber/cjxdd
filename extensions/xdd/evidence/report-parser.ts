@@ -11,8 +11,8 @@ export function hasUnfinishedPlanCheckbox(markdown: string): boolean {
 export function extractEvidenceReferences(markdown: string): string[] {
 	const refs = new Set<string>();
 	const withoutCode = stripFencedCode(markdown);
-	const re = /(?:^|[\s([`'"])(\.xdd\/runs\/iter-[^\s)'"`]+\/evidence\/[^\s)'"`]+)/g;
-	const markdownLinkDestinationRe = /\[[^\]\r\n]+\]\((\.xdd\/runs\/iter-[^\s)'"`]+\/evidence\/[^\s)'"`]+)\)/g;
+	const re = /(?:^|[\s([`'"])(\.xdd\/runs\/[^\/\s)'"`]+\/evidence\/[^\s)'"`]+)/g;
+	const markdownLinkDestinationRe = /\[[^\]\r\n]+\]\((\.xdd\/runs\/[^\/\s)'"`]+\/evidence\/[^\s)'"`]+)\)/g;
 	let match: RegExpExecArray | null;
 	while ((match = re.exec(withoutCode))) {
 		refs.add(cleanEvidenceReference(match[1]));

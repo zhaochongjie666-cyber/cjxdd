@@ -23,9 +23,9 @@ description: |
 
 ## 怎么做
 
-### 1. 先吃透现状（必做，任何 iter）—— 建立前因后果再谈别的
+### 1. 先吃透现状（必做，任何 run）—— 建立前因后果再谈别的
 
-**发散前分两步：先把设计文档完完整整读完建立整个概念，再带着概念读代码查方案去核对。** 信息不全就发散 = 重发明 + 偏离现状。任何 iter 都做（iter-1 读用户材料；iter-2+ 读上轮全部产物）。
+**发散前分两步：先把设计文档完完整整读完建立整个概念，再带着概念读代码查方案去核对。** 信息不全就发散 = 重发明 + 偏离现状。任何 run 都做（xdd_run 读用户材料；后续 run 读上轮沉淀产物）。
 
 #### 第一步：机械遍历，读完全部设计文档（不许凭感觉跳，不许"读几个觉得够了"）
 
@@ -37,7 +37,7 @@ description: |
 遍历这两个目录下的所有文件（含子目录，递归）:
   .xdd/design/**/*        # 全部设计产物（spec/architecture/wire/resilience/...，所有 {bxx-slug} 子目录）
   .xdd/rules/**/*         # 全部项目约定（backend/frontend/ui-ux.rules）
-加 .xdd/runs/iter-N/goals.md   # 本 iter 目标
+加 .xdd/runs/xdd_run/goals.md   # 本 run 目标
 
 用 Glob 工具（或 find）把上面每个文件的路径列出来，得到一个完整的待读清单。
 列出来的文件数 = 你这步必须读的数量，少读一个都不算完成。
@@ -49,7 +49,7 @@ description: |
 
 > **为什么要机械遍历而不是"按类别读"**：按类别读（"我读了 spec 类、架构类..."）会被钻空子——AI 看了类别就觉得"这类我懂了"，跳过该类下的具体文件。机械遍历把"读全"变成可数任务：文件清单 23 个，你就得 Read 23 次，recap 列 23 条路径。**少一个都对不上，没法自欺**。这是强迫读完的唯一可靠方式。
 
-> **iter-1 全新项目**：`.xdd/design/` 可能只有 init 占位（intent.md/design.md 空模板）。仍遍历读（确认是空的），主要信息来自用户材料（prompt/附件），把这些也列进清单。
+> **xdd_run 全新项目**：`.xdd/design/` 可能只有 init 占位（intent.md/design.md 空模板）。仍遍历读（确认是空的），主要信息来自用户材料（prompt/附件），把这些也列进清单。
 
 读完第一步，你应该能回答：项目为什么存在？有几条业务线、各自目标？规则/架构/事件/模块/前端/约定全貌？答不上 = 没读全，**对照 recap 的文件清单查哪个没读**，回去读。
 
@@ -66,7 +66,7 @@ description: |
 > - **设计新、代码旧**（设计演进，代码没跟上）→ 代码读到过时实现
 > - **代码新、设计旧**（代码改了甚至 sham 了，设计没更新）→ 代码读到偏离意图的实现（**更危险**，会让偏差固化进新一轮设计）
 >
-> 脱节 → 标到 recap「⚠️ 设计↔代码脱节」，写清哪边该改。**本轮 brainstorm 先认设计意图为准**（锚是设计不是代码），脱节项留 execute/verify 修。iter-1 全新项目无代码则跳过读代码。
+> 脱节 → 标到 recap「⚠️ 设计↔代码脱节」，写清哪边该改。**本轮 brainstorm 先认设计意图为准**（锚是设计不是代码），脱节项留 execute/verify 修。xdd_run 全新项目无代码则跳过读代码。
 
 **读完后产出 `notes/00-recap.md`**（现状建象，必出，下游也参考）：
 
@@ -128,7 +128,7 @@ N. .xdd/rules/backend.rules
 | 7 | 有现成组件 / 内部系统可复用吗 | 评估复用面 |
 | 8 | 时间预算 / 优先级 / MVP 边界？ | 划 MVP |
 | 9 | 谁会反对？顾虑是啥？怎么回 | 政治面 |
-| 10 | 下一个 iter 大概接啥？提前留啥接口 | 演进路径 |
+| 10 | 下一轮 run 大概接啥？提前留啥接口 | 演进路径 |
 
 答案写到 `.xdd/design/notes/brainstorm.md`。
 
@@ -333,17 +333,17 @@ DDD 的起点 —— 开发和业务用同一套词，代码类名 = 业务术�
 │   ├── _index.md       ← 角色全景清单 + 7 类发散方法论记录 + 角色协作图
 │   ├── P1-{角色名}.md  ← 每角色一个深度档案（画像/目标/频率/工作流/痛点/产出/权限/协作/异常/体验）
 │   └── P2-{角色名}.md
-└── notes/              ← 发散笔记（iter 内用，下游不直接读）
+└── notes/              ← 发散笔记（run 内用，下游不直接读）
     ├── glossary.md     ← 通用语言（DDD 起点，下游 spec RXX 术语 + architecture 聚合命名唯一来源）
-    ├── recap.md        ← 已有设计消费摘要（iter-2+）
+    ├── recap.md        ← 已有设计消费摘要（xdd_run+）
     ├── brainstorm.md   ← 引导问答案
     ├── external-references.md  ← 外部来源 URL 主索引
     └── *.md            ← 行业 / 竞品 / 画像 / 旅程 / 技术 等，内容自由
-.xdd/runs/iter-N/
-└── goals.md            ← 【项目层】本 iter 高层目标 + G 编号（brainstorm 产，见下）
+.xdd/runs/xdd_run/
+└── goals.md            ← 【项目层】本 run 高层目标 + G 编号（brainstorm 产，见下）
 ```
 
-**G 编号生成方（brainstorm 的职责）**：brainstorm 把 intent.md 的「成功标准」拆成本 iter 的高层目标，写入 `runs/iter-N/goals.md`，**分配 G 编号**（G1/G2...，替换 init 占位）。这是 ACK 的 G 区索引源——G 编号由此 skill 生成，下游 plan 的 task 用 `**goal:** G1` 回指。多业务线时 goals 仍是项目级（一份），各业务线的 plan task 回指同一套 G。
+**G 编号生成方（brainstorm 的职责）**：brainstorm 把 intent.md 的「成功标准」拆成本 run 的高层目标，写入 `runs/xdd_run/goals.md`，**分配 G 编号**（G1/G2...，替换 init 占位）。这是 ACK 的 G 区索引源——G 编号由此 skill 生成，下游 plan 的 task 用 `**goal:** G1` 回指。多业务线时 goals 仍是项目级（一份），各业务线的 plan task 回指同一套 G。
 
 **三层边界**：understand 产【项目层】（intent+design，无 BXX）；下游 spec/architecture/wire/resilience 产【业务线层】（带 BXX）。顶层 design.md 写"项目要什么、全局怎么定"，别把单业务线的端点清单/规则塞进来。
 
@@ -354,7 +354,7 @@ DDD 的起点 —— 开发和业务用同一套词，代码类名 = 业务术�
 ```
 □ intent.md 写了：1 句话定位 + 成功标准 + 非目标
 □ design.md 5 段齐全：Selected / Alternatives / Assumptions / Out of Scope / Open Questions
-□ goals.md 写了本 iter 高层目标，分配了 G 编号（G1/G2...，替换 init 占位，来自 intent「成功标准」）
+□ goals.md 写了本 run 高层目标，分配了 G 编号（G1/G2...，替换 init 占位，来自 intent「成功标准」）
 □ glossary.md 建了通用语言，每个术语有定义 + 类型（实体/值对象/过程）+ 来源
 □ 通用语言去歧义了（多义词拆开、同义词合并，记录原因）
 □ 每个 Open Question 是真关键决策（不是偷懒没想）
@@ -367,5 +367,5 @@ DDD 的起点 —— 开发和业务用同一套词，代码类名 = 业务术�
 □ 非人角色已考量（外部系统/定时任务等，有则建、无则记录已考量）
 □ 识别了通用基础能力 vs 核心业务（design.md 写明通用能力走基础模块/现成，不自建，衔接 architecture §13）
 □ design.md 给用户看了，用户确认 OK
-□ design/ 产物不引用 iter-N（design 是持久锚，跨 iter 保留）？
+□ design/ 产物不引用 xdd_run（design 是持久锚，长期保留）？
 ```

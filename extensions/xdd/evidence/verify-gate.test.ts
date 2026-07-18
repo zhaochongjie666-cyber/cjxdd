@@ -8,21 +8,21 @@ import { extractEvidenceReferences, hasUnfinishedPlanCheckbox } from "./report-p
 
 function project(): string {
 	const cwd = mkdtempSync(join(tmpdir(), "xdd-verify-gate-"));
-	mkdirSync(join(cwd, ".xdd", "runs", "iter-1", "plan", "task"), { recursive: true });
-	mkdirSync(join(cwd, ".xdd", "runs", "iter-1", "evidence"), { recursive: true });
+	mkdirSync(join(cwd, ".xdd", "runs", "xdd_run", "plan", "task"), { recursive: true });
+	mkdirSync(join(cwd, ".xdd", "runs", "xdd_run", "evidence"), { recursive: true });
 	mkdirSync(join(cwd, ".xdd", "design", "spec", "b01"), { recursive: true });
-	writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "plan", "task", "plan.md"), "- [x] done\n", "utf8");
+	writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "plan", "task", "plan.md"), "- [x] done\n", "utf8");
 	writeFileSync(join(cwd, ".xdd", "design", "spec", "b01", "rules.md"), "| ID | Rule |\n| R01 | rule |\n", "utf8");
 	return cwd;
 }
 
 function longReport(extra = ""): string {
-	return `# Verify Report\n\nRuntime evidence: npm test exited 0. HTTP evidence: curl GET /api/items returned status 200. Evidence file: .xdd/runs/iter-1/evidence/runtime.txt\n\n${extra}\n\n${"真实验证说明".repeat(80)}`;
+	return `# Verify Report\n\nRuntime evidence: npm test exited 0. HTTP evidence: curl GET /api/items returned status 200. Evidence file: .xdd/runs/xdd_run/evidence/runtime.txt\n\n${extra}\n\n${"真实验证说明".repeat(80)}`;
 }
 
 function writePassingBaseEvidence(cwd: string, extra = ""): void {
-	writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "verify-report.md"), longReport(extra), "utf8");
-	writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "evidence", "runtime.txt"), "runtime ok", "utf8");
+	writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "verify-report.md"), longReport(extra), "utf8");
+	writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "evidence", "runtime.txt"), "runtime ok", "utf8");
 }
 
 function writeTraceImplementation(cwd: string, implementsId = "R01"): void {
@@ -37,16 +37,16 @@ describe("verify evidence gate", () => {
 	});
 
 	it("extracts current-style evidence references from plain text and Markdown links", () => {
-		const refs = extractEvidenceReferences("see .xdd/runs/iter-1/evidence/out.txt and [runtime log](.xdd/runs/iter-1/evidence/runtime.txt)");
-		expect(refs).toContain(".xdd/runs/iter-1/evidence/out.txt");
-		expect(refs).toContain(".xdd/runs/iter-1/evidence/runtime.txt");
+		const refs = extractEvidenceReferences("see .xdd/runs/xdd_run/evidence/out.txt and [runtime log](.xdd/runs/xdd_run/evidence/runtime.txt)");
+		expect(refs).toContain(".xdd/runs/xdd_run/evidence/out.txt");
+		expect(refs).toContain(".xdd/runs/xdd_run/evidence/runtime.txt");
 	});
 
 	it("fails missing and too-short reports", () => {
 		const cwd = project();
 		try {
 			expect(evaluateVerifyEvidenceGate(cwd).failure?.code).toBe("REPORT_MISSING");
-			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "verify-report.md"), "short", "utf8");
+			writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "verify-report.md"), "short", "utf8");
 			expect(evaluateVerifyEvidenceGate(cwd).failure?.code).toBe("REPORT_TOO_SHORT");
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
@@ -56,9 +56,9 @@ describe("verify evidence gate", () => {
 	it("fails unfinished plan checkboxes outside code fences", () => {
 		const cwd = project();
 		try {
-			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "plan", "task", "plan.md"), "- [ ] todo\n```md\n- [ ] example\n```\n", "utf8");
-			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "verify-report.md"), longReport(), "utf8");
-			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "evidence", "runtime.txt"), "ok", "utf8");
+			writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "plan", "task", "plan.md"), "- [ ] todo\n```md\n- [ ] example\n```\n", "utf8");
+			writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "verify-report.md"), longReport(), "utf8");
+			writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "evidence", "runtime.txt"), "ok", "utf8");
 			expect(evaluateVerifyEvidenceGate(cwd).failure?.code).toBe("PLAN_UNFINISHED");
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
@@ -68,8 +68,8 @@ describe("verify evidence gate", () => {
 	it("passes report with current evidence references and two evidence categories", () => {
 		const cwd = project();
 		try {
-			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "verify-report.md"), longReport(), "utf8");
-			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "evidence", "runtime.txt"), "ok", "utf8");
+			writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "verify-report.md"), longReport(), "utf8");
+			writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "evidence", "runtime.txt"), "ok", "utf8");
 			expect(evaluateVerifyEvidenceGate(cwd).ok).toBe(true);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
@@ -80,23 +80,24 @@ describe("verify evidence gate", () => {
 	it("passes report with Markdown link destination evidence reference", () => {
 		const cwd = project();
 		try {
-			const report = longReport("Evidence link: [runtime log](.xdd/runs/iter-1/evidence/runtime.txt)");
-			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "verify-report.md"), report, "utf8");
-			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "evidence", "runtime.txt"), "ok", "utf8");
+			const report = longReport("Evidence link: [runtime log](.xdd/runs/xdd_run/evidence/runtime.txt)");
+			writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "verify-report.md"), report, "utf8");
+			writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "evidence", "runtime.txt"), "ok", "utf8");
 			expect(evaluateVerifyEvidenceGate(cwd).ok).toBe(true);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
 	});
 
-	it("rejects evidence references from an older iteration", () => {
+	it("rejects evidence references from an other run", () => {
 		const cwd = project();
 		try {
-			mkdirSync(join(cwd, ".xdd", "runs", "iter-2", "plan", "task"), { recursive: true });
-			mkdirSync(join(cwd, ".xdd", "runs", "iter-2", "evidence"), { recursive: true });
-			writeFileSync(join(cwd, ".xdd", "runs", "iter-2", "plan", "task", "plan.md"), "- [x] done\n", "utf8");
-			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "evidence", "old.txt"), "old", "utf8");
-			writeFileSync(join(cwd, ".xdd", "runs", "iter-2", "verify-report.md"), longReport("Evidence .xdd/runs/iter-1/evidence/old.txt"), "utf8");
+			mkdirSync(join(cwd, ".xdd", "runs", "xdd_run", "plan", "task"), { recursive: true });
+			mkdirSync(join(cwd, ".xdd", "runs", "xdd_run", "evidence"), { recursive: true });
+			mkdirSync(join(cwd, ".xdd", "runs", "normal_run", "evidence"), { recursive: true });
+			writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "plan", "task", "plan.md"), "- [x] done\n", "utf8");
+			writeFileSync(join(cwd, ".xdd", "runs", "normal_run", "evidence", "old.txt"), "old", "utf8");
+			writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "verify-report.md"), longReport("Evidence .xdd/runs/normal_run/evidence/old.txt"), "utf8");
 			expect(evaluateVerifyEvidenceGate(cwd).failure?.code).toBe("EVIDENCE_MISSING");
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
@@ -108,8 +109,8 @@ describe("verify evidence gate", () => {
 		try {
 			mkdirSync(join(cwd, ".xdd", "design", "wire"), { recursive: true });
 			writeFileSync(join(cwd, ".xdd", "design", "wire", "screen.md"), "wireframe", "utf8");
-			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "verify-report.md"), longReport(), "utf8");
-			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "evidence", "runtime.txt"), "ok", "utf8");
+			writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "verify-report.md"), longReport(), "utf8");
+			writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "evidence", "runtime.txt"), "ok", "utf8");
 			expect(evaluateVerifyEvidenceGate(cwd).failure?.code).toBe("UI_EVIDENCE_MISSING");
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
@@ -119,9 +120,9 @@ describe("verify evidence gate", () => {
 	it("rejects reports that only call /healthz", () => {
 		const cwd = project();
 		try {
-			const report = `# Verify Report\n\nRuntime evidence npm test exit 0. HTTP evidence curl GET /healthz returned 200. Evidence .xdd/runs/iter-1/evidence/runtime.txt\n\n${"真实验证说明".repeat(80)}`;
-			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "verify-report.md"), report, "utf8");
-			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "evidence", "runtime.txt"), "ok", "utf8");
+			const report = `# Verify Report\n\nRuntime evidence npm test exit 0. HTTP evidence curl GET /healthz returned 200. Evidence .xdd/runs/xdd_run/evidence/runtime.txt\n\n${"真实验证说明".repeat(80)}`;
+			writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "verify-report.md"), report, "utf8");
+			writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "evidence", "runtime.txt"), "ok", "utf8");
 			expect(evaluateVerifyEvidenceGate(cwd).failure?.code).toBe("BUSINESS_ENDPOINT_UNTESTED");
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
@@ -131,8 +132,8 @@ describe("verify evidence gate", () => {
 	it("returns structured VERIFY_COMMAND_FAILED for failing Harness commands", async () => {
 		const cwd = project();
 		try {
-			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "verify-report.md"), longReport(), "utf8");
-			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "evidence", "runtime.txt"), "ok", "utf8");
+			writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "verify-report.md"), longReport(), "utf8");
+			writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "evidence", "runtime.txt"), "ok", "utf8");
 			const { HarnessStore } = await import("../harness/store.ts");
 			const { evaluateHarnessValidationCommands } = await import("./verify-gate.ts");
 			new HarnessStore(cwd).update("验证命令", "append", "node -e \"process.exit(7)\"");
@@ -158,9 +159,9 @@ describe("verify evidence gate", () => {
 	it("returns structured BLIND_JOURNEY_FAILED for P0/P1 issues", () => {
 		const cwd = project();
 		try {
-			mkdirSync(join(cwd, ".xdd", "runs", "iter-1", "blind-journey", "roles"), { recursive: true });
-			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "blind-journey", "roles", "buyer.md"), "buyer", "utf8");
-			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "blind-journey", "results.json"), JSON.stringify([{
+			mkdirSync(join(cwd, ".xdd", "runs", "xdd_run", "blind-journey", "roles"), { recursive: true });
+			writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "blind-journey", "roles", "buyer.md"), "buyer", "utf8");
+			writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "blind-journey", "results.json"), JSON.stringify([{
 				scenarioId: "S01",
 				featurePath: ".xdd/design/spec/b01/login.feature",
 				roleId: "buyer",

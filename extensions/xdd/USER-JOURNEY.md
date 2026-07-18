@@ -42,7 +42,7 @@ xdd 在 `stages.ts` 中明确要求 agent 梳理用户旅途时覆盖 5 个层�
 | `/xdd-continue` | 无 | 手动推进（组级 Gate 已自动推进，此命令仅用于手动场景）| 极少用 -- 组级 Gate 现在自动推进 |
 | `/xdd-resume` | 无 | 从 `.xdd/checkpoint.json` 恢复 run | pi 崩了 / 误关 / 隔天继续 |
 | `/xdd-status` | 无 | 当前阶段 + 进度 + 剩余阶段 + 已完成产物 | 想看走到哪了 |
-| `/xdd-archive [iter]` | 可选 iter 名 | 总结 runs/iter-N/ 写到 `.xdd/archive/` + 删 runs/ | run 跑完不立刻归档、想清理时手动触发 |
+| `/xdd-archive [run]` | 可选 run 名 | 总结 runs/xdd_run/ 写到 `.xdd/archive/` + 删 runs/ | run 跑完不立刻归档、想清理时手动触发 |
 
 ### 2.2 工具（agent 内部用，不直接面向用户，但用户通过观察 prompt 看到它们在工作）
 
@@ -111,10 +111,10 @@ xdd 在 `stages.ts` 中明确要求 agent 梳理用户旅途时覆盖 5 个层�
 | **architecture** | xdd-architecture | — | `.xdd/design/architecture/<BXX>/architecture.md` + `module-landscape.md` `event-contract.md` `aggregate-landscape.md` | 3 份全局文件 ≥ 100B + 每 BXX architecture.md 含 3/4 关键词（模块/依赖/数据流/失败）+ 失败模型有 retry |
 | **wire** | xdd-wire | — | 仓库代码变化（CI 套件能跑的基础） | git 有变更（排除 .xdd/ 设计文档）|
 | **resilience** | xdd-resilience | — | `.xdd/design/resilience/<BXX>/failure-modes.md` `failsafe.md` `test-plan.md` | 3 份文件 ≥ 100B + 含 RXX 覆盖 |
-| **plan** | xdd-plan | — | `.xdd/runs/iter-N/plan.md` | plan.md ≥ 100B + 含步骤 |
+| **plan** | xdd-plan | — | `.xdd/runs/xdd_run/plan.md` | plan.md ≥ 100B + 含步骤 |
 | **execute** | xdd-execute | — | 真实代码（每个 RXX 有对应实现，源码含 `@implements RXX` 标注） | 至少 1 处 `@implements R\d` 真实代码标注 |
 | **cleanup** | xdd-cleanup | — | 删除临时脚本、调试 print、死代码 | softPass（无硬交付，质量由 verify 把关）|
-| **verify** | xdd-verify | — | `.xdd/runs/iter-N/verify-report.md` + 真实测试通过 | rules.md + verify-report.md ≥ 100B + **真实测试 exit 0**（npm test / go test / make test）|
+| **verify** | xdd-verify | — | `.xdd/runs/xdd_run/verify-report.md` + 真实测试通过 | rules.md + verify-report.md ≥ 100B + **真实测试 exit 0**（npm test / go test / make test）|
 
 ### 3.3 完整一次主线：用户视角的时间线（示例任务："为 pingflow 加一个告警阈值功能"）
 
@@ -194,7 +194,7 @@ T+27m  【如果 GATE 3 在 plan 之前需要审，这里再停一次；当前 a
 T+30m  plan 阶段
        装载 xdd-plan
        agent：把 13 个 RXX 拆成 30 个 TDD task
-              写到 .xdd/runs/iter-N/plan.md
+              写到 .xdd/runs/xdd_run/plan.md
        Gate：plan.md ≥ 100B ✓
        → **GATE 3**
 
@@ -230,13 +230,13 @@ T+95m  【GATE 4 审】用户：/xdd-continue
 T+96m  【runComplete = true】
        agent_end hook 检测到 runComplete → 不再自动推进
        session_before_tree hook 写阶段摘要到 pi 的 session tree
-       自动调 archiveXdd → 总结 runs/iter-1/ → 写 .xdd/archive/iter-1.md → 删 runs/iter-1/
+       自动调 archiveXdd → 总结 runs/xdd_run/ → 写 .xdd/archive/xdd_run.md → 删 runs/xdd_run/
        用户看到：
          ┌─────────────────────────────────────────────┐
          │ xdd run 完成                                 │
          │ - 13 RXX 全部实现（@implements 标注齐全）      │
          │ - 30 测试全过                                  │
-         │ - 归档：.xdd/archive/iter-1.md 已写入          │
+         │ - 归档：.xdd/archive/xdd_run.md 已写入          │
          │ - design/ 完整保留（13 .feature + 3 架构文件）  │
          └─────────────────────────────────────────────┘
 ```
@@ -400,7 +400,7 @@ xdd 的 `agent_end` hook 现在**不会停**（"升级策略"非"停止"）：
 
 ### 6.3 pi 崩溃
 
-- checkpoint.json 每阶段写一次（在 `.xdd/runs/iter-N/checkpoint.json` 或项目根 `.xdd/checkpoint.json`）
+- checkpoint.json 每阶段写一次（在 `.xdd/runs/xdd_run/checkpoint.json` 或项目根 `.xdd/checkpoint.json`）
 - session_start hook 启动时检测 → 通知用户 → 用户调 `/xdd-resume`
 - run 状态完全可恢复（planIndex / stage / 通过的 gate / signal / pendingGroupApproval）
 
@@ -439,11 +439,11 @@ agent 用它做 Gate 前的预检；用户用 `/xdd-status` 看高层。
 ### 7.3 `xdd-archive`：归档清理
 
 ```
-手动触发：/xdd-archive iter-1
-  → archiveRun(cwd, "iter-1")
-    读 runs/iter-1/*（全读）+ design/*（仅读，永久保留）
-    写 .xdd/archive/iter-1.md（摘要）
-    删 runs/iter-1/*（不是搬走）
+手动触发：/xdd-archive xdd_run
+  → archiveRun(cwd, "xdd_run")
+    读 runs/xdd_run/*（全读）+ design/*（仅读，永久保留）
+    写 .xdd/archive/xdd_run.md（摘要）
+    删 runs/xdd_run/*（不是搬走）
   自动触发：runComplete 后 agent_end hook 调
 ```
 
@@ -528,7 +528,7 @@ T+3m   agent 自己触发 xdd_diagnose（"test-gap"）→ xdd_rollback → 重�
 | Gate 实现（requireTestsPass 等）| `extensions/xdd/gate.ts` | 不改 |
 | Skill 体系 | `skills/xdd-*/SKILL.md` | 不改（改也改 skill 内容，不是框架）|
 | Agent 编排 | `agents/phase-*.md` `agents/xdd-*.md` | 不改 |
-| 用户 run 产物 | `.xdd/runs/iter-N/` | 改也无所谓（运行完会被归档）|
+| 用户 run 产物 | `.xdd/runs/xdd_run/` | 改也无所谓（运行完会被归档）|
 | 用户设计产物 | `.xdd/design/` | **不要手动改**，由 agent 写 |
 | 归档 | `.xdd/archive/` | 只读 |
 
@@ -542,7 +542,7 @@ T+3m   agent 自己触发 xdd_diagnose（"test-gap"）→ xdd_rollback → 重�
 | `pi` 启动报 "registerEntryRenderer is not a function" | pi 版本 < 0.81 dev | 已修：guard `typeof pi.registerEntryRenderer === "function"` |
 | agent 在某阶段反复失败 | Gate 不通过 + 自愈预算耗尽 | 看 xdd_diagnose 根因 → 手动调 xdd_rollback → 重做 |
 | run 卡在 architecture 不动 | 可能是 pendingGroupApproval | `/xdd-continue` |
-| 找不到归档 | run 未完成或已 runComplete 但未触发归档 | `/xdd-archive iter-N` 手动归档 |
+| 找不到归档 | run 未完成或已 runComplete 但未触发归档 | `/xdd-archive xdd_run` 手动归档 |
 | verify 报 "requireTestsPass not found" | package.json 无 test 命令 | 加 `scripts.test` 或暂时跳过（soft pass）|
 
 ---

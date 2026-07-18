@@ -78,9 +78,9 @@ NF 新增：
 |------|--------|------|-------|------|
 | **explore** | `understand` | Requirements Analyst | `xdd-brainstorm` | `.xdd/design/intent.md`, `.xdd/design/design.md` |
 | **spec** | `spec` | API Designer | `xdd-spec` | `.xdd/design/spec/{bxx}/rules.md`, `.feature` |
-| **plan** | `plan` | Project Manager | `xdd-plan` | `.xdd/runs/iter-N/plan.md` |
+| **plan** | `plan` | Project Manager | `xdd-plan` | `.xdd/runs/normal_run/plan.md` |
 | **implement** | `execute` | Implementer | `xdd-execute` | source code (`src/`, `lib/`, `tests/`) |
-| **verify** | `verify` | Auditor | `xdd-verify` | `.xdd/runs/iter-N/verify-report.md` |
+| **verify** | `verify` | Auditor | `xdd-verify` | `.xdd/runs/normal_run/verify-report.md` |
 
 > **为什么用 xdd 名而不是新名**：复用 `XddStageSpec.name` 字段 + runtime.json schema。display name 在 prompt 层翻译，runtime 不变。
 >
@@ -190,7 +190,7 @@ explore → spec → plan → implement → verify
                                      ↓
                                   runComplete=true
                                      ↓
-                              自动归档 runs/iter-N → .xdd/archive/
+                              自动归档 runs/normal_run → .xdd/archive/
 ```
 
 ### 6.3 主线时间线（示例："给 web app 加 OAuth 登录"）
@@ -230,7 +230,7 @@ T+40m   runComplete=true → 自动归档
           │ Normal Flow 完成                             │
           │ - 13 RXX 全部实现（@implements 标注齐全）   │
           │ - npm test 全过                              │
-          │ - 归档：.xdd/archive/iter-1.md              │
+          │ - 归档：.xdd/archive/normal_run.md              │
           └────────────────────────────────────────────┘
 ```
 
@@ -304,7 +304,7 @@ attempt 2: agent 修了 3 个实现 bug → 重提 → exit 0 → PASS
 - `nf_observe` → 当前阶段、产物状态、剩余预算、disk 产物
 - `nf_difference` → 哪些 desiredState 已满足 / 哪些还需自检
 - `.xdd/runtime.json` 直接查看（schema v3，所有字段含义见 `Docs/pi-coding-agent-session-turn-loop.md`）
-- `.xdd/archive/iter-N.md` → 历史 run 摘要
+- `.xdd/archive/normal_run.md` → 历史 run 摘要
 
 ---
 

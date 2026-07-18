@@ -48,7 +48,7 @@ describe("xdd policy", () => {
 		const cwd = mkdtempSync(join(tmpdir(), "xdd-policy-"));
 		try {
 			expect(checkStagePathAccess(cwd, verify, "src/x.ts", "write").ok).toBe(false);
-			expect(checkStagePathAccess(cwd, verify, ".xdd/runs/iter-1/evidence/out.txt", "write").ok).toBe(true);
+			expect(checkStagePathAccess(cwd, verify, ".xdd/runs/xdd_run/evidence/out.txt", "write").ok).toBe(true);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}

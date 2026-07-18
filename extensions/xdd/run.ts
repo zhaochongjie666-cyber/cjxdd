@@ -17,7 +17,7 @@ import { archiveRun } from "./archive.ts";
 import { XddController } from "./core/controller.ts";
 import { appendSteeringInput, executePiEffects } from "./adapters/pi-effects.ts";
 import { RuntimeStore } from "./storage/runtime-store.ts";
-import { controllerInitScaffold, hasInitializedXddSkeleton } from "./init-scaffold.ts";
+import { XDD_RUN_DIR, controllerInitScaffold, hasInitializedXddSkeleton } from "./init-scaffold.ts";
 import { HarnessStore } from "./harness/store.ts";
 import { buildAuditView, renderAuditView } from "./audit/projector.ts";
 import { configuredFlowBudgetUsd } from "./flow-budget.ts";
@@ -202,11 +202,11 @@ export async function xddRest(args: string, _cwd: string, pi: ExtensionAPI): Pro
 	);
 }
 
-/** /xdd-archive -- manually archive a completed run (summarize runs/<iter>/ + delete it). */
+/** /xdd-archive -- manually archive a completed run (summarize runs/<run>/ + delete it). */
 export async function archiveXdd(args: string, cwd: string, pi: ExtensionAPI): Promise<void> {
-	const iterLabel = args.trim() || undefined; // undefined = pick most recent runs/*/
+	const runLabel = args.trim() || XDD_RUN_DIR;
 	try {
-		const result = archiveRun(cwd, iterLabel);
+		const result = archiveRun(cwd, runLabel);
 		await pi.sendUserMessage(
 			`[xdd 归档] 写入 ${result.archivePath}\n删 runs/(${result.deletedPaths.length} 文件)，读 design/ 不改 (${result.keptPaths.length} 项)`,
 		);

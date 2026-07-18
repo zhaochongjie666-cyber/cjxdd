@@ -10,7 +10,7 @@ import { NF_STAGES } from "./stages.ts";
 import { NF_STAGE_NAMES, planStageNamesAreNf, XddRunnerState } from "./types.ts";
 import { activateNormalFlowExtension, getState } from "./extension.ts";
 import { loadXddSkills } from "../xdd/skill-loader.ts";
-import { controllerInitScaffold } from "../xdd/init-scaffold.ts";
+import { NORMAL_FLOW_RUN_DIR, controllerInitScaffold } from "../xdd/init-scaffold.ts";
 import { XddController } from "../xdd/core/controller.ts";
 import { createNormalFlowRuntimeStore, NORMAL_FLOW_RUNTIME_FILE, NORMAL_FLOW_V1_BACKUP_FILE } from "./runtime-store.ts";
 import { configuredFlowBudgetUsd } from "../xdd/flow-budget.ts";
@@ -49,7 +49,7 @@ export async function startNormalFlow(args: string, cwd: string, pi: ExtensionAP
 	const runId = `nf-${Date.now()}`;
 	// NF 没有 init 阶段：用跟 xdd 一样的 Controller-owned 骨架脚本先建好 .xdd/
 	// 目录，模型不需要用 bash 建目录，直接从 explore 阶段开始写 intent.md/design.md。
-	const scaffold = controllerInitScaffold(cwd);
+	const scaffold = controllerInitScaffold(cwd, NORMAL_FLOW_RUN_DIR);
 	const controller = new XddController(createNormalFlowRuntimeStore(cwd), NF_STAGES);
 	controller.dispatch({ type: "START", task, options: { cwd, runId } });
 	const state = new XddRunnerState({ runId, cwd, userInput: task, runtimeStoreOptions: { runtimeFileName: NORMAL_FLOW_RUNTIME_FILE, legacyCheckpointFileName: false, v1BackupFileName: NORMAL_FLOW_V1_BACKUP_FILE } });

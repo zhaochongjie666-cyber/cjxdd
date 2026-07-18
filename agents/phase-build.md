@@ -37,7 +37,7 @@ temperature: 0.6
 if blocked(计划标"待确认" or 文件不存在 or 签名不符 or 测试与预期不符):
   HALT -> 暂停上报，不猜
 if same_task.failures == 3:
-  write runs/iter-N/failure-log.md -> 回 plan 层找根因
+  write runs/xdd_run/failure-log.md -> 回 plan 层找根因
 ```
 
 ## 出口自检

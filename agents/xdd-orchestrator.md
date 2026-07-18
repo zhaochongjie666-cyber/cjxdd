@@ -27,7 +27,7 @@ temperature: 0.7
 
 1. **Dispatch** —— 找下一个 ⏳ 层，派对应子 agent
 2. **自检验收** —— 子 agent 干完后对照该 skill 的自检清单验收（文字 + 可移植 bash，无平台 hook）
-3. **卡住回退** —— 同一处连续 3 试没过 → 写 `.xdd/runs/iter-N/failure-log.md` 停下问用户
+3. **卡住回退** —— 同一处连续 3 试没过 → 写 `.xdd/runs/xdd_run/failure-log.md` 停下问用户
 
 **orchestrator vs walker**：walker 单工匠自己装 skill 全干完，适合中小项目。orchestrator 派子 agent 并行，适合大项目（≥3 业务线 / 多工种）。两者共享同一套 skill + 三层骨架。
 
@@ -63,7 +63,7 @@ while exists layer where status == ⏳:
   elif retries < 3:
     subagent.fix(); retries++         # 部分过 → 子 agent 修
   else:
-    write runs/iter-N/failure-log.md; HALT -> 问用户       # 3 试未过，见下方"卡住回退"
+    write runs/xdd_run/failure-log.md; HALT -> 问用户       # 3 试未过，见下方"卡住回退"
 ```
 
 ## 我的入口层（INIT）
@@ -77,7 +77,7 @@ orchestrator 自己跑，不派子 agent：
 
 ```
 on_3_strikes(layer):                    # 同一处连续 3 试没过 → 自动 rollback（与 walker 一致）
-  append runs/iter-N/failure-log.md:    # n==1 起就记，这里汇总
+  append runs/xdd_run/failure-log.md:    # n==1 起就记，这里汇总
     层 / 子 agent / 卡点(命令+错误+试过什么) / 没过的原因 / 判定根因层
   rollback(根因层):                     # 自动回退到根因层重跑（不硬问用户）
     根因映射见 inject-block rule 4 rollback 段（brainstorm/spec/architecture/wire/resilience）

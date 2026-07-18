@@ -98,16 +98,16 @@ describe("T13 full run regression", () => {
 	it("rejects sham verify reports that cite missing evidence", () => {
 		const cwd = tmpCwd("xdd-full-sham-verify-");
 		try {
-			mkdirSync(join(cwd, ".xdd", "runs", "iter-1", "plan", "task"), { recursive: true });
-			mkdirSync(join(cwd, ".xdd", "runs", "iter-1", "evidence"), { recursive: true });
-			writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "plan", "task", "plan.md"), "- [x] verify真实证据\n", "utf8");
+			mkdirSync(join(cwd, ".xdd", "runs", "xdd_run", "plan", "task"), { recursive: true });
+			mkdirSync(join(cwd, ".xdd", "runs", "xdd_run", "evidence"), { recursive: true });
+			writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "plan", "task", "plan.md"), "- [x] verify真实证据\n", "utf8");
 			writeFileSync(
-				join(cwd, ".xdd", "runs", "iter-1", "verify-report.md"),
+				join(cwd, ".xdd", "runs", "xdd_run", "verify-report.md"),
 				[
 					"# Verify",
 					"Runtime evidence: npm test exit code 0.",
 					"HTTP evidence: curl GET /api/orders status 200.",
-					"Evidence .xdd/runs/iter-1/evidence/missing-runtime.txt",
+					"Evidence .xdd/runs/xdd_run/evidence/missing-runtime.txt",
 					"这是一份伪造报告，正文很长但引用的证据文件不存在。".repeat(40),
 				].join("\n"),
 				"utf8",
@@ -184,7 +184,7 @@ describe("T13 full run regression", () => {
 		try {
 			const verify = STAGES.find((stage) => stage.name === "verify")!;
 			expect(checkStagePathAccess(cwd, verify, "src/x.ts", "write").ok).toBe(false);
-			expect(checkStagePathAccess(cwd, verify, ".xdd/runs/iter-1/evidence/out.txt", "write").ok).toBe(true);
+			expect(checkStagePathAccess(cwd, verify, ".xdd/runs/xdd_run/evidence/out.txt", "write").ok).toBe(true);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}

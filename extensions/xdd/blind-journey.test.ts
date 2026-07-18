@@ -202,7 +202,7 @@ describe("generateCoverageReport", () => {
 		expect(report).toContain("管理员");
 		expect(report).toContain("标注员");
 		expect(report).toContain("PASS_WITH_FRICTION");
-		expect(existsSync(join(cwd, ".xdd", "runs", "iter-1", "blind-journey", "coverage-report.md"))).toBe(true);
+		expect(existsSync(join(cwd, ".xdd", "runs", "xdd_run", "blind-journey", "coverage-report.md"))).toBe(true);
 	});
 });
 
@@ -216,8 +216,8 @@ describe("requireBlindJourneyReports gate", () => {
 
 	it("fails when roles defined but no results", async () => {
 		const cwd = tmpCwd();
-		mkdirSync(join(cwd, ".xdd", "runs", "iter-1", "blind-journey", "roles"), { recursive: true });
-		writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "blind-journey", "roles", "admin.yaml"), "role_id: admin", "utf8");
+		mkdirSync(join(cwd, ".xdd", "runs", "xdd_run", "blind-journey", "roles"), { recursive: true });
+		writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "blind-journey", "roles", "admin.yaml"), "role_id: admin", "utf8");
 		const result = await requireBlindJourneyReports(cwd);
 		expect(result.ok).toBe(false);
 		expect(result.reason).toContain("无验收结果");
@@ -225,8 +225,8 @@ describe("requireBlindJourneyReports gate", () => {
 
 	it("passes when all results are PASS", async () => {
 		const cwd = tmpCwd();
-		mkdirSync(join(cwd, ".xdd", "runs", "iter-1", "blind-journey", "roles"), { recursive: true });
-		writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "blind-journey", "roles", "admin.yaml"), "role_id: admin", "utf8");
+		mkdirSync(join(cwd, ".xdd", "runs", "xdd_run", "blind-journey", "roles"), { recursive: true });
+		writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "blind-journey", "roles", "admin.yaml"), "role_id: admin", "utf8");
 		recordResult(cwd, {
 			scenarioId: "AC-01", featurePath: "", roleId: "admin", roleName: "Admin",
 			verdict: "PASS", severity: null, confidence: "High", issues: [], evidencePaths: [], reportPath: "", at: "",
@@ -237,8 +237,8 @@ describe("requireBlindJourneyReports gate", () => {
 
 	it("fails when any P0 issue", async () => {
 		const cwd = tmpCwd();
-		mkdirSync(join(cwd, ".xdd", "runs", "iter-1", "blind-journey", "roles"), { recursive: true });
-		writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "blind-journey", "roles", "admin.yaml"), "role_id: admin", "utf8");
+		mkdirSync(join(cwd, ".xdd", "runs", "xdd_run", "blind-journey", "roles"), { recursive: true });
+		writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "blind-journey", "roles", "admin.yaml"), "role_id: admin", "utf8");
 		recordResult(cwd, {
 			scenarioId: "AC-01", featurePath: "", roleId: "admin", roleName: "Admin",
 			verdict: "PASS_WITH_FRICTION", severity: "P0", confidence: "High",
@@ -252,8 +252,8 @@ describe("requireBlindJourneyReports gate", () => {
 
 	it("fails when any BLOCKED verdict", async () => {
 		const cwd = tmpCwd();
-		mkdirSync(join(cwd, ".xdd", "runs", "iter-1", "blind-journey", "roles"), { recursive: true });
-		writeFileSync(join(cwd, ".xdd", "runs", "iter-1", "blind-journey", "roles", "admin.yaml"), "role_id: admin", "utf8");
+		mkdirSync(join(cwd, ".xdd", "runs", "xdd_run", "blind-journey", "roles"), { recursive: true });
+		writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "blind-journey", "roles", "admin.yaml"), "role_id: admin", "utf8");
 		recordResult(cwd, {
 			scenarioId: "AC-01", featurePath: "", roleId: "admin", roleName: "Admin",
 			verdict: "BLOCKED", severity: null, confidence: "Low", issues: [], evidencePaths: [], reportPath: "", at: "",

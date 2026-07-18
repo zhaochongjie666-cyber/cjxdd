@@ -37,7 +37,7 @@ description: |
 
 1. `.xdd/design/design.md` + `intent.md`（意图锚，字段映射见下）
 2. `.xdd/design/personas/`（用户角色档案，**每条 RXX 必须关联至少一个 PX**，没角色的规则 = 没人用 = 不该做）
-3. `.xdd/design/architecture/{bxx-slug}/flow.mermaid`（组件名、外部系统、产物流向；**仅 iter-2+ 变更回读**，首次全链路此文件不存在）
+3. `.xdd/design/architecture/{bxx-slug}/flow.mermaid`（组件名、外部系统、产物流向；**仅 xdd_run+ 变更回读**，首次全链路此文件不存在）
 4. 当前代码 / 用户材料（API 名、状态枚举、错误码、存储对象）
 
 ## 怎么做
@@ -137,7 +137,7 @@ Feature: [业务能力] — [核心价值]    @covers-R01
 - `- [ ]` = 未实现
 - 此列是运行时状态（由代码 `@implements` 驱动），不参与规则**内容**的评审冻结
 - 可由 `xdd-verify/scripts/sync-contract-checkboxes`（基于 `grep @implements RXX`）半自动翻转
-- 注意区分：本列是「RXX 是否在代码落实」（design 层）；`runs/iter-N/plan/{bxx}/plan.md` 的 RXX 覆盖追踪表状态列是「task 执行进度」（执行层），两层语义勿混
+- 注意区分：本列是「RXX 是否在代码落实」（design 层）；`runs/xdd_run/plan/{bxx}/plan.md` 的 RXX 覆盖追踪表状态列是「task 执行进度」（执行层），两层语义勿混
 
 **约束**：
 - 每条 RXX 至少 1 个 `*.feature` 覆盖（空规则 = 漏验收）
@@ -221,5 +221,5 @@ Feature: [业务能力] — [核心价值]    @covers-R01
 □ 区分了事实/推导/待确认，没有把假设伪装成正式规则？
 □ RXX 术语来自 understand 的 glossary.md，无新造同义词？
 □ _landscape.md 每条业务线标了子域类型 + 跟 aggregate-landscape.md 一致？
-□ design/ 产物不引用 iter-N（design 是持久锚，跨 iter 保留）？
+□ design/ 产物不引用 xdd_run（design 是持久锚，长期保留）？
 ```

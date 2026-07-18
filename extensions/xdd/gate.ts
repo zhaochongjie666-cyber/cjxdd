@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import type { XddGateResult } from "./types.ts";
 import { readResults, computeOverallVerdict } from "./blind-journey.ts";
 import { HarnessStore } from "./harness/store.ts";
+import { XDD_RUN_DIR } from "./init-scaffold.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -361,7 +362,7 @@ export async function requireGlobsWithMinSize(
 /**
  * Blind Journey gate: checks that black-box user acceptance reports exist
  * and meet delivery criteria. Activates ONLY when role definitions exist
- * under .xdd/runs/iter-N/blind-journey/roles/ -- pure backend projects or
+ * under .xdd/runs/xdd_run/blind-journey/roles/ -- pure backend projects or
  * projects without deployed UI soft-pass.
  *
  * Gate rules (from Blind Journey design spec §16):
@@ -374,20 +375,10 @@ export async function requireBlindJourneyReports(cwd: string): Promise<XddGateRe
 	const runsDir = join(cwd, ".xdd", "runs");
 	let rolesExist = false;
 	try {
-		const entries = readdirSync(runsDir, { withFileTypes: true });
-		const iters = entries
-			.filter((e) => e.isDirectory() && e.name.startsWith("iter-"))
-			.sort()
-			.reverse();
-		for (const iter of iters) {
-			const rolesDir = join(runsDir, iter.name, "blind-journey", "roles");
-			if (existsSync(rolesDir)) {
-				const roleFiles = readdirSync(rolesDir).filter((f) => f.endsWith(".yaml") || f.endsWith(".yml") || f.endsWith(".md"));
-				if (roleFiles.length > 0) {
-					rolesExist = true;
-					break;
-				}
-			}
+		const rolesDir = join(runsDir, XDD_RUN_DIR, "blind-journey", "roles");
+		if (existsSync(rolesDir)) {
+			const roleFiles = readdirSync(rolesDir).filter((f) => f.endsWith(".yaml") || f.endsWith(".yml") || f.endsWith(".md"));
+			rolesExist = roleFiles.length > 0;
 		}
 	} catch { /* no runs dir */ }
 

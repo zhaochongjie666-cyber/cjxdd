@@ -182,5 +182,5 @@ Scenario: 网络分区下提交降级
 □ recovery-runbook.md 每步有具体命令，区分自动/人工？
 □ 爆炸半径引用了 RXX 或 API 端点（跟 spec/architecture 对齐）？
 □ 注入命令能在 docker compose 环境跑？
-□ design/ 产物不引用 iter-N（design 是持久锚，跨 iter 保留）？
+□ design/ 产物不引用 xdd_run（design 是持久锚，长期保留）？
 ```

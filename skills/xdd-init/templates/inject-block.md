@@ -7,8 +7,8 @@ every response must start with `%>R{rule} G{目标} T{任务} W{工作流}%: `,�
 
 格式说明:
   R = 遵循的全局 rule（本文件 rule 1~6），如 R1.2.3
-  G = 当前 goal（见 .xdd/runs/iter-N/goals.md 的 G 编号），如 G1
-  T = 当前 task（见 .xdd/runs/iter-N/plan/{bxx-slug}/plan.md 的 task 编号），如 T3
+  G = 当前 goal（见 .xdd/runs/xdd_run/goals.md 的 G 编号），如 G1
+  T = 当前 task（见 .xdd/runs/xdd_run/plan/{bxx-slug}/plan.md 的 task 编号），如 T3
   W = 当前工作流（见 .xdd/workflows.md 的 W 编号），如 W6
 例：`%>R1.2 G1 T3 W6%` = 守 rule1,2 ＋ 目标 G1 ＋ 任务 T3 ＋ 走 W6（计划）
 
@@ -67,7 +67,7 @@ workflow():
     起点: 有 .xdd/ → understand（基于既有锚）；无 .xdd/ → xdd-reverse（先反推出锚）
     → 命中层 → execute → verify（验收：行为不变）
 
-卡住回退：同一 task 连续 3 试没过（计数见 runs/iter-N/failure-log.md）→ 调 rollback()
+卡住回退：同一 task 连续 3 试没过（计数见 runs/xdd_run/failure-log.md）→ 调 rollback()
 rollback(根因):
   起点（怎么判断命中的根因）               → 回到的锚
   意图/目标没想清（design.md 决策缺失）     → xdd-brainstorm
@@ -95,7 +95,7 @@ rollback(根因):
 
 **辅助 skill**（按需）：`xdd-reverse`（逆向已有代码补设计）/ `xdd-git-commit`（规范提交）/ `xdd-docker-helper`（容器镜像）/ `xdd-mermaid-check`（流程图渲染）。
 
-**纪律**：上层没 ✅ 不装下层 skill；`.xdd/runs/iter-N/status.md` 的「skill」列就是当前该装的 skill。
+**纪律**：上层没 ✅ 不装下层 skill；`.xdd/runs/xdd_run/status.md` 的「skill」列就是当前该装的 skill。
 
 # rule 6: 永远不允许 mock 和实现层逃避性兜底, 永远记得重构，不要害怕失败， good arch 即使code slow, 也能faster实现
 

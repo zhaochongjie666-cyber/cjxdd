@@ -4,7 +4,7 @@ description: |
   xdd 桥接层 —— 把设计层的锚（design.md 意图 + RXX 规则 + architecture 端点/事件 + wire 页面 + resilience 兜底）翻译成零上下文工程师可直接执行的 TDD 任务计划。
   每个任务显式回指 RXX 规则 —— 这就是「设计锚定代码」的桥：plan task → RXX → design 意图，代码 @implements RXX 再回指 task。
   粒度 2-5 分钟单动作步骤，先测试后实现，禁占位符，频繁提交。
-  产出 .xdd/runs/iter-N/plan/{bxx-slug}/plan.md。
+  产出 .xdd/runs/xdd_run/plan/{bxx-slug}/plan.md。
   触发：计划、plan、任务拆解、实施计划、开发计划、TDD 计划、实现计划、开工、跑计划。
 ---
 
@@ -17,7 +17,7 @@ description: |
 | | |
 |---|---|
 | **上游** | `xdd-brainstorm`(design.md 意图) + `xdd-spec`(spec/{bxx-slug}/ RXX 规则 + Feature) + `xdd-architecture`(architecture/{bxx-slug}/ 端点/事件/状态机/文件清单) + `xdd-wire`(wire/{page}.md 前端线框) + `xdd-resilience`(architecture/{bxx-slug}/resilience/ 兜底约束) |
-| **我产出** | `.xdd/runs/iter-N/plan/{bxx-slug}/plan.md`（任务 DAG + RXX 回指 + 全局约束） |
+| **我产出** | `.xdd/runs/xdd_run/plan/{bxx-slug}/plan.md`（任务 DAG + RXX 回指 + 全局约束） |
 | **下游消费者** | `xdd-execute`（按 task 写代码，每个 commit 回指 RXX） |
 | **回溯锚** | 每个 task 标 `**回指 RXX:** R01,R03` + `**Feature:** login.feature :: Scenario: 密码登录成功` |
 
@@ -33,7 +33,7 @@ work():
             && grep -c "Stack:" plan.md == task 数
             && grep -c "Files:" plan.md == task 数
   5. ACT:   排依赖（Depends on DAG，无依赖的首批先跑）
-  6. ACT:   生成 .xdd/runs/iter-N/plan/{bxx-slug}/plan.md
+  6. ACT:   生成 .xdd/runs/xdd_run/plan/{bxx-slug}/plan.md
      GATE:  test -f 该 plan.md 且每个 task 都有 ≥1 个测试 Step（grep "Expected: PASS/FAIL"）
 ```
 
@@ -174,7 +174,7 @@ git add ... && git commit -m "feat(auth): 实现 R01 登录返回JWT"
 
 ## 产出
 
-`.xdd/runs/iter-N/plan/{bxx-slug}/plan.md` —— 零上下文工程师可直接执行的 TDD 任务 DAG：
+`.xdd/runs/xdd_run/plan/{bxx-slug}/plan.md` —— 零上下文工程师可直接执行的 TDD 任务 DAG：
 
 - **计划头部**：目标 / 架构 / 技术栈 / 验收来源 / 全局约束 / 文件结构 / 依赖表 / RXX 覆盖追踪表
 - **逐 task**：回指 RXX + Stack + Feature + Files + TDD Steps（红→绿→提交）
