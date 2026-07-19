@@ -131,7 +131,7 @@ function startTransition(command: Extract<XddCommand, { type: "START" }>, stages
 
 export function isProvider429InsufficientBalance(error: string | null | undefined): boolean {
 	const text = (error ?? "").toLowerCase();
-	return /(?:^|\D)429(?:\D|$)/.test(text) && /(余额不足|insufficient[_\s-]*(?:balance|quota|credits?)|balance[_\s-]*not[_\s-]*enough|quota[_\s-]*exceeded|credit)/i.test(error ?? "");
+	return /(?:^|\D)429(?:\D|$)/.test(text) && /(余额不足|用量上限|购买积分|insufficient[_\s-]*(?:balance|quota|credits?)|balance[_\s-]*not[_\s-]*enough|quota[_\s-]*exceeded|(?:usage|plan)[_\s-]*limit|credit)/i.test(error ?? "");
 }
 
 export function provider429RetryDelayMs(retryCount: number): number {

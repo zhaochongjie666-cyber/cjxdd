@@ -61,6 +61,8 @@ describe("XddController transition", () => {
 	it("detects only 429 balance failures and caps retry delay at three minutes", () => {
 		expect(isProvider429InsufficientBalance("429: 余额不足")).toBe(true);
 		expect(isProvider429InsufficientBalance("429 insufficient_quota credits exhausted")).toBe(true);
+		expect(isProvider429InsufficientBalance('429: {"type":"rate_limit_error","message":"已达到 Token Plan 用量上限：请升级 Token Plan 套餐或购买积分补充用量。 (2056)","http_code":"429"}')).toBe(true);
+		expect(isProvider429InsufficientBalance("429 usage limit reached for current plan")).toBe(true);
 		expect(isProvider429InsufficientBalance("429 rate limit")).toBe(false);
 		expect(provider429RetryDelayMs(1)).toBe(3_000);
 		expect(provider429RetryDelayMs(2)).toBe(6_000);
