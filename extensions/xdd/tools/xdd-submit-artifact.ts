@@ -261,9 +261,8 @@ ${angleText}
 					};
 				}
 				// AIGate produced a real verdict (not degraded infrastructure failure).
-				// Reset the degraded-attempt counter so the next degraded episode
-				// starts fresh.
-				state.resetAiGateBudget(stage.name);
+				// Do not reset here: a failing verdict must accumulate toward the
+				// bounded retry limit. A successful verdict resets it below.
 				if (!aiResult.passed) {
 					// A semantic AIGate failure consumes only the AIGate retry budget.
 					const aiUsed = state.beginAiGateAttempt(stage.name);
