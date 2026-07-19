@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -44,5 +44,17 @@ describe("xdd subagent intercom", () => {
 		expect(instructions).toContain("Supervisor Intercom");
 		expect(instructions).toContain("child_to_supervisor");
 		expect(instructions).toContain("need_decision|progress_update|blocked|note");
+	});
+
+	it("rejects traversal and absolute run ids before reading or writing", () => {
+		const cwd = mkdtempSync(join(tmpdir(), "xdd-intercom-traversal-"));
+		try {
+			const escaped = join(cwd, "escaped.jsonl");
+			expect(() => postSupervisorMessage(cwd, "../../../escaped", "attack")).toThrow(/无效的 xdd subagent run id/);
+			expect(() => readIntercomMessages(cwd, "/tmp/escaped")).toThrow(/无效的 xdd subagent run id/);
+			expect(existsSync(escaped)).toBe(false);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
 	});
 });
