@@ -35,7 +35,7 @@ description: |
 
 verify 的攻击不是只找 bug，而是用证据逼项目完成：
 
-1. **正向攻击**：对每条核心 RXX / P0 用户旅程执行真实 happy path，从入口（UI/API）到持久化结果逐步断言；禁止只测 `/healthz` 或只跑 mock 单测。
+1. **正向攻击**：先枚举全部 `.feature`，逐个（不是抽样）执行每条 Scenario/Scenario Outline 的公开入口验收测试，再对核心 RXX / P0 用户旅程执行真实 happy path，从入口（UI/API）到持久化结果逐步断言；禁止只测 `/healthz` 或只跑 mock 单测。
 2. **兜底攻击**：对每条拒绝/异常/无权限/依赖失败/超限/并发/恢复场景执行真实攻击，证明系统会拦截、降级、提示、恢复或保留数据。
 3. **双向缺口都回炉**：正向不通回 execute/architecture/wire 修；兜底缺失回 resilience/spec/execute 修；环境缺失按自愈协议先修环境再重跑。
 4. **再攻击检查**：每次回炉后必须重跑对应攻击，不允许“已修代码”替代“攻击证据通过”。
@@ -94,6 +94,7 @@ docker compose ps                    # 所有服务 Up (healthy)
 | 维度 | 对照 | 查什么 |
 |------|------|--------|
 | **spec ↔ code** | `spec/{bxx-slug}/rules.md` RXX | 每条 RXX 有代码 `@implements RXX` + 测试？grep `@implements` 数 ≥ RXX 数 |
+| **Feature ↔ task ↔ code ↔ test** | `spec/{bxx-slug}/*.feature` 全部 Scenario/Outline | 每个场景在 plan 同一 task 有精确 `Feature` 锚、生产 `Implementation`、可运行 `Acceptance Test` 和 PASS Evidence；集合差必须为空 |
 | **wire ↔ code** | `wire/{page}.md` | 每个页面真渲染了？每个操作态（空/加载/错误/成功/确认）都实现？ |
 | **architecture ↔ code** | `architecture/{bxx-slug}/architecture.md` 端点清单 | 端点清单的每个端点都实现了？grep `@app.get/post` 数 = 清单数（别 60→23）|
 | **resilience ↔ code** | `resilience/failsafe-design.md` 兜底 | 每个兜底策略在代码里有实现位置？ |
@@ -207,6 +208,7 @@ for round in 1..3:
 □ 追踪矩阵完整：每个 AC-XX 有架构+代码+测试，每个 BR 有测试，无幽灵代码？
 □ 四层测试覆盖：领域/应用服务/Repository集成/Feature验收都有？
 □ Feature 验收测试通过公开 API 调用（不绕过应用层直接改 DB）？
+□ 已逐文件点遍所有 Scenario/Scenario Outline，且 `Feature 场景集合 - 已通过验收测试集合 = ∅`（不是只抽核心场景）？
 □ 代码级质量：领域规则不住Controller？DB负责并发？审计append-only？通知不破坏主事务？身份来自认证上下文？
 □ design 契约「实现/实施」列 checkbox 与代码 `@implements RXX` 一致（无幽灵勾/漏勾）？
 □ 混沌：P0 场景兜底真生效，有 before/after 证据？
