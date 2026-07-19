@@ -147,6 +147,17 @@ describe("AIGate retry loop", () => {
 		expect(keepAliveBlock).not.toContain("terminate: true");
 	});
 
+	it("consecutive semantic failures accumulate instead of resetting to attempt one", () => {
+		const submitSrc = readFileSync(join(SRC_DIR, "tools", "xdd-submit-artifact.ts"), "utf8");
+		const verdictBlock = submitSrc.slice(
+			submitSrc.indexOf("AIGate produced a real verdict"),
+			submitSrc.indexOf("// The unified AIGate passed"),
+		);
+		expect(verdictBlock).toContain("beginAiGateAttempt");
+		expect(verdictBlock).toContain("aiBudget.exhausted");
+		expect(verdictBlock).not.toContain("resetAiGateBudget");
+	});
+
 	it("AIGate repair steering requires a real repair loop before resubmission", () => {
 		const steerBlock = EXT_SRC.slice(
 			EXT_SRC.indexOf("async function sendAIGateRepairSteering"),
