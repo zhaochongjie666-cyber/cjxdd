@@ -5,12 +5,13 @@ import { XddController } from "../core/controller.ts";
 import { RuntimeStore } from "../storage/runtime-store.ts";
 import type { XddRunnerState, XddStageName } from "../types.ts";
 import { type EmptyDetails, type GetXddState, ok } from "./index.ts";
-import { runAIGate, formatAIGateResult } from "../aigate.ts";
+import { runAIGate, formatAIGateResult, type AIGateResult } from "../aigate.ts";
 import { getAIGateLLM } from "../llm-ref.ts";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { evaluateVerifyEvidenceGateFull } from "../evidence/verify-gate.ts";
 import { routeVerifyFailure } from "../verify-failure-routing.ts";
+import { startAIGateProgress } from "../aigate-progress.ts";
 
 function elapsedMs(start: number): number {
 	return Math.max(0, Math.round(performance.now() - start));
@@ -87,7 +88,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 		description:
 			"提交阶段产物并触发硬 Gate；硬 Gate 通过且阶段启用 AIGate 时，会继续调用 LLM 做 AI 语义审查（因此可能较慢）。selfAttack 随每次 AIGate 语义审查提交；verify 需附 pass。Gate 通过后调 xdd_advance 推进。",
 		parameters: schema,
-		async execute(_toolCallId, params: XddSubmitArtifactInput): Promise<AgentToolResult<EmptyDetails>> {
+		async execute(_toolCallId, params: XddSubmitArtifactInput, _onUpdate, ctx): Promise<AgentToolResult<EmptyDetails>> {
 			const state: XddRunnerState = getState();
 			const stage = state.currentStage();
 			if (!stage) throw new Error("[xdd] 无活跃阶段");
@@ -204,22 +205,28 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 				if (existsSync(intentPath)) {
 					intentAnchor = readFileSync(intentPath, "utf8");
 				}
-				const aiResult = await runAIGate({
-					model: llmInfo.model,
-					apiKey: llmInfo.apiKey,
-					headers: llmInfo.headers,
-					env: llmInfo.env,
-					stageName: stage.name,
-					skillName: stage.skill,
-					aigateStandard: stage.aigateStandard,
-					artifactPaths: artifacts.length > 0 ? artifacts : stage.deliverablePaths,
-					outputContract: stage.outputs,
-					mechanicalCheckResult,
-					cwd: state.cwd,
-					intentAnchor,
-					contextPatterns: stage.aiGate?.contextPatterns,
-					submissionSummary: summary,
-				});
+				const finishProgress = startAIGateProgress(ctx?.ui, stage.name);
+				let aiResult: AIGateResult;
+				try {
+					aiResult = await runAIGate({
+						model: llmInfo.model,
+						apiKey: llmInfo.apiKey,
+						headers: llmInfo.headers,
+						env: llmInfo.env,
+						stageName: stage.name,
+						skillName: stage.skill,
+						aigateStandard: stage.aigateStandard,
+						artifactPaths: artifacts.length > 0 ? artifacts : stage.deliverablePaths,
+						outputContract: stage.outputs,
+						mechanicalCheckResult,
+						cwd: state.cwd,
+						intentAnchor,
+						contextPatterns: stage.aiGate?.contextPatterns,
+						submissionSummary: summary,
+					});
+				} finally {
+					finishProgress();
+				}
 				aiGateMs = elapsedMs(aiGateStartedAt);
 				// Transport and JSON-format failures are not findings about the
 				// submitted artifacts. Do not spend the semantic-review budget, but
