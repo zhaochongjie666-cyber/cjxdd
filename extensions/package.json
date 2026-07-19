@@ -2,6 +2,7 @@
   "type": "module",
   "pi": {
     "extensions": [
+      "./read-all/index.ts",
       "./xdd/index.ts",
       "./normal-flow/index.ts",
       "./xdd-subagents/index.ts",
