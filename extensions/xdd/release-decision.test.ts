@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildReleaseDecision, evaluateReleaseDecisionGate, releaseInputDigest, writeReleaseDecision, type ReleaseDecision } from "./release-decision.ts";
+import { digestReviewArtifactFiles, writeReviewVerdict } from "./review-verdict.ts";
 
 let cwd: string;
 beforeEach(() => {
@@ -43,6 +44,20 @@ describe("release decision aggregator", () => {
 		const decision: ReleaseDecision = { schemaVersion: 1, inputDigest: releaseInputDigest(cwd), verdict: "release", checks: [{ name: "fixture", ok: true }], createdAt: new Date().toISOString() };
 		writeReleaseDecision(cwd, decision);
 		writeFileSync(join(cwd, "README.md"), "uncommitted change\n");
+		expect(evaluateReleaseDecisionGate(cwd)).toMatchObject({ ok: false });
+	});
+
+	it("invalidates release when a design artifact named by a review changes", () => {
+		mkdirSync(join(cwd, ".xdd/design/spec"), { recursive: true });
+		writeFileSync(join(cwd, ".xdd/design/spec/rules.md"), "original design\n");
+		writeReviewVerdict(cwd, "spec", {
+			schemaVersion: 1, reviewType: "requirement", artifactPaths: [".xdd/design/spec/rules.md"],
+			artifactDigest: digestReviewArtifactFiles(cwd, [".xdd/design/spec/rules.md"]), creatorId: "creator", reviewerId: "reviewer",
+			model: "test", contextPolicy: "isolated", verdict: "pass", score: 100, findings: [], positivePathEvidence: ["pass"], fallbackAttackEvidence: ["attack"], overrides: [],
+		});
+		const decision: ReleaseDecision = { schemaVersion: 1, inputDigest: releaseInputDigest(cwd), verdict: "release", checks: [{ name: "fixture", ok: true }], createdAt: new Date().toISOString() };
+		writeReleaseDecision(cwd, decision);
+		writeFileSync(join(cwd, ".xdd/design/spec/rules.md"), "changed design\n");
 		expect(evaluateReleaseDecisionGate(cwd)).toMatchObject({ ok: false });
 	});
 });

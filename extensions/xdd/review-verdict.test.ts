@@ -31,6 +31,12 @@ const strictPolicy = {
 };
 
 describe("review verdict policy", () => {
+	it("accepts an explicit no-file completion reason but rejects an unexplained empty artifact set", () => {
+		const digest = digestReviewArtifacts({});
+		expect(evaluateReviewVerdict(verdict({ artifactPaths: [], artifactDigest: digest, noArtifactReason: "cleanup inspection confirmed the existing tree required no file changes" }), digest, strictPolicy)).toEqual({ ok: true, reasons: [] });
+		expect(evaluateReviewVerdict(verdict({ artifactPaths: [], artifactDigest: digest }), digest, strictPolicy)).toMatchObject({ ok: false });
+	});
+
 	it("produces a stable digest independent of insertion order and binds file paths", () => {
 		const first = digestReviewArtifacts({ "b.ts": "b", "a.ts": "a" });
 		const reordered = digestReviewArtifacts({ "a.ts": "a", "b.ts": "b" });

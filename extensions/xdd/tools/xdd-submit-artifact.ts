@@ -1,4 +1,7 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { type Static, Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { XddController } from "../core/controller.ts";
@@ -7,8 +10,6 @@ import type { XddRunnerState, XddStageName } from "../types.ts";
 import { type EmptyDetails, type GetXddState, ok } from "./index.ts";
 import { runAIGate, formatAIGateResult, type AIGateResult } from "../aigate.ts";
 import { getAIGateLLM } from "../llm-ref.ts";
-import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
 import { evaluateVerifyEvidenceGateFull } from "../evidence/verify-gate.ts";
 import { routeVerifyFailure } from "../verify-failure-routing.ts";
 import { startAIGateProgress } from "../aigate-progress.ts";
@@ -44,6 +45,13 @@ function isReviewableSourceArtifact(path: string): boolean {
 		|| /\.(?:[cm]?[jt]sx?|py|go|rs|java|kt|cs|rb|php|swift|vue|svelte)$/i.test(path);
 }
 
+function changedProductionSources(cwd: string): string[] {
+	return execFileSync("git", ["status", "--porcelain=v1", "--untracked-files=all"], { cwd, encoding: "utf8" })
+		.split("\n").filter(Boolean)
+		.map((line) => line.slice(3).split(" -> ").at(-1) ?? "")
+		.filter(isReviewableSourceArtifact);
+}
+
 function persistAIGateReview(params: {
 	state: XddRunnerState;
 	stage: ReturnType<XddRunnerState["currentStage"]> & {};
@@ -64,6 +72,9 @@ function persistAIGateReview(params: {
 		reviewType: reviewTypeForStage(stage.name),
 		artifactDigest,
 		artifactPaths,
+		noArtifactReason: artifactPaths.length === 0 && stage.name === "cleanup"
+			? `cleanup 阶段无文件产物：${params.mechanicalReason ?? "机械检查确认现有工作树无需清理"}`
+			: undefined,
 		creatorId: state.stageEpoch,
 		reviewerId: `pi-aigate:${modelIdentity(model)}`,
 		model: modelIdentity(model),
@@ -178,8 +189,12 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			const summary = String(params.summary ?? "");
 			const artifacts = params.artifacts ?? [];
 			const selfAttack = params.selfAttack?.trim();
-			if (stage.name === "execute" && !artifacts.some(isReviewableSourceArtifact)) {
-				throw new Error("[xdd_submit_artifact] execute 必须在 artifacts 中声明至少一个生产源码路径，Code Reviewer 不接受只审 plan/docs/tests。");
+			if (stage.name === "execute") {
+				const submitted = new Set(artifacts.filter(isReviewableSourceArtifact));
+				const omitted = changedProductionSources(state.cwd).filter((path) => !submitted.has(path));
+				if (submitted.size === 0 || omitted.length > 0) {
+					throw new Error(`[xdd_submit_artifact] execute 必须声明全部变更的生产源码路径；缺少：${omitted.length > 0 ? omitted.join(", ") : "至少一个生产源码路径"}。Code Reviewer 不接受部分源码或只审 plan/docs/tests。`);
+				}
 			}
 			if (stage.name === "execute") {
 				const pathPolicy = evaluateProductionPathPolicy(state.cwd);
@@ -366,6 +381,15 @@ ${angleText}
 						? "\n修改建议：\n" + aiResult.suggestions.map((s, n) => `${n + 1}. ${s}`).join("\n")
 						: "";
 					if (aiBudget.exhausted) {
+						const hasPriorityBlocker = aiResult.angles.some((angle) =>
+							angle.passed === false && severityForAngle(angle.name, angle.findings) === "P1"
+						);
+						if (hasPriorityBlocker) {
+							if (stage.exit === "verdict") {
+								return handleExhaustedVerifyFailure(state, aiError, "AIGate P1", aiUsed, aiBudget.limit, diagnosedVerifyRollbackTarget(state), `\n${angleText}${suggText}`);
+							}
+							return ok(`❌ [AIGate ${aiUsed}/${aiBudget.limit}] ${stage.name} 审查发现不可 override 的 P0/P1 blocker：\n${angleText}${suggText}\n未写入无效 verdict、未记录完成信号。请回到负责阶段修复安全/权限/数据风险后重新提交。`);
+						}
 						persistAIGateReview({ state, stage, model: llmInfo.model, artifacts, mechanicalReason: mechanicalCheckResult.reason, selfAttack: selfAttack!, result: aiResult, status: "fail", overrideReason: `AIGate 已完成 ${aiUsed} 轮严格审查仍未收敛；按软 Gate 策略停止细节循环，保留 findings 供后续阶段继续验证。`, preventionPatternIds: prevention.patternIds });
 						const softPass = stage.exit !== "verdict" || Boolean(params.pass);
 						dispatchToController(state, { type: "RECORD_SIGNAL", signal: stage.exit === "verdict" ? (softPass ? "verdict_pass" : "verdict_fail") : "complete" });

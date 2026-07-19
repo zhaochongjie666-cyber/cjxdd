@@ -607,6 +607,11 @@ export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
 	// not impose xdd-level character caps: AIGate must review the full
 	// submitted files for large projects.
 	const artifacts: string[] = readFilesUncapped(cwd, artifactPaths);
+	// Cleanup may legitimately produce no file when inspection confirms that the
+	// tree is already clean. Review its explicit completion claim instead.
+	if (stageName === "cleanup" && artifacts.length === 0 && submissionSummary?.trim()) {
+		artifacts.push(`--- cleanup completion summary ---\n${submissionSummary.trim()}`);
+	}
 
 	// Understand stage also reads personas (for traceability attack).
 	if (stageName === "understand") {

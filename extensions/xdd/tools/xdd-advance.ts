@@ -51,7 +51,6 @@ export function createXddAdvanceTool(getState: GetXddState): ToolDefinition {
 			if (stage.name === "verify") {
 				const release = evaluateReleaseDecisionGate(state.cwd);
 				if (!release.ok) {
-					state.clearSignals();
 					return ok(`[xdd_advance] 最终 Release Decision 未通过：${release.reason}。请调用 xdd_release_decision 聚合并修复失败项。`);
 				}
 			}

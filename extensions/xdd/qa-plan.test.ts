@@ -40,6 +40,14 @@ describe("QA plan gate", () => {
 		expect(evaluateQaPlanGate(cwd)).toMatchObject({ ok: false });
 	});
 
+	it("does not count a not-applicable case as Feature Scenario coverage", () => {
+		const plan = validPlan()
+			.replace("- Feature: `auth/login.feature :: Scenario: valid password`\n- Entry: POST /login\n- Expected: HTTP 200 and token\n- Automation: automated", "- Applicability: not-applicable\n- Reason: 当前场景被错误声明为无需执行但理由长度足够")
+			.replace("- Applicability: not-applicable\n- Reason: 当前功能没有该类可执行风险，已记录适用性决策", "- Feature: `auth/login.feature :: Scenario: valid password`\n- Applicability: not-applicable\n- Reason: 当前功能没有该类可执行风险，已记录适用性决策");
+		writeFileSync(join(cwd, ".xdd/runs/xdd_run/qa-plan.md"), plan);
+		expect(evaluateQaPlanGate(cwd)).toMatchObject({ ok: false });
+	});
+
 	it("rejects a category omitted without an applicability decision", () => {
 		writeFileSync(join(cwd, ".xdd/runs/xdd_run/qa-plan.md"), validPlan().replace(/### QA-N4[\s\S]*$/, ""));
 		expect(evaluateQaPlanGate(cwd)).toMatchObject({ ok: false });

@@ -51,7 +51,7 @@ export interface RuntimeIncident {
 function redactText(value: string): string {
 	return value
 		.replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, "Bearer [REDACTED]")
-		.replace(/\b(?:api[_-]?key|token|password|secret)\s*[=:]\s*[^\s,;]+/gi, (match) => `${match.split(/[=:]/, 1)[0]}=[REDACTED]`)
+		.replace(/(["']?)(api[_-]?key|token|password|secret)\1\s*([=:])\s*(?:(["'])(.*?)\4|[^\s,;}]+)/gi, (_match, keyQuote: string, key: string, separator: string, valueQuote = "") => `${keyQuote}${key}${keyQuote}${separator}${valueQuote}[REDACTED]${valueQuote}`)
 		.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[REDACTED_EMAIL]")
 		.replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[REDACTED_IP]");
 }

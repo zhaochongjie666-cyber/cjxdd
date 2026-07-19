@@ -35,6 +35,13 @@ describe("runtime observability adapter", () => {
 		expect(sanitized.logs[0]).not.toContain("10.0.0.1");
 	});
 
+	it("redacts quoted credentials in structured JSON logs", () => {
+		const sanitized = sanitizeRuntimeObservation({ ...observation(), logs: ['{"password":"hunter2","api_key":"secret","token":"abc"}'] });
+		expect(sanitized.logs[0]).not.toContain("hunter2");
+		expect(sanitized.logs[0]).not.toContain('"secret"');
+		expect(sanitized.logs[0]).not.toContain('"abc"');
+	});
+
 	it("creates a blocking incident for a critical regression", () => {
 		const incident = evaluateRuntimeObservation(observation(100), observation(150));
 		expect(incident.status).toBe("open");

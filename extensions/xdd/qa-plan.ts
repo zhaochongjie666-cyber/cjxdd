@@ -76,7 +76,9 @@ export function evaluateQaPlanGate(cwd: string): XddGateResult {
 		return !item.feature || !item.entry || !item.expected || !/^(automated|manual)$/.test(item.automation ?? "");
 	});
 	if (incomplete.length > 0) return { ok: false, reason: `QA Plan Gate: 测试项字段不完整：${incomplete.map((item) => item.id).join(", ")}` };
-	const anchors = new Set(cases.map((item) => item.feature).filter(Boolean));
+	const anchors = new Set(cases
+		.filter((item) => item.applicability !== "not-applicable" && item.feature && item.entry && item.expected && /^(automated|manual)$/.test(item.automation ?? ""))
+		.map((item) => item.feature));
 	const missingScenarios = featureScenarios(cwd).filter((scenario) => !anchors.has(scenario));
 	if (missingScenarios.length > 0) return { ok: false, reason: `QA Plan Gate: Feature Scenario 未覆盖：${missingScenarios.join("；")}` };
 	return { ok: true };

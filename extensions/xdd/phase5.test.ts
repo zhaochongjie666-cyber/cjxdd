@@ -186,7 +186,7 @@ describe("E.4 group gate failure routing", () => {
 		const advance = readFileSync(join(import.meta.dirname, "tools/xdd-advance.ts"), "utf8");
 		const submit = readFileSync(join(import.meta.dirname, "tools/xdd-submit-artifact.ts"), "utf8");
 		expect(advance).toContain("evaluateCodeReviewGate(state.cwd)");
-		expect(submit).toContain("execute 必须在 artifacts 中声明至少一个生产源码路径");
+		expect(submit).toContain("execute 必须声明全部变更的生产源码路径");
 		expect(submit).toContain("writeCodeReviewReport");
 	});
 
@@ -194,6 +194,8 @@ describe("E.4 group gate failure routing", () => {
 		const advance = readFileSync(join(import.meta.dirname, "tools/xdd-advance.ts"), "utf8");
 		expect(advance).toContain("evaluateReleaseDecisionGate(state.cwd)");
 		expect(advance).toContain("请调用 xdd_release_decision");
+		const releaseBlock = advance.slice(advance.indexOf('if (stage.name === "verify")'), advance.indexOf("// Phase 2 (B)"));
+		expect(releaseBlock).not.toContain("state.clearSignals()");
 	});
 
 	it("runtime P1 incidents feed diagnosis back into the XDD state", () => {

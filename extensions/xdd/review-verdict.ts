@@ -28,6 +28,8 @@ export interface ReviewVerdict {
 	reviewType: ReviewType;
 	artifactDigest: string;
 	artifactPaths: string[];
+	/** Explanation for a stage whose contract intentionally produces no file. */
+	noArtifactReason?: string;
 	creatorId: string;
 	reviewerId: string;
 	model: string;
@@ -113,7 +115,9 @@ export function evaluateReviewVerdict(
 		&& override.reason.trim().length >= 20
 		&& Number.isFinite(Date.parse(override.at))
 	);
-	if (!Array.isArray(verdict.artifactPaths) || verdict.artifactPaths.length === 0) reasons.push("review verdict 缺少 artifact paths");
+	if (!Array.isArray(verdict.artifactPaths) || (verdict.artifactPaths.length === 0 && (verdict.noArtifactReason?.trim().length ?? 0) < 20)) {
+		reasons.push("review verdict 缺少 artifact paths 或无产物说明");
+	}
 	if (!/^sha256:[0-9a-f]{64}$/.test(verdict.artifactDigest)) reasons.push("artifact digest 格式无效");
 	if (verdict.artifactDigest !== currentArtifactDigest) reasons.push("review verdict 已过期：artifact digest 不匹配");
 	if (!verdict.creatorId.trim() || !verdict.reviewerId.trim()) reasons.push("creator/reviewer identity 不能为空");

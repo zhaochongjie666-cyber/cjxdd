@@ -6,7 +6,7 @@ import { evaluateCodeReviewGate } from "./code-review.ts";
 import { evaluateCommitReviewForRelease } from "./commit-review.ts";
 import { evaluateVerifyEvidenceGateFull } from "./evidence/verify-gate.ts";
 import { evaluateQaEvidenceGate } from "./qa-plan.ts";
-import { evaluateStoredReviewVerdict } from "./review-verdict.ts";
+import { digestReviewArtifactFiles, evaluateStoredReviewVerdict, type ReviewVerdict } from "./review-verdict.ts";
 import { evaluateRuntimeObservabilityGate } from "./runtime-observability.ts";
 import { evaluateQualityScoreGate } from "./quality-score.ts";
 import { evaluateLegacyQualityWaiver } from "./quality-migration.ts";
@@ -72,6 +72,14 @@ export function releaseInputDigest(cwd: string): string {
 	for (const path of decisionInputs(cwd).sort()) {
 		hash.update(path).update("\0");
 		hash.update(existsSync(path) ? readFileSync(path) : Buffer.from("<missing>"));
+		if (path.includes(join("runs", "xdd_run", "reviews")) && existsSync(path)) {
+			try {
+				const review = JSON.parse(readFileSync(path, "utf8")) as ReviewVerdict;
+				hash.update("\0review-artifacts\0").update(digestReviewArtifactFiles(cwd, review.artifactPaths ?? []));
+			} catch {
+				hash.update("\0<invalid-review>");
+			}
+		}
 		hash.update("\0");
 	}
 	try {
