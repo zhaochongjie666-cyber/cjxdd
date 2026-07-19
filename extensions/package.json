@@ -4,7 +4,8 @@
     "extensions": [
       "./xdd/index.ts",
       "./normal-flow/index.ts",
-      "./xdd-subagents/index.ts"
+      "./xdd-subagents/index.ts",
+      "./todo-list/index.ts"
     ],
     "skills": [
       "../skills"
