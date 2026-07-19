@@ -451,6 +451,8 @@ CREATE INDEX idx_task_assignee_status ON annotation_task(assignee_id, status);
 
 #### 20a. 推荐目录结构（DDD 分层）
 
+> **命名边界（硬约束）**：`B01/B02/BXX` 是 `.xdd/design/spec/`、`.xdd/design/architecture/`、追踪矩阵中的业务线编号，不是代码模块名。下面的 `{module}` 必须替换为稳定、可读的领域能力名（如 `auth-service`、`project-service`、`annotation-service`）；禁止生成 `b01-auth/`、`B02-project/` 这类源码、服务、包或部署目录。RXX 同理只用于追踪与 `@implements`，不参与代码目录命名。
+
 ```
 {module}/
 ├── api/              # 接口层：Controller、Request、ExceptionHandler

@@ -16,6 +16,13 @@ export function migrateRuntimeState(raw: unknown, defaults: Partial<XddCheckpoin
 		throw new Error(`[xdd] runtime schemaVersion ${version} 高于当前支持版本 ${RUNTIME_SCHEMA_VERSION}，拒绝覆盖。`);
 	}
 	const state = { ...defaults, ...raw, schemaVersion: RUNTIME_SCHEMA_VERSION } as RuntimeStateV2 & Record<string, unknown>;
+	// Do not silently backfill the feature marker: its absence is the durable
+	// proof that a run predates mandatory quality artifacts. Fresh runs receive
+	// qualityPipelineVersion=1 from defaultRt.
+	if (!("qualityPipelineVersion" in raw)) {
+		delete state.qualityPipelineVersion;
+		state.qualityPipelineLegacyEligible = true;
+	}
 	// Schema v3 replaces the old tiered flow rollback controls with one durable
 	// budget. Do not carry legacy fields forward: every controller caller must
 	// observe and consume the same limit.

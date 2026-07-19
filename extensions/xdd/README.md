@@ -22,7 +22,7 @@ xdd 控制循环（[`core.md`](../../core.md)）作为 **pi coding agent inline 
 纯逻辑模块（`observe-fs.ts` / `stage-diff.ts` / `stages.ts` / `gate.ts`）不依赖 pi，
 是观测与 Gate 的核心；extension 与 headless adapter 在其上共享同一个 Controller Core，避免生产和测试各有一套推进/回退状态机。
 
-## 工具（11 个）
+## 核心与质量工具
 
 控制循环工具（对齐 core.md）：
 
@@ -39,6 +39,14 @@ xdd 控制循环（[`core.md`](../../core.md)）作为 **pi coding agent inline 
 | `xdd_trace` | 追溯覆盖 | spec RXX vs 代码 `@implements`：未实现 / 孤儿标注（追溯闭环健康度） |
 | `xdd_list_skills` | 装载 | 列可用 xdd skill |
 | `xdd_load_skill` | 装载 | 把 skill SKILL.md 注入阶段 system prompt |
+| `xdd_commit_review` | 提交审查 | 用 Pi 隔离上下文只读审查 staged diff，绑定 index tree/diff digest，变化后强制重审 |
+| `xdd_release_decision` | 发布裁决 | 聚合阶段 review、QA、Code/Commit Review、verify evidence 与 HEAD tree，生成最终 RELEASE/BLOCK |
+| `xdd_runtime_observe` | 运行观测 | 通过 runtime-independent adapter 记录脱敏 logs/metrics/traces，对比基线并生成 incident |
+| `xdd_bug_learn` | 缺陷学习 | 在根因、修复与证据确认后沉淀跨 run bug pattern，并生成对应 prevention rule |
+| `xdd_quality_score` | 质量评分 | 聚合重复缺陷、escaped defects、恢复时间、override 与证据覆盖率，输出非阻塞改进优先级 |
+| `xdd_migrate_quality` | 旧运行迁移 | 仅为升级前且已越过 plan 的 active run 生成审计 waiver；不豁免当前和未来阶段 |
+
+Bug KB 中与当前阶段相关的 prevention rule 会自动进入 Agent/AIGate/Commit Review/Runtime 上下文；每次最多 5 条，命中的 Pattern ID 记录在 `prevention-injections.json`，不需要人工调用额外工具。
 
 ### 全流程预算
 

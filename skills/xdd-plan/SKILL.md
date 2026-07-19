@@ -4,7 +4,7 @@ description: |
   xdd 桥接层 —— 把设计层的锚（design.md 意图 + RXX 规则 + architecture 端点/事件 + wire 页面 + resilience 兜底）翻译成零上下文工程师可直接执行的 TDD 任务计划。
   每个任务显式回指 RXX 规则 —— 这就是「设计锚定代码」的桥：plan task → RXX → design 意图，代码 @implements RXX 再回指 task。
   粒度 2-5 分钟单动作步骤，先测试后实现，禁占位符，频繁提交。
-  产出 .xdd/runs/xdd_run/plan/{bxx-slug}/plan.md。
+  产出实施 plan + 实现前冻结的独立 QA Plan。
   触发：计划、plan、任务拆解、实施计划、开发计划、TDD 计划、实现计划、开工、跑计划。
 ---
 
@@ -17,7 +17,7 @@ description: |
 | | |
 |---|---|
 | **上游** | `xdd-brainstorm`(design.md 意图) + `xdd-spec`(spec/{bxx-slug}/ RXX 规则 + Feature) + `xdd-architecture`(architecture/{bxx-slug}/ 端点/事件/状态机/文件清单) + `xdd-wire`(wire/{page}.md 前端线框) + `xdd-resilience`(architecture/{bxx-slug}/resilience/ 兜底约束) |
-| **我产出** | `.xdd/runs/xdd_run/plan/{bxx-slug}/plan.md`（任务 DAG + RXX 回指 + 全局约束） |
+| **我产出** | `.xdd/runs/xdd_run/plan.md`（任务 DAG）+ `.xdd/runs/xdd_run/qa-plan.md`（实现前冻结的公开入口 QA 契约） |
 | **下游消费者** | `xdd-execute`（按 task 写代码，每个 commit 回指 RXX） |
 | **回溯锚** | 每个 task 标 `**回指 RXX:** R01,R03` + `**Feature:** login.feature :: Scenario: 密码登录成功` |
 
@@ -34,9 +34,31 @@ work():
             && grep -c "Implementation:" plan.md == task 数
             && grep -c "Files:" plan.md == task 数
   5. ACT:   排依赖（Depends on DAG，无依赖的首批先跑）
-  6. ACT:   生成 .xdd/runs/xdd_run/plan/{bxx-slug}/plan.md
+  6. ACT:   先以 QA 视角生成 qa-plan.md，再生成 plan.md；execute 只能消费 QA 契约，不能按实现反改期望
      GATE:  test -f 该 plan.md 且每个 task 都有 ≥1 个测试 Step（grep "Expected: PASS/FAIL"）
 ```
+
+## 独立 QA Plan（execute 前冻结）
+
+`.xdd/runs/xdd_run/qa-plan.md` 必须先于实现生成。它只从 Feature、用户旅程、API/Wire 契约推导，不读取未来实现，不以内部函数或数据库操作充当测试入口。
+
+六类必须逐项决策：`happy`、`rejection`、`boundary`、`concurrency`、`dependency-failure`、`load`。适用则写测试项；确实不适用则写 `Applicability: not-applicable` 和不少于 10 字的业务理由，禁止只写 N/A。
+
+```markdown
+### QA-001
+- Category: happy
+- Feature: `auth/login.feature :: Scenario: valid password`
+- Entry: POST /login
+- Expected: HTTP 200 and usable token
+- Automation: automated
+
+### QA-LOAD
+- Category: load
+- Applicability: not-applicable
+- Reason: 本次是离线单用户工具，没有并发或吞吐量承诺
+```
+
+每个 Feature Scenario/Scenario Outline 必须至少被一个适用测试项的 `Feature` 精确锚定。`Entry` 必须是 UI、CLI、公开 API 或事件入口；`Automation` 只能是 `automated` 或 `manual`。
 
 ## 输入对齐（生成前必读，术语必须 1:1 一致，未知标"待确认"）
 
@@ -45,6 +67,8 @@ work():
 3. `.xdd/design/architecture/{bxx-slug}/flow.mermaid` —— 组件名/职责、数据流向、协议、外部依赖
 4. `.xdd/design/wire/{page}.md` -- 页面线框、组件交互、6 操作态、设计 token（前端项目）
 5. `.xdd/design/architecture/{bxx-slug}/resilience/failsafe-design.md` —— 兜底约束 + 失败注入点
+
+**代码路径命名边界**：上游路径里的 `{bxx-slug}` 只属于 `.xdd` 设计工件。plan 的 Implementation、测试、迁移、部署文件路径必须沿用项目现有结构并按领域能力命名；禁止把 `B01/B02/BXX` 复制成 `src/b01-*`、`backend/services/b02-*`、包名或服务名。正确示例：`backend/services/auth-service/`；错误示例：`backend/services/b01-auth/`。
 6. 当前代码/材料 —— 文件路径、入口、数据模型、错误码、测试框架
 
 ## 全局约束（定义一次，所有 task 共享）

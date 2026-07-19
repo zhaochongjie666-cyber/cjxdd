@@ -175,6 +175,34 @@ describe("E.6 Gate 3 runs build + tests", () => {
 // ── E.4: group gate failures stay in-stage before verify ─────────────
 
 describe("E.4 group gate failure routing", () => {
+	it("xdd_advance revalidates the persisted review verdict before moving stages", () => {
+		const src = readFileSync(join(import.meta.dirname, "tools/xdd-advance.ts"), "utf8");
+		expect(src).toMatch(/evaluateStoredReviewVerdict\(state\.cwd, stage\.name/);
+		expect(src).toContain("state.clearSignals()");
+		expect(src).toContain("review verdict 已失效或不合规");
+	});
+
+	it("execute advancement requires a current read-only code review report", () => {
+		const advance = readFileSync(join(import.meta.dirname, "tools/xdd-advance.ts"), "utf8");
+		const submit = readFileSync(join(import.meta.dirname, "tools/xdd-submit-artifact.ts"), "utf8");
+		expect(advance).toContain("evaluateCodeReviewGate(state.cwd)");
+		expect(submit).toContain("execute 必须在 artifacts 中声明至少一个生产源码路径");
+		expect(submit).toContain("writeCodeReviewReport");
+	});
+
+	it("verify advancement requires a current aggregated release decision", () => {
+		const advance = readFileSync(join(import.meta.dirname, "tools/xdd-advance.ts"), "utf8");
+		expect(advance).toContain("evaluateReleaseDecisionGate(state.cwd)");
+		expect(advance).toContain("请调用 xdd_release_decision");
+	});
+
+	it("runtime P1 incidents feed diagnosis back into the XDD state", () => {
+		const src = readFileSync(join(import.meta.dirname, "tools/xdd-runtime-observe.ts"), "utf8");
+		expect(src).toContain("state.setDiagnose");
+		expect(src).toContain('"implementation-bug"');
+		expect(src).toContain('"architecture-flaw"');
+	});
+
 	it("xdd_advance does not dispatch Controller ROLLBACK on non-verify group gate fail", () => {
 		const src = readFileSync(join(import.meta.dirname, "tools/xdd-advance.ts"), "utf8");
 		const branch = src.slice(src.indexOf("groupGate.ok"), src.indexOf("groupGateLabel = group.gateLabel"));

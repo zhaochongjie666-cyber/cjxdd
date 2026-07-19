@@ -23,6 +23,9 @@ temperature: 0.5
 5. 混沌演练：跑 resilience/chaos-scenarios.md 的 P0 子集（用 chaos-runner.sh），验兜底真生效
 6. 存根扫描：no-stub-check.sh 全项目零命中
 7. 双契约：真实可用（持久化/认证/跨服务/重启保留/P0 证据）+ 生产接受（真实用户愿依赖）
+8. 有可部署 runtime 时调 `xdd_runtime_observe` 保存稳定基线并攻击当前 HEAD；没有 runtime 的库/工具项目明确按不适用软跳过
+9. 调 `xdd_quality_score` 生成可解释评分；低分用于排序改进项，不作为第二个无限硬 Gate
+10. 调 `xdd_release_decision` 聚合全部 review/evidence/runtime incident/HEAD tree；BLOCK 就按失败项回炉，RELEASE 才允许最终完成
 
 ## 核心纪律
 

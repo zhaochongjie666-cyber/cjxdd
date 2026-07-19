@@ -194,7 +194,7 @@ export const STAGE_ROLES: Readonly<Record<XddStageName, string>> = {
 	architecture: "System Architect",
 	wire: "Scaffolder / Integrator",
 	resilience: "Reliability Engineer",
-	plan: "Project Manager",
+	plan: "Independent QA Planner / Project Manager",
 	execute: "Implementer",
 	cleanup: "Refactorer / Janitor",
 	verify: "Auditor",
@@ -774,6 +774,10 @@ export interface XddStageGroup {
 
 export interface XddCheckpointData {
 	schemaVersion?: number;
+	/** Present on runs created with the artifact-bound quality pipeline. */
+	qualityPipelineVersion?: 1;
+	/** Set only while loading a pre-quality-pipeline runtime; enables audited migration. */
+	qualityPipelineLegacyEligible?: boolean;
 	runId: string;
 	userInput: string;
 	cwd: string;
@@ -875,6 +879,8 @@ export type XddStageOutcome =
 function defaultRt(runId: string = ""): XddCheckpointData {
 	return {
 		schemaVersion: 3,
+		qualityPipelineVersion: 1,
+		qualityPipelineLegacyEligible: false,
 		runId: "", userInput: "", cwd: "",
 		planIndex: -1, plan: [], mode: "stage",
 		ledger: [], attempts: {}, selfHealUsed: {},

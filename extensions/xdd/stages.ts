@@ -10,6 +10,8 @@ import {
 import type { XddStageName, XddStageSpec } from "./types.ts";
 import { STAGE_ROLES } from "./types.ts";
 import { evaluateVerifyEvidenceGateFull } from "./evidence/verify-gate.ts";
+import { evaluateQaPlanGate } from "./qa-plan.ts";
+import { evaluateProductionPathPolicy } from "./production-path-policy.ts";
 
 const roleFor = (name: XddStageName): string => STAGE_ROLES[name];
 
@@ -31,6 +33,7 @@ const CONTROLLER_TOOLS = [
 	"xdd_load_skill",
 	"xdd_harness_get",
 	"xdd_harness_set",
+	"xdd_migrate_quality",
 ] as const;
 const READ_TOOLS = ["read", "grep", "find", "ls"] as const;
 const WRITE_TOOLS = ["write", "edit"] as const;
@@ -103,28 +106,28 @@ const CONTRACT_META: Record<XddStageName, {
 	plan: {
 		inputs: [input(".xdd/design/**", "完整设计输入")],
 		readScopes: [".xdd/design/**", "README*", "docs/**", "package.json", "pyproject.toml", "Cargo.toml", "src/**", "lib/**", "app/**", "tests/**"],
-		writeScopes: [".xdd/runs/xdd_run/plan.md"],
+		writeScopes: [".xdd/runs/xdd_run/plan.md", ".xdd/runs/xdd_run/qa-plan.md"],
 		gatePolicy: "hard",
 		rollbackTarget: "resilience",
 	},
 	execute: {
-		inputs: [input(".xdd/runs/xdd_run/plan.md", "当前 run 执行计划"), input(".xdd/design/**", "设计契约")],
+		inputs: [input(".xdd/runs/xdd_run/plan.md", "当前 run 执行计划"), input(".xdd/runs/xdd_run/qa-plan.md", "实现前冻结的独立 QA 契约"), input(".xdd/design/**", "设计契约")],
 		readScopes: ["**"],
 		writeScopes: ["**"],
 		gatePolicy: "hard",
 		rollbackTarget: "plan",
 	},
 	cleanup: {
-		inputs: [input(".xdd/runs/xdd_run/plan.md", "当前 run 执行计划"), input(".xdd/design/**", "设计契约")],
+		inputs: [input(".xdd/runs/xdd_run/plan.md", "当前 run 执行计划"), input(".xdd/runs/xdd_run/qa-plan.md", "实现前冻结的独立 QA 契约"), input(".xdd/design/**", "设计契约")],
 		readScopes: ["**"],
 		writeScopes: ["**"],
 		gatePolicy: "explicit-soft",
 		rollbackTarget: "execute",
 	},
 	verify: {
-		inputs: [input(".xdd/runs/xdd_run/plan.md", "当前 run 计划"), input(".xdd/design/spec/**", "业务验收规则"), input(".xdd/design/wire/**", "UI/Wire 证据要求")],
+		inputs: [input(".xdd/runs/xdd_run/plan.md", "当前 run 计划"), input(".xdd/runs/xdd_run/qa-plan.md", "实现前冻结的独立 QA 契约"), input(".xdd/design/spec/**", "业务验收规则"), input(".xdd/design/wire/**", "UI/Wire 证据要求")],
 		readScopes: ["**"],
-		writeScopes: [".xdd/runs/xdd_run/verify-report.md", ".xdd/runs/xdd_run/evidence/**"],
+		writeScopes: [".xdd/runs/xdd_run/verify-report.md", ".xdd/runs/xdd_run/evidence/**", ".xdd/runs/xdd_run/release-decision.json", ".xdd/runs/xdd_run/quality-score.json", ".xdd/runs/xdd_run/runtime-observability/**", ".xdd/knowledge/**"],
 		gatePolicy: "hard",
 		rollbackTarget: "execute",
 	},
@@ -395,27 +398,38 @@ export const STAGES: readonly XddStageSpec[] = [
 		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, ...CONTROLLER_TOOLS],
 		desiredState: [
 			"已产出执行计划文档（.xdd/runs/xdd_run/plan.md）",
+			"已由 QA 视角独立产出冻结测试计划（.xdd/runs/xdd_run/qa-plan.md），先于 execute 定义公开入口、期望结果与自动化方式",
+			"QA Plan 覆盖全部 Feature Scenario，并对 happy/rejection/boundary/concurrency/dependency-failure/load 六类逐项给出测试或不适用理由",
 			"计划按阶段组织：spec -> architecture -> wire -> resilience -> execute 每段至少一项具体工作项",
 			"每项工作项标明：依赖前序产出、预计产物、改动文件范围",
 			"识别关键路径与可并行项（不强制并行，但能标注）",
 		],
-		deliverablePaths: [".xdd/runs/xdd_run/plan.md"],
+		deliverablePaths: [".xdd/runs/xdd_run/plan.md", ".xdd/runs/xdd_run/qa-plan.md"],
 		aigateStandard: `审查 plan 阶段：
 1. plan.md 的每个task是否有具体描述（不是"实现R01"敷衍，要有步骤）
 2. task是否覆盖了所有RXX规则（不能漏RXX）
 3. task粒度是否合理（不能一个task覆盖10个RXX，也不能太碎）
 4. task是否有优先级/依赖关系（不是无序列表）
-5. 每个task是否关联了G编号（goal回指）`,
-				gate: async ({ cwd }) => requireGlobsWithMinSize(cwd, [".xdd/runs/xdd_run/plan.md"], 100),
+5. 每个task是否关联了G编号（goal回指）
+6. qa-plan.md 是否在实现前独立定义公开入口测试，而不是从实现细节反推测试
+7. 六类 QA 风险是否逐项决策，所有 Feature Scenario 是否精确覆盖`,
+				gate: async ({ cwd }) => {
+					const plan = await requireGlobsWithMinSize(cwd, [".xdd/runs/xdd_run/plan.md"], 100);
+					if (!plan.ok) return plan;
+					return evaluateQaPlanGate(cwd);
+				},
 	},
 	{
 		name: "execute",
 		role: roleFor("execute"),
 		skill: "xdd-execute",
 		exit: "goal_complete",
-		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, "bash", ...CONTROLLER_TOOLS],
+		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, "bash", ...CONTROLLER_TOOLS, "xdd_commit_review"],
 		desiredState: [
 			"已按 plan 工作项完成实现",
+			"生产代码目录按领域能力命名；BXX 只用于 .xdd 设计与追踪，不得成为源码/服务/包目录前缀",
+			"实现与测试遵守冻结 qa-plan.md；不得为了迁就实现而改写 QA Entry/Expected",
+			"已将生产源码路径提交给只读 Code Reviewer，生成 run-scoped code-review.json，覆盖空值/并发/资源/授权注入/错误处理/架构漂移",
 			"先创建模块骨架文件（可被 import），再填充实现逻辑（脚手架从 wire 整合到此）",
 			"代码改动落在 plan 标注的文件范围内（无未授权改动）",
 			"每个新模块至少含 1 个最小可运行入口（main/index/handler）",
@@ -428,8 +442,12 @@ export const STAGES: readonly XddStageSpec[] = [
 4. 测试断言是否有具体值（不能是 expect(true).toBe(true) 这种 trivial）
 5. 代码是否跟spec的BDD场景对应（When/Then有代码实现）
 6. 有无TODO/占位/FIXME未完成（不通过）
-7. 代码是否跟architecture的模块划分一致`,
+7. 代码是否跟architecture的模块划分一致
+8. 只读 Code Reviewer 六维检查是否逐项给出判断，findings 是否引用实际代码证据
+9. BXX 是否仅作为设计追踪编号；若出现 backend/services/b01-auth、src/B02-project 等代码目录，必须回炉改为 auth-service、project-service 等领域能力名称`,
 				gate: async ({ cwd }) => {
+			const pathPolicy = evaluateProductionPathPolicy(cwd);
+			if (!pathPolicy.ok) return pathPolicy;
 			const r = await requirePatternInSource(cwd, /@implements\s+R\d/i, 1);
 			if (!r.ok) return { ok: false, reason: "execute Gate: 源码中未见 @implements RXX 标注（每条 RXX 实现须回指规则编号，衔接 spec→code→verify 追溯链）" };
 			return { ok: true };
@@ -440,7 +458,7 @@ export const STAGES: readonly XddStageSpec[] = [
 		role: roleFor("cleanup"),
 		skill: "xdd-cleanup",
 		exit: "goal_complete",
-		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, "bash", ...CONTROLLER_TOOLS],
+		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, "bash", ...CONTROLLER_TOOLS, "xdd_commit_review"],
 		desiredState: [
 			"已删除所有调试代码 / 注释 / 待办标记 / 占位符",
 			"已统一格式（参考 plan 约定的风格 / linter）",
@@ -464,13 +482,17 @@ export const STAGES: readonly XddStageSpec[] = [
 		exit: "verdict",
 		// verify 需要落盘 verify-report/evidence。write/edit 只提供写入动作，
 		// 实际路径仍由 verify 的 writeScopes 和 noCodeModification 限制。
-		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, "bash", ...CONTROLLER_TOOLS, "xdd_blind_journey"],
+		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, "bash", ...CONTROLLER_TOOLS, "xdd_blind_journey", "xdd_runtime_observe", "xdd_bug_learn", "xdd_quality_score", "xdd_release_decision"],
 		// Phase 4 (F.6): verify is source-code read-only. It may write only
 		// report/evidence paths; the submit tool rejects artifacts touching
 		// source code, and path policy independently constrains write/edit.
 		noCodeModification: true,
 		desiredState: [
 			"已对 spec 的每条 RXX 规则至少跑一次验证（手动 / 单元 / 集成 / 端到端之一）",
+			"已执行 qa-plan.md 中每个适用 QA-XXX，并在 verify-report.md 逐项记录 PASS + 运行证据",
+			"有可部署 runtime 时，已用 xdd_runtime_observe 记录脱敏基线与当前 HEAD 的观测；无 runtime 时由 Gate 记录不适用软跳过",
+			"已生成可解释 Quality Score；低分用于安排改进优先级，不围绕分数无限回炉",
+			"已调用 xdd_release_decision 聚合所有 review/evidence，生成 verdict=release 的 release-decision.json",
 			"验证结果可复现（命令或脚本有据可查）",
 			"未在 verify 阶段改动契约或架构（仅验证，不修改）",
 			"已执行盲测用户验收（Blind Journey）：定义角色、用 xdd_blind_journey 工具执行 Actor/Judge 两阶段、记录结果、生成覆盖报告（纯后端项目跳过）",

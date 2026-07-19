@@ -53,6 +53,7 @@ describe("RuntimeStore", () => {
 		const loaded = store.load();
 		expect(loaded?.schemaVersion).toBe(3);
 		expect(loaded?.runId).toBe("legacy");
+		expect(loaded?.qualityPipelineLegacyEligible).toBe(true);
 		expect(existsSync(store.v1BackupPath)).toBe(true);
 	});
 
