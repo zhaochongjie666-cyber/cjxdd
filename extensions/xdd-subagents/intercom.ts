@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, appendFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, resolve } from "node:path";
 import { subagentsRoot, XddSubagentRunStore, type XddSubagentRunRecord } from "./runtime-store.ts";
 
 export type IntercomMessage = {
@@ -10,8 +10,21 @@ export type IntercomMessage = {
 	message: string;
 };
 
+const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+
+/**
+ * Run ids are also used as filenames. Keep this validation at the filesystem
+ * boundary so callers cannot turn an intercom operation into an arbitrary
+ * JSONL read or append via `../` segments or absolute paths.
+ */
+export function validateRunId(runId: string): string {
+	if (!RUN_ID.test(runId)) throw new Error(`无效的 xdd subagent run id: ${runId}`);
+	return runId;
+}
+
 export function intercomPath(cwd: string, runId: string): string {
-	return join(subagentsRoot(cwd), "intercom", `${runId}.jsonl`);
+	const safeRunId = validateRunId(runId);
+	return resolve(subagentsRoot(cwd), "intercom", `${safeRunId}.jsonl`);
 }
 
 export function supervisorIntercomInstructions(path: string): string {
