@@ -16,7 +16,12 @@ export function enforceToolCallPolicy(state: XddRunnerState, event: ToolCallEven
 	if (!stage) return;
 	const toolName = String(event.toolName ?? event.name ?? "");
 	if (!toolName) return;
-	if (toolName.startsWith("xdd_") && !stage.allowedTools.includes(toolName)) {
+	// Both runners share this policy.  Checking only xdd_* left Normal Flow's
+	// nf_* lifecycle tools outside the stage capability boundary: a stale or
+	// injected nf_rollback/nf_advance call could run even when the current stage
+	// did not advertise it.  Keep built-in tools governed by their path/bash
+	// policies below, and enforce every flow-controller namespace here.
+	if ((toolName.startsWith("xdd_") || toolName.startsWith("nf_")) && !stage.allowedTools.includes(toolName)) {
 		throw new Error(`[xdd policy] ${stage.name} 阶段不允许工具 ${toolName}；allowedTools=${stage.allowedTools.join(", ")}`);
 	}
 	if (toolName === "bash") {

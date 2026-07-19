@@ -45,6 +45,13 @@ describe("Normal Flow stage contracts", () => {
 		const verify = NF_STAGES.find((s) => s.name === "verify");
 		expect(verify?.writeScopes).toContain(".xdd/runs/normal_run/verify-report.md");
 	});
+
+	it("lets verify write its report while keeping source modification disabled", () => {
+		const verify = NF_STAGES.find((s) => s.name === "verify");
+		expect(verify?.allowedTools).toEqual(expect.arrayContaining(["write", "edit"]));
+		expect(verify?.noCodeModification).toBe(true);
+		expect(verify?.writeScopes).toEqual([".xdd/runs/normal_run/verify-report.md"]);
+	});
 });
 
 describe("Normal Flow traceability gates", () => {
