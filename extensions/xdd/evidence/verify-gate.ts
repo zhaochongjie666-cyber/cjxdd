@@ -23,6 +23,7 @@ export type EvidenceGateFailureCode =
 	| "BUSINESS_ENDPOINT_UNTESTED"
 	| "VERIFY_COMMAND_FAILED"
 	| "TRACE_GAP"
+	| "FEATURE_SCENARIO_GAP"
 	| "VERIFY_MUTATED_CONTRACT"
 	| "BLIND_JOURNEY_FAILED";
 
@@ -72,6 +73,8 @@ export async function evaluateVerifyEvidenceGateFull(cwd: string): Promise<Verif
 	if (!mutation.ok) return mutation;
 	const trace = evaluateTraceCoverage(cwd);
 	if (!trace.ok) return trace;
+	const scenarios = evaluateFeatureScenarioCoverage(cwd);
+	if (!scenarios.ok) return scenarios;
 	const commands = await evaluateHarnessValidationCommands(cwd);
 	if (!commands.ok) return commands;
 	const blind = evaluateBlindJourneyFailure(cwd);
@@ -104,6 +107,39 @@ export function evaluateTraceCoverage(cwd: string): VerifyEvidenceGateResult {
 		`verify Gate: spec RXX 与代码 @implements 追溯链不闭合（${details}）`,
 		[".xdd/design/spec", "src", "lib", "app"],
 		"为每条 spec RXX 添加真实实现和 @implements RXX 标注，并移除或修正没有对应 spec 的孤儿 @implements。",
+	);
+}
+
+/** Require every Gherkin Scenario to name both its production implementation and acceptance test in the active plan. */
+export function evaluateFeatureScenarioCoverage(cwd: string): VerifyEvidenceGateResult {
+	const specRoot = join(cwd, ".xdd", "design", "spec");
+	const scenarios = walk(specRoot)
+		.filter((file) => file.endsWith(".feature"))
+		.flatMap((file) => {
+			const featurePath = relative(specRoot, file).replaceAll("\\", "/");
+			return [...readFileSync(file, "utf8").matchAll(/^\s*(Scenario(?: Outline)?):\s*(.+?)\s*$/gm)]
+				.map((match) => ({ featurePath, keyword: match[1], name: match[2] }));
+		});
+	if (scenarios.length === 0) return { ok: true, soft: true };
+
+	const runDir = currentRunDir(cwd);
+	const planFiles = runDir ? walk(join(cwd, ".xdd", "runs", runDir)).filter((file) => file.endsWith("plan.md")) : [];
+	const taskBlocks = planFiles.flatMap((file) => readFileSync(file, "utf8").split(/^###\s+Task\b/gm).slice(1));
+	const missing = scenarios.filter((scenario) => !taskBlocks.some((block) => {
+		const featureLine = block.match(/^\*\*Feature:\*\*\s*`?([^`\n]+)`?\s*$/m)?.[1]?.trim();
+		if (!featureLine) return false;
+		const expected = `${scenario.featurePath} :: ${scenario.keyword}: ${scenario.name}`;
+		const basenameExpected = `${scenario.featurePath.split("/").at(-1)} :: ${scenario.keyword}: ${scenario.name}`;
+		const mapped = featureLine === expected || featureLine === basenameExpected;
+		return mapped && /^\*\*Implementation:\*\*\s*`?\S.+$/m.test(block) && /^\*\*Acceptance Test:\*\*\s*`?\S.+$/m.test(block);
+	}));
+	if (missing.length === 0) return { ok: true };
+	const labels = missing.map((scenario) => `${scenario.featurePath} :: ${scenario.keyword}: ${scenario.name}`);
+	return fail(
+		"FEATURE_SCENARIO_GAP",
+		`verify Gate: ${missing.length} 个 Feature Scenario 未指明可实现闭环（${labels.join("；")}）`,
+		[".xdd/design/spec/**/*.feature", `.xdd/runs/${runDir ?? XDD_RUN_DIR}/plan/**/plan.md`],
+		"为每个 Scenario/Scenario Outline 建立精确 **Feature:** 锚，并在同一 Task 填写生产代码 **Implementation:** 与可运行 **Acceptance Test:**；不得只映射 RXX。",
 	);
 }
 

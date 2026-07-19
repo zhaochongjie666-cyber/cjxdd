@@ -11,7 +11,7 @@ description: |
 
 ## 我锚定什么 / 上游 / 下游
 
-**我把计划变成能跑的代码** —— 按 task 顺序写，每个 commit 用 `@implements RXX` 回指规则，让代码可追溯到设计意图。执行者不改计划结构、不跳验证、不在阻塞时猜。
+**我把计划变成能跑的代码** —— 按 task 顺序写，并把当前 `plan.md` 当作执行期唯一事实源一边做一边更新；每个 commit 用 `@implements RXX` 回指规则，让代码可追溯到设计意图。执行者不擅改计划结构、不跳验证、不在阻塞时猜。
 
 | | |
 |---|---|
@@ -43,9 +43,31 @@ execute 是通用 TDD 主流程；专项 skill 补栈特定约定与检查。主
 
 ## Step 1：加载与审计计划
 
-1. 读 `.xdd/runs/xdd_run/plan/{bxx-slug}/plan.md`，提取：文件结构表、依赖关系表、RXX 覆盖追踪表、所有 task
-2. 逐项审计：每个 task 有精确文件路径？声明了依赖？标了回指 RXX？代码步骤是完整代码非占位符？验证步骤有精确命令+预期？
+1. 读 `.xdd/runs/xdd_run/plan/{bxx-slug}/plan.md` 和对应全部 `.feature`，提取：文件结构表、依赖关系表、RXX 覆盖追踪表、所有 Scenario/Scenario Outline 与 task
+2. 先做场景集合差，确认每个 Feature Scenario 都有精确 `Feature` 锚、生产代码 `Implementation` 落点和可运行 `Acceptance Test`；再逐项审计 task 的文件路径、依赖、RXX、完整代码与验证命令
 3. 分类问题：**结构性**（缺文件/占位符/类型不一致/缺依赖）→ 一次性上报全部，等修后重走 Step 1；**微小**（拼写/路径笔误）→ 记微调清单，不影响执行
+
+### Dynamic Plan + Grill（贯穿 Step 1-5）
+
+当前业务线的 `.xdd/runs/xdd_run/plan/{bxx-slug}/plan.md` 是唯一动态计划，不另建影子 TODO。**一边做一边写**：状态或事实发生变化后、开始下一动作前，立即原子更新 plan；禁止最后批量勾选。
+
+每个动作都执行一次 Grill，不停拷问而不是机械照单：
+
+1. **计划合理吗？** 当前动作仍服务对应 RXX/Scenario 吗？依赖真的满足吗？有没有更早、更小的验证？
+2. **实现合理吗？** 可观察行为符合契约吗？是否引入假实现、隐式耦合或计划外范围？
+3. **正向跑通了吗？** 用哪条真实命令/操作证明，而非“看起来正确”？
+4. **兜底被攻击了吗？** 失败、拒绝、异常、依赖不可用或恢复路径至少攻击了哪一条？
+5. **证据要求回炉吗？** 若事实推翻假设，应该修 execute，还是退回 plan/spec/architecture/resilience？
+
+动态更新格式写在对应 task/Step 下：
+
+```markdown
+- [~] **Step N: ...**
+  - Plan update (2026-01-01T00:00:00Z): Fact: ...; Grill: ...; Decision: ...; Impact: ...
+  - Evidence: `exact command` → PASS/FAIL（关键结果）
+```
+
+允许直接更新：`[ ] → [~] → [x]`、命令证据、失败次数、不改变外部契约的微调。必须 `[!]` 并回炉重规划：RXX/验收标准、公开接口、依赖 DAG、文件范围、新依赖或安全/韧性策略变化。重规划保留旧记录并追加原因，不擦除失败证据；这样中断或压缩后可从 plan 恢复真实进度。
 
 ## Step 2：逐 task TDD 执行
 
@@ -69,9 +91,10 @@ run_single_task(t):
   for step in t.plan_steps:                               # 2. 按 Step 顺序逐个执行（代码照抄，不计划外"优化"）
     pre_write_signoff(step)                               # 3. 写前默念（见下）
     run(step.cmd); compare actual vs step.expected        # 4. 验证步骤
-    step.status = [x]                                     # 5. 每步完成更新
-  assert tests_pass(t)                                    # 6. 全步完：task 内测试通过
-  update RXX 覆盖追踪表(t.RXX)
+    append step Evidence + Grill decision                 # 5. 证据先落盘
+    step.status = [x]                                     # 6. 每步完成立即更新，禁止批量补写
+  assert tests_pass(t)                                    # 7. 全步完：task 内测试通过
+  update RXX + Feature Scenario 覆盖追踪(t.RXX, t.Feature)
 ```
 
 **TDD 小回环（task 内，分钟级）**：红（写失败测试）→ 绿（写最小实现）→ 重构（清理）→ commit（message 含 RXX）。失败 → 修代码 → 再跑（不计数）。
@@ -90,6 +113,8 @@ run_single_task(t):
 ## Step 3：task 间 Review
 
 每完成一个 task 检查：计划测试命令过了？新增/修改文件跟计划一致？引入计划外变更了吗？下一 task 依赖满足了吗？
+
+把答案和命令证据写回 plan 后才解锁下一 task；“代码写完但 plan 未更新”仍算未完成。
 
 **计划外变更分级**：
 
@@ -121,6 +146,7 @@ bash skills/xdd-execute/scripts/no-stub-check.sh <你刚改的文件或目录>
 
 ```
 □ RXX 覆盖：plan 的每条 RXX 都有代码 @implements RXX + 测试？（列缺口补）
+□ Feature 覆盖：每个 Scenario/Scenario Outline 都已实现其 `Implementation`，对应 `Acceptance Test` 通过并有 Evidence？（按 feature 文件逐个点名，不能抽样）
 □ 端点覆盖：architecture 的 API 端点清单，每个都有真实现？（别 60→23）
 □ 真实持久化：写 → 查 → 重启后还在？（不是 mock DB）
 □ 跨服务链路：事件 producer → queue → consumer → DB 真跑通？（至少关键路径）
@@ -173,7 +199,7 @@ on_failure(n):                          # n = 同一 task 连续失败次数
 
 所有 task 完成后：
 1. 跑全量测试套件
-2. 检查 RXX 覆盖追踪表：每个 RXX / Scenario 有对应通过的测试？
+2. 重新枚举全部 Feature 文件：每个 Scenario/Scenario Outline 都有生产实现落点、对应通过的验收测试和 Evidence；不得只按 RXX 数量推断场景已完成
 3. 跑 no-stub-check.sh 全项目扫，零命中
 4. 检查 git log：commit 历史跟计划一致，每个 commit message 含 RXX
 5. 输出执行报告（计划名 / 状态 / task 完成表 / RXX 覆盖结果 / 全量测试结果 / 提交历史 / 遗留事项）

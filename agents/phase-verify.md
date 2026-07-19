@@ -19,7 +19,7 @@ temperature: 0.5
 1. 装 `xdd-verify` skill，按其 SKILL.md 走
 2. 健康检查：docker compose up --wait → 每服务 healthy + /healthz 200 + 每端点 curl 通
 3. 漫游测试：像真实用户走关键路径，每步留运行证据（用 scripts/wander-test.sh + 手工 UI）
-4. 4 维一致性审计：spec↔code（@implements 计数）/ wire↔code / architecture↔code（端点计数）/ resilience↔code
+4. 5 维一致性审计：Feature Scenario↔task↔生产实现↔验收测试（逐场景、不可抽样）/ spec↔code（@implements 计数）/ wire↔code / architecture↔code（端点计数）/ resilience↔code
 5. 混沌演练：跑 resilience/chaos-scenarios.md 的 P0 子集（用 chaos-runner.sh），验兜底真生效
 6. 存根扫描：no-stub-check.sh 全项目零命中
 7. 双契约：真实可用（持久化/认证/跨服务/重启保留/P0 证据）+ 生产接受（真实用户愿依赖）

@@ -19,11 +19,14 @@ temperature: 0.6
 1. 装 `xdd-execute` skill，按其 SKILL.md 走
 2. Step 0：准备环境（分支/依赖/测试框架/Docker 服务起来/DB 迁移）
 3. 加载 + 审计 plan（结构性问题一次性上报）
-4. 逐 task TDD：红（失败测试）→ 绿（最小实现）→ 重构 → commit（message 含 RXX）
+4. 把当前业务线 `plan.md` 作为唯一动态计划，逐 task 边做边写：开始标 `[~]`，每步完成立刻写命令证据并标 `[x]`，禁止收尾批量补写
+5. 每个动作前后 Grill：拷问计划是否仍合理、实现是否符合 RXX、正向是否真跑通、兜底是否被攻击、失败是否要求回炉到 plan/spec/architecture/resilience
+6. 点遍对应 `.feature` 的所有 Scenario/Scenario Outline；每个场景必须有明确生产实现符号、公开入口验收测试与 PASS Evidence，不能只实现 RXX 后假定所有场景完成
+7. 逐 task TDD：红（失败测试）→ 绿（最小实现）→ 重构 → commit（message 含 RXX）
    - Pre-write Signoff：每个方法写前读 plan + 理解实现哪条 RXX + 假设怎么被测
-5. 每 commit 前跑 `no-stub-check.sh`，零存根才提交
-6. 完成度自检：RXX 覆盖、端点覆盖、真实持久化、跨服务链路、0 存根、全测试 PASS
-7. 清理：装 `xdd-cleanup` skill，删调试残留 / 统一格式 / 剔死代码 / 同步文档，再交 verify
+8. 每 commit 前跑 `no-stub-check.sh`，零存根才提交
+9. 完成度自检：Feature Scenario 全覆盖、RXX 覆盖、端点覆盖、真实持久化、跨服务链路、0 存根、全测试 PASS
+10. 清理：装 `xdd-cleanup` skill，删调试残留 / 统一格式 / 剔死代码 / 同步文档，再交 verify
 
 ## 反 sham 底线（绝对禁止）
 

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ensureVerifySnapshot } from "../policy/verify-snapshot.ts";
-import { evaluateBlindJourneyFailure, evaluateTraceCoverage, evaluateVerifyEvidenceGate, evaluateVerifyEvidenceGateFull, evaluateVerifyMutation } from "./verify-gate.ts";
+import { evaluateBlindJourneyFailure, evaluateFeatureScenarioCoverage, evaluateTraceCoverage, evaluateVerifyEvidenceGate, evaluateVerifyEvidenceGateFull, evaluateVerifyMutation } from "./verify-gate.ts";
 import { extractEvidenceReferences, hasUnfinishedPlanCheckbox } from "./report-parser.ts";
 
 function project(): string {
@@ -151,6 +151,29 @@ describe("verify evidence gate", () => {
 			const result = evaluateTraceCoverage(cwd);
 			expect(result.failure?.code).toBe("TRACE_GAP");
 			expect(result.reason).toContain("R01");
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects a Feature Scenario without an implementation and acceptance-test mapping", () => {
+		const cwd = project();
+		try {
+			writeFileSync(join(cwd, ".xdd", "design", "spec", "b01", "login.feature"), "Feature: Login\n  Scenario: password succeeds\n    Given a user\n", "utf8");
+			const result = evaluateFeatureScenarioCoverage(cwd);
+			expect(result.failure?.code).toBe("FEATURE_SCENARIO_GAP");
+			expect(result.reason).toContain("login.feature :: Scenario: password succeeds");
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("accepts every Scenario and Scenario Outline mapped to production code and acceptance tests", () => {
+		const cwd = project();
+		try {
+			writeFileSync(join(cwd, ".xdd", "design", "spec", "b01", "login.feature"), "Feature: Login\n  Scenario: password succeeds\n  Scenario Outline: password fails\n    Examples:\n      | password |\n      | bad |\n", "utf8");
+			writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "plan", "task", "plan.md"), `### Task 1: success\n**Feature:** \`login.feature :: Scenario: password succeeds\`\n**Implementation:** \`src/auth.ts::login\`\n**Acceptance Test:** \`test/auth.test.ts::success\`\n- [x] done\n\n### Task 2: failure\n**Feature:** \`login.feature :: Scenario Outline: password fails\`\n**Implementation:** \`src/auth.ts::login\`\n**Acceptance Test:** \`test/auth.test.ts::failure\`\n- [x] done\n`, "utf8");
+			expect(evaluateFeatureScenarioCoverage(cwd).ok).toBe(true);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}

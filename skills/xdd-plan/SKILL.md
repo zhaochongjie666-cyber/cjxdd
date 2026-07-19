@@ -28,9 +28,10 @@ work():
   1. INPUT: 读全部设计层锚（design.md + spec/{bxx-slug}/ + architecture/{bxx-slug}/ + wire/ + resilience/）
   2. ACT:   输入对齐——术语 1:1 一致，未知标"待确认"，不编造
   3. ACT:   拆 task——一条行为路径 = 一个 task；粒度 3-5 个 Step
-  4. ACT:   每 task 标四字段（回指 RXX + Stack + Feature + Files）
+  4. ACT:   先枚举全部 `.feature` 的每个 Scenario/Scenario Outline，再让每个场景落入 task；每 task 标五字段（回指 RXX + Stack + Feature + Implementation + Files）
      GATE:  grep -c "回指 RXX" plan.md == task 数
             && grep -c "Stack:" plan.md == task 数
+            && grep -c "Implementation:" plan.md == task 数
             && grep -c "Files:" plan.md == task 数
   5. ACT:   排依赖（Depends on DAG，无依赖的首批先跑）
   6. ACT:   生成 .xdd/runs/xdd_run/plan/{bxx-slug}/plan.md
@@ -92,12 +93,25 @@ work():
 - **Background → 第一个相关 task 的 setup 步骤**
 - 每个 task 标 `**回指 RXX:**` + `**Feature:**`
 
+## Feature Scenario → 可实现闭环（禁止把 Feature 当参考资料闲置）
+
+生成 task 前逐文件读取 `.xdd/design/spec/{bxx-slug}/*.feature`，枚举所有 `Scenario:` 与 `Scenario Outline:`（Background 不是独立场景）。**每个场景必须且只能用规范锚至少映射到一个 task**：`relative/path.feature :: Scenario: 原始名称`；Outline 保留 `Scenario Outline:`，其 Examples 每一行都由该 task 的参数化验收测试执行。不得只写 Feature 文件名、不得用“相关场景”等模糊引用。
+
+每个场景的 task 必须同时指明：
+
+1. `**Implementation:**` 具体生产代码符号（如 `src/auth/service.ts::AuthService.login`），说明该场景由哪里实现；
+2. `**Acceptance Test:**` 具体测试文件 + 测试名，且测试通过公开入口执行该 Scenario 的 Given/When/Then；
+3. TDD Step 中先运行该验收测试得到 FAIL，再实现，再运行得到 PASS；完成后把 PASS 命令写入 Evidence。
+
+plan Gate 必须做集合差：`Feature 文件全部场景 - plan 的 **Feature:** 锚 = ∅`。任一场景漏映射、名称不精确、只有测试没有生产实现落点，plan 不得交 execute。
+
 ## 计划头部（每份必含）
 
 ```markdown
 # [功能] 实现计划
 
 > 给执行工程师：按顺序执行，每步用 checkbox 标进度。遇"待确认"立即停下问人。
+> 本文件也是执行期唯一的动态计划：边做边写，状态、命令证据和决策必须在发生时落盘，禁止收尾时批量补写。
 
 **目标：** [一句话]
 **架构：** [2-3 句方案]
@@ -135,6 +149,8 @@ work():
 **回指 RXX:** R01,R03
 **Stack:** backend
 **Feature:** `login.feature :: Scenario: 密码登录成功`
+**Implementation:** `src/auth/service.py::AuthService.login`
+**Acceptance Test:** `tests/features/test_login.py::test_password_login_success`
 **Files:**
 - Create: `exact/path/file.py`
 - Modify: `exact/path/existing.py:123-145`
@@ -184,7 +200,8 @@ git add ... && git commit -m "feat(auth): 实现 R01 登录返回JWT"
 ## 自检
 
 ```
-□ 规格覆盖：每条 RXX / 每个 Scenario 能指向一个 task？列缺口补上
+□ 规格覆盖：每条 RXX、每个 Feature Scenario/Scenario Outline 都能精确指向 task，且场景集合差为空？
+□ 可实现性：每个 Scenario task 都有生产代码 `Implementation` 落点 + 可运行 `Acceptance Test`，不是只复述设计？
 □ 占位符扫描：搜禁止模式，发现即修
 □ 类型一致性：跨 task 类型/方法签名/属性名一致（Task3 clearLayers vs Task7 clearFullLayers = bug）
 □ 术语一致性：状态名/字段名/API 名跟 spec/architecture/flow 1:1 一致
@@ -201,5 +218,7 @@ git add ... && git commit -m "feat(auth): 实现 R01 登录返回JWT"
 计划保存后给执行选择：(1) 逐 task 分派子 agent（推荐，大项目）；(2) 当前会话内联执行。
 
 **进度标记**：`- [ ]` 待执行 / `- [~]` 执行中 / `- [x]` 完成 / `- [!]` 阻塞（必附原因）。
+
+**动态计划约定**：执行者直接维护本文件，不另建一份 TODO/plan 造成双重事实源。task 开始即改 `[~]`；每个 Step 完成即改 `[x]` 并在该 Step 下追加 `Evidence: <命令 + 关键结果>`；假设、顺序或实现方式变化时追加带时间的 `Plan update`，说明“事实 / 拷问 / 决策 / 影响”。只允许原地更新进度、证据和不改变契约的微调；RXX、接口、依赖 DAG、文件范围或验收标准变化属于结构性变化，必须标 `[!]` 并回到 xdd-plan（必要时 design/spec/architecture）重规划后再执行。
 
 **阻塞上报**（遇即暂停）：计划标"待确认"、代码与计划不符、测试结果与预期不符、缺未声明依赖、需改计划结构。执行者不得自行改计划结构（可修拼写/路径错误）。
