@@ -13,6 +13,14 @@ const spec = STAGES.find((stage) => stage.name === "spec")!;
 const init = STAGES.find((stage) => stage.name === "init")!;
 
 describe("xdd policy", () => {
+	it("enforces allowedTools for both xdd and Normal Flow controller namespaces", () => {
+		const state = { cwd: "/tmp/xdd-policy", currentStage: () => ({ ...verify, allowedTools: ["xdd_observe", "nf_observe"] }) } as any;
+		expect(() => enforceToolCallPolicy(state, { toolName: "xdd_observe" })).not.toThrow();
+		expect(() => enforceToolCallPolicy(state, { toolName: "nf_observe" })).not.toThrow();
+		expect(() => enforceToolCallPolicy(state, { toolName: "xdd_advance" })).toThrow("不允许工具");
+		expect(() => enforceToolCallPolicy(state, { toolName: "nf_advance" })).toThrow("不允许工具");
+	});
+
 	it("allows every stage to use the lifecycle and recovery tools named in prompts", () => {
 		const promptTools = [
 			"xdd_observe",
@@ -52,6 +60,11 @@ describe("xdd policy", () => {
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
+	});
+
+	it("gives verify a report writer without granting source write access", () => {
+		expect(verify.allowedTools).toEqual(expect.arrayContaining(["write", "edit"]));
+		expect(verify.noCodeModification).toBe(true);
 	});
 
 	it("allows all design stages to iteratively update design artifacts", () => {

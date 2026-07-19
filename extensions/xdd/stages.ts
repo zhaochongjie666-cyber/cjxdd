@@ -462,11 +462,12 @@ export const STAGES: readonly XddStageSpec[] = [
 		role: roleFor("verify"),
 		skill: "xdd-verify",
 		exit: "verdict",
-		allowedTools: [...READ_TOOLS, "bash", ...CONTROLLER_TOOLS, "xdd_blind_journey"],
-		// Phase 4 (F.6): verify stage is read-only. The submit tool
-		// rejects any artifact write that touches source code. The
-		// model can still RUN tests via bash, but cannot write/edit
-		// source files (declared in the hard-reject list at submit time).
+		// verify 需要落盘 verify-report/evidence。write/edit 只提供写入动作，
+		// 实际路径仍由 verify 的 writeScopes 和 noCodeModification 限制。
+		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, "bash", ...CONTROLLER_TOOLS, "xdd_blind_journey"],
+		// Phase 4 (F.6): verify is source-code read-only. It may write only
+		// report/evidence paths; the submit tool rejects artifacts touching
+		// source code, and path policy independently constrains write/edit.
 		noCodeModification: true,
 		desiredState: [
 			"已对 spec 的每条 RXX 规则至少跑一次验证（手动 / 单元 / 集成 / 端到端之一）",

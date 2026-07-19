@@ -321,7 +321,9 @@ export const NF_STAGES: readonly XddStageSpec[] = [
 		role: roleFor("verify"),
 		skill: "xdd-verify",
 		exit: "verdict",
-		allowedTools: [...READ_TOOLS, "bash", ...NF_CONTROLLER_TOOLS],
+		// verify 必须生成报告；write/edit 仍受仅覆盖 verify-report.md 的
+		// writeScopes 与 noCodeModification 双重约束，不能借此修改源码。
+		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, "bash", ...NF_CONTROLLER_TOOLS],
 		noCodeModification: true,
 		desiredState: [
 			"已对 spec 的每条 RXX 规则至少跑一次验证",
