@@ -1,4 +1,7 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { type Static, Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { XddController } from "../core/controller.ts";
@@ -7,14 +10,105 @@ import type { XddRunnerState, XddStageName } from "../types.ts";
 import { type EmptyDetails, type GetXddState, ok } from "./index.ts";
 import { runAIGate, formatAIGateResult, type AIGateResult } from "../aigate.ts";
 import { getAIGateLLM } from "../llm-ref.ts";
-import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
 import { evaluateVerifyEvidenceGateFull } from "../evidence/verify-gate.ts";
 import { routeVerifyFailure } from "../verify-failure-routing.ts";
 import { startAIGateProgress } from "../aigate-progress.ts";
+import { digestReviewArtifactFiles, evaluateReviewVerdict, writeReviewVerdict, type ReviewType, type ReviewVerdict } from "../review-verdict.ts";
+import { codeReviewFromAIGate, writeCodeReviewReport } from "../code-review.ts";
+import { buildPreventionContext } from "../prevention-context.ts";
+import { evaluateProductionPathPolicy } from "../production-path-policy.ts";
 
 function elapsedMs(start: number): number {
 	return Math.max(0, Math.round(performance.now() - start));
+}
+
+function reviewTypeForStage(stage: XddStageName): ReviewType {
+	if (stage === "understand" || stage === "spec") return "requirement";
+	if (stage === "architecture" || stage === "wire" || stage === "resilience") return "architecture";
+	if (stage === "plan") return "qa";
+	if (stage === "verify") return "security";
+	return "code";
+}
+
+function modelIdentity(model: unknown): string {
+	const candidate = model as { provider?: unknown; id?: unknown; name?: unknown };
+	return [candidate.provider, candidate.id ?? candidate.name].filter(Boolean).map(String).join(":") || "configured-aigate-model";
+}
+
+function severityForAngle(name: string, findings: readonly string[]): "P1" | "P2" {
+	return /安全|权限|认证|越权|数据丢失|\bP[01]\b/i.test(`${name} ${findings.join(" ")}`) ? "P1" : "P2";
+}
+
+function isReviewableSourceArtifact(path: string): boolean {
+	if (path.startsWith(".xdd/") || /(^|\/)(?:tests?|docs?|fixtures?)(\/|$)/i.test(path)) return false;
+	return /(^|\/)(?:src|lib|app|server|client|cmd|internal|pkg)(\/|$)/i.test(path)
+		|| /\.(?:[cm]?[jt]sx?|py|go|rs|java|kt|cs|rb|php|swift|vue|svelte)$/i.test(path);
+}
+
+function changedProductionSources(cwd: string): string[] {
+	return execFileSync("git", ["status", "--porcelain=v1", "--untracked-files=all"], { cwd, encoding: "utf8" })
+		.split("\n").filter(Boolean)
+		.map((line) => line.slice(3).split(" -> ").at(-1) ?? "")
+		.filter(isReviewableSourceArtifact);
+}
+
+function persistAIGateReview(params: {
+	state: XddRunnerState;
+	stage: ReturnType<XddRunnerState["currentStage"]> & {};
+	model: unknown;
+	artifacts: string[];
+	mechanicalReason?: string;
+	selfAttack: string;
+	result: AIGateResult;
+	status: ReviewVerdict["verdict"];
+	overrideReason?: string;
+	preventionPatternIds?: string[];
+}): void {
+	const { state, stage, model, artifacts, mechanicalReason, selfAttack, result, status, overrideReason, preventionPatternIds } = params;
+	const artifactPaths = [...(artifacts.length > 0 ? artifacts : stage.deliverablePaths)];
+	const artifactDigest = digestReviewArtifactFiles(state.cwd, artifactPaths);
+	const reviewVerdict: ReviewVerdict = {
+		schemaVersion: 1,
+		reviewType: reviewTypeForStage(stage.name),
+		artifactDigest,
+		artifactPaths,
+		noArtifactReason: artifactPaths.length === 0 && stage.name === "cleanup"
+			? `cleanup 阶段无文件产物：${params.mechanicalReason ?? "机械检查确认现有工作树无需清理"}`
+			: undefined,
+		creatorId: state.stageEpoch,
+		reviewerId: `pi-aigate:${modelIdentity(model)}`,
+		model: modelIdentity(model),
+		contextPolicy: "isolated",
+		verdict: status,
+		score: status === "pass" ? 100 : status === "inconclusive" ? 0 : 50,
+		findings: result.angles
+			.filter((angle) => angle.passed === false)
+			.map((angle, index) => ({ id: `AIG-${index + 1}`, severity: severityForAngle(angle.name, angle.findings), category: angle.name, evidence: angle.findings.join("；") || angle.name })),
+		positivePathEvidence: [mechanicalReason ?? "机械 Gate 通过"],
+		fallbackAttackEvidence: [selfAttack],
+		overrides: overrideReason ? [{ actor: "xdd-aigate-budget-policy", reason: overrideReason, at: new Date().toISOString() }] : [],
+		preventionPatternIds,
+	};
+	const reviewPolicy = evaluateReviewVerdict(reviewVerdict, artifactDigest, {
+		requireIndependentReviewer: true,
+		requirePositivePathEvidence: true,
+		requireFallbackAttackEvidence: true,
+		allowOverrides: Boolean(overrideReason),
+	});
+	if (!reviewPolicy.ok) throw new Error(`[xdd] AIGate review verdict policy failed: ${reviewPolicy.reasons.join("；")}`);
+	writeReviewVerdict(state.cwd, stage.name, reviewVerdict);
+	if (stage.name === "execute") {
+		writeCodeReviewReport(state.cwd, codeReviewFromAIGate({
+			artifactDigest,
+			artifactPaths,
+			creatorId: reviewVerdict.creatorId,
+			reviewerId: reviewVerdict.reviewerId,
+			model: reviewVerdict.model,
+			status,
+			result,
+			preventionPatternIds,
+		}));
+	}
 }
 
 function formatSubmitTimings(timings: { hardGateMs?: number; aiGateMs?: number; aiGateEnabled?: boolean }): string {
@@ -95,6 +189,17 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			const summary = String(params.summary ?? "");
 			const artifacts = params.artifacts ?? [];
 			const selfAttack = params.selfAttack?.trim();
+			if (stage.name === "execute") {
+				const submitted = new Set(artifacts.filter(isReviewableSourceArtifact));
+				const omitted = changedProductionSources(state.cwd).filter((path) => !submitted.has(path));
+				if (submitted.size === 0 || omitted.length > 0) {
+					throw new Error(`[xdd_submit_artifact] execute 必须声明全部变更的生产源码路径；缺少：${omitted.length > 0 ? omitted.join(", ") : "至少一个生产源码路径"}。Code Reviewer 不接受部分源码或只审 plan/docs/tests。`);
+				}
+			}
+			if (stage.name === "execute") {
+				const pathPolicy = evaluateProductionPathPolicy(state.cwd);
+				if (!pathPolicy.ok) throw new Error(`[xdd_submit_artifact] ${pathPolicy.reason}`);
+			}
 			// Phase 4 (F.6): verify stage is read-only by contract. Reject
 			// any artifact write that touches source code (src/, lib/,
 			// tests/, etc.) -- the model must only write report/evidence.
@@ -169,9 +274,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					};
 				}
 				if (stage.exit !== "verdict") {
-					dispatchToController(state, { type: "RECORD_SIGNAL", signal: "complete" });
-					dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
-					return ok(`⚠️ [硬 Gate ${hardUsed}/${hardBudget.limit}] ${stage.name} 未通过且预算耗尽：${error}\n硬 Gate 告警已记录，现软通过；请调用 xdd_advance 自动推进。`);
+					return ok(`❌ [硬 Gate ${hardUsed}/${hardBudget.limit}] ${stage.name} 未通过且预算耗尽：${error}\n没有生成 review verdict，禁止软通过。请修复产物后重试，或诊断根因并回退到负责阶段。`);
 				}
 				return handleExhaustedVerifyFailure(state, error, "硬 Gate", hardUsed, hardBudget.limit, diagnosedVerifyRollbackTarget(state));
 			}
@@ -207,6 +310,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 				}
 				const finishProgress = startAIGateProgress(ctx?.ui, stage.name);
 				let aiResult: AIGateResult;
+				const prevention = buildPreventionContext(state.cwd, stage.name, `${state.userInput}\n${summary}`);
 				try {
 					aiResult = await runAIGate({
 						model: llmInfo.model,
@@ -215,7 +319,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 						env: llmInfo.env,
 						stageName: stage.name,
 						skillName: stage.skill,
-						aigateStandard: stage.aigateStandard,
+						aigateStandard: [stage.aigateStandard, prevention.text].filter(Boolean).join("\n\n"),
 						artifactPaths: artifacts.length > 0 ? artifacts : stage.deliverablePaths,
 						outputContract: stage.outputs,
 						mechanicalCheckResult,
@@ -240,12 +344,14 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					const aiError = aiResult.issues.join("; ") || "AIGate 服务或响应格式异常";
 					const angleText = formatAIGateResult(aiResult);
 					if (degradedBudget.exhausted) {
-						dispatchToController(state, { type: "RECORD_SIGNAL", signal: "complete" });
-						dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
-						return ok(`⚠️ [AIGate ${degradedUsed}/${degradedBudget.limit}] ${stage.name} 审查连续不可用（基础设施故障），告警已记录，现软通过。
+						persistAIGateReview({ state, stage, model: llmInfo.model, artifacts, mechanicalReason: mechanicalCheckResult.reason, selfAttack: selfAttack!, result: aiResult, status: "inconclusive", overrideReason: `AIGate 基础设施连续 ${degradedUsed} 次不可用；保留审查记录并按软 Gate 策略放行，后续阶段继续攻击。`, preventionPatternIds: prevention.patternIds });
+						const softPass = stage.exit !== "verdict" || Boolean(params.pass);
+						dispatchToController(state, { type: "RECORD_SIGNAL", signal: stage.exit === "verdict" ? (softPass ? "verdict_pass" : "verdict_fail") : "complete" });
+						dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: softPass } });
+						return ok(`⚠️ [AIGate ${degradedUsed}/${degradedBudget.limit}] ${stage.name} 审查连续不可用（基础设施故障），已记录 inconclusive verdict 与软 Gate override。
 原因：${aiError}
 ${angleText}
-硬 Gate 已通过，产物机械验证合格。${formatSubmitTimings({ hardGateMs, aiGateMs, aiGateEnabled })}。请调用 xdd_advance 自动推进。`);
+硬 Gate 已通过；不再为审查基础设施无限卡住流程。${formatSubmitTimings({ hardGateMs, aiGateMs, aiGateEnabled })}。请调用 xdd_advance 继续。`);
 					}
 					dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error: aiError } });
 					const retryAdvice = /timeout/i.test(aiError)
@@ -255,7 +361,7 @@ ${angleText}
 						content: [{ type: "text", text: `⚠️ [AIGate degraded ${degradedUsed}/${degradedBudget.limit}] ${stage.name} 审查服务/响应格式异常（基础设施故障）：
 原因：${aiError}
 ${angleText}
-剩余 degraded 预算：${degradedBudget.remaining}/${degradedBudget.limit}（耗尽后将软通过）
+剩余 degraded 预算：${degradedBudget.remaining}/${degradedBudget.limit}（耗尽后记录 override 并软放行）
 本 turn 继续。${formatSubmitTimings({ hardGateMs, aiGateMs, aiGateEnabled })}。${retryAdvice}` }],
 						details: {},
 					};
@@ -275,12 +381,20 @@ ${angleText}
 						? "\n修改建议：\n" + aiResult.suggestions.map((s, n) => `${n + 1}. ${s}`).join("\n")
 						: "";
 					if (aiBudget.exhausted) {
-						if (stage.exit === "verdict") {
-							return handleExhaustedVerifyFailure(state, aiError, "AIGate", aiUsed, aiBudget.limit, diagnosedVerifyRollbackTarget(state), `${angleText}${suggText}`);
+						const hasPriorityBlocker = aiResult.angles.some((angle) =>
+							angle.passed === false && severityForAngle(angle.name, angle.findings) === "P1"
+						);
+						if (hasPriorityBlocker) {
+							if (stage.exit === "verdict") {
+								return handleExhaustedVerifyFailure(state, aiError, "AIGate P1", aiUsed, aiBudget.limit, diagnosedVerifyRollbackTarget(state), `\n${angleText}${suggText}`);
+							}
+							return ok(`❌ [AIGate ${aiUsed}/${aiBudget.limit}] ${stage.name} 审查发现不可 override 的 P0/P1 blocker：\n${angleText}${suggText}\n未写入无效 verdict、未记录完成信号。请回到负责阶段修复安全/权限/数据风险后重新提交。`);
 						}
-						dispatchToController(state, { type: "RECORD_SIGNAL", signal: "complete" });
-						dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
-						return ok(`⚠️ [AIGate ${aiUsed}/${aiBudget.limit}] ${stage.name} 统一审查未通过且预算耗尽：\n${angleText}${suggText}\nAIGate 告警已记录，现软通过；${formatSubmitTimings({ hardGateMs, aiGateMs, aiGateEnabled })}。请调用 xdd_advance 自动推进。`);
+						persistAIGateReview({ state, stage, model: llmInfo.model, artifacts, mechanicalReason: mechanicalCheckResult.reason, selfAttack: selfAttack!, result: aiResult, status: "fail", overrideReason: `AIGate 已完成 ${aiUsed} 轮严格审查仍未收敛；按软 Gate 策略停止细节循环，保留 findings 供后续阶段继续验证。`, preventionPatternIds: prevention.patternIds });
+						const softPass = stage.exit !== "verdict" || Boolean(params.pass);
+						dispatchToController(state, { type: "RECORD_SIGNAL", signal: stage.exit === "verdict" ? (softPass ? "verdict_pass" : "verdict_fail") : "complete" });
+						dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: softPass } });
+						return ok(`⚠️ [AIGate ${aiUsed}/${aiBudget.limit}] ${stage.name} 严格审查达到预算上限：\n${angleText}${suggText}\n已保留 fail verdict/findings 并记录软 Gate override；${formatSubmitTimings({ hardGateMs, aiGateMs, aiGateEnabled })}。请调用 xdd_advance 继续。`);
 					}
 					// Layer 2: AIGate failed with budget remaining -- keep the
 					// same agent turn alive. Semantic review feedback is actionable
@@ -291,6 +405,7 @@ ${angleText}
 						details: {},
 					};
 				}
+				persistAIGateReview({ state, stage, model: llmInfo.model, artifacts, mechanicalReason: mechanicalCheckResult.reason, selfAttack: selfAttack!, result: aiResult, status: "pass", preventionPatternIds: prevention.patternIds });
 			}
 			// The unified AIGate passed -- mark "real progress" only here. Setting lastSubmitAt
 			// before the gate (the old behavior) caused agent_end to mis-detect stalls

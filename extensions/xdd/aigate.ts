@@ -23,6 +23,8 @@ import { join } from "node:path";
 import { complete, type AssistantMessage, type Model } from "@earendil-works/pi-ai/compat";
 import { resolveGlobs, safeRealpath } from "./glob-resolver.ts";
 import type { XddGateResult } from "./types.ts";
+import { CODE_REVIEW_ANGLES } from "./code-review.ts";
+import { COMMIT_REVIEW_ANGLES } from "./commit-review.ts";
 
 /**
  * AIGate reviews several artifacts and returns one verdict per attack angle.
@@ -336,6 +338,16 @@ const STAGE_ANGLES: Record<string, AttackAngle[]> = {
 				"测试是否通过公开 API 调用（不绕过应用层直接改 DB）？",
 			],
 		},
+		...CODE_REVIEW_ANGLES.map((name) => ({
+			name,
+			description: `只读 Code Reviewer：${name}`,
+			checks: name === "空值安全攻击" ? ["可空值、缺失字段、空集合、错误类型收窄是否安全？"]
+				: name === "并发安全攻击" ? ["共享状态、竞态、幂等、事务隔离和条件更新是否正确？"]
+				: name === "资源生命周期攻击" ? ["文件、连接、流、锁、定时器和订阅是否在成功/失败路径都释放？"]
+				: name === "授权与注入攻击" ? ["身份是否来自可信上下文？是否存在越权、SQL/命令/模板注入或敏感数据泄漏？"]
+				: name === "错误处理攻击" ? ["异常是否被吞掉、误分类或泄露内部细节？失败是否保留原状态并可恢复？"]
+				: ["生产代码是否越过 architecture 模块边界、事务边界或引入未声明依赖？"],
+		})),
 	],
 	cleanup: [
 		{
@@ -399,7 +411,32 @@ const STAGE_ANGLES: Record<string, AttackAngle[]> = {
 			],
 		},
 	],
+	commit: COMMIT_REVIEW_ANGLES.map((name) => ({
+		name,
+		description: `只读 staged diff reviewer：${name}`,
+		checks: name === "权限校验删除攻击" ? ["diff 是否删除、绕过或弱化认证、授权、租户隔离、审计检查？"]
+			: name === "测试弱化攻击" ? ["diff 是否删除测试、skip 测试、放宽断言或只改快照以掩盖行为变化？"]
+			: name === "密钥泄漏攻击" ? ["diff 是否加入密钥、Token、密码、私钥、内部凭证或敏感配置？"]
+			: name === "破坏性迁移攻击" ? ["迁移是否不可逆、丢数据、长时间锁表，且缺少备份/回滚/分批策略？"]
+			: name === "契约破坏攻击" ? ["公开 API、CLI、事件 schema、配置或持久化格式是否发生未声明破坏？"]
+			: ["diff 是否删除超时、重试、幂等、限流、熔断、恢复或可观测性保护？"],
+	})),
 };
+
+/** Fail fast because angle names are stable identifiers in the verdict protocol. */
+export function validateStageAttackAngles(): void {
+	for (const [stage, angles] of Object.entries(STAGE_ANGLES)) {
+		const seen = new Set<string>();
+		for (const angle of angles) {
+			if (seen.has(angle.name)) {
+				throw new Error(`[xdd] AIGate stage ${stage} contains duplicate attack angle: ${angle.name}`);
+			}
+			seen.add(angle.name);
+		}
+	}
+}
+
+validateStageAttackAngles();
 
 // ── Context file reading for cross-artifact angles ─────────────────────
 
@@ -570,6 +607,11 @@ export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
 	// not impose xdd-level character caps: AIGate must review the full
 	// submitted files for large projects.
 	const artifacts: string[] = readFilesUncapped(cwd, artifactPaths);
+	// Cleanup may legitimately produce no file when inspection confirms that the
+	// tree is already clean. Review its explicit completion claim instead.
+	if (stageName === "cleanup" && artifacts.length === 0 && submissionSummary?.trim()) {
+		artifacts.push(`--- cleanup completion summary ---\n${submissionSummary.trim()}`);
+	}
 
 	// Understand stage also reads personas (for traceability attack).
 	if (stageName === "understand") {

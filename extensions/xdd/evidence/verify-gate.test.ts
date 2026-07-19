@@ -12,6 +12,7 @@ function project(): string {
 	mkdirSync(join(cwd, ".xdd", "runs", "xdd_run", "evidence"), { recursive: true });
 	mkdirSync(join(cwd, ".xdd", "design", "spec", "b01"), { recursive: true });
 	writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "plan", "task", "plan.md"), "- [x] done\n", "utf8");
+	writeFileSync(join(cwd, ".xdd", "runs", "xdd_run", "qa-plan.md"), ["happy", "rejection", "boundary", "concurrency", "dependency-failure", "load"].map((category, index) => `### QA-N${index}\n- Category: ${category}\n- Applicability: not-applicable\n- Reason: 此测试夹具没有对应的公开入口测试责任\n`).join("\n"), "utf8");
 	writeFileSync(join(cwd, ".xdd", "design", "spec", "b01", "rules.md"), "| ID | Rule |\n| R01 | rule |\n", "utf8");
 	return cwd;
 }

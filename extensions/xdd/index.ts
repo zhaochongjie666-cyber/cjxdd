@@ -4,6 +4,35 @@ export { activateXddExtension, deactivateXddExtension, xddInlineExtension } from
 // pi ExtensionAPI expects a default-exported factory function.
 export default xddInlineExtension.factory;
 export { runXdd, continueXdd, resumeXdd, xddStatus, archiveXdd } from "./run.ts";
+export { digestReviewArtifactFiles, digestReviewArtifacts, evaluateReviewVerdict, evaluateStoredReviewVerdict, readReviewVerdict, writeReviewVerdict } from "./review-verdict.ts";
+export { evaluateQaEvidenceGate, evaluateQaPlanGate, parseQaPlan, QA_CATEGORIES } from "./qa-plan.ts";
+export type { QaCategory } from "./qa-plan.ts";
+export { CODE_REVIEW_ANGLES, codeReviewFromAIGate, evaluateCodeReviewGate, writeCodeReviewReport } from "./code-review.ts";
+export type { CodeReviewCheck, CodeReviewReport } from "./code-review.ts";
+export { COMMIT_REVIEW_ANGLES, commitReviewFromAIGate, evaluateCommitReviewGate, readCommitReviewReport, readStagedSnapshot, writeCommitReviewReport } from "./commit-review.ts";
+export type { CommitReviewReport, StagedSnapshot } from "./commit-review.ts";
+export { buildReleaseDecision, evaluateReleaseDecisionGate, releaseInputDigest, writeReleaseDecision } from "./release-decision.ts";
+export type { ReleaseCheck, ReleaseDecision } from "./release-decision.ts";
+export { evaluateRuntimeObservabilityGate, evaluateRuntimeObservation, recordRuntimeObservation, sanitizeRuntimeObservation, writeRuntimeBaseline } from "./runtime-observability.ts";
+export type { RuntimeFinding, RuntimeIncident, RuntimeMetric, RuntimeObservation } from "./runtime-observability.ts";
+export { BUG_CATEGORIES, bugFingerprint, findMatchingBugPatterns, generatePreventionRule, readBugKnowledgeBase, recordBugLearning } from "./bug-knowledge.ts";
+export type { BugCategory, BugKnowledgeBase, BugLearning, BugPattern, PreventionRule } from "./bug-knowledge.ts";
+export { buildQualityScore, evaluateQualityScoreGate, qualityScoreInputDigest, writeQualityScore } from "./quality-score.ts";
+export type { QualityMetric, QualityScore } from "./quality-score.ts";
+export { createQualityMigration, evaluateLegacyQualityWaiver, readQualityMigration } from "./quality-migration.ts";
+export type { LegacyQualityRequirement, QualityMigrationManifest } from "./quality-migration.ts";
+export { buildPreventionContext } from "./prevention-context.ts";
+export type { PreventionInjection } from "./prevention-context.ts";
+export type {
+	ReviewContextPolicy,
+	ReviewFinding,
+	ReviewPolicy,
+	ReviewPolicyResult,
+	ReviewSeverity,
+	ReviewType,
+	ReviewVerdict,
+	ReviewVerdictStatus,
+} from "./review-verdict.ts";
 export { archiveRun } from "./archive.ts";
 export { loadXddSkills } from "./skill-loader.ts";
 export {

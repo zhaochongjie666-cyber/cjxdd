@@ -266,7 +266,7 @@ on_failure(n):                          # n = 同一处连续失败次数
 | 设计·架构 | ⏳ | xdd-architecture | design/architecture/{bxx-slug}/ |
 | 设计·前端 | ⏳ | xdd-wire | design/wire/{page}/ |
 | 设计·韧性 | ⏳ | xdd-resilience | design/architecture/{bxx-slug}/resilience/ |
-| 桥接·计划 | ⏳ | xdd-plan | runs/xdd_run/plan/{bxx-slug}/plan.md |
+| 桥接·计划 | ⏳ | xdd-plan | runs/xdd_run/qa-plan.md + plan.md |
 | 代码·实现 | ⏳ | xdd-execute | 代码 @implements RXX |
 | 代码·验证 | ⏳ | xdd-verify | runs/xdd_run/verify-report.md |
 

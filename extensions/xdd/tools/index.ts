@@ -24,6 +24,12 @@ import { createXddSubmitArtifactTool } from "./xdd-submit-artifact.ts";
 import { createXddTraceTool } from "./xdd-trace.ts";
 import { createXddHarnessGetTool } from "./xdd-harness-get.ts";
 import { createXddHarnessSetTool } from "./xdd-harness-set.ts";
+import { createXddCommitReviewTool } from "./xdd-commit-review.ts";
+import { createXddReleaseDecisionTool } from "./xdd-release-decision.ts";
+import { createXddRuntimeObserveTool } from "./xdd-runtime-observe.ts";
+import { createXddBugLearnTool } from "./xdd-bug-learn.ts";
+import { createXddQualityScoreTool } from "./xdd-quality-score.ts";
+import { createXddMigrateQualityTool } from "./xdd-migrate-quality.ts";
 
 export function createXddTools(getState: GetXddState): ToolDefinition[] {
 	return [
@@ -42,5 +48,11 @@ export function createXddTools(getState: GetXddState): ToolDefinition[] {
 		createXddHarnessGetTool(getState),
 		createXddHarnessSetTool(getState),
 		createXddBlindJourneyTool(getState),
+		createXddCommitReviewTool(getState),
+		createXddReleaseDecisionTool(getState),
+		createXddRuntimeObserveTool(getState),
+		createXddBugLearnTool(getState),
+		createXddQualityScoreTool(getState),
+		createXddMigrateQualityTool(getState),
 	];
 }

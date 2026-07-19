@@ -26,7 +26,8 @@ temperature: 0.6
    - Pre-write Signoff：每个方法写前读 plan + 理解实现哪条 RXX + 假设怎么被测
 8. 每 commit 前跑 `no-stub-check.sh`，零存根才提交
 9. 完成度自检：Feature Scenario 全覆盖、RXX 覆盖、端点覆盖、真实持久化、跨服务链路、0 存根、全测试 PASS
-10. 清理：装 `xdd-cleanup` skill，删调试残留 / 统一格式 / 剔死代码 / 同步文档，再交 verify
+10. 把生产源码路径提交给 Pi 原生 AIGate 的隔离只读 Code Reviewer，生成 code-review.json；审查调用只报告空值/并发/资源/授权注入/错误处理/架构漂移，不修改源码
+11. 清理：装 `xdd-cleanup` skill，删调试残留 / 统一格式 / 剔死代码 / 同步文档，再交 verify
 
 ## 反 sham 底线（绝对禁止）
 
@@ -51,6 +52,7 @@ if same_task.failures == 3:
 - [ ] 端点清单每个都真实现（别 60→23）？
 - [ ] 真实持久化（重启后数据还在）+ 跨服务链路真跑通？
 - [ ] 全量测试 PASS？
+- [ ] code-review.json 绑定当前源码 digest，六个只读检查维度齐全？
 - [ ] 清理完成：无调试代码 / 格式统一 / 无死代码 / README 反映最终接口？
 
 ## 完成后

@@ -84,6 +84,8 @@ trace_chain():
 
 **始终用 BXX**：单业务线 = 一个 B01，多业务线 = B01/B02/...。单→多演进零重构。业务线内多功能靠 RXX 编号（B01-R01/R02）区分，不增设子目录。
 
+这里的“始终用 BXX”**仅限 `.xdd` 的设计/计划目录与追踪标识**。BXX 是业务线编号，不是生产代码架构。禁止据此创建 `src/b01-*`、`backend/services/B02-*`、BXX 包名/服务名/容器名；生产代码必须沿用现有工程结构并使用领域能力名称（如 `auth-service`、`project-service`）。
+
 ```
 for each BXX:
   独立产出 spec/{bxx-slug}/ + architecture/{bxx-slug}/      # 各 BXX 独立

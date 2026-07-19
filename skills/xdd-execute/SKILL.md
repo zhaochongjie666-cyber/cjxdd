@@ -15,7 +15,7 @@ description: |
 
 | | |
 |---|---|
-| **上游** | `xdd-plan`（`.xdd/runs/xdd_run/plan/{bxx-slug}/plan.md` task DAG + RXX 回指） |
+| **上游** | `xdd-plan`（`.xdd/runs/xdd_run/plan.md` task DAG + 冻结的 `qa-plan.md` 公开入口测试契约） |
 | **我产出** | 代码（每处 `@implements RXX`）+ 测试（每个 RXX 至少 1 个）+ 执行报告 |
 | **下游消费者** | `xdd-verify`（按 Feature 验收 + 真实可用契约） |
 | **回溯锚** | 代码注释 `@implements RXX` ← plan task ← spec 规则 ← design 意图 |
@@ -43,9 +43,15 @@ execute 是通用 TDD 主流程；专项 skill 补栈特定约定与检查。主
 
 ## Step 1：加载与审计计划
 
-1. 读 `.xdd/runs/xdd_run/plan/{bxx-slug}/plan.md` 和对应全部 `.feature`，提取：文件结构表、依赖关系表、RXX 覆盖追踪表、所有 Scenario/Scenario Outline 与 task
+1. 读 `.xdd/runs/xdd_run/plan.md`、`.xdd/runs/xdd_run/qa-plan.md` 和对应全部 `.feature`，提取任务、全部 QA-XXX、公开 Entry 与 Expected
 2. 先做场景集合差，确认每个 Feature Scenario 都有精确 `Feature` 锚、生产代码 `Implementation` 落点和可运行 `Acceptance Test`；再逐项审计 task 的文件路径、依赖、RXX、完整代码与验证命令
 3. 分类问题：**结构性**（缺文件/占位符/类型不一致/缺依赖）→ 一次性上报全部，等修后重走 Step 1；**微小**（拼写/路径笔误）→ 记微调清单，不影响执行
+
+**QA 冻结纪律**：execute 可以实现 QA 测试及其 fixture，但不得修改 qa-plan.md 的 `Feature`、`Entry`、`Expected` 或适用性结论来迁就代码。若实现事实证明 QA 契约错误，标记阻塞并回到 plan/spec 修订，再重新生成 plan review verdict。
+
+**BXX 不进入代码目录（硬约束）**：`B01/B02/BXX` 只是 `.xdd` 设计文档和追踪矩阵里的业务线编号。源码目录、包名、服务名、容器名与部署目录必须按领域能力命名，并优先沿用项目已有结构。禁止创建 `b01-auth/`、`B02-project/` 等目录；应使用 `auth-service/`、`project-service/` 等语义名称。RXX 只允许出现在追踪表、提交说明和 `@implements RXX` 标注中。
+
+**只读 Code Review 交接**：提交 execute 产物时，`artifacts` 必须包含生产源码路径，不能只交 plan/docs/tests。AIGate 使用 Pi 当前模型的隔离审查上下文检查空值安全、并发安全、资源生命周期、授权与注入、错误处理、架构漂移，并生成 `.xdd/runs/xdd_run/code-review.json`；Reviewer 只报告，不在审查调用中修改源码。
 
 ### Dynamic Plan + Grill（贯穿 Step 1-5）
 

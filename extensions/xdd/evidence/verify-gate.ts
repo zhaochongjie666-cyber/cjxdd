@@ -9,6 +9,7 @@ import { HarnessStore } from "../harness/store.ts";
 import { buildTraceCoverage, observeFilesystem } from "../observe-fs.ts";
 import { diffVerifySnapshot, formatVerifySnapshotDiff } from "../policy/verify-snapshot.ts";
 import { detectEvidenceCategories, extractEvidenceReferences, hasUnfinishedPlanCheckbox } from "./report-parser.ts";
+import { evaluateQaEvidenceGate } from "../qa-plan.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -75,6 +76,8 @@ export async function evaluateVerifyEvidenceGateFull(cwd: string): Promise<Verif
 	if (!trace.ok) return trace;
 	const scenarios = evaluateFeatureScenarioCoverage(cwd);
 	if (!scenarios.ok) return scenarios;
+	const qaEvidence = evaluateQaEvidenceGate(cwd);
+	if (!qaEvidence.ok) return qaEvidence;
 	const commands = await evaluateHarnessValidationCommands(cwd);
 	if (!commands.ok) return commands;
 	const blind = evaluateBlindJourneyFailure(cwd);

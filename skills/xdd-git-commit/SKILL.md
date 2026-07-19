@@ -23,6 +23,8 @@ commit():
   if empty(staged):
       suggest_what_to_stage()          # 别对着空 index 硬写
       return
+  review = xdd_commit_review(staged)   # Pi 隔离上下文只读审查，绑定 index tree/diff digest
+  if !review.gate_ok: return           # 高风险阻断；普通细节三轮后可审计软放行
   msg = compose_message(staged)        # type + scope + 描述 + body
   show(msg)                             # 给用户过目
   git_commit(msg)
@@ -30,10 +32,11 @@ commit():
 ```
 
 1. **看改动** —— `git diff --staged`（加上 `--stat` 先看轮廓）。
-2. **若暂存区空** —— 不要硬编 message。看 `git status`，问/建议用户要暂存哪些文件。
-3. **组装 message** —— 按 Conventional Commits 推断 type/scope/描述，必要时加 body。
-4. **过目** —— 把最终 message 完整展示给用户（多行原样，含 footer）。
-5. **提交** —— 执行 `git commit`，回显分支名 + 提交摘要。
+2. **独立 Diff Review** —— 调用 `xdd_commit_review`，只读审查 staged diff；报告绑定当前 index tree/diff digest，diff 变化必须重跑。
+3. **若暂存区空** —— 不要硬编 message。看 `git status`，问/建议用户要暂存哪些文件。
+4. **组装 message** —— 按 Conventional Commits 推断 type/scope/描述，必要时加 body。
+5. **过目** —— 把最终 message 完整展示给用户（多行原样，含 footer）。
+6. **提交** —— 只有当前 staged tree 的 Commit Review Gate 仍通过才执行 `git commit`，然后回显分支名 + 提交摘要。
 
 ## 1. 采集改动
 

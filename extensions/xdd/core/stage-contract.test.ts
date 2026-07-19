@@ -31,8 +31,9 @@ describe("compileStageContracts", () => {
 		const plan = compileStageContracts(STAGES).find((stage) => stage.name === "plan");
 		expect(plan?.outputs?.map((rule) => rule.pattern)).toEqual([
 			".xdd/runs/xdd_run/plan.md",
+			".xdd/runs/xdd_run/qa-plan.md",
 		]);
-		expect(plan?.writeScopes).toEqual([".xdd/runs/xdd_run/plan.md"]);
+		expect(plan?.writeScopes).toEqual([".xdd/runs/xdd_run/plan.md", ".xdd/runs/xdd_run/qa-plan.md"]);
 	});
 
 	it("rejects required outputs not covered by writeScopes", () => {

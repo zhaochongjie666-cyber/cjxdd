@@ -4,6 +4,7 @@ import { REFLECT_PREAMBLE, XDD_PREAMBLE } from "./preambles.ts";
 import type { XddRunnerState, XddStageName, XddStageSpec } from "./types.ts";
 import { HarnessStore } from "./harness/store.ts";
 import { conciseHarness } from "./harness/schema.ts";
+import { buildPreventionContext } from "./prevention-context.ts";
 
 function readSkillContent(skills: Skill[], skillName: string): string | undefined {
 	const skill = skills.find((s) => s.name === skillName);
@@ -73,6 +74,8 @@ export function buildStageSystemPrompt(args: BuildStagePromptArgs): string {
 	sections.push(`[当前阶段] ${stage.name}（第 ${planIndex + 1} / ${planTotal} 阶段）`);
 	sections.push(`[用户原始需求] ${userInput}`);
 	sections.push(`[工作目录] ${cwd}`);
+	const prevention = buildPreventionContext(cwd, stage.name, userInput);
+	if (prevention.text) sections.push(prevention.text);
 	const harness = buildHarnessPromptSection(cwd);
 	if (harness) sections.push(harness);
 	const outputContract = (stage.outputs ?? []).map((o, i) => `  ${i + 1}. ${o.pattern} -- ${o.description}`).join("\n");

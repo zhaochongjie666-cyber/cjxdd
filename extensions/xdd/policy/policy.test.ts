@@ -64,6 +64,8 @@ describe("xdd policy", () => {
 
 	it("gives verify a report writer without granting source write access", () => {
 		expect(verify.allowedTools).toEqual(expect.arrayContaining(["write", "edit"]));
+		expect(verify.allowedTools).toEqual(expect.arrayContaining(["xdd_bug_learn", "xdd_quality_score"]));
+		expect(verify.writeScopes).toEqual(expect.arrayContaining([".xdd/knowledge/**", ".xdd/runs/xdd_run/quality-score.json"]));
 		expect(verify.noCodeModification).toBe(true);
 	});
 

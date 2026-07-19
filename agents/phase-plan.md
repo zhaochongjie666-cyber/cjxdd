@@ -3,7 +3,7 @@ name: phase-plan
 description: >
   xdd 桥接层子 agent —— 把设计层锚翻译成零上下文工程师可执行的 TDD 计划。
   装 xdd-plan skill。每个 task 显式回指 RXX，这是设计锚定代码的桥。
-  产出 plan/{bxx-slug}/plan.md（task DAG + RXX 回指 + 全局约束 + 禁占位符）。
+  先产出独立 qa-plan.md，再产出 plan.md（task DAG + RXX 回指 + 禁占位符）。
 mode: subagent
 temperature: 0.6
 ---
@@ -18,16 +18,18 @@ temperature: 0.6
 
 1. 装 `xdd-plan` skill，按其 SKILL.md 走
 2. 读全部设计层锚：design.md + spec/{bxx-slug}/ + architecture/{bxx-slug}/ + wire/ + resilience/
-3. 定义全局约束（多租户/认证/错误格式/事件/分页/事务/幂等，一次定义所有 task 共享）
-4. 文件结构 → 任务 DAG（一个 task = 一个行为路径，2-5 分钟步，先测试后实现）
+3. 先以 QA 视角从 Feature/API/Wire 生成 `.xdd/runs/xdd_run/qa-plan.md`，冻结公开入口、期望结果、自动化方式；不得从未来实现反推测试
+4. 对 happy/rejection/boundary/concurrency/dependency-failure/load 六类逐项写测试或不适用理由，再定义全局约束和任务 DAG
 5. RXX → task 映射（一条 RXX 一个或多个 task，每个 task 标回指 RXX）
 6. 禁占位符（TBD/TODO/"稍后实现"/"添加适当错误处理" 都不行，必须有完整代码）
 
-产出 `.xdd/runs/xdd_run/plan/{bxx-slug}/plan.md`。
+产出 `.xdd/runs/xdd_run/qa-plan.md` + `.xdd/runs/xdd_run/plan.md`。
 
 ## 出口自检
 
 - [ ] 每条 RXX 有 task 覆盖（RXX 覆盖追踪表）
+- [ ] QA Plan 精确覆盖全部 Feature Scenario，六类风险均有测试或具体不适用理由
+- [ ] QA 测试只走 UI/CLI/公开 API/事件入口，不读取未来实现细节
 - [ ] 零占位符（搜禁止模式）
 - [ ] 跨 task 类型/术语一致（跟 spec/architecture 1:1）
 - [ ] 依赖 DAG 无环
@@ -41,4 +43,4 @@ temperature: 0.6
 
 ## 完成后
 
-回报 orchestrator：plan.md 路径 + 自检结果（RXX 覆盖 + 占位符扫描）。
+回报 orchestrator：qa-plan.md + plan.md 路径，以及 QA 覆盖/RXX 覆盖/占位符扫描结果。

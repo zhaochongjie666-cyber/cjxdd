@@ -5,6 +5,9 @@ import { findStageGroup, isLastStageInGroup } from "../stage-groups.ts";
 import { XddController } from "../core/controller.ts";
 import { RuntimeStore } from "../storage/runtime-store.ts";
 import { type EmptyDetails, type GetXddState, ok } from "./index.ts";
+import { evaluateStoredReviewVerdict } from "../review-verdict.ts";
+import { evaluateCodeReviewGate } from "../code-review.ts";
+import { evaluateReleaseDecisionGate } from "../release-decision.ts";
 
 const schema = Type.Object({});
 
@@ -25,6 +28,31 @@ export function createXddAdvanceTool(getState: GetXddState): ToolDefinition {
 				return ok(
 					`[xdd_advance] 当前阶段 ${stage.name} 尚未声明完成：请先调用 xdd_submit_artifact 并通过闸门，再调用 xdd_advance。`,
 				);
+			}
+			if (stage.aiGate?.enabled !== false) {
+				const review = evaluateStoredReviewVerdict(state.cwd, stage.name, {
+					requireIndependentReviewer: true,
+					requirePositivePathEvidence: true,
+					requireFallbackAttackEvidence: true,
+					allowOverrides: true,
+				});
+				if (!review.ok) {
+					state.clearSignals();
+					return ok(`[xdd_advance] ${stage.name} review verdict 已失效或不合规：${review.reasons.join("；")}。请重新提交产物并接受独立攻击审查。`);
+				}
+			}
+			if (stage.name === "execute") {
+				const codeReview = evaluateCodeReviewGate(state.cwd);
+				if (!codeReview.ok) {
+					state.clearSignals();
+					return ok(`[xdd_advance] execute 只读 Code Review 未通过：${codeReview.reason}`);
+				}
+			}
+			if (stage.name === "verify") {
+				const release = evaluateReleaseDecisionGate(state.cwd);
+				if (!release.ok) {
+					return ok(`[xdd_advance] 最终 Release Decision 未通过：${release.reason}。请调用 xdd_release_decision 聚合并修复失败项。`);
+				}
 			}
 			// Phase 2 (B): mark the stage as "passed, pending advance". agent_end
 			// will set this to "advanced" only after the planIndex actually moves

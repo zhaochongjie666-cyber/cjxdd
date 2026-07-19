@@ -3,11 +3,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { fauxAssistantMessage, registerFauxProvider, resetApiProviders, type Context, type StreamOptions } from "@earendil-works/pi-ai/compat";
-import { formatAIGateResult, formatMechanicalCheckResult, runAIGate, type AIGateResult } from "./aigate.ts";
+import { formatAIGateResult, formatMechanicalCheckResult, runAIGate, validateStageAttackAngles, type AIGateResult } from "./aigate.ts";
 
 afterEach(() => {
 	vi.unstubAllGlobals();
 	resetApiProviders();
+});
+
+describe("AIGate attack-angle catalog", () => {
+	it("does not register duplicate angle names within a stage", () => {
+		expect(() => validateStageAttackAngles()).not.toThrow();
+	});
 });
 
 

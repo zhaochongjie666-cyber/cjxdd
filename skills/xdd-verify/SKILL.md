@@ -17,7 +17,7 @@ description: |
 
 | | |
 |---|---|
-| **上游** | `xdd-execute`（代码 + 测试）+ 全部设计层锚：`xdd-spec`（RXX）、`xdd-architecture`（端点/结构）、`xdd-wire`（页面）、`xdd-resilience`（兜底） |
+| **上游** | `xdd-execute`（代码 + 测试）+ 冻结 `qa-plan.md` + 全部设计层锚：spec/architecture/wire/resilience |
 | **我产出** | 验证报告（health-check + wander-test + 全链路一致性审计 + chaos-drill + 双契约）|
 | **回溯锚** | 验证对照 spec 的每条 RXX 是否真落进代码、对照 architecture 的端点是否真起来 |
 
@@ -27,8 +27,12 @@ description: |
 2. **测试环境必须自愈** —— 缺依赖、缺浏览器、DB/服务没启动、端口错、环境变量空，不是停下来的理由；先安装/启动/配置/迁移/改用 docker compose，至少尝试 3 条可执行路径并留证据。
 3. **失败穷举 ≥3 假设** —— 一个现象至少列 3 个可能原因，逐个验证排除，不能上来就锁一个。
 4. **能用 ≠ 测试通过** —— "测试通过"不是"代码对"。要运行证据（curl/截图/数据查询），不是 GREEN 数。
-5. **攻击正向和兜底** —— verify 必须攻击 happy path 与失败/降级/权限/异常路径；只测正向不算验收，只看兜底文档不算兜底。
-6. **不报假完成** —— 没跑通就直说没跑通，不写"基本完成""DEPLOY_PASS 蒙混"。
+5. **QA 契约逐项兑现** —— qa-plan.md 每个适用 QA-XXX 必须在 verify-report.md 同行记录 `PASS`/`✅` 与证据路径；不适用项沿用冻结理由，不得在 verify 临时改口。
+6. **攻击正向和兜底** —— verify 必须攻击 happy path 与失败/降级/权限/异常路径；只测正向不算验收，只看兜底文档不算兜底。
+7. **不报假完成** —— 没跑通就直说没跑通，不写"基本完成""DEPLOY_PASS 蒙混"。
+8. **运行时攻击（适用时）** —— 有可部署 runtime 才用 `xdd_runtime_observe` 保存基线并攻击当前 HEAD；库/CLI 等没有可观测 runtime 时软跳过，不能伪造指标。P1 回归必须回炉，P2 保留软告警。
+9. **质量评分** —— 调用 `xdd_quality_score` 聚合重复率、escaped defects、MTTR、override 和证据覆盖；评分负责解释优先级，不形成第二个无限硬 Gate。
+10. **最终聚合裁决** —— 调用 `xdd_release_decision`；它会兼容性地刷新 Quality Score，再聚合冻结 QA、Code/Commit Review、Blind Journey、verify evidence、runtime、HEAD tree 和干净工作区。只有 `release-decision.json` verdict=release 才能最终推进。
 
 
 ## 正向和兜底攻击检查

@@ -62,6 +62,12 @@ describe("Compat: public tools", () => {
 		{ name: "xdd_load_skill", file: "xdd-load-skill.ts" },
 		{ name: "xdd_blind_journey", file: "xdd-blind-journey.ts" },
 		{ name: "xdd_trace", file: "xdd-trace.ts" },
+		{ name: "xdd_commit_review", file: "xdd-commit-review.ts" },
+		{ name: "xdd_release_decision", file: "xdd-release-decision.ts" },
+		{ name: "xdd_runtime_observe", file: "xdd-runtime-observe.ts" },
+		{ name: "xdd_bug_learn", file: "xdd-bug-learn.ts" },
+		{ name: "xdd_quality_score", file: "xdd-quality-score.ts" },
+		{ name: "xdd_migrate_quality", file: "xdd-migrate-quality.ts" },
 	];
 
 	for (const { name, file } of EXPECTED_TOOLS) {
@@ -103,7 +109,7 @@ describe("Compat: state machine invariants", () => {
 		expect(groupsSrc).toContain('name: "verification"');
 	});
 
-	it("AIGate failure semantics are fail-loud (no soft-pass)", () => {
+	it("AIGate infrastructure errors fail loud before the bounded soft-gate policy applies", () => {
 		// Phase 6 (D): parse failure -> passed: false, degraded: true
 		const aigateSrc = readFileSync(join(SRC_DIR, "aigate.ts"), "utf8");
 		expect(aigateSrc).toMatch(/degraded:\s*true/);
@@ -186,14 +192,15 @@ describe("AIGate retry loop", () => {
 		expect(degradedBlock).not.toContain("terminate: true");
 	});
 
-	it("exhausted AIGate budget soft-passes non-verify and automatically recovers verify", () => {
+	it("exhausted AIGate budget records an audited soft-gate override", () => {
 		const submitSrc = readFileSync(join(SRC_DIR, "tools", "xdd-submit-artifact.ts"), "utf8");
 		const exhaustedBlock = submitSrc.slice(
 			submitSrc.indexOf("if (aiBudget.exhausted)"),
 			submitSrc.indexOf("// Layer 2: AIGate failed"),
 		);
-		expect(exhaustedBlock).toContain("handleExhaustedVerifyFailure");
-		expect(exhaustedBlock).toContain("现软通过");
+		expect(exhaustedBlock).toContain("persistAIGateReview");
+		expect(exhaustedBlock).toContain("软 Gate override");
+		expect(exhaustedBlock).toContain('signal: stage.exit === "verdict" ? (softPass ? "verdict_pass" : "verdict_fail") : "complete"');
 		expect(exhaustedBlock).not.toContain("terminate: true");
 	});
 });
@@ -260,10 +267,10 @@ describe("Compat: extension loads with 0 errors", () => {
 });
 
 describe("Stage repair exhaustion policy", () => {
-	it("soft-passes exhausted non-verify stages but auto-rolls back verify", () => {
+	it("soft-passes exhausted AIGate with an audited verdict while hard verify keeps rollback", () => {
 		const submitSrc = readFileSync(join(SRC_DIR, "tools", "xdd-submit-artifact.ts"), "utf8");
 		expect(submitSrc).toContain('if (stage.exit !== "verdict")');
-		expect(submitSrc).toContain('signal: "complete"');
+		expect(submitSrc).toContain("严格审查达到预算上限");
 		expect(submitSrc).toContain("handleExhaustedVerifyFailure");
 		expect(submitSrc).toContain("flowRollbackCount");
 		expect(submitSrc).toContain('type: "ROLLBACK"');
