@@ -21,18 +21,27 @@ function run(cwd: string): XddSubagentRunRecord {
 
 describe("production parity enhancements", () => {
 	it("passes thinking fallbackModels and modelScope into pi args", () => {
-		expect(buildPiArgs("hi", { provider: "minimax-cn", model: "MiniMax-M3", thinking: "high", fallbackModels: ["a", "b"], modelScope: "agent" })).toEqual(["--provider", "minimax-cn", "--model", "MiniMax-M3", "--thinking", "high", "--model-scope", "agent", "--fallback-model", "a", "--fallback-model", "b", "-p", "hi"]);
+		expect(buildPiArgs("hi", { provider: "minimax-cn", model: "MiniMax-M3", thinking: "high", fallbackModels: ["a", "b"], modelScope: "agent" }, "xddsa-run-1")).toEqual(["--session-id", "xddsa-run-1", "--provider", "minimax-cn", "--model", "MiniMax-M3", "--thinking", "high", "--model-scope", "agent", "--fallback-model", "a", "--fallback-model", "b", "-p", "hi"]);
 		expect(normalizeRunParams({ agent: "xdd-scout", task: "scan", fallbackModels: ["a"] }).fallbackModels).toEqual(["a"]);
 	});
 
 	it("builds resume prompt with session tree and structured chain outputs", () => {
 		const cwd = tmp(); mkdirSync(join(cwd, ".xdd/subagents/artifacts/run-1"), { recursive: true });
-		const store = new XddSubagentRunStore(cwd); store.upsert(run(cwd));
+		const record = run(cwd);
+		record.results[0].sessionId = "xddsa-run-1-1";
+		const store = new XddSubagentRunStore(cwd); store.upsert(record);
 		const plan = buildResumePlan(cwd, "run-1");
 		expect(plan.resumable).toBe(true);
 		expect(plan.prompt).toContain("Resume xdd subagent session");
 		expect(plan.prompt).toContain("Structured Previous Outputs");
 		expect(plan.prompt).toContain("missing fallback");
+		expect(plan.prompt).toContain("Pi session: xddsa-run-1-1");
+	});
+
+	it("marks legacy recovery targets that predate Pi session binding", () => {
+		const cwd = tmp();
+		const store = new XddSubagentRunStore(cwd); store.upsert(run(cwd));
+		expect(buildResumePlan(cwd, "run-1").prompt).toContain("legacy run: no Pi session");
 	});
 
 	it("records supervisor events as jsonl", () => {

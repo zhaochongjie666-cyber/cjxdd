@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RuntimeStore } from "../storage/runtime-store.ts";
 import { STAGES } from "../stages.ts";
-import { COMPACTION_THRESHOLD_PERCENT, transition, XddController, schedulerText, ControllerError, provider429RetryDelayMs, isProvider429InsufficientBalance } from "./controller.ts";
+import { COMPACTION_THRESHOLD_PERCENT, transition, XddController, schedulerText, ControllerError, provider429RetryDelayMs, isProvider429InsufficientBalance, isProviderProtocolTermination } from "./controller.ts";
 import type { RuntimeStateV2 } from "../storage/runtime-migrations.ts";
 
 function started(): RuntimeStateV2 {
@@ -42,6 +42,24 @@ describe("XddController transition", () => {
 		expect(result.effects).toEqual([expect.objectContaining({ type: "NOTIFY", text: expect.stringContaining("等待 Pi 内建重试") })]);
 	});
 
+	it("does not blindly retry malformed provider streams", () => {
+		const result = transition(started(), { type: "AGENT_ENDED", stopReason: "error", providerError: "Stream ended without finish_reason" });
+		expect(result.state.stageOutcome).toBe("provider_error");
+		expect(result.state.continuationQueued).toBe(false);
+		expect(result.effects).toEqual([
+			expect.objectContaining({ type: "NOTIFY", text: expect.stringContaining("核对模型 api 与代理 SSE 格式") }),
+		]);
+		expect(result.effects[0]?.type === "NOTIFY" ? result.effects[0].text : "").toContain("checkpoint 与已有产物已保留");
+	});
+
+	it("only classifies explicit incomplete-stream protocol errors", () => {
+		expect(isProviderProtocolTermination("Stream ended without finish_reason")).toBe(true);
+		expect(isProviderProtocolTermination(" Anthropic stream ended before message_stop. ")).toBe(true);
+		expect(isProviderProtocolTermination("terminated")).toBe(false);
+		expect(isProviderProtocolTermination("request was terminated by user")).toBe(false);
+		expect(isProviderProtocolTermination(undefined)).toBe(false);
+	});
+
 	it("429 insufficient balance provider errors enqueue infinite delayed retry", () => {
 		const state = started();
 		const first = transition(state, { type: "AGENT_ENDED", stopReason: "error", providerError: "429 insufficient balance" });
@@ -49,9 +67,10 @@ describe("XddController transition", () => {
 		expect(first.state.provider429RetryCount).toBe(1);
 		expect(first.state.continuationQueued).toBe(true);
 		expect(first.effects).toEqual([
-			expect.objectContaining({ type: "NOTIFY", text: expect.stringContaining("不退出") }),
+			expect.objectContaining({ type: "NOTIFY", text: expect.stringContaining("提供商请求遇到 429") }),
 			expect.objectContaining({ type: "SEND_FOLLOWUP", delayMs: 3_000, text: expect.stringContaining("不要退出") }),
 		]);
+		expect(first.effects.map((effect) => "text" in effect ? effect.text : "").join("\n")).not.toContain("推理");
 
 		const later = transition({ ...first.state, provider429RetryCount: 10 }, { type: "AGENT_ENDED", stopReason: "error", providerError: "429 余额不足" });
 		expect(later.state.provider429RetryCount).toBe(11);

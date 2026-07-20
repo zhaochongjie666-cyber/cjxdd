@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { normalizeRunParams } from "../scheduler.ts";
+import { diagnosePiFailureTranscript, normalizeRunParams } from "../scheduler.ts";
 import { XddSubagentRunStore, type XddSubagentRunRecord } from "../runtime-store.ts";
 
 describe("xdd subagent scheduler", () => {
@@ -14,6 +14,12 @@ describe("xdd subagent scheduler", () => {
 
 	it("rejects unknown agents before spawning pi", () => {
 		expect(() => normalizeRunParams({ agent: "unknown", task: "nope" })).toThrow(/未知 xdd subagent/);
+	});
+
+	it("turns incomplete provider streams into actionable child-run diagnostics", () => {
+		expect(diagnosePiFailureTranscript("Error: Stream ended without finish_reason")).toContain("model api matches the proxy SSE format");
+		expect(diagnosePiFailureTranscript("Error: Anthropic stream ended before message_stop")).toContain("lower maxTokens");
+		expect(diagnosePiFailureTranscript("Error: terminated")).toBeUndefined();
 	});
 
 	it("persists run records outside .pi", () => {

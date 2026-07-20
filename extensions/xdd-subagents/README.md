@@ -75,6 +75,14 @@ MINIMAX_CN_API_KEY=... extensions/xdd-subagents/scripts/smoke-pi.sh MiniMax-M3
 
 也可以在调用 `xdd_subagent_run` 时传入 `provider: "minimax-cn"` 和 `model: "MiniMax-M3"` 做单次覆盖。不要把配置写到项目 `.pi`，本仓库约束禁止写 `{{current_project}}/.pi`。
 
+### 流协议提前结束
+
+child transcript 出现 `Stream ended without finish_reason` 或 `Anthropic stream ended before message_stop` 时，问题发生在模型代理的流协议边界，不应靠无限重试掩盖。检查用户级 `~/.pi/agent/models.json`：模型的 `api` 必须与代理实际返回的 SSE 协议一致（例如 `anthropic-messages` 对应的流必须包含 `message_stop`）。如果代理在长输出时直接断流而不发送终止事件，应降低该模型的 `maxTokens`，并让代理修复标准终止事件。API key 应通过环境变量或用户级凭据保存，禁止写进仓库、日志或诊断文本。
+
+这里的错误不是“pi-ai 在做模型推理时算错了”。pi-ai 是请求路由、协议适配和流解析层：模型推理由远端提供商完成；pi-ai 根据 `model.api` 选择解析器，并把网络断开、代理返回非预期 SSE、缺少协议终止事件等情况包装成 assistant `stopReason: "error"`。因此 xdd 对外使用“提供商请求错误”或“流协议错误”，不把这类失败称为“推理错误”。
+
+主 turn loop 正常并不代表外层 supervisor 没有缺口：旧版 xdd-subagents 虽然用 `pi -p` 启动 child，却没有传 `--session-id`，只把进程退出码当成任务终态，并自己伪造 `xdd-resume:*` token。Pi 内建的单次 turn 重试确实运行了，但重试预算耗尽、进程退出后，xdd 没有真实 Pi session 可继续，这才是“看起来没有严格走 Pi Coding Agent 路子”的断点。现在每个 child task 都带稳定的 `--session-id`，由 Pi Coding Agent 保存消息、重试历史和恢复目标；xdd 的 run store 只做 supervisor 索引，不再冒充 Pi session。
+
 ## 与 nicobailon/pi-subagents 的复刻结论
 
 没有完全复刻。`pi-subagents` 是完整执行器：安装后能启动 child Pi session，支持 foreground/background、single/parallel/chain、状态/等待/fleet、配置覆盖、watchdog、intercom、artifact 与 transcript 管理。当前 `xdd-subagents` 已新增基础 child process runner、run store、artifact/transcript、single/parallel/chain 调度骨架、chain previous 输出注入、wait/stop/fleet/drain/autoDrain 工具、settings model override 读取和 opt-in watchdog diff/static diagnostics review，并继承 cwd、git status 与 AGENTS.md 指令；并为 run 写入 lease/heartbeat；但仍缺上游级完整 Pi session tree 继承和上游级实时 supervisor channel。
@@ -89,7 +97,7 @@ MINIMAX_CN_API_KEY=... extensions/xdd-subagents/scripts/smoke-pi.sh MiniMax-M3
 
 ## Production hardening additions
 
-- Session resume: every run now records a `session.resumeToken`; use `xdd_subagent_resume` to build a recovery prompt with the run tree, failed/pending tasks, and structured chain outputs.
+- Session resume: 每个新建 child task 记录真实 Pi `sessionId`；`xdd_subagent_resume` 会在 recovery target 中显示它，并兼容标注旧 run 没有 Pi session。run 级 `resumeToken` 只保留为 xdd supervisor 标识，不再宣称它等同于 Pi session。
 - Structured chain output: chain steps write per-task JSON artifacts and pass a structured previous output block to the next task instead of only raw transcript text.
 - Supervisor events: runtime state changes append to `.xdd/subagents/events.jsonl`; use `xdd_subagent_events` for a near-real-time status stream without writing project `.pi`.
 - Config parity: settings can define `thinking`, `fallbackModels`, and `modelScope` globally or under `agentOverrides.<agent>` in addition to provider/model/disabled.
