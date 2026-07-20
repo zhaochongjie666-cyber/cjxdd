@@ -43,8 +43,9 @@ export function normalizeRunParams(params: XddSubagentRunParams): { mode: XddSub
 	return { mode, tasks, async: Boolean(params.async), model: params.model, provider: params.provider, parentRunId: params.parentRunId, thinking: params.thinking, fallbackModels: params.fallbackModels, modelScope: params.modelScope };
 }
 
-export function buildPiArgs(prompt: string, invocation: ResolvedPiInvocation = {}): string[] {
+export function buildPiArgs(prompt: string, invocation: ResolvedPiInvocation = {}, sessionId?: string): string[] {
 	const args = [];
+	if (sessionId?.trim()) args.push("--session-id", sessionId.trim());
 	if (invocation.provider?.trim()) args.push("--provider", invocation.provider.trim());
 	if (invocation.model?.trim()) args.push("--model", invocation.model.trim());
 	if (invocation.thinking?.trim()) args.push("--thinking", invocation.thinking.trim());
@@ -89,8 +90,13 @@ async function spawnTask(cwd: string, run: XddSubagentRunRecord, index: number, 
 	const taskText = run.intercomPath ? `${taskTextBase}\n\n${supervisorIntercomInstructions(run.intercomPath)}` : taskTextBase;
 	const prompt = renderDelegationPrompt(agent, taskText);
 	const resolvedInvocation = resolvePiInvocation(cwd, task.agent, invocation);
+	const sessionId = `${run.id}-${index + 1}`;
+	task.sessionId = sessionId;
 	writeFileSync(task.transcriptPath, `# ${task.agent}\n\n${prompt}\n\n--- output ---\n`);
-	const child = spawn("pi", buildPiArgs(prompt, resolvedInvocation), { cwd, stdio: ["ignore", "pipe", "pipe"] });
+	// Use Pi Coding Agent's persisted AgentSession instead of treating `pi -p`
+	// as an anonymous subprocess. This keeps Pi's own turn loop, retry history,
+	// messages, and a real resume target attached to every child task.
+	const child = spawn("pi", buildPiArgs(prompt, resolvedInvocation, sessionId), { cwd, stdio: ["ignore", "pipe", "pipe"] });
 	run.pid = child.pid;
 	task.status = "running";
 	appendSubagentEvent(cwd, { runId: run.id, type: "status", message: `task ${index + 1} ${task.agent} started` });
@@ -111,10 +117,16 @@ async function spawnTask(cwd: string, run: XddSubagentRunRecord, index: number, 
 		});
 	});
 	const transcript = readFileSync(task.transcriptPath, "utf8");
+	if (task.status === "failed" && !task.error) task.error = diagnosePiFailureTranscript(transcript);
 	const summary = summarizeTranscript(transcript);
 	task.summary = summary;
-	if (task.artifactPath) writeFileSync(task.artifactPath, JSON.stringify({ index, agent: task.agent, status: task.status, transcriptPath: task.transcriptPath, summary, error: task.error }, null, 2) + "\n");
-	return JSON.stringify({ index, agent: task.agent, status: task.status, transcriptPath: task.transcriptPath, artifactPath: task.artifactPath, summary, error: task.error }, null, 2);
+	if (task.artifactPath) writeFileSync(task.artifactPath, JSON.stringify({ index, agent: task.agent, status: task.status, sessionId: task.sessionId, transcriptPath: task.transcriptPath, summary, error: task.error }, null, 2) + "\n");
+	return JSON.stringify({ index, agent: task.agent, status: task.status, sessionId: task.sessionId, transcriptPath: task.transcriptPath, artifactPath: task.artifactPath, summary, error: task.error }, null, 2);
+}
+
+export function diagnosePiFailureTranscript(transcript: string): string | undefined {
+	if (!/(?:Stream ended without finish_reason|Anthropic stream ended before message_stop)/i.test(transcript)) return undefined;
+	return "provider stream protocol ended without its required terminal event; verify the user-level model api matches the proxy SSE format and lower maxTokens if the proxy truncates long responses";
 }
 
 function summarizeTranscript(transcript: string, max = 2000): string {

@@ -134,6 +134,12 @@ export function isProvider429InsufficientBalance(error: string | null | undefine
 	return /(?:^|\D)429(?:\D|$)/.test(text) && /(余额不足|用量上限|购买积分|insufficient[_\s-]*(?:balance|quota|credits?)|balance[_\s-]*not[_\s-]*enough|quota[_\s-]*exceeded|(?:usage|plan)[_\s-]*limit|credit)/i.test(error ?? "");
 }
 
+/** Errors that indicate an SSE stream ended without the provider's required terminal event. */
+export function isProviderProtocolTermination(error: string | null | undefined): boolean {
+	const text = (error ?? "").trim();
+	return /^(?:stream ended without finish_reason|anthropic stream ended before message_stop)(?:\s|$|[.:;,-])/i.test(text);
+}
+
 export function provider429RetryDelayMs(retryCount: number): number {
 	const safeCount = Math.max(1, Math.floor(retryCount));
 	return Math.min(180_000, 3_000 * (2 ** (safeCount - 1)));
@@ -180,6 +186,18 @@ function agentEndedTransition(
 		state.stageOutcome = "provider_error";
 		state.lastStageError = command.providerError ?? "LLM provider error";
 		projectAuditEvent(state, { type: "provider_error", stage: currentStageName(state, stages) ?? "?", message: state.lastStageError });
+		if (isProviderProtocolTermination(state.lastStageError)) {
+			// A malformed/incomplete SSE stream is a provider compatibility problem,
+			// not evidence that another identical model turn will succeed. Do not
+			// create an unbounded retry loop: preserve the checkpoint and tell the
+			// user to repair the provider protocol/model limit before resuming.
+			effects.push({
+				type: "NOTIFY",
+				level: "warning",
+				text: `[xdd] 提供商流协议未正常结束：${state.lastStageError}。请核对模型 api 与代理 SSE 格式，并适当降低模型 maxTokens；修复后使用 /xdd-resume，checkpoint 与已有产物已保留。`,
+			});
+			return { state: stamp(state), effects };
+		}
 		if (isProvider429InsufficientBalance(state.lastStageError)) {
 			const retryCount = (state.provider429RetryCount ?? 0) + 1;
 			state.provider429RetryCount = retryCount;
@@ -191,11 +209,11 @@ function agentEndedTransition(
 			effects.push({
 				type: "NOTIFY",
 				level: "warning",
-				text: `[xdd] 推理遇到 429/余额不足：${state.lastStageError}。将继续第 ${retryCount} 次重试，等待 ${formatDelay(delayMs)}；达到 3 分钟后会一直每 3 分钟重试，不退出。`,
+				text: `[xdd] 提供商请求遇到 429/余额不足：${state.lastStageError}。将继续第 ${retryCount} 次重试，等待 ${formatDelay(delayMs)}；达到 3 分钟后会一直每 3 分钟重试，不退出。`,
 			});
 			effects.push({
 				type: "SEND_FOLLOWUP",
-				text: `[xdd 自动重试] 推理上次遇到 429/余额不足（${state.lastStageError}）。不要退出；继续当前 ${currentStageName(state, stages) ?? "阶段"} 阶段，从中断处重试。`,
+				text: `[xdd 自动重试] 提供商请求上次遇到 429/余额不足（${state.lastStageError}）。不要退出；继续当前 ${currentStageName(state, stages) ?? "阶段"} 阶段，从中断处重试。`,
 				epoch: state.continuationEpoch,
 				delayMs,
 			});

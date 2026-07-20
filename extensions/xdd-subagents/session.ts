@@ -26,7 +26,7 @@ export function buildResumePlan(cwd: string, id: string): ResumePlan {
 		previous || "(none)",
 		"",
 		"## Recovery Targets",
-		[...failed, ...pending].map((task) => `- ${task.agent}: ${task.status} ${task.task}`).join("\n") || "- 无失败或未完成任务；只需总结结果。",
+		[...failed, ...pending].map((task) => `- ${task.agent}: ${task.status} ${task.task}${task.sessionId ? ` (Pi session: ${task.sessionId})` : " (legacy run: no Pi session)"}`).join("\n") || "- 无失败或未完成任务；只需总结结果。",
 	].join("\n");
 	return { run, resumable: run.status !== "succeeded", prompt, tree };
 }

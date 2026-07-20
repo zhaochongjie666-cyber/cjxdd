@@ -316,6 +316,16 @@ xdd_load_skill("xdd-frontend")  // 把前端规范注入当前阶段 prompt
     重新激活 state
 ```
 
+```
+场景 3：提供商流缺少 finish_reason / message_stop
+
+  xdd 保留 checkpoint 和已有产物，但不盲目重复同一请求
+  用户核对用户级 models.json 中的 api 是否符合代理实际 SSE 协议
+  Anthropic Messages 代理必须正常发送 message_stop；OpenAI-compatible 流必须发送 finish_reason
+  若代理会在输出过长时非标准截断，降低该模型的 maxTokens
+  修复提供商配置后执行 /xdd-resume
+```
+
 ### 5.3 状态查询（`/xdd-status`）的真实输出
 
 ```

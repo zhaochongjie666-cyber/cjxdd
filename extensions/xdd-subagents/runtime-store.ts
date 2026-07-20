@@ -27,7 +27,7 @@ export type XddSubagentRunRecord = {
 	session?: XddSubagentSession;
 	chainOutputs?: XddSubagentChainOutput[];
 	error?: string;
-	results: Array<{ agent: string; task: string; status: XddSubagentRunStatus; transcriptPath: string; exitCode?: number | null; error?: string; artifactPath?: string; summary?: string }>;
+	results: Array<{ agent: string; task: string; status: XddSubagentRunStatus; transcriptPath: string; sessionId?: string; exitCode?: number | null; error?: string; artifactPath?: string; summary?: string }>;
 };
 
 export type XddSubagentRuntimeState = {
