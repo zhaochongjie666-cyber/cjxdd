@@ -34,6 +34,8 @@ describe("compileStageContracts", () => {
 			".xdd/runs/xdd_run/qa-plan.md",
 		]);
 		expect(plan?.writeScopes).toEqual([".xdd/runs/xdd_run/plan.md", ".xdd/runs/xdd_run/qa-plan.md"]);
+		expect(plan?.desiredState.join("\n")).toContain("- Category: happy");
+		expect(plan?.desiredState.join("\n")).toContain("字段名和值必须同处一行");
 	});
 
 	it("rejects required outputs not covered by writeScopes", () => {

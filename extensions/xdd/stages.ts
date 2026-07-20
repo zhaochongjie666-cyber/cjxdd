@@ -10,7 +10,7 @@ import {
 import type { XddStageName, XddStageSpec } from "./types.ts";
 import { STAGE_ROLES } from "./types.ts";
 import { evaluateVerifyEvidenceGateFull } from "./evidence/verify-gate.ts";
-import { evaluateQaPlanGate } from "./qa-plan.ts";
+import { evaluateQaPlanGate, QA_PLAN_ITEM_FORMAT } from "./qa-plan.ts";
 import { evaluateProductionPathPolicy } from "./production-path-policy.ts";
 
 const roleFor = (name: XddStageName): string => STAGE_ROLES[name];
@@ -399,6 +399,7 @@ export const STAGES: readonly XddStageSpec[] = [
 		desiredState: [
 			"已产出执行计划文档（.xdd/runs/xdd_run/plan.md）",
 			"已由 QA 视角独立产出冻结测试计划（.xdd/runs/xdd_run/qa-plan.md），先于 execute 定义公开入口、期望结果与自动化方式",
+			`qa-plan.md 每项在写入前严格采用此机器契约，字段名和值必须同处一行，不加粗、不使用表格、不把 RXX 当 Category：\n${QA_PLAN_ITEM_FORMAT}`,
 			"QA Plan 覆盖全部 Feature Scenario，并对 happy/rejection/boundary/concurrency/dependency-failure/load 六类逐项给出测试或不适用理由",
 			"计划按阶段组织：spec -> architecture -> wire -> resilience -> execute 每段至少一项具体工作项",
 			"每项工作项标明：依赖前序产出、预计产物、改动文件范围",

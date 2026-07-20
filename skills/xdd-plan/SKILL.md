@@ -42,6 +42,8 @@ work():
 
 `.xdd/runs/xdd_run/qa-plan.md` 必须先于实现生成。它只从 Feature、用户旅程、API/Wire 契约推导，不读取未来实现，不以内部函数或数据库操作充当测试入口。
 
+**先约定、后 Gate：下面代码块是机器解析契约，不是排版示例。必须原样保留 `### QA-ID` 和 `- Field: value` 结构；字段名和值必须在同一行。禁止加粗字段名、拆成字段名/值两行、改成表格，或把独立 `RXX` 行当成 Category。RXX 只写入 plan task 的 `回指 RXX` 字段。Gate 会严格按此契约兜底，并在拒绝时重显正确模板。**
+
 六类必须逐项决策：`happy`、`rejection`、`boundary`、`concurrency`、`dependency-failure`、`load`。适用则写测试项；确实不适用则写 `Applicability: not-applicable` 和不少于 10 字的业务理由，禁止只写 N/A。
 
 ```markdown
