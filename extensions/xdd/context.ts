@@ -97,7 +97,7 @@ export function buildStageSystemPrompt(args: BuildStagePromptArgs): string {
 		? "xdd_submit_artifact(summary, artifacts, pass；随本次 AIGate 审查一并提交 selfAttack)"
 		: "xdd_submit_artifact(summary, artifacts；AIGate 阶段每次提交都附带 selfAttack)";
 	sections.push(
-		`[完成方式 / reconcile] 让所有 desiredState 为真 -> 调 ${gateHint} -> gate 通过后调 xdd_advance 推进。闸门失败可重试，预算见状态；预算耗尽后请调 xdd_diagnose 进入反思。`,
+		`[完成方式 / reconcile] 先完成上述正向开发与自检，让所有 desiredState 为真；不得在未修改产物时原样重提。然后调 ${gateHint} -> gate 通过后调 xdd_advance 推进。闸门失败先执行 finding 指向的修复；预算耗尽后调 xdd_diagnose 回到负责阶段。`,
 	);
 	return sections.join("\n\n");
 }
@@ -130,7 +130,7 @@ export function buildSeed(stage: XddStageSpec, userInput: string): string {
 		`用户原始需求：${userInput}`,
 		`本阶段 desiredState（让这些条件为真）：\n${desired}`,
 		`本阶段先声明产出，再接受检查（skill=${stage.skill}）：\n${(stage.outputs ?? []).map((o, i) => `  ${i + 1}. ${o.pattern} -- ${o.description}`).join("\n") || "  （无硬文件产出；必须说明可观察依据）"}`,
-		`完成方式：调 ${gateHint} -> gate 通过 -> 调 xdd_advance 推进。闸门未达标可重试（局部修复），自愈预算耗尽后再调 xdd_diagnose 进入反思。`,
+		`完成方式：先按 desiredState 和阶段 skill 做完正向开发与自检，再调 ${gateHint}。未修改产物时禁止原样重提；Gate 未达标先执行 finding 指向的修复，通过后调 xdd_advance，预算耗尽再调 xdd_diagnose 回炉。`,
 		`Controller 工具：xdd_observe（观察状态）/ xdd_desired_state（查看目标）/ xdd_difference（计算差距）/ xdd_next_task（获取下一步指令）。`,
 	];
 	// P16: bash timeout hint for stages that use bash

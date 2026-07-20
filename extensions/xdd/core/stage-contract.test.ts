@@ -51,6 +51,13 @@ describe("compileStageContracts", () => {
 		}
 	});
 
+	it("rejects every Gate that has no paired positive-development desired state", () => {
+		const stages = STAGES.map(clone);
+		const architecture = stages.find((stage) => stage.name === "architecture") as XddStageSpec;
+		architecture.desiredState = [];
+		expect(() => compileStageContracts(stages)).toThrow(/Gate 没有配对非空的正向开发目标/);
+	});
+
 	it("rejects rollback targets that are not earlier than the current stage", () => {
 		const stages = STAGES.map(clone);
 		const verify = stages.find((stage) => stage.name === "verify") as XddStageSpec;

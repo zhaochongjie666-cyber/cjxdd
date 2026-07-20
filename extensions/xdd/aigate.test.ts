@@ -110,12 +110,7 @@ describe("unified AI Gate", () => {
 	}
 
 	function verdict(angleNames = ["机械检查结果", "偷工减料攻击", "AI味攻击", "规格偏离攻击"]): string {
-		return JSON.stringify({
-			passed: true,
-			angles: angleNames.map((name) => ({ name, passed: true, findings: [] })),
-			issues: [],
-			suggestions: [],
-		});
+		return angleNames.map((name) => `✅ ${name}：通过（已核对产物证据）`).join("\n");
 	}
 
 	function fauxModelWithResponses(responses: string[]) {
@@ -124,9 +119,9 @@ describe("unified AI Gate", () => {
 		return faux.getModel();
 	}
 
-	it("parses the first balanced JSON object when the response contains extra objects", async () => {
+	it("accepts semantic verdict lines with surrounding natural-language review", async () => {
 		const cwd = createCwd();
-		const model = fauxModelWithResponses([`审查完成。\n${verdict()}\n调试数据：${JSON.stringify({ ignored: true })}`]);
+		const model = fauxModelWithResponses([`审查完成，以下是逐角度结论。\n${verdict()}\n建议：保持当前追溯链。`]);
 		try {
 			const result = await runAIGate({ model, apiKey: "test-key", stageName: "custom", aigateStandard: "test standard", artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd });
 			expect(result.passed).toBe(true);
@@ -135,13 +130,28 @@ describe("unified AI Gate", () => {
 		}
 	});
 
-	it("retries once with a format correction after malformed JSON", async () => {
+	it("retries once when the response has no semantic angle verdict lines", async () => {
 		const cwd = createCwd();
 		const faux = registerFauxProvider({ tokensPerSecond: 0 });
-		faux.setResponses([fauxAssistantMessage('{"passed": true "angles": []}'), fauxAssistantMessage(verdict())]);
+		faux.setResponses([fauxAssistantMessage("总体看起来没问题。"), fauxAssistantMessage(verdict())]);
 		try {
 			const result = await runAIGate({ model: faux.getModel(), apiKey: "test-key", stageName: "custom", aigateStandard: "test standard", artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd });
 			expect(result.passed).toBe(true);
+			expect(faux.state.callCount).toBe(2);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("retries once when a semantic verdict omits required attack angles", async () => {
+		const cwd = createCwd();
+		const faux = registerFauxProvider({ tokensPerSecond: 0 });
+		const partial = "✅ 机械检查结果：通过\n建议：补齐某个表格";
+		faux.setResponses([fauxAssistantMessage(partial), fauxAssistantMessage(verdict())]);
+		try {
+			const result = await runAIGate({ model: faux.getModel(), apiKey: "test-key", stageName: "custom", aigateStandard: "test standard", artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd });
+			expect(result.passed).toBe(true);
+			expect(result.degraded).toBeUndefined();
 			expect(faux.state.callCount).toBe(2);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
@@ -167,18 +177,9 @@ describe("unified AI Gate", () => {
 		}
 	});
 
-	it("does not coerce the string false into a passing angle", async () => {
+	it("recognizes an explicit semantic failure without JSON", async () => {
 		const cwd = createCwd();
-		const badVerdict = JSON.stringify({
-			passed: true,
-			angles: [
-				{ name: "机械检查结果", passed: true, findings: [] },
-				{ name: "偷工减料攻击", passed: "false", findings: ["发现问题"] },
-				{ name: "AI味攻击", passed: true, findings: [] },
-				{ name: "规格偏离攻击", passed: true, findings: [] },
-			],
-			issues: [], suggestions: [],
-		});
+		const badVerdict = `${verdict(["机械检查结果"])}\n❌ 偷工减料攻击：发现问题\n${verdict(["AI味攻击", "规格偏离攻击"])}`;
 		const model = fauxModelWithResponses([badVerdict]);
 		try {
 			const result = await runAIGate({ model, apiKey: "test-key", stageName: "custom", aigateStandard: "test standard", artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd });
@@ -199,7 +200,7 @@ describe("unified AI Gate", () => {
 		faux.setResponses([(context: Context, options: StreamOptions | undefined) => {
 			seenContext = context;
 			seenOptions = options;
-			return fauxAssistantMessage(verdict(["机械检查结果", "偷工减料攻击", "AI味攻击", "规格偏离攻击", "安全攻击", "一致性攻击", "可运维攻击", "方案合理性攻击", "iter污染攻击"]));
+			return fauxAssistantMessage(verdict(["机械检查结果", "偷工减料攻击", "AI味攻击", "规格偏离攻击", "安全攻击", "一致性攻击", "可运维攻击", "方案合理性攻击", "run污染攻击"]));
 		}]);
 		try {
 			const result = await runAIGate({ model: faux.getModel(), apiKey: "test-key", headers: { "x-extra": "1" }, stageName: "architecture", aigateStandard: "test standard", artifactPaths: ["artifact.md"], mechanicalCheckResult: { ok: true }, cwd });

@@ -13,7 +13,7 @@
  *   - 跨产物上下文（读 spec/architecture/code 做一致性攻击）
  *
  * Phase 6 (D): failure semantics flipped. Previously soft-passed on
- * any error (LLM/JSON/parse); now HARD-FAIL so the agent can see and
+ * any error (LLM/response-contract); now HARD-FAIL so the agent can see and
  * fix the issue instead of the gate silently saying "PASS". Only the
  * gate's *content* failure (LLM says "this angle found bugs") blocks;
  * errors (network/parse) are reported as `degraded` with `passed: false`.
@@ -141,7 +141,7 @@ function mechanicalCheckAngle(result: XddGateResult): AttackAngle {
 			`本次机械检查结果：\n${observation}`,
 			result.ok
 				? "机械检查已通过；确认产物内容没有利用机械检查的盲区。"
-				: "机械检查未通过；此角度必须 passed=false，并在 findings 中说明失败原因。",
+				: "机械检查未通过；此角度必须以 ❌ 标记，并说明失败原因。",
 		],
 	};
 }
@@ -502,33 +502,20 @@ function readContextFiles(cwd: string, stageName: string, contextPatterns?: read
 
 // ── Prompt building ────────────────────────────────────────────────────
 
-const ATTACKER_SYSTEM_PROMPT = `你是一个极度严厉的多角度攻击审查者。你的任务是从多个攻击角度审查产物，找出问题。
+const ATTACKER_SYSTEM_PROMPT = `你是一个极度严厉的多角度攻击审查者。逐角度阅读产物、引用证据并给出可执行修复；不得修改文件。
 
-你的核心纪律：
-1. 默认怀疑 -- 每个角度先假设「这里有问题」，去找证据，找不到才放过。
-2. 不轻易 PASS -- 要么列出攻击发现，要么明确说明「这个角度确实没问题，证据是 X」。不许「看着没问题」就过。
-3. 逐角度审查 -- 每个攻击角度独立审查，给出该角度的 passed/findings。
-4. 引用原文 -- 发现问题时引用产物原文片段作为证据。
-5. 不给面子、不留情面、不接受"差不多"。
+不要输出 JSON，也不要写代码块。使用自然语言，但每个必审角度必须各占一行并以以下语义标记开头：
+- ✅ 角度名：通过（证据）
+- ❌ 角度名：问题与证据
+- ⚪ 角度名：N/A（不适用原因）
 
-输出格式（只输出 JSON，不要 markdown 代码块，不要其他文字）：
-{
-  "passed": false,
-  "angles": [
-    {"name": "攻击角度名", "passed": false, "findings": ["具体问题1（引用原文）", "具体问题2"]},
-    {"name": "另一个角度名", "passed": true, "findings": []}
-  ],
-  "issues": ["[角度名] 问题摘要1", "[角度名] 问题摘要2"],
-  "suggestions": ["怎么改1", "怎么改2"]
-}
+最后可追加任意数量的「建议：具体修复动作」行。只有所有适用角度均为 ✅ 时才算通过。`;
 
-passed 为 true 当且仅当所有角度都 passed。`;
+/** Ask for a complete semantic verdict when required angle lines are missing. */
+const VERDICT_RETRY_INSTRUCTION = `
 
-/** Ask for a complete replacement after a malformed model response. */
-const JSON_RETRY_INSTRUCTION = `
-
-## 上一次输出无效
-上一次响应不是可解析的单个 JSON verdict。请重新审查并只输出一个完整、严格有效的 JSON 对象。数组元素之间必须使用逗号；不要输出解释、Markdown 或第二个 JSON 对象。`;
+## 上一次输出不完整
+请重新给出完整审查。不要输出 JSON。每个上述必审角度必须各占一行，以「✅ 角度名：」「❌ 角度名：」或「⚪ 角度名：N/A」开头；不得只输出机械检查、总评或建议。`;
 
 function buildAttackUserMessage(params: {
 	stageName: string;
@@ -568,11 +555,11 @@ ${outputText}
 
 ## 审查纪律：产出-检查必须一一对齐
 1. 先确认上述产出是否真实存在且非空，再审内容质量。
-2. 每个攻击角度的 findings 必须引用具体产物/路径/片段；没有证据不能写“通过”。
-3. 若某检查项与本 skill/本阶段产出无关，标 passed 为 "N/A" 并说明不适用原因；不要做 AI Gate 空检查。
+2. 每个攻击角度的结论行必须引用具体产物/路径/片段；没有证据不能写“通过”。
+3. 若某检查项与本 skill/本阶段产出无关，以 ⚪ 标记 N/A 并说明不适用原因；不要做 AI Gate 空检查。
 4. 若缺少可审查产物，必须失败，不能因为没有内容而通过。
 
-## 攻击角度（逐个独立审查，每个都要给出 passed + findings）：
+## 攻击角度（逐个独立审查，每个都要给出带结论标记的语义行）：
 ${angleText}
 
 ## 阶段审查标准（额外逐条检查）：
@@ -587,7 +574,7 @@ ${contexts.length > 0 ? `## 跨产物上下文（用于一致性/可追溯性攻
 ## 待审查产物内容：
 ${artifacts.join("\n\n")}
 
-## 请从以上每个攻击角度审查产物，输出 JSON：`;
+## 请逐个审查以上攻击角度，按 system prompt 的逐角度语义行格式输出：`;
 }
 
 /** Render the mechanical verdict as bounded, explicit evidence for the LLM. */
@@ -668,12 +655,12 @@ export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
 	}
 
 	let parsed = parseVerdict(responseText, angles);
-	// Providers occasionally ignore even JSON-mode/schema constraints. A retry
-	// here is deliberately limited to malformed output, rather than asking the
+	// Providers occasionally omit required semantic verdict lines. A retry here
+	// is deliberately limited to an incomplete response, rather than asking the
 	// caller to resubmit unchanged artifacts or consuming the self-heal budget.
 	if (parsed.degraded) {
 		try {
-			responseText = await callLLM(model, apiKey, headers, env, ATTACKER_SYSTEM_PROMPT, `${userMessage}${JSON_RETRY_INSTRUCTION}`);
+			responseText = await callLLM(model, apiKey, headers, env, ATTACKER_SYSTEM_PROMPT, `${userMessage}${VERDICT_RETRY_INSTRUCTION}`);
 			parsed = parseVerdict(responseText, angles);
 		} catch {
 			// Keep the original parse diagnostic; the retry is best-effort.
@@ -794,110 +781,58 @@ export function formatAIGateResult(aiResult: AIGateResult): string {
 
 // ── Verdict parsing + re-derivation ──────────────────────────────────
 
-function jsonObjectCandidates(text: string): string[] {
-	const candidates: string[] = [];
-	for (let start = text.indexOf("{"); start !== -1; start = text.indexOf("{", start + 1)) {
-		let depth = 0;
-		let inString = false;
-		let escaped = false;
-		for (let end = start; end < text.length; end++) {
-			const char = text[end];
-			if (inString) {
-				if (escaped) escaped = false;
-				else if (char === "\\") escaped = true;
-				else if (char === '"') inString = false;
-				continue;
-			}
-			if (char === '"') inString = true;
-			else if (char === "{") depth++;
-			else if (char === "}" && --depth === 0) {
-				candidates.push(text.slice(start, end + 1));
-				break;
-			}
-		}
-	}
-	return candidates;
-}
-
+/**
+ * Parse a flexible semantic verdict. We deliberately avoid JSON: reviewers may
+ * explain findings naturally, while the stable angle name + leading verdict
+ * marker keeps completeness mechanically observable.
+ */
 function parseVerdict(raw: string, expectedAngles: readonly AttackAngle[]): AIGateResult {
-	const truncated = raw.slice(0, 500);
-	let text = raw.trim();
-	text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+	const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+	const angles: AIGateAngleResult[] = [];
+	const suggestions = lines
+		.filter((line) => /^(?:建议|修复建议|suggestion)\s*[：:]/i.test(line))
+		.map((line) => line.replace(/^[^：:]+[：:]\s*/, ""));
 
-	const candidates = jsonObjectCandidates(text);
-	if (candidates.length === 0) {
-		return {
-			passed: false,
-			degraded: true,
-			angles: expectedAngles.map((a) => ({ name: a.name, passed: false, findings: ["[AIGate 响应未包含 JSON]"] })),
-			issues: ["[AIGate 解析失败] LLM 响应未找到 JSON 块"],
-			suggestions: ["检查 AIGate prompt 是否清晰，重试"],
-			raw: truncated,
-		};
+	for (const expected of expectedAngles) {
+		const line = lines.find((candidate) => candidate.includes(expected.name) && semanticStatus(candidate) !== undefined);
+		if (!line) continue;
+		const passed = semanticStatus(line)!;
+		const detail = line
+			.replace(/^[\s>*#\-]*/, "")
+			.replace(/^(?:✅|❌|⚪|⚠️|PASS|FAIL|N\/?A)\s*/i, "")
+			.replace(expected.name, "")
+			.replace(/^[\s：:|\-]+/, "")
+			.trim();
+		angles.push({
+			name: expected.name,
+			passed,
+			findings: passed === true ? [] : [detail || (passed === "N/A" ? "该角度不适用" : "该角度未通过")],
+		});
 	}
 
-	let verdict: any;
-	let parseError: unknown;
-	for (const candidate of candidates) {
-		try {
-			const parsed = JSON.parse(candidate);
-			if (parsed && typeof parsed === "object" && "angles" in parsed) {
-				verdict = parsed;
-				break;
-			}
-			parseError = new Error("JSON 对象不是 AIGate verdict");
-		} catch (e) {
-			parseError = e;
-		}
-	}
-
-	if (verdict !== undefined) {
-		const angles: AIGateAngleResult[] = Array.isArray(verdict.angles)
-			? verdict.angles.map((a: any) => {
-					const raw = a.passed;
-					let status: XddAIGateAngleStatus;
-					if (raw === "N/A" || raw === "n/a" || raw === "na") {
-						status = "N/A";
-					} else if (raw === true || raw === "true") {
-						status = true;
-					} else {
-						// A malformed or omitted status must never become a pass through
-						// JavaScript truthiness (for example, Boolean("false") is true).
-						status = false;
-					}
-					return {
-						name: String(a.name ?? ""),
-						passed: status,
-						findings: Array.isArray(a.findings) ? a.findings.map(String) : [],
-					};
-				})
-			: [];
-
-		// Build issues from angles if not provided directly
-		let issues = Array.isArray(verdict.issues) ? verdict.issues.map(String) : [];
-		if (issues.length === 0 && angles.length > 0) {
-			issues = angles
-				.filter((a) => a.passed === false)
-				.flatMap((a) => a.findings.map((f) => `[${a.name}] ${f}`));
-		}
-
-		return {
-			passed: Boolean(verdict.passed),
-			angles,
-			issues,
-			suggestions: Array.isArray(verdict.suggestions) ? verdict.suggestions.map(String) : [],
-			raw: truncated,
-		};
-	}
+	const returnedNames = new Set(angles.map((angle) => angle.name));
+	const missing = expectedAngles.filter((angle) => !returnedNames.has(angle.name));
+	const issues = angles
+		.filter((angle) => angle.passed === false)
+		.flatMap((angle) => angle.findings.map((finding) => `[${angle.name}] ${finding}`));
+	if (missing.length > 0) issues.push(`[AIGate 响应不完整] 缺少必审角度：${missing.map((angle) => angle.name).join("、")}`);
 
 	return {
-		passed: false,
-		degraded: true,
-		angles: expectedAngles.map((a) => ({ name: a.name, passed: false, findings: ["[AIGate JSON.parse 抛错]"] })),
-		issues: [`[AIGate JSON 解析失败] ${parseError instanceof Error ? parseError.message : String(parseError)}`],
-		suggestions: ["检查 AIGate prompt 格式，重试"],
-		raw: truncated,
+		passed: missing.length === 0 && angles.every((angle) => angle.passed !== false),
+		angles,
+		issues,
+		suggestions,
+		raw: raw.slice(0, 500),
+		degraded: missing.length > 0 || undefined,
 	};
+}
+
+function semanticStatus(line: string): XddAIGateAngleStatus | undefined {
+	const prefix = line.replace(/^[\s>*#\-]*/, "");
+	if (/^(?:⚪|⚠️|N\/?A\b)/i.test(prefix) || /[：:|]\s*N\/?A\b/i.test(prefix)) return "N/A";
+	if (/^(?:❌|FAIL\b)/i.test(prefix) || /[：:|]\s*(?:不通过|失败|FAIL)\b/i.test(prefix)) return false;
+	if (/^(?:✅|PASS\b)/i.test(prefix) || /[：:|]\s*(?:通过|PASS)\b/i.test(prefix)) return true;
+	return undefined;
 }
 
 /** Phase 6 (D) trust-but-verify: re-derive the top-level passed from

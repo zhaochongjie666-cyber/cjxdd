@@ -36,6 +36,7 @@ export function compileStageContracts<T extends XddStageSpec>(contracts: readonl
 
 	for (const contract of contracts) {
 		validateRequiredContractFields(contract, violations);
+		validateGateHasPositiveDevelopment(contract, violations);
 		validateRequiredOutputsCoveredByWriteScopes(contract, violations);
 		validateAiGateArtifacts(contract, violations);
 		validateRollback(contract, stageOrder, violations);
@@ -44,6 +45,18 @@ export function compileStageContracts<T extends XddStageSpec>(contracts: readonl
 
 	if (violations.length > 0) throw new StageContractError(violations);
 	return Object.freeze(contracts.map((contract) => Object.freeze({ ...contract })));
+}
+
+/** A gate is only legal when the agent is told how to make its observations true first. */
+function validateGateHasPositiveDevelopment(contract: XddStageSpec, violations: StageContractViolation[]): void {
+	if (!Array.isArray(contract.desiredState) || contract.desiredState.length === 0 || contract.desiredState.some((item) => !item.trim())) {
+		violations.push({
+			stage: contract.name,
+			field: "desiredState",
+			message: "Gate 没有配对非空的正向开发目标",
+			remediation: `在 ${contract.name}.desiredState 中先告诉 AI 要完成什么可观察结果，再运行 Gate。`,
+		});
+	}
 }
 
 function validateRequiredContractFields(contract: XddStageSpec, violations: StageContractViolation[]): void {
