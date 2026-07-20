@@ -5,6 +5,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 const DEFAULT_MAX_TOTAL_CHARS = 200_000;
 const DEFAULT_MAX_FILE_CHARS = 50_000;
 const EXCLUDED_DIRS = new Set([".git", "node_modules", "dist", "build", "coverage", "target", ".next", ".cache"]);
+const DESIGN_ROOT = ".xdd/design";
+const DESIGN_BATCHES = ["design.md", "intent.md", "spec/", "architecture/", "wire/", "architecture/*/resilience/"];
 
 export interface ReadAllParams {
 	paths: string[];
@@ -15,6 +17,16 @@ export interface ReadAllParams {
 function inside(root: string, target: string): boolean {
 	const rel = relative(root, target);
 	return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+function requestsWholeDesign(root: string, paths: readonly string[]): boolean {
+	let designRoot: string;
+	try { designRoot = realpathSync(resolve(root, DESIGN_ROOT)); } catch { return false; }
+	return paths.some((path) => {
+		let requested: string;
+		try { requested = realpathSync(resolve(root, path)); } catch { requested = resolve(root, path); }
+		return requested === designRoot || inside(requested, designRoot);
+	});
 }
 
 function collect(root: string, requested: readonly string[]): { files: string[]; rejected: string[]; missing: string[] } {
@@ -43,6 +55,11 @@ export function readAll(cwd: string, params: ReadAllParams) {
 	const maxFile = params.maxFileChars ?? DEFAULT_MAX_FILE_CHARS;
 	if (maxTotal < 1 || maxFile < 1) throw new Error("[read_all] 字符上限必须大于 0");
 	const root = realpathSync(cwd);
+	if (requestsWholeDesign(root, params.paths)) {
+		throw new Error(
+			`[read_all] ${DESIGN_ROOT}/ 可能包含大量设计契约，禁止整目录一次读取。请按阶段分批读取：${DESIGN_BATCHES.join("、")}`,
+		);
+	}
 	const { files, rejected, missing } = collect(root, params.paths);
 	const sections: string[] = [];
 	const truncated: string[] = [];
@@ -81,7 +98,7 @@ export default function readAllExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "read_all",
 		label: "Read All",
-		description: "一次批量读取多个文件或目录（目录会递归），合并为一个结果，避免逐个调用 read。自动排除依赖/构建目录、项目外链接和二进制文件，并以字符上限兜底。",
+		description: "一次批量读取多个文件或目录（目录会递归），合并为一个结果，避免逐个调用 read。自动排除依赖/构建目录、项目外链接和二进制文件，并以字符上限兜底。.xdd/design 禁止整目录读取，必须按 design.md、spec、architecture、wire、resilience 等分批读取。",
 		parameters: {
 			type: "object", properties: {
 				paths: { type: "array", minItems: 1, items: { type: "string" }, description: "相对当前项目的文件或目录列表，如 [\".xdd/design/spec\"]" },

@@ -42,6 +42,32 @@ describe("read_all", () => {
 		} finally { rmSync(cwd, { recursive: true, force: true }); }
 	});
 
+	it("拒绝一次读取整个 design，并提示按设计锚分批读取", () => {
+		const cwd = mkdtempSync(join(tmpdir(), "read-all-"));
+		try {
+			mkdirSync(join(cwd, ".xdd", "design", "spec"), { recursive: true });
+			writeFileSync(join(cwd, ".xdd", "design", "design.md"), "design");
+			symlinkSync(join(cwd, ".xdd", "design"), join(cwd, "design-alias"));
+			expect(() => readAll(cwd, { paths: [".xdd/design"] })).toThrow(/禁止整目录一次读取.*spec\/.*architecture\/.*wire\/.*resilience\//);
+			expect(() => readAll(cwd, { paths: [".xdd/design/"] })).toThrow(/禁止整目录一次读取/);
+			expect(() => readAll(cwd, { paths: [".xdd"] })).toThrow(/禁止整目录一次读取/);
+			expect(() => readAll(cwd, { paths: ["design-alias"] })).toThrow(/禁止整目录一次读取/);
+		} finally { rmSync(cwd, { recursive: true, force: true }); }
+	});
+
+	it("允许按 design 文件和子目录分批读取", () => {
+		const cwd = mkdtempSync(join(tmpdir(), "read-all-"));
+		try {
+			mkdirSync(join(cwd, ".xdd", "design", "spec"), { recursive: true });
+			writeFileSync(join(cwd, ".xdd", "design", "design.md"), "design");
+			writeFileSync(join(cwd, ".xdd", "design", "spec", "rules.md"), "rules");
+			const anchors = readAll(cwd, { paths: [".xdd/design/design.md"] });
+			const spec = readAll(cwd, { paths: [".xdd/design/spec"] });
+			expect(anchors.text).toContain(".xdd/design/design.md");
+			expect(spec.text).toContain(".xdd/design/spec/rules.md");
+		} finally { rmSync(cwd, { recursive: true, force: true }); }
+	});
+
 	it("注册单个 read_all 工具", () => {
 		const tools: unknown[] = [];
 		readAllExtension({ registerTool(tool: unknown) { tools.push(tool); } } as never);
