@@ -31,7 +31,7 @@ cp permission-gate.ts ~/.pi/agent/extensions/
 | Extension | Description |
 |-----------|-------------|
 | `todo.ts` | Todo list tool + `/todos` command with custom rendering and state persistence |
-| `read-all/` | `read_all` tool: recursively read many files/directories in one token-efficient tool call, with safety limits |
+| `read-dir/` | `read_dir` tool: recursively read files/directories with safety limits; directories over 200,000 text characters are rejected and must be read in smaller units; `.xdd/design/` must use separate anchor batches (`spec`, `architecture`, `wire`, `resilience`, etc.) |
 | `hello.ts` | Minimal custom tool example |
 | `question.ts` | Demonstrates `ctx.ui.select()` for asking the user questions with custom UI |
 | `questionnaire.ts` | Multi-question input with tab bar navigation between questions |

@@ -3,7 +3,7 @@
   "pi": {
     "extensions": [
       "./auto-compact/index.ts",
-      "./read-all/index.ts",
+      "./read-dir/index.ts",
       "./xdd/index.ts",
       "./normal-flow/index.ts",
       "./xdd-subagents/index.ts",
