@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 export const DEFAULT_AUTO_COMPACT_THRESHOLD = 90;
+export const DEFAULT_AUTO_COMPACT_ENABLED = false;
 export const MIN_AUTO_COMPACT_THRESHOLD = 1;
 export const MAX_AUTO_COMPACT_THRESHOLD = 100;
 
@@ -29,11 +30,13 @@ export function compactBeforeInference(ctx: CompactContext): Promise<void> {
 
 export default function autoCompact(pi: ExtensionAPI) {
 	let threshold = DEFAULT_AUTO_COMPACT_THRESHOLD;
-	let enabled = true;
+	// 普通对话默认保留完整上下文；只有用户显式设置阈值后才主动压缩。
+	// Pi 自身的 overflow compaction 仍负责上下文真正耗尽时的兜底。
+	let enabled = DEFAULT_AUTO_COMPACT_ENABLED;
 	let compacting: Promise<void> | null = null;
 
 	pi.registerCommand("auto-compact", {
-		description: "配置推理前自动上下文压缩：/auto-compact [1-100%|off|status]（默认 90%）",
+		description: "配置推理前自动上下文压缩：/auto-compact [1-100%|off|status]（默认关闭）",
 		handler: async (args, ctx) => {
 			const parsed = parseAutoCompactThreshold(args);
 			if (parsed === null) {
