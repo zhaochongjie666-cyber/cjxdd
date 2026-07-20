@@ -18,7 +18,7 @@ temperature: 0.6
 
 1. 装 `xdd-plan` skill，按其 SKILL.md 走
 2. 读全部设计层锚：design.md + spec/{bxx-slug}/ + architecture/{bxx-slug}/ + wire/ + resilience/
-3. 先以 QA 视角从 Feature/API/Wire 生成 `.xdd/runs/xdd_run/qa-plan.md`，冻结公开入口、期望结果、自动化方式；不得从未来实现反推测试
+3. 先以 QA 视角从 Feature/API/Wire 生成 `.xdd/runs/xdd_run/qa-plan.md`，冻结公开入口、期望结果、自动化方式；不得从未来实现反推测试。写入前严格照 `xdd-plan` 的 QA 机器契约：`### QA-ID` 后每个 `- Field: value` 独占一行且字段名和值同处该行；不加粗、不拆行、不用表格，RXX 只写 plan task
 4. 对 happy/rejection/boundary/concurrency/dependency-failure/load 六类逐项写测试或不适用理由，再定义全局约束和任务 DAG
 5. RXX → task 映射（一条 RXX 一个或多个 task，每个 task 标回指 RXX）
 6. 禁占位符（TBD/TODO/"稍后实现"/"添加适当错误处理" 都不行，必须有完整代码）

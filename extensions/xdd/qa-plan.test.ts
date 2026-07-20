@@ -30,6 +30,14 @@ ${["rejection", "boundary", "concurrency", "dependency-failure", "load"].map((ca
 }
 
 describe("QA plan gate", () => {
+	it("rejects non-contract category layouts and returns the exact repair template", () => {
+		writeFileSync(join(cwd, ".xdd/runs/xdd_run/qa-plan.md"), validPlan().replace("- Category: happy", "Category\nhappy\nR01"));
+		const result = evaluateQaPlanGate(cwd);
+		expect(result).toMatchObject({ ok: false });
+		expect(result.reason).toContain("字段名不可加粗、不可拆成“字段名/值”两行、不可写成表格");
+		expect(result.reason).toContain("- Category: happy");
+	});
+
 	it("accepts full scenario coverage and explicit six-category applicability decisions", () => {
 		writeFileSync(join(cwd, ".xdd/runs/xdd_run/qa-plan.md"), validPlan());
 		expect(evaluateQaPlanGate(cwd)).toEqual({ ok: true });

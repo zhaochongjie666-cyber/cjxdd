@@ -6,6 +6,15 @@ import { evaluateLegacyQualityWaiver } from "./quality-migration.ts";
 export const QA_CATEGORIES = ["happy", "rejection", "boundary", "concurrency", "dependency-failure", "load"] as const;
 export type QaCategory = typeof QA_CATEGORIES[number];
 
+export const QA_PLAN_ITEM_FORMAT = `### QA-001
+- Category: happy
+- Feature: \`path/example.feature :: Scenario: exact name\`
+- Entry: public UI/CLI/API/event entry
+- Expected: observable result
+- Automation: automated`;
+
+const QA_PLAN_FORMAT_HINT = `必须严格使用以下逐行格式（字段名不可加粗、不可拆成“字段名/值”两行、不可写成表格；RXX 应写入 plan task，不是 QA Category）：\n${QA_PLAN_ITEM_FORMAT}`;
+
 interface QaCase {
 	id: string;
 	category?: string;
@@ -68,14 +77,14 @@ export function evaluateQaPlanGate(cwd: string): XddGateResult {
 	const duplicateIds = cases.filter((item, index) => cases.findIndex((candidate) => candidate.id === item.id) !== index).map((item) => item.id);
 	if (duplicateIds.length > 0) return { ok: false, reason: `QA Plan Gate: 测试 ID 重复：${[...new Set(duplicateIds)].join(", ")}` };
 	const unknown = cases.filter((item) => !QA_CATEGORIES.includes(item.category as QaCategory));
-	if (unknown.length > 0) return { ok: false, reason: `QA Plan Gate: Category 非法或缺失：${unknown.map((item) => item.id).join(", ")}` };
+	if (unknown.length > 0) return { ok: false, reason: `QA Plan Gate: Category 非法或缺失：${unknown.map((item) => item.id).join(", ")}。\n${QA_PLAN_FORMAT_HINT}` };
 	const missingCategories = QA_CATEGORIES.filter((category) => !cases.some((item) => item.category === category));
 	if (missingCategories.length > 0) return { ok: false, reason: `QA Plan Gate: 缺少类别决策：${missingCategories.join(", ")}` };
 	const incomplete = cases.filter((item) => {
 		if (item.applicability === "not-applicable") return !item.reason || item.reason.length < 10;
 		return !item.feature || !item.entry || !item.expected || !/^(automated|manual)$/.test(item.automation ?? "");
 	});
-	if (incomplete.length > 0) return { ok: false, reason: `QA Plan Gate: 测试项字段不完整：${incomplete.map((item) => item.id).join(", ")}` };
+	if (incomplete.length > 0) return { ok: false, reason: `QA Plan Gate: 测试项字段不完整：${incomplete.map((item) => item.id).join(", ")}。\n${QA_PLAN_FORMAT_HINT}` };
 	const anchors = new Set(cases
 		.filter((item) => item.applicability !== "not-applicable" && item.feature && item.entry && item.expected && /^(automated|manual)$/.test(item.automation ?? ""))
 		.map((item) => item.feature));
