@@ -5,7 +5,7 @@ export { activateXddExtension, deactivateXddExtension, xddInlineExtension } from
 export default xddInlineExtension.factory;
 export { runXdd, continueXdd, resumeXdd, xddStatus, archiveXdd } from "./run.ts";
 export { digestReviewArtifactFiles, digestReviewArtifacts, evaluateReviewVerdict, evaluateStoredReviewVerdict, readReviewVerdict, writeReviewVerdict } from "./review-verdict.ts";
-export { evaluateQaEvidenceGate, evaluateQaPlanGate, parseQaPlan, QA_CATEGORIES } from "./qa-plan.ts";
+export { evaluateQaEvidenceGate, parseQaPlan, QA_CATEGORIES } from "./qa-plan.ts";
 export type { QaCategory } from "./qa-plan.ts";
 export { CODE_REVIEW_ANGLES, codeReviewFromAIGate, evaluateCodeReviewGate, writeCodeReviewReport } from "./code-review.ts";
 export type { CodeReviewCheck, CodeReviewReport } from "./code-review.ts";

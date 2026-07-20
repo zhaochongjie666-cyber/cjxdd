@@ -10,7 +10,7 @@ import {
 import type { XddStageName, XddStageSpec } from "./types.ts";
 import { STAGE_ROLES } from "./types.ts";
 import { evaluateVerifyEvidenceGateFull } from "./evidence/verify-gate.ts";
-import { evaluateQaPlanGate, QA_PLAN_ITEM_FORMAT } from "./qa-plan.ts";
+import { QA_PLAN_ITEM_FORMAT } from "./qa-plan.ts";
 import { evaluateProductionPathPolicy } from "./production-path-policy.ts";
 
 const roleFor = (name: XddStageName): string => STAGE_ROLES[name];
@@ -406,18 +406,25 @@ export const STAGES: readonly XddStageSpec[] = [
 			"识别关键路径与可并行项（不强制并行，但能标注）",
 		],
 		deliverablePaths: [".xdd/runs/xdd_run/plan.md", ".xdd/runs/xdd_run/qa-plan.md"],
-		aigateStandard: `审查 plan 阶段：
-1. plan.md 的每个task是否有具体描述（不是"实现R01"敷衍，要有步骤）
-2. task是否覆盖了所有RXX规则（不能漏RXX）
-3. task粒度是否合理（不能一个task覆盖10个RXX，也不能太碎）
-4. task是否有优先级/依赖关系（不是无序列表）
-5. 每个task是否关联了G编号（goal回指）
-6. qa-plan.md 是否在实现前独立定义公开入口测试，而不是从实现细节反推测试
-7. 六类 QA 风险是否逐项决策，所有 Feature Scenario 是否精确覆盖`,
+		aigateStandard: `审查 plan 阶段（读文件逐项检查，不放过）：
+
+读 .xdd/runs/xdd_run/plan.md：
+1. 每个 task 是否有具体描述（不是"实现R01"敷衍，要有步骤）
+2. task 是否覆盖了所有 RXX 规则（不能漏 RXX）
+3. task 粒度是否合理（不能一个 task 覆盖 10 个 RXX，也不能太碎）
+4. task 是否有优先级/依赖关系（不是无序列表）
+5. 每个 task 是否关联了 G 编号（goal 回指）
+
+读 .xdd/runs/xdd_run/qa-plan.md：
+6. 每个 ### QA-XXX 项是否有 Category/Feature/Entry/Expected/Automation 五个字段（not-applicable 项需 Reason ≥10 字）
+7. Category 只能是 happy/rejection/boundary/concurrency/dependency-failure/load 之一，六类逐类决策（有测试或不适用理由）
+8. 是否在实现前独立定义公开入口测试，而不是从实现细节反推测试
+9. 每个 QA 项的 Feature 字段是否指向 .feature 文件中真实存在的 Scenario（读 .xdd/design/spec/**/*.feature 核对，允许格式差异但语义必须匹配）
+10. 所有 Feature Scenario 是否精确覆盖（一个不漏）`,
 				gate: async ({ cwd }) => {
 					const plan = await requireGlobsWithMinSize(cwd, [".xdd/runs/xdd_run/plan.md"], 100);
 					if (!plan.ok) return plan;
-					return evaluateQaPlanGate(cwd);
+					return requireGlobsWithMinSize(cwd, [".xdd/runs/xdd_run/qa-plan.md"], 100);
 				},
 	},
 	{
