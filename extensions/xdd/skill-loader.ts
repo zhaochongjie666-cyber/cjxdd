@@ -1,5 +1,5 @@
 /**
- * Skill loader: discovers `xdd-*` skills from ALL standard locations and
+ * Skill loader: discovers `xdd-*` and `nf-*` skills from ALL standard locations and
  * populates `state.skills` so that `xdd_list_skills` / `xdd_load_skill` work.
  *
  * Scans four directories (dedup by name, first found wins):
@@ -15,6 +15,23 @@ import type { Skill } from "@earendil-works/pi-coding-agent";
 
 /** Load xdd-* skills from all standard locations, deduplicated by name. */
 export function loadXddSkills(cwd: string): Skill[] {
+	return loadSkillsWithPrefix(cwd, "xdd-");
+}
+
+/**
+ * Load nf-* skills from all standard locations, deduplicated by name.
+ *
+ * Normal Flow 的专属技能--与 `loadXddSkills` 互不干扰：NF 的 stages.ts 只
+ * 引用 `nf-*` skill，xdd 的 stages.ts 只引用 `xdd-*` skill。两者目录同级存在
+ * （`skills/nf-*` 和 `skills/xdd-*`），各自加载各自的，避免「用 xdd skill
+ * 走 NF 流程」的错配。
+ */
+export function loadNfSkills(cwd: string): Skill[] {
+	return loadSkillsWithPrefix(cwd, "nf-");
+}
+
+/** Shared loader: scans standard skill dirs for subdirectories matching `prefix`. */
+function loadSkillsWithPrefix(cwd: string, prefix: "xdd-" | "nf-"): Skill[] {
 	const dirs = [
 		join(cwd, "skills"), // project root (xdd convention)
 		join(cwd, ".pi", "skills"), // pi project-local
@@ -23,7 +40,7 @@ export function loadXddSkills(cwd: string): Skill[] {
 	];
 	const seen = new Map<string, Skill>();
 	for (const dir of dirs) {
-		for (const skill of scanXddDir(dir)) {
+		for (const skill of scanSkillsDir(dir, prefix)) {
 			if (!seen.has(skill.name)) {
 				seen.set(skill.name, skill);
 			}
@@ -32,14 +49,14 @@ export function loadXddSkills(cwd: string): Skill[] {
 	return [...seen.values()];
 }
 
-/** Scan a single directory for `xdd-*` subdirectories containing SKILL.md. */
-function scanXddDir(skillsDir: string): Skill[] {
+/** Scan a single directory for `<prefix>*` subdirectories containing SKILL.md. */
+function scanSkillsDir(skillsDir: string, prefix: "xdd-" | "nf-"): Skill[] {
 	if (!existsSync(skillsDir)) return [];
 	const skills: Skill[] = [];
 	let entries: string[];
 	try {
 		entries = readdirSync(skillsDir, { withFileTypes: true })
-			.filter((e) => e.isDirectory() && e.name.startsWith("xdd-"))
+			.filter((e) => e.isDirectory() && e.name.startsWith(prefix))
 			.map((e) => e.name);
 	} catch {
 		return [];

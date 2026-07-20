@@ -13,6 +13,7 @@ import type { XddRunnerState } from "../xdd/types.ts";
 import { dispatchNfCommand } from "./adapter.ts";
 import { buildDocumentHandoffMessages } from "../xdd/context-document-handoff.ts";
 import { planStageNamesAreNf } from "./types.ts";
+import { ensureVerifySnapshot } from "../xdd/policy/verify-snapshot.ts";
 
 /**
  * Module-level shared state。跟 extensions/xdd/extension.ts 的 stateRef 是各自
@@ -180,6 +181,14 @@ export const normalFlowInlineExtension: InlineExtension = {
 					"warning",
 				);
 				return { systemPrompt: "[normal-flow] 流程预算已耗尽。不要调用工具或继续工作；直接停止。" };
+			}
+			// verify 阶段入场立即锁定源码/设计快照，后续 verify Gate 的
+			// VERIFY_MUTATED_CONTRACT diff 以这份快照为基准。和 xdd 同一个机制：
+			// 走 `extensions/xdd/policy/verify-snapshot.ts` 的 `ensureVerifySnapshot()`，
+			// 快照文件路径同样是 .xdd/verify-snapshot.json（跨 xdd / NF 不冲突——
+			// 两个 run 不会同时处于 verify 阶段，cwd 隔离避免互写）。
+			if (stateRef.currentStageName() === "verify") {
+				try { ensureVerifySnapshot(stateRef.cwd); } catch { /* snapshot failure shouldn't block verify */ }
 			}
 			const systemPrompt = buildActiveNfStageSystemPrompt(stateRef);
 			const epoch = stateRef.stageEpoch;

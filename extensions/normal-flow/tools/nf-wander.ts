@@ -1,0 +1,229 @@
+import type { AgentToolResult } from "@earendil-works/pi-agent-core";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { Type } from "typebox";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { type EmptyDetails, type GetNfState, ok } from "./index.ts";
+import { EVIDENCE_DIR, WANDER_REPORT_PATH } from "../evidence/verify-gate.ts";
+
+/**
+ * nf_wander —— normal-flow verify 阶段的轻量漫游工具。
+ *
+ * 设计取舍（vs xdd 的 xdd_blind_journey 两阶段 Actor/Judge）：
+ *  - NF 不引入 AIGate、不引入外部可编程 Hooks；保留 reconcile 范式的轻量哲学。
+ *  - 仍然强制证据闭环（真实命令、真实响应、真实截图/快照），但不做「Then 剥离」
+ *    的盲测提示词隔离：Agent 已知 spec 的 Then，由自己填「实际观察」并承诺证据
+ *    路径。本质上是「把 wander-report.md 的格式校验和写入流程封装成工具」。
+ *  - 三种 action:
+ *      record_step: 追加一步漫游（操作/观察/结果/证据路径）到 wander-report.md
+ *      finish: 写最终 verdict（PASS/PASS_WITH_FRICTION/FAIL/BLOCKED/INCONCLUSIVE）
+ *      inspect: 读 wander-report.md + evidence 目录状态，返回给 agent 当下缺口
+ *
+ *  真正的「证据不能伪造」由 verify Gate 的 HEALTH_CHECK_MISSING /
+ *  FALLBACK_EVIDENCE_MISSING / WANDER_REPORT_MISSING 兜底：本工具只是把
+ *  漫游记录做对，不要指望靠工具证明 Agent 没作弊。
+ */
+
+const stepSchema = Type.Object({
+	action: Type.Literal("record_step"),
+	scenario: Type.String({ description: "漫游对应的 Feature Scenario，例 .xdd/design/spec/b01/auth.feature :: Scenario: 用户登录成功" }),
+	step: Type.String({ description: "步骤编号或标题，例 Step 4: 提交订单" }),
+	operation: Type.String({ description: "实际操作：curl 命令 / 浏览器动作 / API 调用" }),
+	observation: Type.String({ description: "实际观察：响应体片段 / 页面变化 / 状态码" }),
+	result: Type.Union([Type.Literal("PASS"), Type.Literal("FAIL"), Type.Literal("BLOCKED"), Type.Literal("INCONCLUSIVE")], { description: "本步结果" }),
+	evidencePath: Type.Optional(Type.String({ description: "证据文件路径，相对 cwd，如 .xdd/runs/normal_run/evidence/responses/login.json" }),
+});
+
+const finishSchema = Type.Object({
+	action: Type.Literal("finish"),
+	verdict: Type.Union([
+		Type.Literal("PASS"),
+		Type.Literal("PASS_WITH_FRICTION"),
+		Type.Literal("FAIL"),
+		Type.Literal("BLOCKED"),
+		Type.Literal("INCONCLUSIVE"),
+	], { description: "整体漫游结论（参考 xdd_blind_journey 的 5 值体系）" }),
+	reason: Type.String({ description: "≥1 句解释" }),
+});
+
+const inspectSchema = Type.Object({
+	action: Type.Literal("inspect"),
+});
+
+const schema = Type.Union([stepSchema, finishSchema, inspectSchema]);
+
+export function createNfWanderTool(getState: GetNfState): ToolDefinition {
+	return {
+		name: "nf_wander",
+		label: "normal-flow: wander (real-user evidence recorder)",
+		description:
+			"轻量漫游记录器——验证阶段证据工具。action=record_step 追加漫游步骤；finish 写 verdict；inspect 看当前缺口。必须把真实操作命令、真实响应、真实截图/HTML 写到 .xdd/runs/normal_run/evidence/ 下，并在 record_step 时把路径作为 evidencePath 传入。",
+		parameters: schema,
+		async execute(_toolCallId, params: { action: "record_step" | "finish" | "inspect"; scenario?: string; step?: string; operation?: string; observation?: string; result?: "PASS" | "FAIL" | "BLOCKED" | "INCONCLUSIVE"; evidencePath?: string; verdict?: "PASS" | "PASS_WITH_FRICTION" | "FAIL" | "BLOCKED" | "INCONCLUSIVE"; reason?: string }): Promise<AgentToolResult<EmptyDetails>> {
+			const state = getState();
+			const cwd = state.cwd;
+			mkdirEvidence(cwd);
+
+			if (params.action === "inspect") {
+				return ok(inspectReport(cwd));
+			}
+
+			const reportPath = join(cwd, WANDER_REPORT_PATH);
+			if (!existsSync(reportPath)) {
+				writeFileSync(
+					reportPath,
+					wanderSkeletonMd(),
+					"utf8",
+				);
+			}
+			const current = readFileSync(reportPath, "utf8");
+
+			if (params.action === "record_step") {
+				const { scenario, step, operation, observation, result, evidencePath } = params;
+				if (!scenario || !step || !operation || !observation || !result) {
+					return ok("❌ record_step 缺字段（scenario/step/operation/observation/result 必填）");
+				}
+				const evidenceValidation = evidencePath ? validateEvidencePath(cwd, evidencePath) : { ok: true as const };
+				if (!evidenceValidation.ok) return ok(`❌ ${evidenceValidation.reason}`);
+				const block = formatStepBlock({ scenario, step, operation, observation, result, evidencePath });
+				const next = appendStep(current, block);
+				writeFileSync(reportPath, next, "utf8");
+				return ok(`✓ 已记录漫游步骤「${step}」（scenario=${scenario}，result=${result}）到 ${WANDER_REPORT_PATH}`);
+			}
+
+			// finish
+			const { verdict, reason } = params;
+			if (!verdict || !reason) return ok("❌ finish 缺字段（verdict/reason 必填）");
+			const next = appendVerdict(current, verdict, reason);
+			writeFileSync(reportPath, next, "utf8");
+			return ok(`✓ wander-report 已写最终 verdict=${verdict}。${hintForVerdict(verdict)}`);
+		},
+	};
+}
+
+function mkdirEvidence(cwd: string): void {
+	mkdirSync(join(cwd, EVIDENCE_DIR), { recursive: true });
+	mkdirSync(join(cwd, EVIDENCE_DIR, "responses"), { recursive: true });
+	mkdirSync(join(cwd, EVIDENCE_DIR, "screenshots"), { recursive: true });
+	mkdirSync(join(cwd, EVIDENCE_DIR, "snapshots"), { recursive: true });
+}
+
+function wanderSkeletonMd(): string {
+	const ts = new Date().toISOString();
+	return `# Wander Report
+
+> Generated by nf_wander at ${ts}。
+> **必须** 至少 3 个 record_step（操作→观察→结果），且每步 evidencePath 指向
+> .xdd/runs/normal_run/evidence/ 下真实存在的文件；否则 verify Gate WANDER_REPORT_MISSING 会拒绝。
+
+- Base URL: （待填，例 http://localhost:8000）
+- Started At: ${ts}
+- Feature Scenario: （待填，例 .xdd/design/spec/b01/auth.feature :: Scenario: 用户登录成功）
+
+（用 nf_wander record_step 追加步骤，或直接编辑本 Markdown）
+
+## 最终判断
+- Verdict: （待填，PASS / PASS_WITH_FRICTION / FAIL / BLOCKED / INCONCLUSIVE）
+- 理由: （待填）
+`;
+}
+
+interface StepInput {
+	scenario: string;
+	step: string;
+	operation: string;
+	observation: string;
+	result: "PASS" | "FAIL" | "BLOCKED" | "INCONCLUSIVE";
+	evidencePath?: string;
+}
+
+function formatStepBlock(input: StepInput): string {
+	return [
+		`### ${input.step}`,
+		`- Scenario: ${input.scenario}`,
+		`- 操作: ${input.operation}`,
+		`- 观察: ${input.observation}`,
+		`- 结果: ${input.result}`,
+		input.evidencePath ? `- 证据: ${input.evidencePath}` : `- 证据: （未提供）`,
+		"",
+	].join("\n");
+}
+
+function appendStep(current: string, block: string): string {
+	// 把 block 插到「## 最终判断」之前；找不到就 append 到末尾。
+	const marker = "## 最终判断";
+	if (current.includes(marker)) {
+		return current.replace(marker, `${block}\n${marker}`);
+	}
+	return current.trimEnd() + "\n\n" + block;
+}
+
+function appendVerdict(current: string, verdict: string, reason: string): string {
+	const lines = current.split("\n");
+	const idx = lines.findIndex((l) => l.trim() === "## 最终判断");
+	if (idx < 0) {
+		return current.trimEnd() + `\n\n## 最终判断\n- Verdict: ${verdict}\n- 理由: ${reason}\n`;
+	}
+	// 替换「- Verdict:」和「- 理由:」行；保留其它行。
+	const after = lines.slice(idx + 1);
+	const verdictLineIdx = after.findIndex((l) => /^\s*-\s*Verdict\s*:/.test(l));
+	const reasonLineIdx = after.findIndex((l) => /^\s*-\s*理由\s*:/.test(l));
+	if (verdictLineIdx >= 0) after[verdictLineIdx] = `- Verdict: ${verdict}`;
+	else after.push(`- Verdict: ${verdict}`);
+	if (reasonLineIdx >= 0) after[reasonLineIdx] = `- 理由: ${reason}`;
+	else after.push(`- 理由: ${reason}`);
+	return lines.slice(0, idx + 1).concat(after).join("\n");
+}
+
+function hintForVerdict(verdict: string): string {
+	switch (verdict) {
+		case "PASS": return "可在 verify-report.md 引用本路径作为 PASS 证据。";
+		case "PASS_WITH_FRICTION": return "需在 verify-report.md 列出具体体验问题（标题/位置/影响/证据）。";
+		case "FAIL": return "回 implement 或更早阶段修复；不要让 verify Gate 通过。";
+		case "BLOCKED": return "通常意味着环境/入口未就绪，先修环境或起服务，再用 nf_wander 重做。";
+		case "INCONCLUSIVE": return "证据不足——补充 curl 响应或截图后重做。";
+		default: return "";
+	}
+}
+
+function validateEvidencePath(cwd: string, evidencePath: string): { ok: true } | { ok: false; reason: string } {
+	if (evidencePath.includes("..")) return { ok: false, reason: `evidencePath 不能包含 ".."，收到: ${evidencePath}` };
+	if (!evidencePath.startsWith(".xdd/runs/normal_run/evidence/")) {
+		return { ok: false, reason: `evidencePath 必须以 .xdd/runs/normal_run/evidence/ 开头，收到: ${evidencePath}` };
+	}
+	const abs = join(cwd, evidencePath);
+	if (!existsSync(abs)) return { ok: false, reason: `evidencePath 在磁盘不存在：${evidencePath}。请先用 curl/脚本/浏览器把真实证据写入此路径。` };
+	return { ok: true };
+}
+
+function inspectReport(cwd: string): string {
+	const lines: string[] = ["[nf_wander inspect]"];
+	const reportPath = join(cwd, WANDER_REPORT_PATH);
+	if (!existsSync(reportPath)) {
+		lines.push(`  ❌ wander-report.md 不存在：${WANDER_REPORT_PATH}`);
+		lines.push(`  → 立即用 nf_wander record_step 写第一步。`);
+		return lines.join("\n");
+	}
+	const text = readFileSync(reportPath, "utf8");
+	const stepCount = (text.match(/^###\s+Step\b/gim) ?? []).length
+		+ (text.match(/^###\s+[^\n]*$/gim) ?? []).filter((l) => !l.startsWith("### 最终判断")).length;
+	const evidenceCount = (text.match(/证据:\s*(\.xdd\/runs\/normal_run\/evidence\/[^\s)]+)/g) ?? []).length;
+	const scenarioMatches = [...text.matchAll(/Scenario:\s*([^\n]+)/g)].map((m) => m[1].trim());
+	const verdictMatch = text.match(/-\s*Verdict\s*:\s*(\S+)/);
+	lines.push(`  ✓ wander-report 存在：${WANDER_REPORT_PATH}`);
+	lines.push(`  - 已记录步骤数: ${stepCount}（gate 要求 ≥3）`);
+	lines.push(`  - 引用 evidence 数: ${evidenceCount}`);
+	lines.push(`  - 已绑定 Scenario: ${scenarioMatches.length > 0 ? scenarioMatches.join("；") : "(未绑定)"}`);
+	lines.push(`  - 当前 verdict: ${verdictMatch?.[1] ?? "(未填写)"}`);
+	const evidenceDir = join(cwd, EVIDENCE_DIR);
+	for (const sub of ["responses", "screenshots", "snapshots"] as const) {
+		const p = join(evidenceDir, sub);
+		lines.push(`  - evidence/${sub}: ${existsSync(p) ? "存在" : "不存在"}`);
+	}
+	const healthCheck = join(cwd, EVIDENCE_DIR, "health-check.txt");
+	lines.push(`  - health-check.txt: ${existsSync(healthCheck) ? "存在" : "❌ 缺失"}`);
+	if (stepCount < 3) lines.push(`  → 缺口：步骤数 < 3，继续 record_step。`);
+	if (evidenceCount === 0) lines.push(`  → 缺口：record_step 没传 evidencePath；每步必须挂真实证据路径。`);
+	if (!verdictMatch) lines.push(`  → 缺口：未写 verdict；finish 阶段必须填 PASS/PASS_WITH_FRICTION/FAIL/BLOCKED/INCONCLUSIVE 之一。`);
+	return lines.join("\n");
+}

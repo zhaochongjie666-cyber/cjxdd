@@ -15,6 +15,7 @@ import { createNfDifferenceTool } from "./nf-difference.ts";
 import { createNfSubmitArtifactTool } from "./nf-submit-artifact.ts";
 import { createNfAdvanceTool } from "./nf-advance.ts";
 import { createNfRollbackTool } from "./nf-rollback.ts";
+import { createNfWanderTool } from "./nf-wander.ts";
 
 export function createNfTools(getState: GetNfState): ToolDefinition[] {
 	return [
@@ -24,5 +25,6 @@ export function createNfTools(getState: GetNfState): ToolDefinition[] {
 		createNfDesiredStateTool(getState),
 		createNfDifferenceTool(getState),
 		createNfRollbackTool(getState),
+		createNfWanderTool(getState),
 	];
 }

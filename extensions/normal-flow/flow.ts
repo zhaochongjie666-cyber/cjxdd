@@ -9,7 +9,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { NF_STAGES } from "./stages.ts";
 import { NF_STAGE_NAMES, planStageNamesAreNf, XddRunnerState } from "./types.ts";
 import { activateNormalFlowExtension, getState } from "./extension.ts";
-import { loadXddSkills } from "../xdd/skill-loader.ts";
+import { loadNfSkills } from "../xdd/skill-loader.ts";
 import { NORMAL_FLOW_RUN_DIR, controllerInitScaffold } from "../xdd/init-scaffold.ts";
 import { XddController } from "../xdd/core/controller.ts";
 import { createNormalFlowRuntimeStore, NORMAL_FLOW_RUNTIME_FILE, NORMAL_FLOW_V1_BACKUP_FILE } from "./runtime-store.ts";
@@ -55,7 +55,7 @@ export async function startNormalFlow(args: string, cwd: string, pi: ExtensionAP
 	const state = new XddRunnerState({ runId, cwd, userInput: task, runtimeStoreOptions: { runtimeFileName: NORMAL_FLOW_RUNTIME_FILE, legacyCheckpointFileName: false, v1BackupFileName: NORMAL_FLOW_V1_BACKUP_FILE } });
 	state.flowBudgetUsd = configuredFlowBudgetUsd();
 	state.maxSelfHealPerStage = NF_MAX_SELF_HEAL_PER_STAGE;
-	state.skills = loadXddSkills(cwd);
+	state.skills = loadNfSkills(cwd);
 	state.plan = NF_STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
 	activateNormalFlowExtension(state);
 	const n = state.skills.length;
@@ -102,7 +102,7 @@ export async function resumeNormalFlow(args: string, cwd: string, pi: ExtensionA
 		return;
 	}
 	const newState = new XddRunnerState({ runId: rt.runId, cwd, userInput: rt.userInput, runtimeStoreOptions: { runtimeFileName: NORMAL_FLOW_RUNTIME_FILE, legacyCheckpointFileName: false, v1BackupFileName: NORMAL_FLOW_V1_BACKUP_FILE } });
-	newState.skills = loadXddSkills(cwd);
+	newState.skills = loadNfSkills(cwd);
 	// 强制注入 NF 自己的 5 阶段 plan，绝不落到 xdd 固定的 STAGES。
 	newState.plan = NF_STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
 	newState.restoreFromCheckpoint(rt);

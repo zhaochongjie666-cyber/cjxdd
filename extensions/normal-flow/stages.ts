@@ -27,6 +27,7 @@ import {
 	requireGlobsWithMinSize,
 	requireTestsPass,
 } from "./gate.ts";
+import { evaluateNormalFlowVerifyGate, evaluateNormalFlowVerifyGateFull } from "./evidence/verify-gate.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildTraceCoverage, observeFilesystem } from "../xdd/observe-fs.ts";
@@ -44,6 +45,10 @@ export const NF_CONTROLLER_TOOLS = [
 	"nf_submit_artifact",
 	"nf_advance",
 	"nf_rollback",
+	// nf_wander 只读 + append 到 evidence/，任意阶段用都不会改写设计/代码；放进
+	// 公共 allowedTools，让 plan/execute 阶段也能提前记录漫游观察，到 verify 时
+	// 直接 finish 即可（避免 verify 阶段凭空白重建假漫游）。
+	"nf_wander",
 ] as const;
 export const READ_TOOLS = ["read", "grep", "find", "ls"] as const;
 export const WRITE_TOOLS = ["write", "edit"] as const;
@@ -112,7 +117,13 @@ const NF_CONTRACT_META: Record<NfXddStageName, NfContractMeta> = {
 			input(".xdd/design/spec/**", "业务验收规则"),
 		],
 		readScopes: ["**"],
-		writeScopes: [".xdd/runs/normal_run/verify-report.md"],
+		// 「真实可用契约」要求 verify 能写 health-check.txt / wander-report.md /
+		// responses/，不只是 verify-report.md。这是和 xdd 一样的契约约定：
+		// verify 可以写 evidence + report，但不能动源码（noCodeModification 双重保险）。
+		writeScopes: [
+			".xdd/runs/normal_run/verify-report.md",
+			".xdd/runs/normal_run/evidence/**",
+		],
 		gatePolicy: "hard",
 		rollbackTarget: "execute",
 	},
@@ -247,6 +258,10 @@ const verifyGate: XddGate = async ({ cwd }) => {
 		].filter(Boolean).join("；");
 		return { ok: false, reason: `verify Gate: spec↔code 追溯未闭合（${gaps}）` };
 	}
+	// 「真实可用契约」完整 gate：证据门 + mutation + trace + scenario +
+	// 逐 RXX 举证 + wandering 覆盖。约束效果对齐 xdd `evaluateVerifyEvidenceGateFull`。
+	const evidenceGate = evaluateNormalFlowVerifyGateFull(cwd);
+	if (!evidenceGate.ok) return evidenceGate;
 	return { ok: true };
 };
 
@@ -254,7 +269,7 @@ export const NF_STAGES: readonly XddStageSpec[] = [
 	{
 		name: "understand",
 		role: roleFor("understand"),
-		skill: "xdd-brainstorm",
+		skill: "nf-brainstorm",
 		exit: "goal_complete",
 		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, ...NF_CONTROLLER_TOOLS],
 		desiredState: [
@@ -270,7 +285,7 @@ export const NF_STAGES: readonly XddStageSpec[] = [
 	{
 		name: "spec",
 		role: roleFor("spec"),
-		skill: "xdd-spec",
+		skill: "nf-spec",
 		exit: "goal_complete",
 		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, ...NF_CONTROLLER_TOOLS],
 		desiredState: [
@@ -278,6 +293,9 @@ export const NF_STAGES: readonly XddStageSpec[] = [
 			"每条 RXX 规则至少 1 个 Feature 覆盖（含正向 + 异常 Scenario）",
 			"已把攻击面写入规则：拒绝/失败/冲突/无权限/边界反例，而不是只写 happy path",
 			"规则与 explore 阶段澄清的需求点逐条对应（无遗漏假设）",
+			// verify 阶段会按 spec Feature 做真实漫游；spec 必须给 verify 留出
+			// 可被外部观察的断言（Then 不能只写内部状态变化）。
+			"Feature 的 Then 步骤必须是外部可观察结果（HTTP 状态码/响应体/页面变化/数据库表行），不是「调用成功」这种空泛表述",
 		],
 		deliverablePaths: [".xdd/design/spec/**/rules.md", ".xdd/design/spec/**/*.feature"],
 		noCodeReading: true,
@@ -287,7 +305,7 @@ export const NF_STAGES: readonly XddStageSpec[] = [
 	{
 		name: "plan",
 		role: roleFor("plan"),
-		skill: "xdd-plan",
+		skill: "nf-plan",
 		exit: "goal_complete",
 		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, ...NF_CONTROLLER_TOOLS],
 		desiredState: [
@@ -295,6 +313,9 @@ export const NF_STAGES: readonly XddStageSpec[] = [
 			"每项工作项标明：依赖前序产出、预计产物、改动文件范围",
 			"每个工作项关联至少 1 条 spec RXX",
 			"每个工作项写清 TDD 验证命令/Expected 结果、改动 Files、Gate 通过条件和攻击用例",
+			// verify 阶段会用 nf_wander 补真实证据；plan 必须挑出哪些 Feature
+			// Scenario 被选用为漫游场景、对应入口 URL/命令是什么。
+			"已选 ≥1 个核心 Feature Scenario 作为真实漫游对象（指定 .feature 路径、入口 URL/命令、预期观察）",
 		],
 		deliverablePaths: [".xdd/runs/normal_run/plan.md", ".xdd/runs/normal_run/plan/**"],
 		aigateStandard: NF_NO_AIGATE_STANDARD,
@@ -303,7 +324,7 @@ export const NF_STAGES: readonly XddStageSpec[] = [
 	{
 		name: "execute",
 		role: roleFor("execute"),
-		skill: "xdd-execute",
+		skill: "nf-execute",
 		exit: "goal_complete",
 		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, "bash", ...NF_CONTROLLER_TOOLS],
 		desiredState: [
@@ -311,6 +332,10 @@ export const NF_STAGES: readonly XddStageSpec[] = [
 			"每条 spec RXX 都有对应的 @implements RXX 标注",
 			"测试通过（npm test / go test / make test，按仓库类型自动探测）",
 			"实现按 plan 的攻击用例补了失败测试，且 Gate 失败原因能回指到具体 RXX/Task",
+			// 静态测试不能证明产品「真能用」——execute 必须同时保证代码能被服务起
+			// 来、被访问、被串成端到端路径，否则 verify 阶段无证据可写。
+			"代码有可被 curl/UI 访问的入口（服务端口/路由/HTTP/页面/CLI），不能只是函数库",
+			"跑过 scripts/nf-wander.sh 或等价脚本，产出 evidence/health-check.txt + responses/，保证 verify 阶段有原材料",
 		],
 		deliverablePaths: [],
 		aigateStandard: NF_NO_AIGATE_STANDARD,
@@ -319,7 +344,7 @@ export const NF_STAGES: readonly XddStageSpec[] = [
 	{
 		name: "verify",
 		role: roleFor("verify"),
-		skill: "xdd-verify",
+		skill: "nf-verify",
 		exit: "verdict",
 		// verify 必须生成报告；write/edit 仍受仅覆盖 verify-report.md 的
 		// writeScopes 与 noCodeModification 双重约束，不能借此修改源码。
@@ -327,11 +352,27 @@ export const NF_STAGES: readonly XddStageSpec[] = [
 		noCodeModification: true,
 		desiredState: [
 			"已对 spec 的每条 RXX 规则至少跑一次验证",
-			"已写 .xdd/runs/normal_run/verify-report.md，逐 RXX 举证",
+			"已对每个 .feature Scenario 跑一次验证（Feature 驱动）",
+			"已写 .xdd/runs/normal_run/verify-report.md，逐 RXX + 逐 Scenario 举证",
+			"plan 的每个 Implementation 路径在磁盘上真实存在",
 			"测试通过；spec↔code 追溯闭合（@implements RXX 齐全）",
 			"verify-report.md 包含攻击验证、P0/P1 判定、失败假设和证据路径，能驱动回 execute 或更早阶段",
+			// 「真实可用契约」正向三条（任意项目必齐）：
+			"健康检查证据：.xdd/runs/normal_run/evidence/health-check.txt 存在且状态码 2xx（服务真能起）",
+			"业务端点证据：.xdd/runs/normal_run/evidence/responses/ 下有 ≥1 个非 /healthz 的真实 curl 响应",
+			"用户漫游证据：.xdd/runs/normal_run/evidence/wander-report.md 至少 3 步（操作→观察→结果），且每步 evidencePath 指向真实文件",
+			// 「真实可用契约」兑底一条：
+			"兑底证据：≥1 条负面场景（401/403/404/422/500 或「拒绝/失败/无权」关键词），证明系统会拒绝错误路径",
+			// 证据规格：
+			"verify-report.md 引用 .xdd/runs/normal_run/evidence/ 下 ≥2 类证据（runtime/http/ui/db/auth/boundary/chaos/stub）",
+			"如果项目里有 .xdd/design/wire/*，verify-report.md 必须含 UI 证据（截图/HTML/可访问性快照路径）",
 		],
-		deliverablePaths: [".xdd/runs/normal_run/verify-report.md"],
+		deliverablePaths: [
+			".xdd/runs/normal_run/verify-report.md",
+			".xdd/runs/normal_run/evidence/health-check.txt",
+			".xdd/runs/normal_run/evidence/wander-report.md",
+			".xdd/runs/normal_run/evidence/responses/**",
+		],
 		aigateStandard: NF_NO_AIGATE_STANDARD,
 		gate: verifyGate,
 	},

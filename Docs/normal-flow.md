@@ -76,11 +76,11 @@ NF 新增：
 
 | 阶段 | xdd 名 | role | skill | 写入 |
 |------|--------|------|-------|------|
-| **explore** | `understand` | Requirements Analyst | `xdd-brainstorm` | `.xdd/design/intent.md`, `.xdd/design/design.md` |
-| **spec** | `spec` | API Designer | `xdd-spec` | `.xdd/design/spec/{bxx}/rules.md`, `.feature` |
-| **plan** | `plan` | Project Manager | `xdd-plan` | `.xdd/runs/normal_run/plan.md` |
-| **implement** | `execute` | Implementer | `xdd-execute` | source code (`src/`, `lib/`, `tests/`) |
-| **verify** | `verify` | Auditor | `xdd-verify` | `.xdd/runs/normal_run/verify-report.md` |
+| **explore** | `understand` | Requirements Analyst | `nf-brainstorm` | `.xdd/design/intent.md`, `.xdd/design/design.md` |
+| **spec** | `spec` | API Designer | `nf-spec` | `.xdd/design/spec/{bxx}/rules.md`, `.feature` |
+| **plan** | `plan` | Project Manager | `nf-plan` | `.xdd/runs/normal_run/plan.md` |
+| **implement** | `execute` | Implementer | `nf-execute` | source code (`src/`, `lib/`, `tests/`) |
+| **verify** | `verify` | Auditor | `nf-verify` | `.xdd/runs/normal_run/verify-report.md` |
 
 > **为什么用 xdd 名而不是新名**：复用 `XddStageSpec.name` 字段 + runtime.json schema。display name 在 prompt 层翻译，runtime 不变。
 >
@@ -103,7 +103,7 @@ const exploreGate: XddGate = async ({ cwd }) => {
 {
   name: "understand",                              // xdd stage 名（与 display name 解耦）
   role: "Requirements Analyst",
-  skill: "xdd-brainstorm",
+  skill: "nf-brainstorm",
   exit: "goal_complete",
   allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, ...NF_TOOLS],
   deliverablePaths: [".xdd/design/intent.md", ".xdd/design/design.md"],
@@ -141,14 +141,14 @@ const exploreGate: XddGate = async ({ cwd }) => {
 | 阶段 | Gate 硬检查 |
 |------|-----------|
 | **explore** | `intent.md` 存在 + `design.md` 含 5 关键词 ≥ 3 |
-| **spec** | `rules.md` ≥ 100B + ≥ 1 个 `.feature` |
-| **plan** | `plan.md` ≥ 100B |
+| **spec** | `rules.md` ≥ 100B + ≥ 1 个 `.feature` + ≥1 条攻击/异常关键词 |
+| **plan** | `plan.md` ≥ 100B + 「回指 RXX / Expected / Files / Attack / Gate」字段 |
 | **implement** | `npm test` exit 0（go test / make test 自动检测）+ `@implements RXX` 覆盖 spec RXX |
-| **verify** | `verify-report.md` ≥ 100B + `npm test` exit 0 + spec ↔ code 追溯闭合 |
+| **verify** | `verify-report.md` ≥ 300B + `npm test` exit 0 + spec ↔ code 追溯闭合 + **「真实可用契约」** 三类证据 |
 
 ---
 
-## 5. 工具（6 个，对齐 xdd 工具语义）
+## 5. 工具（7 个，对齐 xdd 工具语义）
 
 每个工具的输入/输出与 xdd 对应工具一致，只是命名空间 `nf_`：
 
@@ -160,10 +160,93 @@ const exploreGate: XddGate = async ({ cwd }) => {
 | `nf_submit_artifact` | `xdd_submit_artifact`（去 AIGate） | 阶段收尾 | ❌/⚠️/✅ + 剩余预算 |
 | `nf_advance` | `xdd_advance` | gate 通过 | 进入下一阶段（或 run 完成） |
 | `nf_rollback` | `xdd_rollback` | 仅 verify 阶段 | 默认回退 verify → execute/implement；也可显式回 spec/understand 修正设计；非 verify 阶段拒绝跨阶段跳转 |
+| `nf_wander` | （轻量版 `xdd_blind_journey`） | plan/execute/verify | 记录一条漫游步骤 / 写最终 verdict / 检查当前缺口 |
 
-**与 xdd 工具的关键差异**：`nf_submit_artifact` **不调用 AIGate**。只有硬 gate（filesystem check）。语义审查靠硬 gate 的关键词 / 字节数下限。
+**与 xdd 工具的关键差异**：`nf_submit_artifact` **不调用 AIGate**。只有硬 gate（filesystem check）。语义审查靠硬 gate 的关键词 / 字节数下限 + verify 阶段的「真实可用契约」 evidence gate。
 
----
+### 5.1 `nf_wander`（轻量漫游记录器）
+
+`nf_wander` 是 NF 「真实可用契约」的载体工具，对齐 xdd `xdd_blind_journey` 的核心目的（验证真实用户能跑通），但简化设计：
+
+- **不做 Actor/Judge 二阶段隔离**：NF 不引入 AIGate / 外部 hook 机制；二阶段提示词隔离在 NF 哲学里属于过度设计。
+- **三动作**：`record_step`（追加步骤）/ `finish`（写最终 verdict）/ `inspect`（看当前缺口）。
+- **强制证据闭环**：每条 `record_step` 必须传 `evidencePath`（指向 `.xdd/runs/normal_run/evidence/` 下真实文件），否则拒绝；这是为了避免 Agent 自报 PASS。
+- **plan/execute 也能用**：放进 NF 公共 `allowedTools`，允许 execute 阶段跑通后顺手把真实步骤记下来；verify 阶段直接 `finish` 收尾。
+
+完整契约见 `extensions/normal-flow/tools/nf-wander.ts`。
+
+### 5.2 `extensions/normal-flow/scripts/nf-wander.sh`（一键脚手架）
+
+`nf-wander.sh` 是 verify 阶段的物手架脚本：
+
+- 自动识别项目类型（`npm start` / `go run` / `python -m http.server` / `docker compose up` / `make`）
+- 拉起服务、探测端口、抓 `/healthz`（或 `/health`）响应体写入 `evidence/health-check.txt`
+- 扫 9 个候选业务端点，把响应体写入 `evidence/responses/`
+- 生成 `evidence/wander-report.md` 骨架（agent 用 `nf_wander` 填实际观察）
+
+完整调用方式见脚本顶部注释。
+
+## 5.3 verify 阶段 17 道硬 gate
+
+verify 阶段不是「自报 PASS」，stages.ts 的 verifyGate 调 `evaluateNormalFlowVerifyGateFull(cwd)`，任意一道 fail 都不能通过 verify。约束效果对齐 xdd `evaluateVerifyEvidenceGateFull`。
+
+**存在性 + 引用合规**
+- `RUN_DIR_MISSING` / `REPORT_MISSING` / `REPORT_TOO_SHORT` / `PLAN_UNFINISHED` -- 基本存在性
+- `EVIDENCE_MISSING` -- verify-report 引用的 evidence 文件必须真实存在
+- `EVIDENCE_FROM_OTHER_RUN` -- 拒绝跨 run 借证据（`xdd_run/evidence/` 不能拿给 `normal_run` 用）
+- `EVIDENCE_INSUFFICIENT` -- verify-report 需覆盖 ≥2 类别证据（runtime/http/ui/db/auth/boundary/chaos/stub）
+- `UI_EVIDENCE_MISSING` -- 有 wire 产物时需补 UI 证据
+- `BUSINESS_ENDPOINT_UNTESTED` -- 拒绝「只跳 /healthz」
+- `HEALTH_CHECK_MISSING` -- `evidence/health-check.txt` 必须含 2xx 状态码
+- `FALLBACK_EVIDENCE_MISSING` -- 必须有 4xx/5xx 响应或拒绝/无权等关键词
+- `WANDER_REPORT_MISSING` -- `evidence/wander-report.md` ≥3 步骤漫游报告
+- `WANDER_FEATURE_UNMAPPED` -- wander 引用 .feature 时 verify-report 需对照同一场景
+
+**追溯闭合 + 退改护栏**
+- `VERIFY_MUTATED_CONTRACT` -- verify 入场锁 `.xdd/verify-snapshot.json`，提交时 diff `src/` / `lib/` / `app/` / `tests/` / `.xdd/design/` 被改动
+- `TRACE_GAP` -- spec RXX 与代码 `@implements RXX` 追溯链闭合
+- `FEATURE_SCENARIO_GAP` -- .feature Scenario 在 plan 中需有 Feature/Implementation/Acceptance Test 三件套
+- `RXX_UNTESTED` -- verify-report 需逐 RXX 写 `### RXX:` + `Verdict:` 块，拒绝「全部通过」空洞表述
+- `WANDERING_NOT_WALKED` -- plan 的 `## Wandering Scenarios` 声明的场景必须真的在 wander-report 里走
+
+## 5.4 plan.md 格式约定
+
+`FEATURE_SCENARIO_GAP` / `WANDERING_NOT_WALKED` 两道 gate 会解析 plan.md：
+
+```markdown
+# Plan
+
+### Task auth-login
+**Feature:** auth.feature :: Scenario: 用户登录成功
+**Implementation:** src/auth.ts
+**Acceptance Test:** curl -X POST /api/login -d '{"u":"a","p":"b"}'
+
+## Wandering Scenarios
+- Feature: .xdd/design/spec/b01/auth.feature
+- Scenario: 用户登录成功
+```
+
+`## Wandering Scenarios` 块可选--不写不触发 `WANDERING_NOT_WALKED`，写了就必须真在 wander-report.md 走一遍。`**Feature:**` 必须写 `<feature 文件名> :: Scenario: <Scenario 名>` 格式。
+
+## 5.5 verify-report.md 逐 RXX 举证格式
+
+`RXX_UNTESTED` gate 会解析 verify-report.md 中每个 `### RXX:` 块的 `Verdict:`：
+
+```markdown
+### R01: 登录成功
+- Verdict: PASS
+- Evidence: .xdd/runs/normal_run/evidence/responses/login.json
+
+### R02: 错误密码被拒
+- Verdict: PASS
+- Evidence: .xdd/runs/normal_run/evidence/responses/login-401.json
+
+### R03: 超长输入截断
+- Verdict: N/A
+- (原因：限流会在上游拒接，本服务不负责)
+```
+
+Verdict 只接受 `PASS` / `PASS_WITH_FRICTION` / `FAIL` / `BLOCKED` / `INCONCLUSIVE` / `N/A`。「已验证」「完成」「全部通过」会被 gate 拒绝。
 
 ## 6. 运行流程（用户视角）
 
@@ -197,29 +280,29 @@ explore → spec → plan → implement → verify
 
 ```
 T+0     用户：/normal-flow 给 web app 加 OAuth 登录
-        系统：自动装载 xdd-brainstorm skill，agent 写 intent.md + design.md
+        系统：自动装载 nf-brainstorm skill，agent 写 intent.md + design.md
 T+5m    agent：nf_desired_state → 列出 explore 的目标
         agent：nf_difference → 空 diff = 通过
         agent：nf_submit_artifact → explore gate 通过 → nf_advance
 
 T+10m   spec 阶段
-        装载 xdd-spec
+        装载 nf-spec
         agent：写 rules.md + .feature
         agent：nf_submit_artifact → spec gate 通过 → nf_advance
 
 T+15m   plan 阶段
-        装载 xdd-plan
+        装载 nf-plan
         agent：写 plan.md
         agent：nf_submit_artifact → plan gate 通过 → nf_advance
 
 T+25m   implement 阶段
-        装载 xdd-execute
+        装载 nf-execute
         agent：写代码（含 @implements RXX 标注）+ 测试
         agent：npm test → exit 0
         agent：nf_submit_artifact → implement gate 通过 → nf_advance
 
 T+35m   verify 阶段
-        装载 xdd-verify
+        装载 nf-verify
         agent：跑 npm test → exit 0
         agent：写 verify-report.md（逐 RXX 验证证据）
         agent：nf_submit_artifact → verify gate 通过（verdict=pass）
@@ -377,20 +460,30 @@ attempt 2: agent 修了 3 个实现 bug → 重提 → exit 0 → PASS
 | Group Gates | ✅（4 组） | ❌ |
 | 外部可编程 Hooks | ✅（4 hook points） | ❌ |
 | 内部生命周期事件（暂停/恢复/归档） | ✅ | ✅（最小必需） |
-| Blind Journey | ✅ | ❌ |
+| Blind Journey | ✅（Actor/Judge 二阶段） | ⚠️ 轻量版（`nf_wander` 单 Agent 记录，不隔离） |
+| verify 阶段 evidence gate（健康检查 / 业务端点 / 冹底 / 漫游 / 追溯闭合 / 退改护栏） | ✅ | ✅（17 道硬 gate，约束效果对齐 xdd） |
 | Renderers（TUI） | ✅ | ❌ |
+| **专属 skill 集** | `xdd-*`（21 个） | `nf-*`（5 个，与 xdd-* 完全隔离） |
 | Stage role 数量 | 10 角色 | 5 角色 |
 | `pendingGroupApproval` | 死代码（实现保留） | 不实现 |
-| 总 LoC | ~7500 | ~1300 + 小型共享生命周期抽象 |
+| 总 LoC | ~7500 | ~1900 + 共享 lifecycle 抽象 + 真实可用契约 evidence gate |
+
+**设计层共享**：`.xdd/design/`（intent.md / design.md / spec/）格式两种 flow 完全一致，项目可从 xdd 切到 NF 或反向复用同一份设计资产。
+
+**运行时 + skill 分离**：
+- `.xdd/runs/normal_run/` vs `.xdd/runs/xdd_run/` 运行时互不干扰（NF 的 evidence gate 拒绝跨 run 借证据，`EVIDENCE_FROM_OTHER_RUN`）。
+- `skills/nf-*` vs `skills/xdd-*` 完全隔离：`loadNfSkills()` 只加载 `nf-*`，`loadXddSkills()` 只加载 `xdd-*`。stages.ts 的 `skill:` 字段也只引用各自的 prefix。避免「用 xdd skill 走 NF 流程」错配。
 
 **为什么砍**：
 - **AIGate**：单次 10 分钟超时 + 高 LLM 成本，对"快 + 简单"场景是负担；需要时切到 xdd
 - **外部可编程 Hooks**：简单流不需要外部可编程介入点；但 pause/resume/归档仍需要最小的内部生命周期事件
 - **Group Gates**：5 阶段不需要组级聚合
-- **Blind Journey**：仅 UI 项目需要
+- **Blind Journey 二阶段**：xdd 的 Actor/Judge 二阶段提示词隔离靠「Agent 看不到 Then」，与 NF 的轻量哲学冲突；用 `nf_wander` 轻量版替代
 - **Renderers**：非必需
 - **双预算**：NF 只跑硬 gate，不需要 ai_gate 预算独立
 - **PendingGroupApproval**：组 gate 移除后无需求
+
+**为什么 NF 保留了「verify evidence gate」**：从「v1 只检查 verify-report.md ≥ 100B」升级为「真实可用契约」是反思后的主动加强。背景：用户反馈「交付的产品连用都用不了」。单测/集成测试和「产品可被用户从入口走通」不是一回事。NF 砍掉 AIGate 降低了 LLM 成本，但 product-readiness 不能被验证者主观判断取代，必须靠文件/响应/截图类硬证据闭环。
 
 ---
 
@@ -470,7 +563,7 @@ extensions/normal-flow/
 
 ## 14. 验证清单（实现后必跑）
 
-- [ ] `extension.ts` 注册 6 个工具 + 1 个 slash 命令，无 TS 编译错
+- [ ] `extension.ts` 注册 7 个工具 + 1 个 slash 命令，无 TS 编译错
 - [ ] 5 个 NF stage 定义通过 TypeScript 类型检查和 `compileStageContracts()`（含 `inputs`/`outputs`/`hardGate` 补全、`outputs` 的 `required` pattern 被 `writeScopes` 覆盖）；`aigateStandard` 的占位标准有单测
 - [ ] `explore` 阶段的 `rollbackPolicy.target` 为 `"none"`（不是 `"init"`）且能通过 `compileStageContracts` 的 rollback 校验
 - [ ] `stages.ts` 的 5 个 gate 全部能在空仓库上「应失败」
@@ -483,7 +576,23 @@ extensions/normal-flow/
 - [ ] 在无 `runtime.json` 的 cwd 上直接调用非 START 的 `nf_*` 工具 → 报错，不静默创建 xdd 10 阶段 plan
 - [ ] xdd 和 NF 同时安装时，对一个 NF 创建的 checkpoint 重启 pi → 不出现「/xdd-resume」的误导提示
 
----
+### 14.1 真实可用契约验证项
+
+- [ ] evidence gate 在缺少 `health-check.txt` 时拒绝 verify
+- [ ] evidence gate 在缺少业务端点响应（只跳 /healthz）时拒绝 verify
+- [ ] evidence gate 在缺少 4xx/5xx 响应且 verify-report.md 无拒绝关键词时拒绝 verify
+- [ ] evidence gate 在 `wander-report.md` 少于 3 步时拒绝 verify
+- [ ] evidence gate 在 `wander-report.md` 引用 .feature 但 verify-report.md 未对照同一场景时拒绝 verify
+- [ ] evidence gate 拒绝 `xdd_run/evidence/` 的 evidence 引用（EVIDENCE_FROM_OTHER_RUN）
+- [ ] 存在 `.xdd/design/wire/*` 但 verify-report.md 无 UI 证据时拒绝 verify
+- [ ] `scripts/nf-wander.sh` 在缺少 `npm start` / `go.mod` / `pyproject.toml` / `docker-compose.yml` 的项目上回退到 `python -m http.server` 并产出 evidence
+- [ ] `nf_wander record_step` 拒绝 `evidencePath` 不存在 / 不在 `.xdd/runs/normal_run/evidence/` 下的参数
+- [ ] `evaluateNormalFlowVerifyGateFull` 在 verify 阶段偷偷改 `src/` 时拒绝（`VERIFY_MUTATED_CONTRACT`）
+- [ ] `evaluateNormalFlowVerifyGateFull` 在 spec RXX 无 `@implements RXX` 标注时拒绝（`TRACE_GAP`）
+- [ ] `evaluateNormalFlowVerifyGateFull` 在 `.feature` Scenario 未在 plan 中指明 `Feature:`/`Implementation:`/`Acceptance Test:` 三件套时拒绝（`FEATURE_SCENARIO_GAP`）
+- [ ] `evaluateNormalFlowVerifyGateFull` 在 verify-report.md 未逐 RXX 写 `### RXX:` + `Verdict:` 块时拒绝（`RXX_UNTESTED`），且拒绝「已验证」「全部通过」空洞表述
+- [ ] `evaluateNormalFlowVerifyGateFull` 在 plan 声明了 `## Wandering Scenarios` 但 wander-report.md 未走该 Scenario 时拒绝（`WANDERING_NOT_WALKED`）
+- [ ] verify 阶段入场自动锁定 `.xdd/verify-snapshot.json`（`extension.ts` 的 `before_agent_start` hook）
 
 ## 15. 一手参考
 

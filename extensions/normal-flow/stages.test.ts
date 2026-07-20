@@ -50,7 +50,27 @@ describe("Normal Flow stage contracts", () => {
 		const verify = NF_STAGES.find((s) => s.name === "verify");
 		expect(verify?.allowedTools).toEqual(expect.arrayContaining(["write", "edit"]));
 		expect(verify?.noCodeModification).toBe(true);
-		expect(verify?.writeScopes).toEqual([".xdd/runs/normal_run/verify-report.md"]);
+		// 「真实可用契约」：verify 必须能写 evidence 目录（health-check.txt /
+		// wander-report.md / responses/）和 verify-report.md，但不能动源码。
+		expect(verify?.writeScopes).toEqual([
+			".xdd/runs/normal_run/verify-report.md",
+			".xdd/runs/normal_run/evidence/**",
+		]);
+	});
+
+	it("verify deliverablePaths cover health-check / wander-report / responses (so the evidence gate has a contract anchor)", () => {
+		const verify = NF_STAGES.find((s) => s.name === "verify");
+		const paths = verify?.deliverablePaths ?? [];
+		expect(paths).toContain(".xdd/runs/normal_run/verify-report.md");
+		expect(paths).toContain(".xdd/runs/normal_run/evidence/health-check.txt");
+		expect(paths).toContain(".xdd/runs/normal_run/evidence/wander-report.md");
+		expect(paths.some((p) => p.includes("responses"))).toBe(true);
+	});
+
+	it("exposes nf_wander in every stage's allowedTools so plan/execute can capture observations early", () => {
+		for (const stage of NF_STAGES) {
+			expect(stage.allowedTools).toContain("nf_wander");
+		}
 	});
 });
 

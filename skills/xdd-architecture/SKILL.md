@@ -3,7 +3,6 @@ name: xdd-architecture
 description: |
   xdd 设计层 —— 结构锚。把业务规则（RXX）落到技术架构：质量属性驱动决策 + 安全 + 性能 + 运维视图 + API 端点契约 + 事件契约 + 聚合全景 + 流程图。
   四支柱：ADD（质量属性）+ SDD（安全）+ PDD（性能）+ ODD（运维视图 启动/关闭/状态机/排障）。
-  吸收旧 xdd-arch + xdd-flow（流程图 colocation 到同业务线目录）。
   产出 .xdd/design/architecture/{bxx-slug}/architecture.md + flow.mermaid + docker-compose*.yml，全局 aggregate-landscape.md + event-contract.md。
   触发：架构、architecture、ADD、质量属性、技术栈、分层、API 端点、事件契约、event-contract、聚合、安全、SDD、性能、PDD、运维、ODD、流程图、flow、启动序列、关闭序列、状态机、排障、PoC、模块化、基础建设、base 层、foundation、共享内核、shared kernel、通用能力下沉、module-landscape。
 ---
@@ -305,7 +304,7 @@ erDiagram
 
 **本节 5 问是写"具体怎么做"。动手之前先过一遍 §21 reconcile 审查（slide 三问）——期望状态显式吗、谁检测偏差、失败怎么收敛。**
 
-### 11. 流程图（flow，吸收自 xdd-flow）
+### 11. 流程图（flow）
 
 `.xdd/design/architecture/{bxx-slug}/flow.mermaid` —— 通过组件分解体现非功能性设计：
 
@@ -552,7 +551,7 @@ DEV-13：实现 AC-01 至 AC-XX 自动化测试
 | 瞬态故障：retry + 指数退避 + max retries | §10 ODD、§8 EDD |
 | 永久失败：deadline / convergeTimeBudget（不是无限 retry 也不是立即终止） | §10 ODD |
 
-## 业务线 colocation（v8.0.0 保留）
+## 业务线 colocation
 
 `architecture/{bxx-slug}/` 一站式放整个业务线的架构产物，不跨目录跳查：
 

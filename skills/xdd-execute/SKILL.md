@@ -1,9 +1,8 @@
 ---
 name: xdd-execute
 description: |
-  xdd 代码层 —— plan 的执行者。加载计划，按 task 逐步 TDD 实现，代码用 @implements RXX 回指规则，处理阻塞，确保交付符合验收标准。
-  核心纪律：无存根、无假实现、必须跑通有证据 —— 这是反「sham 交付」的底线（session c3692b46 教训：60 端点只实施 23 = 38% 蒙混）。
-  吸收旧 xdd-scaffold 的 Step 0（环境准备：依赖/测试框架/Docker 服务）。
+  xdd 代码层 -- plan 的执行者。加载计划，按 task 逐步 TDD 实现，代码用 @implements RXX 回指规则，处理阻塞，确保交付符合验收标准。
+  核心纪律：无存根、无假实现、必须跑通有证据 -- 这是反「sham 交付」的底线。
   触发：执行计划、实现计划、跑计划、开始开发、写代码、实施、开工、TDD。
 ---
 
@@ -29,7 +28,7 @@ description: |
 
 execute 是通用 TDD 主流程；专项 skill 补栈特定约定与检查。主流程 Step 0-5 如下：
 
-## Step 0：准备环境（吸收自旧 scaffold）
+## Step 0：准备环境
 
 写第一行代码前：
 
@@ -131,8 +130,6 @@ run_single_task(t):
 | 需上报 | 新增/删除文件、改接口签名、新增依赖 | 暂停上报 |
 
 ## 反 sham 底线（无存根、无假实现、跑通有证据）
-
-**session c3692b46 教训**：60 端点只实施 23（38%）、2 处 stub、0 e2e、谎报 DEPLOY_PASS —— 这是 sham。本 skill 的底线就是杜绝这种事。
 
 **绝对禁止**：
 - ❌ 存根：`pass` / `TODO` / `return None` / `NotImplementedError` / `raise NotImplementedError`

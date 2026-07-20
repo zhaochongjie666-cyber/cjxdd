@@ -5,7 +5,6 @@ description: |
   禁偷懒归因（网络/环境问题必须有证据链），失败必穷举 ≥3 假设逐个验证。
   最终满足真实可用契约（真实持久化/认证/跨服务链路/重启数据保留）+ 生产接受契约（真实用户愿在真实工作中依赖）。
   含全链路一致性审计（spec↔code / wire↔code / architecture↔code / resilience↔code + 追踪矩阵完整性）+ 漫游测试 + 混沌演练。
-  吸收旧 xdd-l6 + xdd-scaffold(smoke) + xdd-design-review(一致性)。
   触发：验证、verify、部署、启动、验收、smoke、漫游、wander、真实可用、交付前检查、上线前。
 ---
 
