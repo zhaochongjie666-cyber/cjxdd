@@ -8,12 +8,14 @@ type RegisteredTool = { name: string; execute: (...args: any[]) => Promise<any> 
 
 function harness() {
 	const tools = new Map<string, RegisteredTool>();
+	const sentMessages: Array<{ text: string; options: unknown }> = [];
 	let agentEnd: ((event: unknown, ctx: any) => Promise<void>) | undefined;
 	todoList({
 		registerTool(tool: RegisteredTool) { tools.set(tool.name, tool); },
 		on(event: string, handler: typeof agentEnd) { if (event === "agent_end") agentEnd = handler; },
+		async sendUserMessage(text: string, options: unknown) { sentMessages.push({ text, options }); },
 	} as any);
-	return { tools, getAgentEnd: () => agentEnd };
+	return { tools, sentMessages, getAgentEnd: () => agentEnd };
 }
 
 describe("todo-list extension", () => {
@@ -43,6 +45,23 @@ describe("todo-list extension", () => {
 			const notifications: unknown[][] = [];
 			await app.getAgentEnd()!({}, { cwd, ui: { notify: (...args: unknown[]) => notifications.push(args) } });
 			expect(notifications).toEqual([["[todo] 退出前检查：0/1 已完成，1 待办。请以 TODO.md 为准。", "warning"]]);
+			expect(app.sentMessages).toEqual([{
+				text: "[todo continuation] TODO.md 仍有 1 项待办。不要退出或只汇报当前流程已完成；立即调用 todo_view，继续执行并逐项完成 TODO.md 中的剩余任务。",
+				options: { deliverAs: "steer" },
+			}]);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("does not steer when every todo is complete", async () => {
+		const cwd = mkdtempSync(join(tmpdir(), "todo-complete-"));
+		try {
+			const app = harness();
+			await app.tools.get("todo_create")!.execute("id", { tasks: [{ title: "已完成" }] }, undefined, { cwd });
+			await app.tools.get("todo_update")!.execute("id", { action: "complete", target: "1" }, undefined, { cwd });
+			await app.getAgentEnd()!({}, { cwd, ui: { notify: () => undefined } });
+			expect(app.sentMessages).toEqual([]);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}

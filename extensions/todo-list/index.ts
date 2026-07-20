@@ -89,6 +89,12 @@ export default function todoList(pi: ExtensionAPI) {
 		try {
 			const counts = countTodo(readTodo(cwd));
 			ctx.ui.notify(`[todo] 退出前检查：${counts.done}/${counts.total} 已完成，${counts.pending} 待办。请以 ${TODO_FILE} 为准。`, counts.pending ? "warning" : "info");
+			if (counts.pending > 0) {
+				await pi.sendUserMessage(
+					`[todo continuation] ${TODO_FILE} 仍有 ${counts.pending} 项待办。不要退出或只汇报当前流程已完成；立即调用 todo_view，继续执行并逐项完成 TODO.md 中的剩余任务。`,
+					{ deliverAs: "steer" },
+				);
+			}
 		} catch (error) {
 			ctx.ui.notify(`[todo] 退出前无法读取 ${TODO_FILE}: ${error instanceof Error ? error.message : String(error)}`, "warning");
 		}
