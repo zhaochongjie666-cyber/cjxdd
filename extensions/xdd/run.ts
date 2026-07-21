@@ -23,6 +23,8 @@ import { buildAuditView, renderAuditView } from "./audit/projector.ts";
 import { configuredFlowBudgetUsd } from "./flow-budget.ts";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
+export type XddStatusNotifier = (message: string, level?: "info" | "warning" | "error") => void;
+
 /** /xdd <task> -- start a new xdd run. */
 export async function runXdd(args: string, cwd: string, pi: ExtensionAPI): Promise<void> {
 	const task = args.trim();
@@ -148,12 +150,13 @@ export async function resumeXdd(args: string, cwd: string, pi: ExtensionAPI): Pr
 }
 
 /** /xdd status -- show current pipeline state. */
-export async function xddStatus(_args: string, _cwd: string, pi: ExtensionAPI): Promise<void> {
+export async function xddStatus(_args: string, _cwd: string, pi: ExtensionAPI, notify?: XddStatusNotifier): Promise<void> {
+	const display = notify ?? ((message: string) => { void pi.sendUserMessage(message); });
 	let state: XddRunnerState;
 	try {
 		state = getState();
 	} catch {
-		await pi.sendUserMessage("[xdd] 无活跃 xdd run。");
+		display("[xdd] 无活跃 xdd run。", "warning");
 		return;
 	}
 	const stage = state.currentStage();
@@ -165,29 +168,32 @@ export async function xddStatus(_args: string, _cwd: string, pi: ExtensionAPI): 
 	const lastError = state.lastStageError ? ` | 最后错误: ${state.lastStageError}` : "";
 	const auditStatus = renderAuditView(buildAuditView(new RuntimeStore(state.cwd).load() ?? state.toCheckpoint(state.status, state.rollbackCount) as never));
 	if (pending) {
-		await pi.sendUserMessage(
+		display(
 			`[xdd] 阶段 ${stage?.name} (${idx}/${total}) | ⏸ ${pending.gateLabel} 待确认: 输入 /xdd continue 推进，或检查产物后 /xdd rollback | ${auditStatus} | Harness 验证命令: ${harnessStatus}${lastError}`,
+			"info",
 		);
 		return;
 	}
-	await pi.sendUserMessage(
+	display(
 		`[xdd] 阶段 ${stage?.name} (${idx}/${total}) | skills: ${state.skills.length} | ${auditStatus} | Harness 验证命令: ${harnessStatus}${lastError}`,
+		"info",
 	);
 }
 
 
 /** /xdd-rest -- reset flow and stage budgets for the active run. */
-export async function xddRest(args: string, _cwd: string, pi: ExtensionAPI): Promise<void> {
+export async function xddRest(args: string, _cwd: string, pi: ExtensionAPI, notify?: XddStatusNotifier): Promise<void> {
+	const display = notify ?? ((message: string) => { void pi.sendUserMessage(message); });
 	let state: XddRunnerState;
 	try {
 		state = getState();
 	} catch {
-		await pi.sendUserMessage("[xdd-rest] 无活跃 xdd run。");
+		display("[xdd-reset] 无活跃 xdd run。", "warning");
 		return;
 	}
 	const stage = state.currentStage();
 	if (!stage) {
-		await pi.sendUserMessage("[xdd-rest] 无活跃阶段。");
+		display("[xdd-reset] 无活跃阶段。", "warning");
 		return;
 	}
 	const scope = args.trim() === "all" ? "all" : "current";
@@ -197,9 +203,43 @@ export async function xddRest(args: string, _cwd: string, pi: ExtensionAPI): Pro
 	state.resetFlowRollbackBudget();
 	if (scope === "all") state.resetAllStageBudgets();
 	else state.resetSelfHealBudget(stage.name);
-	await pi.sendUserMessage(
-		`[xdd-rest] 已重置预算（阶段范围: ${scope}）。流程用量预算: ${beforeFlowUsage} -> $${state.flowCostUsd.toFixed(2)} / $${state.flowBudgetUsd.toFixed(2)} (${state.flowTokensUsed} tokens)；流程回退预算: ${beforeFlowRollback} -> ${state.remainingFlowRollbackBudget()}/${state.flowRollbackLimit}；阶段预算: hard-Gate/AIGate 已重置。`,
+	display(
+		`[xdd-reset] 已重置预算（阶段范围: ${scope}）。当前阶段: ${stage.name} (${state.currentIndex() + 1}/${state.plan.length})；流程状态: ${state.status}；流程用量预算: ${beforeFlowUsage} -> $${state.flowCostUsd.toFixed(2)} / $${state.flowBudgetUsd.toFixed(2)} (${state.flowTokensUsed} tokens)；流程回退预算: ${beforeFlowRollback} -> ${state.remainingFlowRollbackBudget()}/${state.flowRollbackLimit}；阶段预算: hard-Gate/AIGate 已重置。`,
+		"info",
 	);
+}
+
+/** /xdd go to <stage> -- explicitly move an active run without creating an agent turn. */
+export function xddGoToStage(stageArg: string, notify: XddStatusNotifier): void {
+	let state: XddRunnerState;
+	try {
+		state = getState();
+	} catch {
+		notify("[xdd go to] 无活跃 xdd run。先用 /xdd <任务> 启动。", "warning");
+		return;
+	}
+	const target = stageArg.trim().toLowerCase() as XddStageName;
+	const targetIndex = state.plan.findIndex(({ stage }) => stage.name === target);
+	if (targetIndex < 0) {
+		notify(`[xdd go to] 未知阶段「${stageArg.trim() || "(空)"}」。可选: ${state.plan.map(({ stage }) => stage.name).join(", ")}`, "warning");
+		return;
+	}
+	const from = state.currentStageName() ?? "?";
+	state.planIndex = targetIndex;
+	state.runComplete = false;
+	state.status = "running";
+	state.paused = false;
+	state.stopRequested = false;
+	state.pauseNotified = false;
+	state.pendingGroupApproval = undefined;
+	state.continuationQueued = false;
+	state.continuationReason = undefined;
+	state.continuationStage = undefined;
+	state.clearSignals();
+	state.stageOutcome = "idle";
+	state.lastStageError = undefined;
+	state.stageEpoch = `${state.runId}:${target}:${Date.now()}`;
+	notify(`[xdd go to] 已从 ${from} 跳转到 ${target} 阶段 (${targetIndex + 1}/${state.plan.length})；流程状态: ${state.status}。`, "info");
 }
 
 /** /xdd-archive -- manually archive a completed run (summarize runs/<run>/ + delete it). */

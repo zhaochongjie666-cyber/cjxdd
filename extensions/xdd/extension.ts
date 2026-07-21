@@ -296,9 +296,25 @@ export const xddInlineExtension: InlineExtension = {
 
 		// Slash commands: /xdd <task>, /xdd continue, /xdd resume, /xdd status
 		pi.registerCommand("xdd", {
-			description: "启动 xdd 流程: /xdd <任务描述>",
+			description: "启动或控制 xdd: /xdd <任务> | status | reset [all] | go to <stage>",
 			handler: async (args, ctx) => {
-				const { runXdd } = await import("./run.ts");
+				const command = args.trim();
+				const { runXdd, xddGoToStage, xddRest, xddStatus } = await import("./run.ts");
+				const notify = (message: string, level?: "info" | "warning" | "error") => ctx.ui.notify(message, level);
+				if (command === "status") {
+					await xddStatus("", ctx.cwd, pi, notify);
+					return;
+				}
+				const reset = command.match(/^reset(?:\s+(all))?$/);
+				if (reset) {
+					await xddRest(reset[1] ?? "", ctx.cwd, pi, notify);
+					return;
+				}
+				const goTo = command.match(/^go\s+to\s+(.+)$/i);
+				if (goTo) {
+					xddGoToStage(goTo[1] ?? "", notify);
+					return;
+				}
 				await runXdd(args, ctx.cwd, pi);
 				await ctx.waitForIdle();
 			},
@@ -335,8 +351,7 @@ export const xddInlineExtension: InlineExtension = {
 			description: "查看当前 xdd 流水线状态",
 			handler: async (_args, ctx) => {
 				const { xddStatus } = await import("./run.ts");
-				await xddStatus(_args, ctx.cwd, pi);
-				await ctx.waitForIdle();
+				await xddStatus(_args, ctx.cwd, pi, (message, level) => ctx.ui.notify(message, level));
 			},
 		});
 		pi.registerCommand("xdd-archive", {
@@ -351,8 +366,7 @@ export const xddInlineExtension: InlineExtension = {
 			description: "重置当前 xdd run 的流程预算和阶段预算；传 all 重置全部阶段预算",
 			handler: async (args, ctx) => {
 				const { xddRest } = await import("./run.ts");
-				await xddRest(args, ctx.cwd, pi);
-				await ctx.waitForIdle();
+				await xddRest(args, ctx.cwd, pi, (message, level) => ctx.ui.notify(message, level));
 			},
 		});
 		pi.registerCommand("xdd-stop", {
