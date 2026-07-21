@@ -4,6 +4,17 @@
 
 Gate 是完成后的观察器，不是任务生成器。流程必须先把正向动作交给 AI，再对动作的产物和证据运行 Gate。本审查覆盖 xdd 中会改变流程判定的 Gate；底层 `requireGlobs` / `runBuild` 等是阶段 Gate 的检查原语，继承调用阶段的正向入口。
 
+2026-07 复审进一步明确：**语义质量只由 AI 审查，硬 Gate 只校验结构、路径、追溯 ID 和可执行证据**。不再用“文档是否出现指定中英文标题/关键词”代替语义审查。AIGate 响应中的角度名和结论标记是为了确认审查完整性的最小传输协议，不是对被审产物的字符匹配。
+
+## XDD 与 Normal Flow 严格匹配复审
+
+| 位置 | 原先问题 | 处理 | 正向配对 |
+|---|---|---|---|
+| XDD init | 要求文档命中“目标/边界/技能”等字面词 | 改为存在+最小大小；内容由 AIGate 语义审查 | init `desiredState` 明确调研、边界、技能和交接产物 |
+| XDD understand | 要求英文五段标题字面命中 | 改为存在+最小大小；允许中文或其他等价表达 | `desiredState` 与 AIGate standard 都先声明五类决策内容 |
+| XDD architecture | 要求“模块/依赖/数据流/失败”字面命中 | 改为存在+最小大小；交由 AIGate 判断是否真正覆盖 | architecture `desiredState` 先要求相同设计内容及失败模式 |
+| Normal explore/spec/plan/verify | 使用英文段名、Attack/Gate/Expected 或 P0/P1 等字面词判定语义质量 | 删除字面词 Gate，保留产物大小、RXX 追溯、测试执行和孤儿标注等可机械证明项 | 各阶段 `desiredState` 先要求正向+异常、TDD/攻击用例及逐 RXX 验证 |
+
 ## 配对矩阵
 
 | Gate | Gate 前的正向开发入口 | 失败后的修复入口 | 结论 |

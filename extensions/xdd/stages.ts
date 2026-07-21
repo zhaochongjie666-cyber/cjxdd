@@ -1,7 +1,6 @@
 import {
 	gitHasChanges,
 	requireGlobs,
-	requireGlobsWithKeywords,
 	requireGlobsWithMinSize,
 	requirePatternInSource,
 	requirePersonas,
@@ -183,7 +182,7 @@ export const STAGES: readonly XddStageSpec[] = [
 			const path = [".xdd/runs/xdd_run/init.md"];
 			const size = await requireGlobsWithMinSize(cwd, path, 300);
 			if (!size.ok) return size;
-			return requireGlobsWithKeywords(cwd, path, ["目标", "边界", "非目标", "技能", "调研", "README", "下一步"], 4);
+			return { ok: true };
 		},
 	},
 	{
@@ -226,8 +225,8 @@ export const STAGES: readonly XddStageSpec[] = [
 				gate: async ({ cwd }) => {
 			const intentOk = await requireGlobs(cwd, [".xdd/design/intent.md"]);
 			if (!intentOk.ok) return { ok: false, reason: "understand Gate: 缺少 .xdd/design/intent.md（定位+成功标准+非目标）" };
-			const designOk = await requireGlobsWithKeywords(cwd, [".xdd/design/design.md"], ["Selected", "Alternatives", "Assumptions", "Out of Scope", "Open Questions"], 4);
-			if (!designOk.ok) return { ok: false, reason: "understand Gate: .xdd/design/design.md 缺少收敛决策 5 段（Selected/Alternatives/Assumptions/Out of Scope/Open Questions，至少 3 段）" };
+			const designOk = await requireGlobsWithMinSize(cwd, [".xdd/design/design.md"], 100);
+			if (!designOk.ok) return { ok: false, reason: "understand Gate: 缺少或过短的 .xdd/design/design.md；请按 desiredState 产出收敛决策，再由 AIGate 语义审查内容" };
 			const goalsOk = await requireGlobs(cwd, [".xdd/runs/xdd_run/goals.md"]);
 			if (!goalsOk.ok) return { ok: false, reason: "understand Gate: 缺少 .xdd/runs/xdd_run/goals.md（G 编号，plan 的上游）" };
 			const personasOk = await requirePersonas(cwd);
@@ -314,13 +313,8 @@ export const STAGES: readonly XddStageSpec[] = [
 19. 背景写了真实问题（不是"随着业务不断发展"）-- AI味开头 -> 不通过
 20. module-landscape.md 有真实模块依赖关系，event-contract.md 事件有具体字段`,
 				gate: async ({ cwd }) => {
-			const archOk = await requireGlobsWithKeywords(
-				cwd,
-				[".xdd/design/architecture/**/architecture.md"],
-				["模块", "依赖", "数据流", "失败"],
-				3,
-			);
-			if (!archOk.ok) return { ok: false, reason: "architecture Gate: architecture.md 缺少关键章节（模块/依赖/数据流/失败，至少 3 项）" };
+			const archOk = await requireGlobsWithMinSize(cwd, [".xdd/design/architecture/**/architecture.md"], 100);
+			if (!archOk.ok) return { ok: false, reason: "architecture Gate: 缺少或过短的 architecture.md；请按 desiredState 完成模块、依赖、数据流与失败模式，再由 AIGate 语义审查" };
 			const modOk = await requireGlobs(cwd, [".xdd/design/architecture/module-landscape.md"]);
 			if (!modOk.ok) return { ok: false, reason: "architecture Gate: 缺少 module-landscape.md（模块全景，plan 的上游）" };
 			const eventOk = await requireGlobs(cwd, [".xdd/design/architecture/event-contract.md"]);
