@@ -398,6 +398,9 @@ export const STAGES: readonly XddStageSpec[] = [
 			"计划按阶段组织：spec -> architecture -> wire -> resilience -> execute 每段至少一项具体工作项",
 			"每项工作项标明：依赖前序产出、预计产物、改动文件范围",
 			"识别关键路径与可并行项（不强制并行，但能标注）",
+			"计划的范围、顺序和依赖必须以已批准的 spec/architecture/wire/resilience 与当前仓库事实为依据；不得用无依据的日期、容量或假设制造假精确",
+			"每个任务声明可观察的完成证据；计划整体为适用的正向行为配对失败/拒绝/依赖不可用任务或处理，不适用时写明具体理由",
+			"并行任务不得产生隐式文件写冲突；发现契约、依赖、文件范围或验收标准变化时，必须给出回到 plan 或上游设计阶段的可执行重规划动作",
 		],
 		deliverablePaths: [".xdd/runs/xdd_run/plan.md", ".xdd/runs/xdd_run/qa-plan.md"],
 		aigateStandard: `审查 plan 阶段：
@@ -407,7 +410,13 @@ export const STAGES: readonly XddStageSpec[] = [
 4. task是否有优先级/依赖关系（不是无序列表）
 5. 每个task是否关联了G编号（goal回指）
 6. qa-plan.md 是否在实现前独立定义公开入口测试，而不是从实现细节反推测试
-7. 六类 QA 风险是否逐项决策，所有 Feature Scenario 是否精确覆盖`,
+7. 六类 QA 风险是否逐项决策，所有 Feature Scenario 是否精确覆盖
+8. 计划范围是否以已批准的 spec/architecture/wire/resilience 为依据，是否混入非目标或过度设计
+9. 实现顺序和依赖是否现实：前置产物先生成、契约先冻结、并行项无隐式文件冲突
+10. 每个 task 是否定义可观察完成证据，不能把“代码已写”当作功能完成
+11. 正向路径与失败/拒绝/依赖不可用路径是否都有实施与验证动作；不适用项是否有具体理由
+12. 计划是否在输入、契约或仓库状态变化时给出可执行的重规划/回炉动作，而不是静默改写或继续执行旧假设
+13. 是否在缺少 effort/capacity/calendar 输入时编造具体日期或关键路径时长`,
 				gate: async ({ cwd }) => {
 					const plan = await requireGlobsWithMinSize(cwd, [".xdd/runs/xdd_run/plan.md"], 100);
 					if (!plan.ok) return plan;
