@@ -145,6 +145,10 @@ describe("F.6 verify noCodeModification enforced", () => {
 		expect(src).toContain("工具只汇总审查上下文，不单独调用 LLM");
 		expect(src).toContain("AIGate 主 turn review 处理");
 		expect(src).toContain("mainTurnReview");
+		expect(src).toContain("MAIN_TURN_REVIEW_STALE");
+		expect(src).toContain("MAIN_TURN_REVIEW_EVIDENCE_MISSING");
+		expect(src).toContain("MAIN_TURN_REVIEW_MECHANICAL_INVALID");
+		expect(src).toContain("getAIGateAttackAngles");
 		expect(src).toContain("formatSubmitTimings");
 	});
 });

@@ -1,13 +1,14 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 import { type Static, Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { XddController } from "../core/controller.ts";
 import { RuntimeStore } from "../storage/runtime-store.ts";
 import type { XddRunnerState, XddStageName } from "../types.ts";
 import { type EmptyDetails, type GetXddState, ok } from "./index.ts";
-import { formatAIGateResult, type AIGateResult } from "../aigate.ts";
+import { formatAIGateResult, getAIGateAttackAngles, type AIGateResult } from "../aigate.ts";
 import { evaluateHealingFailureClosure, evaluateVerifyEvidenceGateFull, runHarnessWithReceipt } from "../evidence/verify-gate.ts";
 import { routeVerifyFailure, type VerifyFailureRoute } from "../verify-failure-routing.ts";
 import { digestReviewArtifactFiles, evaluateReviewVerdict, writeReviewVerdict, type ReviewType, type ReviewVerdict } from "../review-verdict.ts";
@@ -118,6 +119,7 @@ const schema = Type.Object({
 		description: "本次 AIGate 提交对应的自我攻击结论；随 AIGate 每次语义审查提交，记录在 runtime，绝不写入 design",
 	})),
 	mainTurnReview: Type.Optional(Type.Object({
+		reviewToken: Type.String({ description: "首次提交的 review summary 返回的一次性绑定 token" }),
 		passed: Type.Boolean({ description: "主 turn 根据 review summary 攻击后的最终判断" }),
 		angles: Type.Array(Type.Object({
 			name: Type.String(),
@@ -138,6 +140,10 @@ const schema = Type.Object({
 });
 
 export type XddSubmitArtifactInput = Static<typeof schema>;
+
+function mainTurnReviewToken(input: { stage: string; summary: string; artifacts: string[]; selfAttack: string; fingerprint?: string }): string {
+	return createHash("sha256").update(JSON.stringify(input)).digest("hex").slice(0, 24);
+}
 
 function dispatchToController(state: XddRunnerState, command: Parameters<XddController["dispatch"]>[0]) {
 	const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
@@ -329,9 +335,11 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			if (selfAttack) {
 				dispatchToController(state, { type: "RECORD_ARTIFACT_REVIEW", stage: stage.name, artifacts, selfAttack });
 			}
-			const llmInfo = aiGateEnabled ? { model: "main-turn" } : null;
+			const reviewModel = aiGateEnabled ? "main-turn" : null;
 			if (aiGateEnabled && !params.mainTurnReview) {
 				state.clearSubmitFingerprint(stage.name);
+				const reviewToken = mainTurnReviewToken({ stage: stage.name, summary, artifacts, selfAttack: selfAttack!, fingerprint: candidateFingerprint });
+				const requiredAngles = getAIGateAttackAngles(stage.name, mechanicalCheckResult);
 				const previous = (runtime?.aiGateFindings?.[stage.name] ?? [])
 					.filter((item) => item.status === "open")
 					.map((item) => `${item.id}:${item.category}`)
@@ -341,61 +349,54 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 						`🔎 [AIGate 主 turn 待审] ${stage.name} 硬 Gate 已通过；工具未调用独立 LLM。`,
 						`review summary：提交=${summary}；产物=${artifacts.join(", ") || stage.deliverablePaths.join(", ") || "无文件产物"}；机械结果=${mechanicalCheckResult.reason ?? "通过"}。`,
 						`审查标准：${stage.aigateStandard}`,
+						`必审角度：\n${requiredAngles.map((angle) => `- ${angle.name}：${angle.description}\n  ${angle.checks.join("；")}`).join("\n")}`,
 						`上一轮 open findings：${previous}。selfAttack：${selfAttack}`,
-						"本 turn 继续：读取上述产物及跨阶段契约，攻击正向与兜底；然后用同一 summary/artifacts/selfAttack 并携带 mainTurnReview 重新调用 xdd_submit_artifact。",
+						`reviewToken=${reviewToken}`,
+						"本 turn 继续：读取上述产物及跨阶段契约，逐项攻击全部必审角度的正向与兜底；然后用同一 summary/artifacts/selfAttack 并携带 reviewToken 和 mainTurnReview 重新调用 xdd_submit_artifact。",
 					].join("\n") }],
 					details: {},
 				};
 			}
 			let aiGateMs = 0;
-			if (llmInfo) {
+			if (reviewModel) {
 				const aiGateStartedAt = performance.now();
 				let aiResult: AIGateResult;
 				const prevention = buildPreventionContext(state.cwd, stage.name, `${state.userInput}\n${summary}`);
 				const mainReview = params.mainTurnReview!;
-				if (mainReview.angles.length === 0 || !mainReview.angles.some((angle) => angle.passed !== "N/A")) {
-					throw new Error("[xdd_submit_artifact] MAIN_TURN_REVIEW_INCOMPLETE: 必须提交至少一个适用攻击角度及证据，不能用空 angles 或全部 N/A 绕过 AIGate。");
+				const expectedToken = mainTurnReviewToken({ stage: stage.name, summary, artifacts, selfAttack: selfAttack!, fingerprint: candidateFingerprint });
+				if (mainReview.reviewToken !== expectedToken) {
+					state.clearSubmitFingerprint(stage.name);
+					throw new Error("[xdd_submit_artifact] MAIN_TURN_REVIEW_STALE: reviewToken 与当前阶段、提交声明或磁盘产物不匹配；请重新获取 review summary，不能复用旧审查。");
+				}
+				const requiredNames = getAIGateAttackAngles(stage.name, mechanicalCheckResult).map((angle) => angle.name);
+				const submittedNames = mainReview.angles.map((angle) => angle.name);
+				const missingNames = requiredNames.filter((name) => !submittedNames.includes(name));
+				const unexpectedNames = submittedNames.filter((name, index) => !requiredNames.includes(name) || submittedNames.indexOf(name) !== index);
+				if (missingNames.length > 0 || unexpectedNames.length > 0) {
+					state.clearSubmitFingerprint(stage.name);
+					throw new Error(`[xdd_submit_artifact] MAIN_TURN_REVIEW_INCOMPLETE: 必须逐项提交工具声明的全部必审角度；缺少=${missingNames.join(", ") || "无"}；未知或重复=${unexpectedNames.join(", ") || "无"}。`);
+				}
+				if (!mainReview.angles.some((angle) => angle.passed !== "N/A")) {
+					state.clearSubmitFingerprint(stage.name);
+					throw new Error("[xdd_submit_artifact] MAIN_TURN_REVIEW_INCOMPLETE: 全部角度不能均为 N/A。");
+				}
+				const mechanicalAngle = mainReview.angles.find((angle) => angle.name === "机械检查结果");
+				if (mechanicalAngle?.passed !== true) {
+					state.clearSubmitFingerprint(stage.name);
+					throw new Error("[xdd_submit_artifact] MAIN_TURN_REVIEW_MECHANICAL_INVALID: 硬 Gate 已通过，机械检查结果角度必须明确为 true，不能标为 false 或 N/A。");
+				}
+				const evidenceMissing = mainReview.angles.filter((angle) => angle.findings.length === 0 || angle.findings.every((finding) => finding.trim().length === 0));
+				if (evidenceMissing.length > 0) {
+					state.clearSubmitFingerprint(stage.name);
+					throw new Error(`[xdd_submit_artifact] MAIN_TURN_REVIEW_EVIDENCE_MISSING: 每个角度都必须给出证据或 N/A 理由；缺少=${evidenceMissing.map((angle) => angle.name).join(", ")}。`);
 				}
 				const derivedPass = mainReview.angles.every((angle) => angle.passed !== false);
 				if (mainReview.passed !== derivedPass) {
+					state.clearSubmitFingerprint(stage.name);
 					throw new Error("[xdd_submit_artifact] MAIN_TURN_REVIEW_CONTRADICTORY: passed 必须与逐角度判断一致；任一适用角度失败时整体必须失败。");
 				}
 				aiResult = mainReview;
 				aiGateMs = elapsedMs(aiGateStartedAt);
-				// Transport and JSON-format failures are not findings about the
-				// submitted artifacts. Do not spend the semantic-review budget, but
-				// DO consume a degraded-attempt counter to prevent infinite retry
-				// loops when the LLM API is persistently broken. Hard gate already
-				// passed, so the artifacts are mechanically valid.
-				if (aiResult.degraded) {
-					state.clearSubmitFingerprint(stage.name);
-					const degradedUsed = state.beginAiGateAttempt(stage.name);
-					const degradedBudget = state.stageSelfHealBudget(stage.name, "ai_gate");
-					const aiError = aiResult.issues.join("; ") || "AIGate 服务或响应格式异常";
-					const angleText = formatAIGateResult(aiResult);
-					if (degradedBudget.exhausted) {
-						persistAIGateReview({ state, stage, model: llmInfo.model, artifacts, mechanicalReason: mechanicalCheckResult.reason, selfAttack: selfAttack!, result: aiResult, status: "inconclusive", overrideReason: `AIGate 基础设施连续 ${degradedUsed} 次不可用；保留审查记录并按软 Gate 策略放行，后续阶段继续攻击。`, preventionPatternIds: prevention.patternIds });
-						const softPass = stage.exit !== "verdict" || Boolean(params.pass);
-						dispatchToController(state, { type: "RECORD_SIGNAL", signal: stage.exit === "verdict" ? (softPass ? "verdict_pass" : "verdict_fail") : "complete" });
-						dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: softPass } });
-						return ok(`⚠️ [AIGate ${degradedUsed}/${degradedBudget.limit}] ${stage.name} 审查连续不可用（基础设施故障），已记录 inconclusive verdict 与软 Gate override。
-原因：${aiError}
-${angleText}
-硬 Gate 已通过；不再为审查基础设施无限卡住流程。${formatSubmitTimings({ hardGateMs, aiGateMs, aiGateEnabled })}。请调用 xdd_advance 继续。`);
-					}
-					dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error: aiError } });
-					const retryAdvice = /timeout/i.test(aiError)
-						? "审查请求已超时；请稍后重试，或调整 XDD_AIGATE_TIMEOUT_MS（15,000–600,000 毫秒）后重试；无需修改产物。"
-						: "请恢复审查服务或模型配置后重新调用 xdd_submit_artifact；无需修改产物。";
-					return {
-						content: [{ type: "text", text: `⚠️ [AIGate degraded ${degradedUsed}/${degradedBudget.limit}] ${stage.name} 审查服务/响应格式异常（基础设施故障）：
-原因：${aiError}
-${angleText}
-剩余 degraded 预算：${degradedBudget.remaining}/${degradedBudget.limit}（耗尽后记录 override 并软放行）
-本 turn 继续。${formatSubmitTimings({ hardGateMs, aiGateMs, aiGateEnabled })}。${retryAdvice}` }],
-						details: {},
-					};
-				}
 				const findingStore = new RuntimeStore(state.cwd);
 				const beforeFindings = findingStore.load()?.aiGateFindings?.[stage.name] ?? [];
 				const stableFindings = reconcileStableFindings(stage.name, beforeFindings, aiResult.angles.filter((angle) => angle.passed === false).map((angle) => ({ severity: severityForAngle(angle.name, angle.findings), category: angle.name, evidence: angle.findings.join("；") || angle.name })));
@@ -428,7 +429,7 @@ ${angleText}
 							}
 							return ok(`❌ [AIGate ${aiUsed}/${aiBudget.limit}] ${stage.name} 审查发现不可 override 的 P0/P1 blocker：\n${angleText}${suggText}\n未写入无效 verdict、未记录完成信号。请回到负责阶段修复安全/权限/数据风险后重新提交。`);
 						}
-						persistAIGateReview({ state, stage, model: llmInfo.model, artifacts, mechanicalReason: mechanicalCheckResult.reason, selfAttack: selfAttack!, result: aiResult, status: "fail", overrideReason: `AIGate 已完成 ${aiUsed} 轮严格审查仍未收敛；按软 Gate 策略停止细节循环，保留 findings 供后续阶段继续验证。`, preventionPatternIds: prevention.patternIds });
+						persistAIGateReview({ state, stage, model: reviewModel, artifacts, mechanicalReason: mechanicalCheckResult.reason, selfAttack: selfAttack!, result: aiResult, status: "fail", overrideReason: `AIGate 已完成 ${aiUsed} 轮严格审查仍未收敛；按软 Gate 策略停止细节循环，保留 findings 供后续阶段继续验证。`, preventionPatternIds: prevention.patternIds });
 						const softPass = stage.exit !== "verdict" || Boolean(params.pass);
 						dispatchToController(state, { type: "RECORD_SIGNAL", signal: stage.exit === "verdict" ? (softPass ? "verdict_pass" : "verdict_fail") : "complete" });
 						dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: softPass } });
@@ -443,7 +444,7 @@ ${angleText}
 						details: {},
 					};
 				}
-				persistAIGateReview({ state, stage, model: llmInfo.model, artifacts, mechanicalReason: mechanicalCheckResult.reason, selfAttack: selfAttack!, result: aiResult, status: "pass", preventionPatternIds: prevention.patternIds });
+				persistAIGateReview({ state, stage, model: reviewModel, artifacts, mechanicalReason: mechanicalCheckResult.reason, selfAttack: selfAttack!, result: aiResult, status: "pass", preventionPatternIds: prevention.patternIds });
 			}
 			// The unified AIGate passed -- mark "real progress" only here. Setting lastSubmitAt
 			// before the gate (the old behavior) caused agent_end to mis-detect stalls
@@ -476,7 +477,7 @@ ${angleText}
 				}
 				dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
 				return ok(
-					`${stage.name} verdict: pass - ${summary}\n剩余硬 Gate 自愈预算：${state.stageSelfHealBudget(stage.name, "hard_gate").remaining}/${state.maxSelfHealPerStage}\n剩余 AIGate 自愈预算：${state.stageSelfHealBudget(stage.name, "ai_gate").remaining}/${state.maxSelfHealPerStage}${llmInfo ? "\nAIGate: 通过 ✅" : ""}\n${formatSubmitTimings({ hardGateMs, aiGateMs, aiGateEnabled })}`,
+					`${stage.name} verdict: pass - ${summary}\n剩余硬 Gate 自愈预算：${state.stageSelfHealBudget(stage.name, "hard_gate").remaining}/${state.maxSelfHealPerStage}\n剩余 AIGate 自愈预算：${state.stageSelfHealBudget(stage.name, "ai_gate").remaining}/${state.maxSelfHealPerStage}${reviewModel ? "\nAIGate: 通过 ✅" : ""}\n${formatSubmitTimings({ hardGateMs, aiGateMs, aiGateEnabled })}`,
 				);
 			}
 			dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });

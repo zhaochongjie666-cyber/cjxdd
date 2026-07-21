@@ -141,21 +141,6 @@ function isAIGateRepairFailure(
 		state.remainingAiGateBudget(stage!) > 0;
 }
 
-function isAIGateDegradedRetry(
-	event: { type?: string; content?: Array<{ type?: string; text?: string }> },
-	toolName: string,
-	state: XddRunnerState,
-): boolean {
-	if (event.type !== "tool_result" || toolName !== "xdd_submit_artifact") return false;
-	const text = toolResultText(event);
-	const stage = state.currentStageName();
-	return Boolean(stage) &&
-		/⚠️ \[AIGate degraded \d+\/\d+\]/.test(text) &&
-		text.includes("审查服务/响应格式异常") &&
-		text.includes("本 turn 继续") &&
-		state.remainingAiGateBudget(stage!) > 0;
-}
-
 function isMainTurnAIGateReviewRequest(
 	event: { type?: string; content?: Array<{ type?: string; text?: string }> },
 	toolName: string,
@@ -170,27 +155,9 @@ async function sendMainTurnAIGateReviewSteering(
 ): Promise<void> {
 	const stage = state.currentStageName() ?? "当前";
 	await pi.sendUserMessage?.(
-		`[xdd aigate steering] ${stage} 阶段硬 Gate 已通过。不要启动独立 LLM：在当前主 turn 读取 xdd_submit_artifact 返回的 review summary、真实产物和跨阶段契约，攻击正向路径与兜底路径；形成逐角度 findings 后，携带 mainTurnReview 重新调用 xdd_submit_artifact。未完成审查前禁止 xdd_advance。`,
+		`[xdd aigate steering] ${stage} 阶段硬 Gate 已通过。不要启动独立 LLM：在当前主 turn 读取 xdd_submit_artifact 返回的 review summary、真实产物和跨阶段契约，逐项攻击工具列出的全部必审角度及其正向路径与兜底路径；每个角度写证据或 N/A 理由，然后携带原 reviewToken 和 mainTurnReview 重新调用 xdd_submit_artifact。未完成审查前禁止 xdd_advance。`,
 		{ deliverAs: "steer" },
 	);
-}
-
-async function sendAIGateDegradedRetrySteering(
-	pi: { sendUserMessage?: (text: string, options?: unknown) => Promise<unknown> | unknown },
-	state: XddRunnerState,
-): Promise<void> {
-	const stage = state.currentStageName() ?? "当前";
-	const reason = state.lastStageError ?? "AIGate 审查服务/响应格式异常";
-	try {
-		await pi.sendUserMessage?.(
-			`[xdd aigate steering] degraded ${stage} 阶段 AIGate 基础设施不可用：${reason}。硬 Gate 已通过，但统一审查还没有形成产物判定；立即重新调用 xdd_submit_artifact 提交同一批产物以消耗有界 degraded 重试预算，不要停在等待状态，也不要把基础设施 504 包装成产物已完成。`,
-			{ deliverAs: "steer" },
-		);
-	} catch (error) {
-		recordControllerAudit("finding", stage, "AIGate degraded retry steering send failed", {
-			error: error instanceof Error ? error.message : String(error),
-		});
-	}
 }
 
 async function sendAIGateRepairSteering(
@@ -451,9 +418,6 @@ export const xddInlineExtension: InlineExtension = {
 			// next model call to fix the reviewed artifacts.
 			if (isAIGateRepairFailure(event, toolName, stateRef)) {
 				await sendAIGateRepairSteering(pi, stateRef);
-			}
-			if (isAIGateDegradedRetry(event, toolName, stateRef)) {
-				await sendAIGateDegradedRetrySteering(pi, stateRef);
 			}
 			if (isXddAdvanceNextStage(event, toolName, stateRef)) {
 				await sendAdvanceNextStageSteering(pi, stateRef);

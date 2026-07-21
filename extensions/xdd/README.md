@@ -54,7 +54,7 @@ xdd 默认把一个流程的 Pi 已报告 LLM 费用限制为 **$500 USD**。启
 
 ### AIGate 主 turn 审查
 
-`xdd_submit_artifact` 不再另起一次 LLM 请求。首次提交通过硬 Gate 后，工具输出包含提交声明、产物路径、机械结果、阶段标准和历史 findings 的 review summary；extension 以 `deliverAs: "steer"` 把攻击任务送回当前主 turn。主 turn 读取真实产物和跨阶段契约，攻击正向与兜底后，以 `mainTurnReview` 重提。工具会拒绝空角度、全部 `N/A` 以及总判断和逐角度判断矛盾的 review，防止 summary 变成自我宣布完成。
+`xdd_submit_artifact` 不再另起一次 LLM 请求。首次提交通过硬 Gate 后，工具输出包含提交声明、产物路径、机械结果、完整必审角度、历史 findings 和一次性 `reviewToken` 的 review summary；extension 以 `deliverAs: "steer"` 把攻击任务送回当前主 turn。主 turn 读取真实产物和跨阶段契约，逐项攻击正向与兜底后，以 `mainTurnReview` 重提。工具会校验 token 与当前阶段/声明/磁盘指纹的绑定，并拒绝缺少或重复角度、全部 `N/A`、无证据以及总判断和逐角度判断矛盾的 review，防止跳过 steer、复用旧审查或用 summary 自我宣布完成。
 
 ## 运行流程
 
