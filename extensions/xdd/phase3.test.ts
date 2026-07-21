@@ -1,21 +1,10 @@
-/**
- * Phase 3 (C) P28-29 regression tests.
- *
- * P28: stageEpoch replaces numeric boundary. The context hook slices
- * messages based on a string marker in the message stream. Stable
- * across compaction because it's a string, not an index.
- *
- * P29: proactive compaction at >= 70% context usage. agent_end reads
- * ctx.getContextUsage() and triggers ctx.compact() before queuing a
- * followUp, so the agent sees a fresh context window.
- */
+/** Stage epoch persistence and adapter regression tests. */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { XddRunnerState } from "./types.ts";
 import { createStateFixture, setStateFixturePlanIndex, startStateFixture } from "./test/state-fixture.ts";
-import { sliceByEpoch, EPOCH_MARKER_PREFIX } from "./epoch-slicer.ts";
 import { FakePiAdapterHarness } from "./test/pi-adapter-harness.ts";
 
 let cwd = "";
@@ -49,97 +38,6 @@ describe("P28 stageEpoch state field", () => {
 		state.stageEpoch = "phase3:spec:2";
 		const rt = JSON.parse(readFileSync(join(cwd, ".xdd", "runtime.json"), "utf8"));
 		expect(rt.stageEpoch).toBe("phase3:spec:2");
-	});
-
-	it("lastCompactionAt default 0, persists", () => {
-		expect(state.lastCompactionAt).toBe(0);
-		state.lastCompactionAt = Date.now();
-		const rt = JSON.parse(readFileSync(join(cwd, ".xdd", "runtime.json"), "utf8"));
-		expect(rt.lastCompactionAt).toBeGreaterThan(0);
-	});
-});
-
-// ── P28: sliceByEpoch ─────────────────────────────────────────────────
-
-describe("P28 sliceByEpoch", () => {
-	function msg(role: "user" | "assistant" | "compactionSummary", text: string) {
-		if (role === "compactionSummary") {
-			return { role, summary: text, tokensBefore: 0, timestamp: Date.now() };
-		}
-		return { role, content: text, timestamp: Date.now() };
-	}
-
-	it("no epoch marker -> passthrough", () => {
-		const msgs = [
-			msg("user", "hello"),
-			msg("assistant", "world"),
-		];
-		const out = sliceByEpoch(msgs as any, "phase3:spec:1");
-		expect(out).toBe(msgs as any); // identity check -- no slicing
-	});
-
-	it("empty epoch -> passthrough (initial state)", () => {
-		const msgs = [msg("user", "hello")];
-		const out = sliceByEpoch(msgs as any, "");
-		expect(out).toBe(msgs as any);
-	});
-
-	it("default '?:0' epoch -> passthrough (compat shim)", () => {
-		const msgs = [msg("user", "hello")];
-		const out = sliceByEpoch(msgs as any, "phase3:?:0");
-		expect(out).toBe(msgs as any);
-	});
-
-	it("finds epoch marker, slices from there", () => {
-		const epoch = "phase3:spec:2";
-		const msgs = [
-			msg("user", "earlier turn 1"),
-			msg("assistant", "earlier reply 1"),
-			msg("user", `${EPOCH_MARKER_PREFIX} ${epoch}`),
-			msg("assistant", "stage 2 reply"),
-			msg("user", "stage 2 turn 2"),
-		];
-		const out = sliceByEpoch(msgs as any, epoch);
-		expect(out.length).toBe(3);
-		expect((out[0] as any).content).toContain(EPOCH_MARKER_PREFIX);
-	});
-
-	it("compaction summary AFTER epoch marker -> use summary as start", () => {
-		const epoch = "phase3:spec:2";
-		const msgs = [
-			msg("user", `${EPOCH_MARKER_PREFIX} ${epoch}`),
-			msg("assistant", "stage 2 reply"),
-			msg("compactionSummary", "compacted previous"),
-			msg("assistant", "post-compaction reply"),
-		];
-		const out = sliceByEpoch(msgs as any, epoch);
-		expect(out.length).toBe(2);
-		expect(out[0].role).toBe("compactionSummary");
-	});
-
-	it("compaction summary BEFORE epoch marker -> use epoch marker as start", () => {
-		const epoch = "phase3:spec:3";
-		const msgs = [
-			msg("user", "earlier turn"),
-			msg("compactionSummary", "stale summary from before this stage"),
-			msg("user", `${EPOCH_MARKER_PREFIX} ${epoch}`),
-			msg("assistant", "stage 3 reply"),
-		];
-		const out = sliceByEpoch(msgs as any, epoch);
-		expect(out.length).toBe(2);
-		expect((out[0] as any).content).toContain(EPOCH_MARKER_PREFIX);
-	});
-
-	it("different epoch value than marker -> passthrough (epoch not yet seen)", () => {
-		const msgs = [
-			msg("user", `${EPOCH_MARKER_PREFIX} phase3:spec:1`),
-			msg("assistant", "reply"),
-		];
-		const out = sliceByEpoch(msgs as any, "phase3:spec:2");
-		// No marker for spec:2 in stream -- passthrough so the model can
-		// see the prior stage and continue. (The marker for spec:2 will
-		// be injected on the next before_agent_start.)
-		expect(out).toBe(msgs as any);
 	});
 });
 
@@ -178,16 +76,14 @@ describe("P28 tools write stageEpoch", () => {
 });
 
 
-describe("Pi-owned compaction followUp dispatch compatibility", () => {
+describe("Pi followUp dispatch compatibility", () => {
 	it("does not call .catch on a synchronous sendUserMessage result", async () => {
 		const adapter = new FakePiAdapterHarness();
 		try {
 			adapter.sendUserMessageMode = "sync";
-			adapter.contextUsage = { percent: 71 };
 			adapter.state.stageOutcome = "idle";
 
 			await adapter.emit("agent_end", { messages: [{ role: "assistant", stopReason: "stop" }] });
-			expect(adapter.compactCalls).toHaveLength(0);
 			expect(adapter.sentMessages).toHaveLength(1);
 			expect(adapter.sentMessages[0].options).toEqual({ deliverAs: "followUp" });
 		} finally {

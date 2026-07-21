@@ -1,6 +1,5 @@
 import type { InlineExtension } from "@earendil-works/pi-coding-agent";
 import { buildActiveStageSystemPrompt } from "./context.ts";
-import { contextPruneOptionsFromEnv, pruneContextMessages } from "./context-prune.ts";
 import { renderReflectEnd, renderReflectStart, renderRollback, renderStageBoundary } from "./renderers.ts";
 import { createXddTools } from "./tools/index.ts";
 import { readCheckpoint } from "./checkpoint.ts";
@@ -10,7 +9,6 @@ import { archiveRun } from "./archive.ts";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, basename } from "node:path";
 import type { XddRunnerState, XddStageName, XddStageSpec } from "./types.ts";
-import { EPOCH_MARKER_PREFIX } from "./epoch-slicer.ts";
 import { resolveGlobs, hasGlobMeta } from "./glob-resolver.ts";
 import { compileStageContracts } from "./core/stage-contract.ts";
 import { agentEndCommandFromPi, PiControllerAdapter } from "./adapters/pi-controller.ts";
@@ -24,7 +22,6 @@ import type { XddAuditEvent } from "./audit/events.ts";
 import { HookRunner } from "./hooks/runner.ts";
 import type { HookPayload, HookPoint, HookRunResult } from "./hooks/protocol.ts";
 import { assistantFlowUsage } from "./flow-budget.ts";
-import { buildDocumentHandoffMessages } from "./context-document-handoff.ts";
 
 /**
  * Module-level shared state. The InlineExtension factory registers tools and
@@ -235,10 +232,6 @@ async function sendHookContinuePrompt(pi: { sendUserMessage?: (text: string, opt
 /**
  * xdd InlineExtension. Registered via main.ts extensionFactories (and
  * createHarness({ extensionFactories: [xddInlineExtension] }) in tests).
- *
- * Relies on the existing `agent.transformContext → runner.emitContext` wiring
- * (sdk.ts:359) to trigger `on("context")` each turn; it does NOT install any
- * transformContext bridge.
  */
 /** Build a stage-aware summary for pi's session_before_tree hook. */
 function buildStageSummary(cwd: string, state: XddRunnerState, stage: XddStageSpec): string {
@@ -482,11 +475,9 @@ export const xddInlineExtension: InlineExtension = {
 			}
 		});
 
-		// xdd uses per-stage context slicing (on "context" event) to keep only
-		// the current stage's messages. Runtime state is in runtime.json, not in
-		// the conversation. So compaction is safe -- do NOT cancel it. Cancelling
-		// causes "Error: Compaction cancelled" when context fills up during long
-		// runs (10 stages × many tool calls).
+		// Conversation context, tool results, and compaction are owned entirely by
+		// Pi. XDD only contributes the current stage system prompt and persisted
+		// workflow state; it never rewrites Pi's message history.
 
 		// Phase 1 P24: turn_end no longer runs xdd scheduler followUps.
 		// T8 project hooks may request a bounded followUp prompt, but they
@@ -500,11 +491,6 @@ export const xddInlineExtension: InlineExtension = {
 		});
 
 		// Fresh per-stage system prompt. Group gates auto-advance (no human pause).
-		// Phase 3 (C) P28: also inject the current stageEpoch marker so the
-		// context hook (and the model itself) can identify which messages
-		// belong to the current stage. The marker is a special user message
-		// that pi sees as a normal user turn but the slicer recognizes by
-		// its EPOCH_MARKER_PREFIX.
 		pi.on("before_agent_start", async (_event, ctx) => {
 			// Capture model + modelRegistry for AIGate LLM calls.
 			setLLMRef(ctx.model ?? null, ctx.modelRegistry ?? null);
@@ -529,30 +515,7 @@ ${hookResult.prompt}`;
 
 [xdd hook block warning] turn_start hook blocked: ${hookResult.reason ?? "no reason"}`;
 			}
-			const epoch = stateRef.stageEpoch;
-			// Inject a user message with the epoch marker so the context
-			// hook can find it on the next compaction. We append to the
-			// system prompt instead of sending a separate user message --
-			// a user message would change the conversation flow; the marker
-			// is a system-only annotation.
-			const finalPrompt = systemPrompt
-				? `${systemPrompt}\n\n${EPOCH_MARKER_PREFIX} ${epoch}`
-				: undefined;
-			return finalPrompt === undefined ? undefined : { systemPrompt: finalPrompt };
-		});
-
-		// Context preservation policy: xdd must not directly delete chat history.
-		// Pi owns semantic compaction; this hook only applies provider-safe
-		// normalization/stubbing and may add document handoff context.
-		pi.on("context", async (event) => {
-			if (!stateRef) return undefined;
-			const pruned = pruneContextMessages(event.messages, contextPruneOptionsFromEnv());
-			const stage = stateRef.currentStage();
-			const handedOff = stage
-				? await buildDocumentHandoffMessages({ cwd: stateRef.cwd, stage: stage.name, inputs: stage.inputs, messages: pruned })
-				: pruned;
-			if (pruned === event.messages && handedOff === pruned) return undefined;
-			return { messages: handedOff };
+			return systemPrompt === undefined ? undefined : { systemPrompt };
 		});
 
 		// Auto-continue: route Pi lifecycle into the Controller Core.
@@ -572,20 +535,8 @@ ${hookResult.prompt}`;
 			if (typeof ctx.hasPendingMessages === "function") {
 				command.hasPendingMessages = ctx.hasPendingMessages();
 			}
-			if (typeof ctx.getContextUsage === "function") {
-				command.contextUsagePercent = ctx.getContextUsage()?.percent ?? null;
-			}
 			const adapter = new PiControllerAdapter({ pi, ctx, getState: () => stateRef });
 			await adapter.dispatch(command);
-		});
-
-
-		pi.on("session_compact", async (event, ctx) => {
-			if (!stateRef) return;
-			if (stateRef.runComplete) return;
-			const success = typeof event?.success === "boolean" ? event.success : !event?.error;
-			const adapter = new PiControllerAdapter({ pi, ctx, getState: () => stateRef });
-			await adapter.dispatch({ type: "COMPACTION_DONE", success });
 		});
 
 		// Checkpoint detection: if pi restarts with an unfinished xdd run,

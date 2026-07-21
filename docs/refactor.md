@@ -72,7 +72,6 @@ The current implementation has **25+ real issues** ranging from "paper gate" (ex
 | # | Issue | File:line | Impact |
 |---|-------|-----------|--------|
 | 12 | AIGate angles have no version; rename breaks gate | `aigate.ts` angle map | Silent regressions |
-| 13 | epoch marker in system prompt can be lost in compaction | `epoch-slicer.ts` | Old stage context bleeds in |
 | 14 | `xdd_observe` returns 14 fields in markdown | `tools/xdd-observe.ts` | Cognitive load on LLM |
 | 15 | `xdd_status` doesn't show `paused`/`failed` state | `run.ts:xddStatus` | User can't diagnose |
 | 16 | `/xdd-resume` doesn't validate `cwd` matches checkpoint | `run.ts:resumeXdd` | Cross-project resume |

@@ -379,20 +379,15 @@ export class XddRunnerState {
 	set continuationReason(v: string | undefined) { this.mutRt("continuationReason", v ?? null); }
 	get continuationStage(): XddStageName | undefined { return this.loadRt().continuationStage ?? undefined; }
 	set continuationStage(v: XddStageName | undefined) { this.mutRt("continuationStage", v ?? null); }
-	// Phase 3 (C) P28: stageEpoch replaces the numeric boundary. Format is
-	// "runId:stage:attempt". A new value means "context must be sliced here":
-	// the context hook keeps only messages AFTER the latest epoch marker (or
-	// the most recent compaction summary, whichever is more recent). Stable
-	// across compaction because it's a string, not a numeric index.
+	// Persisted workflow generation identifier: "runId:stage:attempt". It
+	// invalidates stale queued continuations and never participates in Pi's
+	// conversation context or compaction.
 	get stageEpoch(): string { return this.loadRt().stageEpoch ?? `${this.runId}:?:0`; }
 	set stageEpoch(v: string) { this.mutRt("stageEpoch", v); }
 	// Helper: build the epoch string for a stage+attempt pair.
 	makeStageEpoch(stage: XddStageName, attempt: number): string {
 		return `${this.runId}:${stage}:${attempt}`;
 	}
-	// P29: track when compaction last fired (for telemetry + dedup).
-	get lastCompactionAt(): number { return this.loadRt().lastCompactionAt ?? 0; }
-	set lastCompactionAt(v: number) { this.mutRt("lastCompactionAt", v); }
 	// The AIGate semantic-failure budget is deliberately independent from the
 	// hard-Gate failure budget; stageSelfHealBudget() is the sole read model.
 	get aiGateUsed(): Record<string, number> { return this.loadRt().aiGateUsed ?? {}; }
@@ -856,8 +851,6 @@ export interface XddCheckpointData {
 	continuationStage?: XddStageName;
 	// Phase 3 (C) P28: stageEpoch replaces numeric boundary
 	stageEpoch?: string;
-	// Phase 3 (C) P29: compaction telemetry
-	lastCompactionAt?: number;
 	// Phase 5 (E.2): AIGate attempts (independent of hard-Gate)
 	aiGateUsed?: Record<string, number>;
 	/** Whole-run LLM spending guard. Amounts are USD and include Pi-reported calls. */
@@ -937,10 +930,7 @@ function defaultRt(runId: string = ""): XddCheckpointData {
 		continuationEpoch: 0, continuationQueued: false,
 		stageOutcome: "idle", lastStageError: null,
 		continuationReason: null, continuationStage: null,
-		// P28: default epoch is the placeholder "runId:?:0". The
-		// `?:0` segment is a sentinel meaning "no real stage yet";
-		// the context hook (sliceByEpoch) treats it as passthrough.
-		stageEpoch: runId ? `${runId}:?:0` : "", lastCompactionAt: 0,
+		stageEpoch: runId ? `${runId}:?:0` : "",
 		aiGateUsed: {},
 		flowBudgetUsd: 500, flowCostUsd: 0, flowTokensUsed: 0,
 		flowBudgetMessageTimestamps: [],

@@ -1,7 +1,5 @@
 import type { InlineExtension } from "@earendil-works/pi-coding-agent";
 import { buildActiveNfStageSystemPrompt } from "./context.ts";
-import { contextPruneOptionsFromEnv, pruneContextMessages } from "../xdd/context-prune.ts";
-import { sliceByEpoch, EPOCH_MARKER_PREFIX } from "../xdd/epoch-slicer.ts";
 import { createNfTools } from "./tools/index.ts";
 import { compileStageContracts } from "../xdd/core/stage-contract.ts";
 import { agentEndCommandFromPi } from "../xdd/adapters/pi-controller.ts";
@@ -11,7 +9,6 @@ import { assistantFlowUsage } from "../xdd/flow-budget.ts";
 import { archiveRun } from "../xdd/archive.ts";
 import type { XddRunnerState } from "../xdd/types.ts";
 import { dispatchNfCommand } from "./adapter.ts";
-import { buildDocumentHandoffMessages } from "../xdd/context-document-handoff.ts";
 import { NF_DISPLAY_NAME, type NfStageName, planStageNamesAreNf } from "./types.ts";
 import { NF_STAGES } from "./stages.ts";
 
@@ -234,22 +231,7 @@ export const normalFlowInlineExtension: InlineExtension = {
 				return { systemPrompt: "[normal-flow] 流程预算已耗尽。不要调用工具或继续工作；直接停止。" };
 			}
 			const systemPrompt = buildActiveNfStageSystemPrompt(stateRef);
-			const epoch = stateRef.stageEpoch;
-			const finalPrompt = systemPrompt ? `${systemPrompt}\n\n${EPOCH_MARKER_PREFIX} ${epoch}` : undefined;
-			return finalPrompt === undefined ? undefined : { systemPrompt: finalPrompt };
-		});
-
-		// 按 stageEpoch 截取上下文 + 裁剪大工具输出，跟 stage 名无关，直接复用。
-		pi.on("context", async (event) => {
-			if (!stateRef) return undefined;
-			const sliced = sliceByEpoch(event.messages, stateRef.stageEpoch);
-			const pruned = pruneContextMessages(sliced, contextPruneOptionsFromEnv());
-			const stage = stateRef.currentStage();
-			const handedOff = stage
-				? await buildDocumentHandoffMessages({ cwd: stateRef.cwd, stage: stage.name, inputs: stage.inputs, messages: pruned })
-				: pruned;
-			if (sliced === event.messages && pruned === sliced && handedOff === pruned) return undefined;
-			return { messages: handedOff };
+			return systemPrompt === undefined ? undefined : { systemPrompt };
 		});
 
 		pi.on("agent_end", async (event, ctx) => {
@@ -269,17 +251,7 @@ export const normalFlowInlineExtension: InlineExtension = {
 			if (typeof ctx.hasPendingMessages === "function") {
 				command.hasPendingMessages = ctx.hasPendingMessages();
 			}
-			if (typeof ctx.getContextUsage === "function") {
-				command.contextUsagePercent = ctx.getContextUsage()?.percent ?? null;
-			}
 			await dispatchNfCommand(stateRef, command, { pi, ctx, getState: () => stateRef });
-		});
-
-		pi.on("session_compact", async (event, ctx) => {
-			if (!stateRef) return;
-			if (stateRef.runComplete) return;
-			const success = typeof event?.success === "boolean" ? event.success : !event?.error;
-			await dispatchNfCommand(stateRef, { type: "COMPACTION_DONE", success }, { pi, ctx, getState: () => stateRef });
 		});
 
 		// Checkpoint 检测：只在 normal-flow-runtime.json 属于 Normal Flow 时才提示

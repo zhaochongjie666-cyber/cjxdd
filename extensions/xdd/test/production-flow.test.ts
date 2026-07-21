@@ -2,9 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { FakePiAdapterHarness } from "./pi-adapter-harness.ts";
-import { EPOCH_MARKER_PREFIX } from "../epoch-slicer.ts";
-import { BASH_OUTPUT_STUB } from "../context-prune.ts";
 import { executePiEffects } from "../adapters/pi-effects.ts";
+import { digestReviewArtifacts, writeReviewVerdict } from "../review-verdict.ts";
 
 let harness: FakePiAdapterHarness;
 
@@ -24,6 +23,29 @@ function writeVerifyTraceGapFixture(cwd: string): void {
 
 function toolText(result: any): string {
 	return result.content?.map((part: any) => part.text ?? "").join("\n") ?? "";
+}
+
+function approveCurrentStageForAdvance(): void {
+	const stage = harness.state.currentStageName();
+	if (!stage) throw new Error("test fixture has no active stage");
+	harness.state.recordSignal(harness.state.currentStage()?.exit === "verdict" ? "verdict_pass" : "complete");
+	writeReviewVerdict(harness.cwd, stage, {
+		schemaVersion: 1,
+		reviewType: "qa",
+		artifactDigest: digestReviewArtifacts({}),
+		artifactPaths: [],
+		noArtifactReason: "production lifecycle fixture intentionally has no stage artifact",
+		creatorId: "fixture-creator",
+		reviewerId: "fixture-independent-reviewer",
+		model: "fixture-model",
+		contextPolicy: "isolated",
+		verdict: "pass",
+		score: 100,
+		findings: [],
+		positivePathEvidence: ["stage advancement happy path exercised"],
+		fallbackAttackEvidence: ["missing approval is rejected before advancement"],
+		overrides: [],
+	});
 }
 
 beforeEach(() => {
@@ -52,23 +74,12 @@ describe("production pi adapter lifecycle", () => {
 		await harness.command("xdd-resume", "请注意使用node");
 
 		expect(harness.sentMessages).toHaveLength(1);
-		expect(harness.sentMessages[0]).toMatchObject({
-			text: "[xdd 自动推进] 恢复 init 阶段。请调 xdd_next_task 继续。\n\n请注意使用node",
-			options: { deliverAs: "followUp" },
-		});
+		expect(harness.sentMessages[0]).toMatchObject({ options: { deliverAs: "followUp" } });
+		expect(harness.sentMessages[0]?.text).toContain("[xdd 自动推进] 恢复 init 阶段");
+		expect(harness.sentMessages[0]?.text).toContain("[xdd epoch:1]");
+		expect(harness.sentMessages[0]?.text).toContain("请注意使用node");
 	});
 
-	it("provider error followed by compaction does not create xdd followUp and shows Pi retry ownership", async () => {
-		harness.contextUsage = { percent: 95 };
-		await harness.emit("agent_end", {
-			messages: [{ role: "assistant", stopReason: "error", errorMessage: "rate limit" }],
-		});
-		expect(harness.state.stageOutcome).toBe("provider_error");
-		expect(harness.state.lastStageError).toBe("rate limit");
-		expect(harness.compactCalls).toHaveLength(0);
-		expect(harness.sentMessages).toHaveLength(0);
-		expect(harness.notifications.at(-1)?.message).toContain("等待 Pi 内建重试");
-	});
 
 	it("normal agent_end queues exactly one continuation", async () => {
 		harness.controller.submitGatePassed();
@@ -96,6 +107,7 @@ describe("production pi adapter lifecycle", () => {
 
 	it("xdd_advance tool result steers the same turn to execute the next stage", async () => {
 		harness.controller.submitGatePassed();
+		approveCurrentStageForAdvance();
 		const advance = harness.tools.find((tool) => tool.name === "xdd_advance");
 		expect(advance).toBeDefined();
 
@@ -168,22 +180,16 @@ describe("production pi adapter lifecycle", () => {
 		expect(harness.sentMessages).toHaveLength(0);
 	});
 
-	it("group Gate automatic rollbacks use the Controller limit", async () => {
+	it("a failed non-verify group Gate stays at its stage with an executable repair action", async () => {
 		const advance = harness.tools.find((tool) => tool.name === "xdd_advance");
 		expect(advance).toBeDefined();
-		harness.state.maxRollbacksPerStage = 2;
-
-		for (let attempt = 1; attempt <= 2; attempt++) {
-			harness.state.planIndex = 2; // spec: end of the discovery group
-			harness.state.recordSignal("complete");
-			const result = await advance.execute("group-gate", {});
-			expect(toolText(result)).toContain("强制回退 spec -> init");
-			expect(harness.state.rollbackAttempts.init).toBe(attempt);
-		}
-
 		harness.state.planIndex = 2;
-		harness.state.recordSignal("complete");
-		await expect(advance.execute("group-gate-limit", {})).rejects.toThrow(/ROLLBACK_LIMIT_REACHED|reached its limit/);
+		approveCurrentStageForAdvance();
+		const result = await advance.execute("group-gate", {});
+		expect(toolText(result)).toContain("停留在 spec 阶段修复");
+		expect(toolText(result)).toContain("只有 verify 阶段允许 xdd_rollback");
+		expect(harness.state.currentStageName()).toBe("spec");
+		expect(harness.state.rollbackAttempts.init ?? 0).toBe(0);
 	});
 
 	it("before_tools hook block rejects the tool call before execution", async () => {
@@ -263,87 +269,13 @@ describe("production pi adapter lifecycle", () => {
 			pass: false,
 		});
 		expect(exhausted.terminate).toBeUndefined();
-		expect(harness.state.currentStageName()).toBe("spec");
+		expect(harness.state.currentStageName()).toBe("execute");
 		expect(harness.state.flowRollbackCount).toBe(1);
 	});
 
 
-	it("context hook preserves epoch history while applying safe pruning", async () => {
-		harness.state.stageEpoch = "harness:verify:1";
-		const messages = [
-			{ role: "user", content: "old stage" },
-			{ role: "user", content: `${EPOCH_MARKER_PREFIX} harness:verify:1` },
-			{ role: "assistant", content: "", tool_calls: [{ id: "old-bash", type: "function", function: { name: "bash", arguments: "{}" } }] },
-			{ role: "tool", tool_call_id: "old-bash", name: "bash", content: "x".repeat(5_000) },
-			{ role: "assistant", content: [{ type: "thinking", text: "drop" }, { type: "text", text: "keep" }] },
-			{ role: "assistant", content: "", tool_calls: [{ id: "current-bash", type: "function", function: { name: "bash", arguments: "{}" } }] },
-			{ role: "tool", tool_call_id: "current-bash", name: "bash", content: "current".repeat(800) },
-		];
-		const [result] = await harness.emit("context", { messages });
-		expect(result.messages).toHaveLength(7);
-		expect(result.messages[0].content).toBe("old stage");
-		expect(result.messages[1].content).toContain(EPOCH_MARKER_PREFIX);
-		expect(result.messages[3].tool_call_id).toBe("old-bash");
-		expect(result.messages[3].content).toBe(BASH_OUTPUT_STUB);
-		expect(result.messages[4].content).toEqual([{ type: "text", text: "keep" }]);
-		expect(result.messages[6].content).toContain("current");
-	});
-
-	it("leaves compaction to Pi and queues the continuation directly", async () => {
-		harness.contextUsage = { percent: 72 };
-		harness.controller.submitGatePassed();
-
-		await harness.emit("agent_end", {
-			messages: [{ role: "assistant", stopReason: "stop" }],
-		});
-		expect(harness.compactCalls).toHaveLength(0);
-		expect(harness.sentMessages).toHaveLength(1);
-		expect(harness.sentMessages[0]?.text).toContain("xdd_advance");
-	});
-
-	it("high context usage does not start a competing xdd compaction", async () => {
-		harness.contextUsage = { percent: 72 };
-		harness.controller.submitGatePassed();
-		await harness.emit("agent_end", {
-			messages: [{ role: "assistant", stopReason: "stop" }],
-		});
-		expect(harness.compactCalls).toHaveLength(0);
-		expect(harness.sentMessages).toHaveLength(1);
-		expect(harness.sentMessages[0]?.text).toContain("xdd_advance");
-		expect(harness.state.continuationQueued).toBe(true);
-	});
 
 
-	it("session_compact completion resumes through one controller continuation", async () => {
-		harness.controller.submitGatePassed();
-		await harness.emit("session_compact", { success: true });
-		expect(harness.sentMessages).toHaveLength(1);
-		expect(harness.sentMessages[0]?.text).toContain("xdd_advance");
-		expect(harness.state.continuationQueued).toBe(true);
-
-		await harness.emit("session_compact", { success: true });
-		expect(harness.sentMessages).toHaveLength(1);
-	});
-
-	it("compaction failure releases back to a single continuation instead of stalling", async () => {
-		harness.contextUsage = { percent: 90 };
-		harness.controller.submitGatePassed();
-		harness.ctx.compact = () => { throw new Error("compactor unavailable"); };
-
-		await harness.emit("agent_end", {
-			messages: [{ role: "assistant", stopReason: "stop" }],
-		});
-
-		expect(harness.notifications.at(-1)?.message).toContain("compaction 失败");
-		expect(harness.sentMessages).toHaveLength(1);
-		expect(harness.sentMessages[0]?.text).toContain("xdd_advance");
-		expect(harness.state.continuationQueued).toBe(true);
-
-		await harness.emit("agent_end", {
-			messages: [{ role: "assistant", stopReason: "stop" }],
-		});
-		expect(harness.sentMessages).toHaveLength(1);
-	});
 
 
 	it("effect failure is visible in xdd-status audit view", async () => {

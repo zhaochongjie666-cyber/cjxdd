@@ -102,11 +102,6 @@ export function transition(
 			next.diagnose = command.diagnosis;
 			next.status = "reflecting" as never;
 			return { state: stamp(next), effects };
-		case "COMPACTION_DONE":
-			if (runtimeStatus(next) === "running" && !next.continuationQueued) {
-				queueFollowUp(next, effects, next.stageOutcome ?? "idle", currentStageName(next, stages));
-			}
-			return { state: stamp(next), effects };
 	}
 }
 
@@ -243,11 +238,9 @@ function agentEndedTransition(
 		return { state: stamp(state), effects };
 	}
 	if (state.continuationQueued) return { state: stamp(state), effects };
-	// Pi (and the separately installed auto-compact extension) owns compaction.
-	// Requesting another compaction from agent_end races Pi's threshold/overflow
-	// compaction and can fail with "Already compacted".  Queue the continuation;
-	// Pi will compact, when necessary, before the next inference and report the
-	// lifecycle through session_compact.
+	// Pi alone owns context-window accounting, proactive/overflow compaction,
+	// retries, and preservation of tool-call history. XDD only queues its next
+	// workflow instruction.
 	queueFollowUp(state, effects, state.stageOutcome ?? "idle", currentStageName(state, stages));
 	return { state: stamp(state), effects };
 }
@@ -499,7 +492,6 @@ function minimalRuntime(runId: string, cwd: string, userInput: string): RuntimeS
 		pendingGroupApproval: null,
 		stageOutcome: "idle" as XddStageOutcome,
 		stageEpoch: `${runId}:?:0`,
-		lastCompactionAt: 0,
 		continuationQueued: false,
 		continuationEpoch: 0,
 		paused: false,
