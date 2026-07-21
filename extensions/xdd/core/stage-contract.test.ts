@@ -36,6 +36,11 @@ describe("compileStageContracts", () => {
 		expect(plan?.writeScopes).toEqual([".xdd/runs/xdd_run/plan.md", ".xdd/runs/xdd_run/qa-plan.md"]);
 		expect(plan?.desiredState.join("\n")).toContain("- Category: happy");
 		expect(plan?.desiredState.join("\n")).toContain("字段名和值必须同处一行");
+		expect(plan?.desiredState.join("\n")).toContain("失败/拒绝/依赖不可用任务或处理");
+		expect(plan?.desiredState.join("\n")).toContain("可执行重规划动作");
+		expect(plan?.aigateStandard).toContain("过度设计");
+		expect(plan?.aigateStandard).toContain("可观察完成证据");
+		expect(plan?.aigateStandard).toContain("依赖不可用路径");
 	});
 
 	it("rejects required outputs not covered by writeScopes", () => {

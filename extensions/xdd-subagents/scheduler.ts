@@ -9,6 +9,7 @@ import { attachIntercomToRun, supervisorIntercomInstructions } from "./intercom.
 import { buildForkContext, renderForkContext } from "./fork-context.ts";
 import { attachLease, heartbeatRun } from "./lease.ts";
 import { appendSubagentEvent } from "./event-stream.ts";
+import { registerOwnedChild, unregisterOwnedChild } from "./process-registry.ts";
 
 export type XddSubagentRunParams = {
 	mode?: XddSubagentRunMode;
@@ -98,6 +99,7 @@ async function spawnTask(cwd: string, run: XddSubagentRunRecord, index: number, 
 	// messages, and a real resume target attached to every child task.
 	const child = spawn("pi", buildPiArgs(prompt, resolvedInvocation, sessionId), { cwd, stdio: ["ignore", "pipe", "pipe"] });
 	run.pid = child.pid;
+	registerOwnedChild(run.id, child.pid);
 	task.status = "running";
 	appendSubagentEvent(cwd, { runId: run.id, type: "status", message: `task ${index + 1} ${task.agent} started` });
 	touchRun(run, "running");
@@ -111,6 +113,7 @@ async function spawnTask(cwd: string, run: XddSubagentRunRecord, index: number, 
 			resolve();
 		});
 		child.on("close", (code) => {
+			unregisterOwnedChild(run.id, child.pid);
 			task.exitCode = code;
 			task.status = code === 0 ? "succeeded" : "failed";
 			resolve();

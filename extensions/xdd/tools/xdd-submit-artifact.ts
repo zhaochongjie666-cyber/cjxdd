@@ -1,5 +1,4 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
-import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Static, Type } from "typebox";
@@ -16,11 +15,11 @@ import { startAIGateProgress } from "../aigate-progress.ts";
 import { digestReviewArtifactFiles, evaluateReviewVerdict, writeReviewVerdict, type ReviewType, type ReviewVerdict } from "../review-verdict.ts";
 import { codeReviewFromAIGate, writeCodeReviewReport } from "../code-review.ts";
 import { buildPreventionContext } from "../prevention-context.ts";
-import { evaluateProductionPathPolicy } from "../production-path-policy.ts";
 import { computeCanonicalScopeDigest, computeScopeDigest } from "../healing/content-digest.ts";
 import { globToRegExp } from "../gate.ts";
 import { blockingFindings, reconcileStableFindings } from "../healing/stable-findings.ts";
 import { healingEnforced } from "../healing/mode.ts";
+import { changedProductionSources, evaluateProductionPathPolicy, formatMissingProductionSources, isReviewableProductionSource } from "../production-path-policy.ts";
 
 function elapsedMs(start: number): number {
 	return Math.max(0, Math.round(performance.now() - start));
@@ -43,19 +42,6 @@ function severityForAngle(name: string, findings: readonly string[]): "P0" | "P1
 	const text = `${name} ${findings.join(" ")}`;
 	if (/\bP0\b/i.test(text)) return "P0";
 	return /安全|权限|认证|越权|数据丢失|\bP1\b/i.test(text) ? "P1" : "P2";
-}
-
-function isReviewableSourceArtifact(path: string): boolean {
-	if (path.startsWith(".xdd/") || /(^|\/)(?:tests?|docs?|fixtures?)(\/|$)/i.test(path)) return false;
-	return /(^|\/)(?:src|lib|app|server|client|cmd|internal|pkg)(\/|$)/i.test(path)
-		|| /\.(?:[cm]?[jt]sx?|py|go|rs|java|kt|cs|rb|php|swift|vue|svelte)$/i.test(path);
-}
-
-function changedProductionSources(cwd: string): string[] {
-	return execFileSync("git", ["status", "--porcelain=v1", "--untracked-files=all"], { cwd, encoding: "utf8" })
-		.split("\n").filter(Boolean)
-		.map((line) => line.slice(3).split(" -> ").at(-1) ?? "")
-		.filter(isReviewableSourceArtifact);
 }
 
 function persistAIGateReview(params: {
@@ -228,10 +214,10 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 				healingClosure = { submittedAt: new Date().toISOString(), stage: stage.name, changedPaths: params.healing.changedPaths, ownerScopeDigest, commands: params.healing.commands, evidencePaths: params.healing.evidencePaths, summary: params.healing.summary };
 			}
 			if (stage.name === "execute") {
-				const submitted = new Set(artifacts.filter(isReviewableSourceArtifact));
+				const submitted = new Set(artifacts.filter(isReviewableProductionSource));
 				const omitted = changedProductionSources(state.cwd).filter((path) => !submitted.has(path));
 				if (submitted.size === 0 || omitted.length > 0) {
-					throw new Error(`[xdd_submit_artifact] execute 必须声明全部变更的生产源码路径；缺少：${omitted.length > 0 ? omitted.join(", ") : "至少一个生产源码路径"}。Code Reviewer 不接受部分源码或只审 plan/docs/tests。`);
+					throw new Error(`[xdd_submit_artifact] execute 必须声明全部变更的生产源码路径；缺少：${omitted.length > 0 ? formatMissingProductionSources(omitted) : "至少一个生产源码路径"}。依赖、构建与缓存目录会自动排除；Code Reviewer 不接受部分源码或只审 plan/docs/tests。`);
 				}
 			}
 			if (stage.name === "execute") {

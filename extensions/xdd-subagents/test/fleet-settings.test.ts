@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { stopRun, summarizeFleet, waitForRun } from "../fleet.ts";
 import { XddSubagentRunStore, type XddSubagentRunRecord } from "../runtime-store.ts";
 import { resolvePiInvocation, resolveTaskModel } from "../settings.ts";
@@ -59,5 +59,19 @@ describe("xdd subagent fleet and settings", () => {
 		const normalized = normalizeRunParams({ agent: "xdd-scout", task: "侦察", provider: "minimax-cn", model: "MiniMax-M3" });
 		expect(normalized.provider).toBe("minimax-cn");
 		expect(normalized.model).toBe("MiniMax-M3");
+	});
+
+	it("does not signal a PID forged in the project runtime file", () => {
+		const cwd = mkdtempSync(join(tmpdir(), "xdd-subagents-forged-pid-"));
+		const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+		try {
+			const run = { ...makeRun(cwd, "forged", "running"), pid: 1 };
+			new XddSubagentRunStore(cwd).upsert(run);
+			expect(stopRun(cwd, "forged")?.status).toBe("stopped");
+			expect(kill).not.toHaveBeenCalled();
+		} finally {
+			kill.mockRestore();
+			rmSync(cwd, { recursive: true, force: true });
+		}
 	});
 });

@@ -36,6 +36,7 @@ work():
   5. ACT:   排依赖（Depends on DAG，无依赖的首批先跑）
   6. ACT:   先以 QA 视角生成 qa-plan.md，再生成 plan.md；execute 只能消费 QA 契约，不能按实现反改期望
      GATE:  test -f 该 plan.md 且每个 task 都有 ≥1 个测试 Step（grep "Expected: PASS/FAIL"）
+  7. ACT:   做计划语义自检——逐 task 检查范围依据、现实顺序、可观察完成证据、正向与失败处理、并行写冲突和结构变化后的回炉动作；缺少 effort/capacity/calendar 时禁止生成具体日期或时长
 ```
 
 ## 独立 QA Plan（execute 前冻结）
@@ -237,6 +238,9 @@ git add ... && git commit -m "feat(auth): 实现 R01 登录返回JWT"
 □ 遵循 TDD（先测试后实现）
 □ 修改已有文件展示完整上下文代码
 □ 兜底约束（resilience）写进相关 task
+□ 语义现实性：没有越过已批准 spec/architecture 的范围、过度设计、错误顺序或无依据的精确日期
+□ 正向与兜底：每个 task 都有可观察完成证据；计划整体为适用的失败/拒绝/依赖不可用行为配对独立 task 和验证动作，或有具体不适用理由
+□ 可恢复性：并行 task 无隐式写冲突；契约/依赖/文件范围/验收变化时写明回到 plan 或上游阶段的修复动作
 ```
 
 ## 执行交接

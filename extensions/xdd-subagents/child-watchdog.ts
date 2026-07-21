@@ -1,10 +1,12 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { isAbsolute, relative } from "node:path";
 import { XddSubagentRunStore, type XddSubagentRunRecord } from "./runtime-store.ts";
+import { artifactsRoot } from "./runtime-store.ts";
 import { startXddSubagentRun } from "./scheduler.ts";
 
 export function buildChildWatchdogTask(run: XddSubagentRunRecord, maxTranscriptBytes = 60000): string {
 	const transcripts = run.results.map((result) => {
-		const text = existsSync(result.transcriptPath) ? readFileSync(result.transcriptPath, "utf8") : "<missing transcript>";
+		const text = readOwnedTranscript(run.cwd, result.transcriptPath);
 		const clipped = text.length > maxTranscriptBytes ? `${text.slice(0, maxTranscriptBytes)}\n[transcript truncated by child watchdog]\n` : text;
 		return [`## Child task: ${result.agent}`, `status: ${result.status}`, `task: ${result.task}`, "```", clipped, "```"].join("\n");
 	}).join("\n\n");
@@ -24,6 +26,19 @@ export function buildChildWatchdogTask(run: XddSubagentRunRecord, maxTranscriptB
 		"",
 		transcripts,
 	].join("\n");
+}
+
+function readOwnedTranscript(cwd: string, transcriptPath: string): string {
+	if (!existsSync(transcriptPath)) return "<missing transcript>";
+	try {
+		const root = realpathSync(artifactsRoot(cwd));
+		const target = realpathSync(transcriptPath);
+		const rel = relative(root, target);
+		if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return "<rejected transcript outside xdd artifacts>";
+		return readFileSync(target, "utf8");
+	} catch {
+		return "<unreadable transcript>";
+	}
 }
 
 export async function runChildWatchdog(cwd: string, runId: string, options: { async?: boolean; model?: string; maxTranscriptBytes?: number } = {}) {
