@@ -193,6 +193,22 @@ describe("XddController transition", () => {
 		expect(result.state.continuationQueued).toBe(true);
 	});
 
+	it("COMPACTION_DONE clears stale 429 retry lock and queues fresh continuation", () => {
+		// Bug: 429 sets continuationQueued=true, then compaction fires.
+		// Old code skipped the followUp because !continuationQueued was false.
+		// Fix: compaction invalidates the stale lock, always queues fresh.
+		const state = started();
+		state.stageOutcome = "gate_passed";
+		state.continuationQueued = true; // stale 429 retry lock
+		state.continuationReason = "provider_429_insufficient_balance_retry";
+		state.continuationEpoch = 5;
+		const result = transition(state, { type: "COMPACTION_DONE", success: true });
+		expect(result.effects[0]).toMatchObject({ type: "SEND_FOLLOWUP" });
+		expect(result.state.continuationQueued).toBe(true);
+		expect(result.state.continuationEpoch).toBe(6); // bumped to invalidate stale
+		expect(result.state.continuationReason).not.toBe("provider_429_insufficient_balance_retry");
+	});
+
 	it("ADVANCE moves standard understand -> spec without a confirmation pause", () => {
 		const state = started();
 		state.planIndex = 1; // understand

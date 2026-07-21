@@ -99,7 +99,14 @@ export function transition(
 			next.status = "reflecting" as never;
 			return { state: stamp(next), effects };
 		case "COMPACTION_DONE":
-			if (runtimeStatus(next) === "running" && !next.continuationQueued) {
+			if (runtimeStatus(next) === "running") {
+				// Compaction invalidates any previously queued followUp -- the context
+				// was compressed, so the old prompt (e.g. a 429 retry) is stale.
+				// Clear the lock and bump the epoch so stale queued messages are
+				// dropped by the input hook, then queue a fresh continuation.
+				next.continuationQueued = false;
+				next.continuationReason = null;
+				next.continuationEpoch = (next.continuationEpoch ?? 0) + 1;
 				queueFollowUp(next, effects, next.stageOutcome ?? "idle", currentStageName(next, stages));
 			}
 			return { state: stamp(next), effects };
