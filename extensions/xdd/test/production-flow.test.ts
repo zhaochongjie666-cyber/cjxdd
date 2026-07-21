@@ -232,7 +232,7 @@ describe("production pi adapter lifecycle", () => {
 		expect(harness.state.lastStageError ?? "").toContain(failure!.message);
 
 		await harness.command("xdd-status");
-		const statusText = harness.sentMessages.at(-1)?.text ?? "";
+		const statusText = harness.notifications.at(-1)?.message ?? "";
 		expect(statusText).toContain(failure!.code);
 		expect(statusText).toContain(failure!.message);
 		expect(statusText).toContain("Audit last gate");
@@ -366,7 +366,7 @@ describe("production pi adapter lifecycle", () => {
 		}).catch(() => undefined);
 
 		await harness.command("xdd-status");
-		const statusText = harness.sentMessages.at(-1)?.text ?? "";
+		const statusText = harness.notifications.at(-1)?.message ?? "";
 		expect(statusText).toContain("Audit last finding");
 		expect(statusText).toContain("effect failed: NOTIFY");
 		expect(statusText).toContain("notify closed");
@@ -383,7 +383,7 @@ describe("production pi adapter lifecycle", () => {
 			.rejects.toThrow("audit visible");
 
 		await harness.command("xdd-status");
-		const statusText = harness.sentMessages.at(-1)?.text ?? "";
+		const statusText = harness.notifications.at(-1)?.message ?? "";
 		expect(statusText).toContain("Audit last finding");
 		expect(statusText).toContain("hook before_tools: block");
 	});

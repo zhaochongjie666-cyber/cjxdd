@@ -39,6 +39,11 @@ describe("Compat: public slash commands", () => {
 		expect(EXT_SRC).toMatch(/registerCommand\("xdd-status",/);
 	});
 
+	it("registers one argument-free /xdd-goto-<stage> command per stage", () => {
+		expect(EXT_SRC).toMatch(/for \(const stage of STAGES\)/);
+		expect(EXT_SRC).toMatch(/registerCommand\(`xdd-goto-\$\{stage\.name\}`/);
+	});
+
 	it("/xdd-archive is registered", () => {
 		expect(EXT_SRC).toMatch(/registerCommand\("xdd-archive",/);
 	});

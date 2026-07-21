@@ -17,4 +17,10 @@ describe("Normal Flow slash command aliases", () => {
 		expect(SRC).toContain('pi.registerCommand("nf-resume"');
 		expect(SRC).toContain('pi.registerCommand("nf-stop"');
 	});
+
+	it("registers full and short argument-free goto commands for every Normal Flow stage", () => {
+		expect(SRC).toContain("for (const stage of NF_STAGES)");
+		expect(SRC).toContain("`normal-flow-goto-${displayName}`");
+		expect(SRC).toContain("`nf-goto-${displayName}`");
+	});
 });

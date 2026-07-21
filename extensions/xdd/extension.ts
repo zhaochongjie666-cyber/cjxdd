@@ -294,15 +294,35 @@ export const xddInlineExtension: InlineExtension = {
 			pi.registerTool(tool);
 		}
 
-		// Slash commands: /xdd <task>, /xdd continue, /xdd resume, /xdd status
+		// Slash commands: /xdd <task> plus lifecycle controls.
 		pi.registerCommand("xdd", {
-			description: "启动 xdd 流程: /xdd <任务描述>",
+			description: "启动或控制 xdd: /xdd <任务> | status | reset [all]",
 			handler: async (args, ctx) => {
-				const { runXdd } = await import("./run.ts");
+				const command = args.trim();
+				const { runXdd, xddRest, xddStatus } = await import("./run.ts");
+				const notify = (message: string, level?: "info" | "warning" | "error") => ctx.ui.notify(message, level);
+				if (command === "status") {
+					await xddStatus("", ctx.cwd, pi, notify);
+					return;
+				}
+				const reset = command.match(/^reset(?:\s+(all))?$/);
+				if (reset) {
+					await xddRest(reset[1] ?? "", ctx.cwd, pi, notify);
+					return;
+				}
 				await runXdd(args, ctx.cwd, pi);
 				await ctx.waitForIdle();
 			},
 		});
+		for (const stage of STAGES) {
+			pi.registerCommand(`xdd-goto-${stage.name}`, {
+				description: `跳转到 xdd ${stage.name} 阶段`,
+				handler: async (_args, ctx) => {
+					const { xddGoToStage } = await import("./run.ts");
+					xddGoToStage(stage.name, (message, level) => ctx.ui.notify(message, level));
+				},
+			});
+		}
 		pi.registerCommand("xdd-continue", {
 			description: "确认组级 Gate 通过，推进到下一阶段组",
 			handler: async (args, ctx) => {
@@ -335,8 +355,7 @@ export const xddInlineExtension: InlineExtension = {
 			description: "查看当前 xdd 流水线状态",
 			handler: async (_args, ctx) => {
 				const { xddStatus } = await import("./run.ts");
-				await xddStatus(_args, ctx.cwd, pi);
-				await ctx.waitForIdle();
+				await xddStatus(_args, ctx.cwd, pi, (message, level) => ctx.ui.notify(message, level));
 			},
 		});
 		pi.registerCommand("xdd-archive", {
@@ -351,8 +370,7 @@ export const xddInlineExtension: InlineExtension = {
 			description: "重置当前 xdd run 的流程预算和阶段预算；传 all 重置全部阶段预算",
 			handler: async (args, ctx) => {
 				const { xddRest } = await import("./run.ts");
-				await xddRest(args, ctx.cwd, pi);
-				await ctx.waitForIdle();
+				await xddRest(args, ctx.cwd, pi, (message, level) => ctx.ui.notify(message, level));
 			},
 		});
 		pi.registerCommand("xdd-stop", {

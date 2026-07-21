@@ -12,7 +12,8 @@ import { archiveRun } from "../xdd/archive.ts";
 import type { XddRunnerState } from "../xdd/types.ts";
 import { dispatchNfCommand } from "./adapter.ts";
 import { buildDocumentHandoffMessages } from "../xdd/context-document-handoff.ts";
-import { planStageNamesAreNf } from "./types.ts";
+import { NF_DISPLAY_NAME, type NfStageName, planStageNamesAreNf } from "./types.ts";
+import { NF_STAGES } from "./stages.ts";
 
 /**
  * Module-level shared state。跟 extensions/xdd/extension.ts 的 stateRef 是各自
@@ -22,7 +23,11 @@ import { planStageNamesAreNf } from "./types.ts";
  */
 let stateRef: XddRunnerState | null = null;
 
-type NormalFlowCommandContext = { cwd: string; waitForIdle: () => Promise<void> } & Record<string, unknown>;
+type NormalFlowCommandContext = {
+	cwd: string;
+	waitForIdle: () => Promise<void>;
+	ui: { notify: (message: string, level?: "info" | "warning" | "error") => void };
+} & Record<string, unknown>;
 
 export function activateNormalFlowExtension(state: XddRunnerState): void {
 	compileStageContracts(state.plan.map(({ stage }) => stage));
@@ -38,6 +43,38 @@ export function getState(): XddRunnerState {
 		throw new Error("[normal-flow] 无活跃 Normal Flow run（state 未注入）");
 	}
 	return stateRef;
+}
+
+/** Jump to one of Normal Flow's stages without submitting an agent turn. */
+export function gotoNormalFlowStage(
+	stageName: NfStageName,
+	notify: (message: string, level?: "info" | "warning" | "error") => void,
+): void {
+	if (!stateRef) {
+		notify(`[normal-flow-goto-${NF_DISPLAY_NAME[stageName]}] 无活跃 Normal Flow run。先用 /normal-flow <任务> 启动。`, "warning");
+		return;
+	}
+	const targetIndex = stateRef.plan.findIndex(({ stage }) => stage.name === stageName);
+	if (targetIndex < 0) {
+		notify(`[normal-flow-goto-${NF_DISPLAY_NAME[stageName]}] 当前 run 不包含该阶段，状态未改变。`, "warning");
+		return;
+	}
+	const from = stateRef.currentStageName() ?? "?";
+	stateRef.planIndex = targetIndex;
+	stateRef.runComplete = false;
+	stateRef.status = "running";
+	stateRef.paused = false;
+	stateRef.stopRequested = false;
+	stateRef.pauseNotified = false;
+	stateRef.pendingGroupApproval = undefined;
+	stateRef.continuationQueued = false;
+	stateRef.continuationReason = undefined;
+	stateRef.continuationStage = undefined;
+	stateRef.clearSignals();
+	stateRef.stageOutcome = "idle";
+	stateRef.lastStageError = undefined;
+	stateRef.stageEpoch = `${stateRef.runId}:${stageName}:${Date.now()}`;
+	notify(`[normal-flow-goto-${NF_DISPLAY_NAME[stageName]}] 已从 ${from} 跳转到 ${stageName} 阶段 (${targetIndex + 1}/${stateRef.plan.length})；流程状态: running。`, "info");
 }
 
 /** cwd 上的 normal-flow-runtime.json 是否属于 Normal Flow（阶段名全部落在 NF 的 5 阶段集合内）。 */
@@ -121,6 +158,21 @@ export const normalFlowInlineExtension: InlineExtension = {
 				await ctx.waitForIdle();
 			},
 		});
+		for (const stage of NF_STAGES) {
+			const stageName = stage.name as NfStageName;
+			const displayName = NF_DISPLAY_NAME[stageName];
+			const gotoStage = async (_args: string, ctx: NormalFlowCommandContext) => {
+				gotoNormalFlowStage(stageName, (message, level) => ctx.ui.notify(message, level));
+			};
+			pi.registerCommand(`normal-flow-goto-${displayName}`, {
+				description: `跳转到 Normal Flow ${displayName} 阶段`,
+				handler: gotoStage,
+			});
+			pi.registerCommand(`nf-goto-${displayName}`, {
+				description: `跳转到 Normal Flow ${displayName} 阶段（快捷命令）`,
+				handler: gotoStage,
+			});
+		}
 		const resumeNormalFlowCommand = async (args: string, ctx: NormalFlowCommandContext) => {
 			const { resumeNormalFlow } = await import("./flow.ts");
 			await resumeNormalFlow(args, ctx.cwd, pi);
