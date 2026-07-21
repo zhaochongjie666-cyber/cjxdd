@@ -415,7 +415,7 @@ extensions/normal-flow/
     └── nf-rollback.ts
 ```
 
-约 **1300 行**（其中 stages.ts 350 行，含 NF 自建的 contract-meta 补全表 / 6 tools 600 行 / extension+flow 250 行 / 共享 lifecycle 抽象与测试约 150 行）。不含直接 re-export `context.ts`/`epoch-slicer.ts`/`context-prune.ts`/`skill-loader.ts` 等纯函数 helper 的胶水代码（预计 <50 行）。
+约 **1300 行**（其中 stages.ts 350 行，含 NF 自建的 contract-meta 补全表 / 6 tools 600 行 / extension+flow 250 行 / 共享 lifecycle 抽象与测试约 150 行）。不含直接 re-export `context.ts`/`skill-loader.ts` 等纯函数 helper 的胶水代码（预计 <50 行）。
 
 ---
 
@@ -439,8 +439,6 @@ extensions/normal-flow/
 | `checkStagePathAccess` | `extensions/xdd/policy/path-policy.ts` |
 | `applyStageBashPolicy` | `extensions/xdd/policy/bash-policy.ts` |
 | `buildActiveStageSystemPrompt` | `extensions/xdd/context.ts` |
-| `sliceByEpoch`, `EPOCH_MARKER_PREFIX` | `extensions/xdd/epoch-slicer.ts` |
-| `pruneContextMessages` | `extensions/xdd/context-prune.ts` |
 | `loadXddSkills` | `extensions/xdd/skill-loader.ts` |
 | `resolveGlobs`, `hasGlobMeta` | `extensions/xdd/glob-resolver.ts` |
 | `configuredFlowBudgetUsd`, `assistantFlowUsage` | `extensions/xdd/flow-budget.ts` |
@@ -448,7 +446,7 @@ extensions/normal-flow/
 | `resumeFlow`（新增共享 helper） | 从 `extensions/xdd/run.ts` 提取；注入 stages / activate / 文案 |
 | `NF_CONTRACT_META`, `withNfStageContract`（NF 新增，非 xdd 复用） | `extensions/normal-flow/stages.ts`；仿照 xdd `stages.ts` 内私有的 `CONTRACT_META`/`withStageContract` 模式自建，用来补全 `inputs`/`outputs`/`hardGate`（详见第 4 节） |
 
-**新增量**：5 个 stage 定义（含各自的 contract-meta 补全）、6 个 nf_* 工具、start/resume 命令、extension 事件 wiring，以及可参数化的共享 lifecycle helper。`context.ts`/`epoch-slicer.ts`/`context-prune.ts`/`skill-loader.ts` 等纯函数 helper 可直接 re-export；`extension.ts` 本身（事件注册 + `stateRef` 单例）仍需要 NF 自己写一份，不能跨模块共享同一个 `stateRef`。
+**新增量**：5 个 stage 定义（含各自的 contract-meta 补全）、6 个 nf_* 工具、start/resume 命令、extension 事件 wiring，以及可参数化的共享 lifecycle helper。`context.ts`/`skill-loader.ts` 等纯函数 helper 可直接 re-export；`extension.ts` 本身（事件注册 + `stateRef` 单例）仍需要 NF 自己写一份，不能跨模块共享同一个 `stateRef`。
 
 ---
 

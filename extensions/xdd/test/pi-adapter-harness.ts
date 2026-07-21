@@ -26,8 +26,6 @@ export class FakePiAdapterHarness {
 	idle = true;
 	pendingMessages = false;
 	aborted = false;
-	contextUsage: { percent: number | null } | undefined;
-	compactCalls: any[] = [];
 	model: unknown = null;
 	modelRegistry: unknown = null;
 
@@ -74,11 +72,6 @@ export class FakePiAdapterHarness {
 			this.aborted = true;
 		},
 		hasPendingMessages: () => this.pendingMessages,
-		getContextUsage: () => this.contextUsage,
-		compact: (options: any) => {
-			this.compactCalls.push(options);
-			options?.onComplete?.({});
-		},
 		get signal() {
 			return { aborted: false };
 		},

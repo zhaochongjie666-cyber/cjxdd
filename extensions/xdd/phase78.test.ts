@@ -122,46 +122,6 @@ describe("H.1 xdd_next_task uses computeStageDifference", () => {
 	});
 });
 
-// ── H.2: sendUserMessage failures surfaced ────────────────────────────
-
-describe("H.2 sendUserMessage failures not silently swallowed", () => {
-	it("agent_end compact block: sendUserMessage has catch handler", () => {
-		const src = readFileSync(join(SRC_DIR, "extension.ts"), "utf8");
-		// Locate the ctx.compact({...}) call and find its matching `})`
-		// by counting braces from the start (handles nested lambdas).
-		const start = src.indexOf("ctx.compact({");
-		let depth = 0;
-		let end = start;
-		for (let i = start; i < src.length; i++) {
-			if (src[i] === "{") depth++;
-			else if (src[i] === "}") {
-				depth--;
-				if (depth === 0) { end = i + 1; break; }
-			}
-		}
-		const compactBlock = src.slice(start, end);
-		expect(compactBlock).toMatch(/\.catch\s*\(\s*\(/);
-		expect(compactBlock).toMatch(/ctx\.ui\.notify/);
-	});
-
-	it("ui.notify messages in compact block >= 2 (onComplete + onError)", () => {
-		const src = readFileSync(join(SRC_DIR, "extension.ts"), "utf8");
-		const start = src.indexOf("ctx.compact({");
-		let depth = 0;
-		let end = start;
-		for (let i = start; i < src.length; i++) {
-			if (src[i] === "{") depth++;
-			else if (src[i] === "}") {
-				depth--;
-				if (depth === 0) { end = i + 1; break; }
-			}
-		}
-		const compactBlock = src.slice(start, end);
-		const matches = compactBlock.match(/ctx\.ui\.notify/g) ?? [];
-		expect(matches.length).toBeGreaterThanOrEqual(2);
-	});
-});
-
 // ── H.3: buildStageSummary uses glob-resolver ─────────────────────────
 
 describe("H.3 stage summary uses glob resolver", () => {

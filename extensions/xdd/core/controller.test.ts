@@ -12,6 +12,53 @@ function started(): RuntimeStateV2 {
 }
 
 describe("XddController transition", () => {
+	it("propels every passed stage to completion without a compaction callback", () => {
+		let result = transition({} as RuntimeStateV2, {
+			type: "START",
+			task: "complete the whole flow",
+			options: { cwd: "/tmp/x", runId: "full-propulsion" },
+		});
+		expect(result.effects).toEqual(expect.arrayContaining([
+			expect.objectContaining({ type: "SEND_FOLLOWUP", text: expect.stringContaining("init") }),
+		]));
+
+		const visited: string[] = [];
+		while (!result.state.runComplete) {
+			const stage = result.state.plan[result.state.planIndex]?.stageName;
+			expect(stage).toBeDefined();
+			visited.push(stage!);
+
+			result = transition(result.state, {
+				type: "SUBMIT",
+				submission: { summary: `${stage} complete`, artifacts: [], selfAttack: "positive and fallback paths attacked", pass: true },
+			});
+			result = transition(result.state, { type: "AGENT_ENDED", stopReason: "stop" });
+			expect(result.effects).toEqual([
+				expect.objectContaining({ type: "SEND_FOLLOWUP", text: expect.stringContaining("xdd_advance") }),
+			]);
+
+			result = transition(result.state, { type: "RELEASE_CONTINUATION", reason: "follow-up delivered" });
+			result = transition(result.state, { type: "ADVANCE" });
+			if (result.state.status === "awaiting_approval") {
+				result = transition(result.state, { type: "APPROVE", approvalId: result.state.pendingGroupApproval!.group });
+			}
+			if (result.state.runComplete) break;
+
+			const nextStage = result.state.plan[result.state.planIndex]?.stageName;
+			result = transition(result.state, { type: "AGENT_ENDED", stopReason: "stop" });
+			expect(result.effects).toEqual([
+				expect.objectContaining({ type: "SEND_FOLLOWUP", text: expect.stringContaining(`已进入 ${nextStage}`) }),
+			]);
+			result = transition(result.state, { type: "RELEASE_CONTINUATION", reason: "follow-up delivered" });
+		}
+
+		expect(visited).toEqual(STAGES.map((stage) => stage.name));
+		expect(result.state.status).toBe("completed");
+		expect(result.state.stageOutcome).toBe("completed");
+		expect(result.state.continuationQueued).toBe(false);
+		expect(result.effects).toHaveLength(0);
+	});
+
 	it("START creates a running v2 runtime and kickoff effects", () => {
 		const result = transition({} as RuntimeStateV2, { type: "START", task: "build", options: { cwd: "/tmp/x", runId: "r1" } });
 		expect(result.state.schemaVersion).toBe(4);
@@ -156,41 +203,6 @@ describe("XddController transition", () => {
 		expect(result.state.continuationQueued).toBe(false);
 	});
 
-
-	it("high context usage leaves compaction to Pi and queues the continuation", () => {
-		const state = started();
-		state.stageOutcome = "gate_passed";
-		const result = transition(state, { type: "AGENT_ENDED", stopReason: "stop", contextUsagePercent: 71 });
-		expect(result.effects[0]).toMatchObject({ type: "SEND_FOLLOWUP" });
-		expect(result.effects).not.toContainEqual(expect.objectContaining({ type: "COMPACT" }));
-		expect(result.state.continuationQueued).toBe(true);
-		expect(result.state.lastCompactionAt).toBeFalsy();
-	});
-
-	it("does not compact a short session when Pi reports fractional usage", () => {
-		const state = started();
-		state.stageOutcome = "gate_passed";
-		const result = transition(state, { type: "AGENT_ENDED", stopReason: "stop", contextUsagePercent: 0.72 });
-		expect(result.effects[0]).toMatchObject({ type: "SEND_FOLLOWUP" });
-	});
-
-	it("recent compaction does not loop and queues the normal continuation", () => {
-		const state = started();
-		state.stageOutcome = "gate_passed";
-		state.lastCompactionAt = Date.now();
-		const result = transition(state, { type: "AGENT_ENDED", stopReason: "stop", contextUsagePercent: 99 });
-		expect(result.effects[0]).toMatchObject({ type: "SEND_FOLLOWUP" });
-		expect(result.state.continuationQueued).toBe(true);
-	});
-
-
-	it("COMPACTION_DONE queues continuation even when compaction failed", () => {
-		const state = started();
-		state.stageOutcome = "gate_passed";
-		const result = transition(state, { type: "COMPACTION_DONE", success: false });
-		expect(result.effects[0]).toMatchObject({ type: "SEND_FOLLOWUP" });
-		expect(result.state.continuationQueued).toBe(true);
-	});
 
 	it("ADVANCE moves standard understand -> spec without a confirmation pause", () => {
 		const state = started();

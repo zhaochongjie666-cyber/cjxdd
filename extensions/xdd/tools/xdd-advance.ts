@@ -97,12 +97,8 @@ export function createXddAdvanceTool(getState: GetXddState): ToolDefinition {
 			const next = state.currentStage();
 			const prefix = groupGateLabel ? `${groupGateLabel} 通过 ✅，` : "";
 			const text = `[xdd_advance] ${prefix}${stage.name} 通过，进入下一阶段 ${next?.name ?? "?"}。`;
-			// Do NOT return terminate:true for non-final stages. terminate:true ends
-			// the turn immediately, but the followUp from agent_end relies on
-			// _handlePostAgentRun -> hasQueuedMessages, which can break when
-			// auto-compaction triggers at high context usage (99%+). Without
-			// terminate, the agent loop naturally ends the turn (no more tool
-			// calls to make), and the followUp is picked up reliably.
+			// Do not terminate non-final turns: let Pi finish the agent loop so the
+			// native queued follow-up lifecycle can deliver the next-stage instruction.
 			return { content: [{ type: "text", text }] };
 		},
 	};

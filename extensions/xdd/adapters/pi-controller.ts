@@ -7,7 +7,7 @@ import { executePiEffects, type PiEffectRuntime } from "./pi-effects.ts";
 
 export interface PiControllerAdapterOptions extends PiEffectRuntime {
 	getState: () => XddRunnerState | null | undefined;
-	ctx: PiEffectRuntime["ctx"] & { getContextUsage?: () => { percent?: number | null } | undefined };
+	ctx: PiEffectRuntime["ctx"];
 }
 
 export class PiControllerAdapter {

@@ -21,7 +21,6 @@ Renderers，只保留 reconcile 范式（desired state + 硬 gate）+ Controller
 - `XddController` / `RuntimeStore` schema；运行时写入 `.xdd/normal-flow-runtime.json`，不与 xdd 的 `.xdd/runtime.json` 共用
 - 硬 Gate helper（`requireGlobs*` / `requireTestsPass` / `requirePatternInSource`）
 - Policy（`enforceToolCallPolicy` 等）、Audit、Harness、`archiveRun`
-- `epoch-slicer.ts` / `context-prune.ts`（上下文裁剪）
 - `controllerInitScaffold`（NF 没有 init 阶段，靠它建 `.xdd/` 骨架）
 
 NF **不**复用 xdd 的 `context.ts`（system prompt 构建）和
