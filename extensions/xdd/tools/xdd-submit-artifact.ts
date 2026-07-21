@@ -7,11 +7,9 @@ import { XddController } from "../core/controller.ts";
 import { RuntimeStore } from "../storage/runtime-store.ts";
 import type { XddRunnerState, XddStageName } from "../types.ts";
 import { type EmptyDetails, type GetXddState, ok } from "./index.ts";
-import { runAIGate, formatAIGateResult, type AIGateResult } from "../aigate.ts";
-import { getAIGateLLM } from "../llm-ref.ts";
+import { formatAIGateResult, type AIGateResult } from "../aigate.ts";
 import { evaluateHealingFailureClosure, evaluateVerifyEvidenceGateFull, runHarnessWithReceipt } from "../evidence/verify-gate.ts";
 import { routeVerifyFailure, type VerifyFailureRoute } from "../verify-failure-routing.ts";
-import { startAIGateProgress } from "../aigate-progress.ts";
 import { digestReviewArtifactFiles, evaluateReviewVerdict, writeReviewVerdict, type ReviewType, type ReviewVerdict } from "../review-verdict.ts";
 import { codeReviewFromAIGate, writeCodeReviewReport } from "../code-review.ts";
 import { buildPreventionContext } from "../prevention-context.ts";
@@ -108,7 +106,7 @@ function persistAIGateReview(params: {
 
 function formatSubmitTimings(timings: { hardGateMs?: number; aiGateMs?: number; aiGateEnabled?: boolean }): string {
 	const parts = [`硬 Gate ${timings.hardGateMs ?? 0}ms`];
-	if (timings.aiGateEnabled) parts.push(`AIGate/AI 推理 ${timings.aiGateMs ?? 0}ms`);
+	if (timings.aiGateEnabled) parts.push(`AIGate 主 turn review 处理 ${timings.aiGateMs ?? 0}ms`);
 	else parts.push("AIGate 已跳过");
 	return `耗时：${parts.join("；")}`;
 }
@@ -119,6 +117,16 @@ const schema = Type.Object({
 	selfAttack: Type.Optional(Type.String({
 		description: "本次 AIGate 提交对应的自我攻击结论；随 AIGate 每次语义审查提交，记录在 runtime，绝不写入 design",
 	})),
+	mainTurnReview: Type.Optional(Type.Object({
+		passed: Type.Boolean({ description: "主 turn 根据 review summary 攻击后的最终判断" }),
+		angles: Type.Array(Type.Object({
+			name: Type.String(),
+			passed: Type.Union([Type.Boolean(), Type.Literal("N/A")]),
+			findings: Type.Array(Type.String()),
+		})),
+		issues: Type.Array(Type.String()),
+		suggestions: Type.Array(Type.String()),
+	}, { description: "由当前主 turn 完成的语义审查；首次提交不要填写，收到 steer 后携带结果重提" })),
 	pass: Type.Optional(Type.Boolean({ description: "仅 verify 阶段：是否通过验证" })),
 	healing: Type.Optional(Type.Object({
 		failureId: Type.String(),
@@ -188,9 +196,9 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 		name: "xdd_submit_artifact",
 		label: "xdd: submit artifact",
 		description:
-			"提交阶段产物并触发硬 Gate；硬 Gate 通过且阶段启用 AIGate 时，会继续调用 LLM 做 AI 语义审查（因此可能较慢）。selfAttack 随每次 AIGate 语义审查提交；verify 需附 pass。Gate 通过后调 xdd_advance 推进。",
+			"提交阶段产物并触发硬 Gate；工具只汇总审查上下文，不单独调用 LLM。硬 Gate 通过后由 steer 让主 turn 攻击 summary，再以 mainTurnReview 重提。verify 需附 pass。Gate 通过后调 xdd_advance 推进。",
 		parameters: schema,
-		async execute(_toolCallId, params: XddSubmitArtifactInput, _onUpdate, ctx): Promise<AgentToolResult<EmptyDetails>> {
+		async execute(_toolCallId, params: XddSubmitArtifactInput, _onUpdate, _ctx): Promise<AgentToolResult<EmptyDetails>> {
 			const state: XddRunnerState = getState();
 			const stage = state.currentStage();
 			if (!stage) throw new Error("[xdd] 无活跃阶段");
@@ -321,55 +329,38 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			if (selfAttack) {
 				dispatchToController(state, { type: "RECORD_ARTIFACT_REVIEW", stage: stage.name, artifacts, selfAttack });
 			}
-			const llmInfo = aiGateEnabled ? await getAIGateLLM() : null;
-			if (aiGateEnabled && !llmInfo) {
-				// AIGate infrastructure failures are retryable and consume neither budget.
+			const llmInfo = aiGateEnabled ? { model: "main-turn" } : null;
+			if (aiGateEnabled && !params.mainTurnReview) {
 				state.clearSubmitFingerprint(stage.name);
-				const mechanicalDetail = mechanicalCheckResult.ok
-					? "机械检查通过"
-					: `机械检查未通过：${mechanicalCheckResult.reason ?? "未说明原因"}`;
-				const error = `AIGate 模型不可用，无法执行统一审查；${mechanicalDetail}`;
-				dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error } });
+				const previous = (runtime?.aiGateFindings?.[stage.name] ?? [])
+					.filter((item) => item.status === "open")
+					.map((item) => `${item.id}:${item.category}`)
+					.join(", ") || "无";
 				return {
-					content: [{ type: "text", text: `⚠️ [AIGate] ${error}。机械检查结果为：${mechanicalCheckResult.ok ? "通过" : "未通过"}${mechanicalCheckResult.reason ? `（${mechanicalCheckResult.reason}）` : ""}\n本 turn 继续。${formatSubmitTimings({ hardGateMs, aiGateMs: 0, aiGateEnabled })}。请恢复模型配置后重新调用 xdd_submit_artifact；无需修改产物。` }],
+					content: [{ type: "text", text: [
+						`🔎 [AIGate 主 turn 待审] ${stage.name} 硬 Gate 已通过；工具未调用独立 LLM。`,
+						`review summary：提交=${summary}；产物=${artifacts.join(", ") || stage.deliverablePaths.join(", ") || "无文件产物"}；机械结果=${mechanicalCheckResult.reason ?? "通过"}。`,
+						`审查标准：${stage.aigateStandard}`,
+						`上一轮 open findings：${previous}。selfAttack：${selfAttack}`,
+						"本 turn 继续：读取上述产物及跨阶段契约，攻击正向与兜底；然后用同一 summary/artifacts/selfAttack 并携带 mainTurnReview 重新调用 xdd_submit_artifact。",
+					].join("\n") }],
 					details: {},
 				};
 			}
 			let aiGateMs = 0;
 			if (llmInfo) {
 				const aiGateStartedAt = performance.now();
-				let intentAnchor: string | undefined;
-				const intentPath = join(state.cwd, ".xdd/design/intent.md");
-				if (existsSync(intentPath)) {
-					intentAnchor = readFileSync(intentPath, "utf8");
-				}
-				const finishProgress = startAIGateProgress(ctx?.ui, stage.name);
 				let aiResult: AIGateResult;
 				const prevention = buildPreventionContext(state.cwd, stage.name, `${state.userInput}\n${summary}`);
-				try {
-					aiResult = await runAIGate({
-						model: llmInfo.model,
-						apiKey: llmInfo.apiKey,
-						headers: llmInfo.headers,
-						env: llmInfo.env,
-						stageName: stage.name,
-						skillName: stage.skill,
-						aigateStandard: [
-							stage.aigateStandard,
-							prevention.text,
-							`稳定 finding 复核协议：先逐 ID 判断上一轮 open finding 是否 closed/still-open；新 P0/P1 可阻塞，新 P2 仅 backlog。上一轮：${(runtime?.aiGateFindings?.[stage.name] ?? []).filter((item) => item.status === "open").map((item) => `${item.id}:${item.category}`).join(", ") || "无"}。本轮 changed paths：${artifacts.join(", ") || "无文件产物"}。selfAttack 必须逐 ID 回答。`,
-						].filter(Boolean).join("\n\n"),
-						artifactPaths: artifacts.length > 0 ? artifacts : stage.deliverablePaths,
-						outputContract: stage.outputs,
-						mechanicalCheckResult,
-						cwd: state.cwd,
-						intentAnchor,
-						contextPatterns: stage.aiGate?.contextPatterns,
-						submissionSummary: summary,
-					});
-				} finally {
-					finishProgress();
+				const mainReview = params.mainTurnReview!;
+				if (mainReview.angles.length === 0 || !mainReview.angles.some((angle) => angle.passed !== "N/A")) {
+					throw new Error("[xdd_submit_artifact] MAIN_TURN_REVIEW_INCOMPLETE: 必须提交至少一个适用攻击角度及证据，不能用空 angles 或全部 N/A 绕过 AIGate。");
 				}
+				const derivedPass = mainReview.angles.every((angle) => angle.passed !== false);
+				if (mainReview.passed !== derivedPass) {
+					throw new Error("[xdd_submit_artifact] MAIN_TURN_REVIEW_CONTRADICTORY: passed 必须与逐角度判断一致；任一适用角度失败时整体必须失败。");
+				}
+				aiResult = mainReview;
 				aiGateMs = elapsedMs(aiGateStartedAt);
 				// Transport and JSON-format failures are not findings about the
 				// submitted artifacts. Do not spend the semantic-review budget, but

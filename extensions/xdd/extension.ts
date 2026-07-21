@@ -156,6 +156,25 @@ function isAIGateDegradedRetry(
 		state.remainingAiGateBudget(stage!) > 0;
 }
 
+function isMainTurnAIGateReviewRequest(
+	event: { type?: string; content?: Array<{ type?: string; text?: string }> },
+	toolName: string,
+): boolean {
+	return event.type === "tool_result" && toolName === "xdd_submit_artifact" &&
+		toolResultText(event).includes("[AIGate 主 turn 待审]");
+}
+
+async function sendMainTurnAIGateReviewSteering(
+	pi: { sendUserMessage?: (text: string, options?: unknown) => Promise<unknown> | unknown },
+	state: XddRunnerState,
+): Promise<void> {
+	const stage = state.currentStageName() ?? "当前";
+	await pi.sendUserMessage?.(
+		`[xdd aigate steering] ${stage} 阶段硬 Gate 已通过。不要启动独立 LLM：在当前主 turn 读取 xdd_submit_artifact 返回的 review summary、真实产物和跨阶段契约，攻击正向路径与兜底路径；形成逐角度 findings 后，携带 mainTurnReview 重新调用 xdd_submit_artifact。未完成审查前禁止 xdd_advance。`,
+		{ deliverAs: "steer" },
+	);
+}
+
 async function sendAIGateDegradedRetrySteering(
 	pi: { sendUserMessage?: (text: string, options?: unknown) => Promise<unknown> | unknown },
 	state: XddRunnerState,
@@ -424,6 +443,9 @@ export const xddInlineExtension: InlineExtension = {
 		pi.on("tool_result", async (event) => {
 			if (!stateRef) return;
 			const toolName = String(event.toolName ?? event.name ?? "?");
+			if (isMainTurnAIGateReviewRequest(event, toolName)) {
+				await sendMainTurnAIGateReviewSteering(pi, stateRef);
+			}
 			// The unified AIGate owns the branching decision: a passing verdict enters
 			// normal stage advancement, while a repairable failed verdict steers the
 			// next model call to fix the reviewed artifacts.

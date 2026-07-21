@@ -133,6 +133,22 @@ describe("production pi adapter lifecycle", () => {
 		});
 	});
 
+	it("steers AIGate review into the main turn instead of a separate LLM", async () => {
+		await harness.emit("tool_result", {
+			type: "tool_result",
+			toolName: "xdd_submit_artifact",
+			content: [{ type: "text", text: "🔎 [AIGate 主 turn 待审] init 硬 Gate 已通过；工具未调用独立 LLM。" }],
+		});
+
+		expect(harness.sentMessages).toHaveLength(1);
+		expect(harness.sentMessages[0]).toMatchObject({
+			text: expect.stringContaining("不要启动独立 LLM"),
+			options: { deliverAs: "steer" },
+		});
+		expect(harness.sentMessages[0]?.text).toContain("mainTurnReview");
+		expect(harness.sentMessages[0]?.text).toContain("正向路径与兜底路径");
+	});
+
 	it("degraded AIGate infrastructure failure steers a bounded retry instead of idling", async () => {
 		harness.state.lastStageError = "[AIGate LLM 调用失败] LLM API 504";
 		harness.state.beginAiGateAttempt("init");
