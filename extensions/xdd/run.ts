@@ -209,19 +209,19 @@ export async function xddRest(args: string, _cwd: string, pi: ExtensionAPI, noti
 	);
 }
 
-/** /xdd go to <stage> -- explicitly move an active run without creating an agent turn. */
+/** /xdd-goto-<stage> -- explicitly move an active run without creating an agent turn. */
 export function xddGoToStage(stageArg: string, notify: XddStatusNotifier): void {
 	let state: XddRunnerState;
 	try {
 		state = getState();
 	} catch {
-		notify("[xdd go to] 无活跃 xdd run。先用 /xdd <任务> 启动。", "warning");
+		notify(`[xdd-goto-${stageArg}] 无活跃 xdd run。先用 /xdd <任务> 启动。`, "warning");
 		return;
 	}
 	const target = stageArg.trim().toLowerCase() as XddStageName;
 	const targetIndex = state.plan.findIndex(({ stage }) => stage.name === target);
 	if (targetIndex < 0) {
-		notify(`[xdd go to] 未知阶段「${stageArg.trim() || "(空)"}」。可选: ${state.plan.map(({ stage }) => stage.name).join(", ")}`, "warning");
+		notify(`[xdd-goto] 未知阶段「${stageArg.trim() || "(空)"}」。可选命令: ${state.plan.map(({ stage }) => `/xdd-goto-${stage.name}`).join(", ")}`, "warning");
 		return;
 	}
 	const from = state.currentStageName() ?? "?";
@@ -239,7 +239,7 @@ export function xddGoToStage(stageArg: string, notify: XddStatusNotifier): void 
 	state.stageOutcome = "idle";
 	state.lastStageError = undefined;
 	state.stageEpoch = `${state.runId}:${target}:${Date.now()}`;
-	notify(`[xdd go to] 已从 ${from} 跳转到 ${target} 阶段 (${targetIndex + 1}/${state.plan.length})；流程状态: ${state.status}。`, "info");
+	notify(`[xdd-goto-${target}] 已从 ${from} 跳转到 ${target} 阶段 (${targetIndex + 1}/${state.plan.length})；流程状态: ${state.status}。`, "info");
 }
 
 /** /xdd-archive -- manually archive a completed run (summarize runs/<run>/ + delete it). */

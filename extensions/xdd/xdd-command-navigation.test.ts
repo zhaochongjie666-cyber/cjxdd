@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { FakePiAdapterHarness } from "./test/pi-adapter-harness.ts";
 
-describe("/xdd control subcommands", () => {
-	it("go to jumps to a named stage and only displays status", async () => {
+describe("xdd lifecycle commands", () => {
+	it("a stage-specific goto command jumps without requiring arguments or steering", async () => {
 		const harness = new FakePiAdapterHarness();
 		try {
-			await harness.command("xdd", "go to execute");
+			await harness.command("xdd-goto-plan");
+			expect(harness.state.currentStageName()).toBe("plan");
+			await harness.command("xdd-goto-execute");
 			expect(harness.state.currentStageName()).toBe("execute");
 			expect(harness.state.status).toBe("running");
 			expect(harness.sentMessages).toHaveLength(0);
@@ -15,14 +17,13 @@ describe("/xdd control subcommands", () => {
 		}
 	});
 
-	it("rejects an unknown stage without changing state or steering", async () => {
+	it("does not register unknown stage commands", async () => {
 		const harness = new FakePiAdapterHarness();
 		try {
-			await harness.command("xdd", "go to nowhere");
+			await expect(harness.command("xdd-goto-nowhere")).rejects.toThrow("command not registered");
 			expect(harness.state.currentStageName()).toBe("init");
 			expect(harness.sentMessages).toHaveLength(0);
-			expect(harness.notifications.at(-1)?.message).toContain("未知阶段");
-			expect(harness.notifications.at(-1)?.message).toContain("verify");
+			expect(harness.notifications).toHaveLength(0);
 		} finally {
 			harness.dispose();
 		}

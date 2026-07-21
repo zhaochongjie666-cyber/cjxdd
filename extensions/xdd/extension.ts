@@ -294,12 +294,12 @@ export const xddInlineExtension: InlineExtension = {
 			pi.registerTool(tool);
 		}
 
-		// Slash commands: /xdd <task>, /xdd continue, /xdd resume, /xdd status
+		// Slash commands: /xdd <task> plus lifecycle controls.
 		pi.registerCommand("xdd", {
-			description: "启动或控制 xdd: /xdd <任务> | status | reset [all] | go to <stage>",
+			description: "启动或控制 xdd: /xdd <任务> | status | reset [all]",
 			handler: async (args, ctx) => {
 				const command = args.trim();
-				const { runXdd, xddGoToStage, xddRest, xddStatus } = await import("./run.ts");
+				const { runXdd, xddRest, xddStatus } = await import("./run.ts");
 				const notify = (message: string, level?: "info" | "warning" | "error") => ctx.ui.notify(message, level);
 				if (command === "status") {
 					await xddStatus("", ctx.cwd, pi, notify);
@@ -310,15 +310,19 @@ export const xddInlineExtension: InlineExtension = {
 					await xddRest(reset[1] ?? "", ctx.cwd, pi, notify);
 					return;
 				}
-				const goTo = command.match(/^go\s+to\s+(.+)$/i);
-				if (goTo) {
-					xddGoToStage(goTo[1] ?? "", notify);
-					return;
-				}
 				await runXdd(args, ctx.cwd, pi);
 				await ctx.waitForIdle();
 			},
 		});
+		for (const stage of STAGES) {
+			pi.registerCommand(`xdd-goto-${stage.name}`, {
+				description: `跳转到 xdd ${stage.name} 阶段`,
+				handler: async (_args, ctx) => {
+					const { xddGoToStage } = await import("./run.ts");
+					xddGoToStage(stage.name, (message, level) => ctx.ui.notify(message, level));
+				},
+			});
+		}
 		pi.registerCommand("xdd-continue", {
 			description: "确认组级 Gate 通过，推进到下一阶段组",
 			handler: async (args, ctx) => {
