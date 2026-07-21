@@ -1,18 +1,29 @@
 import { describe, expect, it, vi } from "vitest";
-import autoCompact, { DEFAULT_AUTO_COMPACT_THRESHOLD, isXddStageEnd, parseAutoCompactThreshold, triggerCompaction } from "./index.ts";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { randomBytes } from "node:crypto";
+import autoCompact, { DEFAULT_AUTO_COMPACT_THRESHOLD, parseAutoCompactThreshold, triggerCompaction } from "./index.ts";
 
-function setup(percent = 0) {
+function setup(percent = 0, cwd?: string) {
 	const handlers: Record<string, Function> = {};
 	const commands: Record<string, Function> = {};
+	const tools: Record<string, any> = {};
 	const compact = vi.fn(({ onComplete }) => onComplete());
 	const notify = vi.fn();
 	let currentPercent = percent;
+	// Create a fake .xdd/runtime.json so hasActiveFlowRun returns true
+	const testCwd = cwd ?? join(tmpdir(), `xdd-test-${randomBytes(6).toString("hex")}`);
+	const runtimeDir = join(testCwd, ".xdd");
+	mkdirSync(runtimeDir, { recursive: true });
+	writeFileSync(join(runtimeDir, "runtime.json"), JSON.stringify({ status: "running" }));
 	autoCompact({
 		registerCommand: (name: string, spec: any) => { commands[name] = spec.handler; },
+		registerTool: (spec: any) => { tools[spec.name] = spec; },
 		on: (name: string, handler: Function) => { handlers[name] = handler; },
 	} as any);
-	const ctx = { getContextUsage: () => ({ percent: currentPercent }), compact, ui: { notify }, hasUI: true };
-	return { handlers, commands, compact, notify, ctx, setPercent: (value: number) => { currentPercent = value; } };
+	const ctx = { cwd: testCwd, getContextUsage: () => ({ percent: currentPercent }), compact, ui: { notify }, hasUI: true };
+	return { handlers, commands, tools, compact, notify, ctx, setPercent: (value: number) => { currentPercent = value; }, cleanup: () => { try { rmSync(runtimeDir, { recursive: true }); } catch {} } };
 }
 
 describe("auto compact configuration", () => {
@@ -37,33 +48,7 @@ describe("auto compact configuration", () => {
 		await promise;
 	});
 
-	it("compacts at a successful xdd stage end, not at turn_end", async () => {
-		const harness = setup(89);
-		expect(harness.handlers.turn_end).toBeUndefined();
-		await harness.handlers.tool_result({
-			type: "tool_result",
-			toolName: "xdd_advance",
-			content: [{ type: "text", text: "[xdd_advance] spec 通过，进入下一阶段 architecture。" }],
-		}, harness.ctx);
-		expect(harness.compact).toHaveBeenCalledOnce();
-		await harness.handlers.tool_result({
-			type: "tool_result",
-			toolName: "xdd_advance",
-			isError: true,
-			content: [{ type: "text", text: "[xdd_advance] failed" }],
-		}, harness.ctx);
-		expect(harness.compact).toHaveBeenCalledOnce();
-	});
-
-	it("recognizes successful next, approval, and final stage boundaries", () => {
-		const event = (text: string) => ({ toolName: "xdd_advance", content: [{ type: "text", text }] });
-		expect(isXddStageEnd(event("[xdd_advance] init 通过，进入下一阶段 understand。"))).toBe(true);
-		expect(isXddStageEnd(event("[xdd_advance] spec 阶段完成，需要人类确认后才能进 architecture。"))).toBe(true);
-		expect(isXddStageEnd(event("[xdd_advance] 最终阶段 verify 通过，xdd run 完成 ✅。"))).toBe(true);
-		expect(isXddStageEnd(event("[xdd_advance] 当前阶段尚未声明完成"))).toBe(false);
-	});
-
-	it("compacts at agent_end when a long stage reaches the configured limit", async () => {
+	it("compacts at agent_end when context usage reaches the configured limit", async () => {
 		const harness = setup(89);
 		await harness.handlers.agent_end({}, harness.ctx);
 		expect(harness.compact).not.toHaveBeenCalled();
