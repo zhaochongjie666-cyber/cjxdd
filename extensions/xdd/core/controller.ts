@@ -6,6 +6,8 @@ import type { XddCheckpointData, XddEsgNodeType, XddSignal, XddStageName, XddSta
 import type { RunStatus, XddCommand } from "./commands.ts";
 import type { XddEffect } from "./effects.ts";
 import { projectAuditEvent } from "../audit/projector.ts";
+import { captureHealingBaseline, healingSignature } from "../healing/healing-case.ts";
+import { healingEnforced } from "../healing/mode.ts";
 
 export interface ControllerTransitionResult {
 	state: RuntimeStateV2;
@@ -79,7 +81,12 @@ export function transition(
 		case "APPROVE":
 			return approveTransition(next, stages, effects);
 		case "ROLLBACK":
-			return rollbackTransition(next, command.target, command.reason, stages, effects);
+			return rollbackTransition(next, command, stages, effects);
+		case "RECORD_HEALING_CLOSURE":
+			return recordHealingClosure(next, command.caseId, command.closure, effects);
+		case "RECORD_VERIFY_RECEIPT":
+			next.lastVerifyReceipt = command.receipt;
+			return { state: stamp(next), effects };
 		case "RECORD_ARTIFACT_REVIEW":
 			return recordArtifactReviewTransition(next, command.stage, command.artifacts, command.selfAttack, effects);
 		case "RECORD_SIGNAL":
@@ -294,6 +301,16 @@ function submitTransition(state: RuntimeStateV2, passed: boolean, error: string 
 
 function advanceTransition(state: RuntimeStateV2, stages: readonly XddStageSpec[], effects: XddEffect[]): ControllerTransitionResult {
 	const current = stages[state.plan[state.planIndex]?.originalIndex ?? state.planIndex];
+	const healing = state.healingCases?.find((item) => item.id === state.activeHealingCaseId);
+	if (healingEnforced() && healing && current?.name === healing.targetStage && healing.status !== "ready-for-reverify") {
+		throw new ControllerError("HEALING_CLOSURE_REQUIRED", `HealingCase ${healing.id} 尚未 ready-for-reverify；请按 xdd_next_task 提交负责范围变化、原 failure 机械检查和 closure evidence。`);
+	}
+	if (healingEnforced() && healing && current?.name === "verify") {
+		if (!state.lastVerifyReceipt || state.lastVerifyReceipt.generation !== state.verifyGeneration || state.lastVerifyReceipt.healingCaseId !== healing.id) throw new ControllerError("VERIFY_RECEIPT_STALE", `HealingCase ${healing.id} 缺少当前 generation 的 Controller VerifyReceipt；请重跑 Harness。`);
+		healing.status = "closed";
+		healing.closedAt = new Date().toISOString();
+		delete state.activeHealingCaseId;
+	}
 	state.advanceOutcome = { passed: true };
 	state.signals = [];
 	if (current?.requiresHumanApproval) {
@@ -336,7 +353,8 @@ function approveTransition(state: RuntimeStateV2, stages: readonly XddStageSpec[
 
 export const MAX_FLOW_ROLLBACKS = 7;
 
-function rollbackTransition(state: RuntimeStateV2, target: XddStageName | undefined, reason: string, stages: readonly XddStageSpec[], effects: XddEffect[]): ControllerTransitionResult {
+function rollbackTransition(state: RuntimeStateV2, command: Extract<XddCommand, { type: "ROLLBACK" }>, stages: readonly XddStageSpec[], effects: XddEffect[]): ControllerTransitionResult {
+	const { target, reason } = command;
 	const from = currentStageName(state, stages) ?? "init";
 	if (from !== "verify") {
 		throw new ControllerError("ROLLBACK_ONLY_FROM_VERIFY", `rollback can only be triggered from verify stage; current stage is ${from}`);
@@ -373,6 +391,33 @@ function rollbackTransition(state: RuntimeStateV2, target: XddStageName | undefi
 	if (!state.rollbackAttempts) state.rollbackAttempts = {};
 	state.rollbackAttempts[targetName] = used + 1;
 	state.flowRollbackCount = flowRollbackCount + 1;
+	state.lifetimeRollbackCount = (state.lifetimeRollbackCount ?? 0) + 1;
+	state.verifyGeneration = (state.verifyGeneration ?? 0) + 1;
+	state.healingSequence = (state.healingSequence ?? 0) + 1;
+	if (!state.healingCases) state.healingCases = [];
+	const files = command.failure?.files ?? [];
+	const signature = healingSignature({ code: command.failure?.code ?? "VERIFY_FAILURE", reason, files }, targetName);
+	const recurring = [...state.healingCases].reverse().find((item) => item.failure.signature === signature);
+	const priorActive = state.healingCases.find((item) => item.id === state.activeHealingCaseId);
+	if (priorActive) priorActive.status = "abandoned";
+	const sequence = state.healingSequence;
+	const id = `HC-${String(sequence).padStart(3, "0")}`;
+	state.healingCases.push({
+		id, sequence, sourceStage: "verify", targetStage: targetName, openedAt: new Date().toISOString(), status: "open",
+		failure: { code: command.failure?.code ?? "VERIFY_FAILURE", gateKind: command.failure?.gateKind ?? "verdict", summary: command.failure?.summary ?? reason, reason, files, remediation: command.failure?.remediation ?? `在 ${targetName} 修复后重新验证`, signature },
+		ownerScopes: command.ownerScopes ?? defaultOwnerScopes(targetName),
+		closureCriteria: command.closureCriteria ?? [`原 verify failure ${command.failure?.code ?? "VERIFY_FAILURE"} 不再出现`, "提交负责范围的实质内容变化和验证证据"],
+		baseline: command.baseline ?? captureHealingBaseline(state.cwd, command.ownerScopes ?? defaultOwnerScopes(targetName)),
+		recurrenceCount: (recurring?.recurrenceCount ?? 0) + 1,
+	});
+	state.activeHealingCaseId = id;
+	delete state.lastVerifyReceipt;
+	for (const entry of state.plan.slice(idx)) {
+		delete state.submittedArtifacts?.[entry.stageName];
+		delete state.lastSubmitFingerprint?.[entry.stageName];
+		delete state.lastAcceptedSubmissionFingerprint?.[entry.stageName];
+		delete state.lastFailedSubmissionFingerprint?.[entry.stageName];
+	}
 	state.rollbackOutcome = { from: from as XddStageName, to: targetName, reason };
 	resetStageAttemptState(state, targetName);
 	state.status = "running" as never;
@@ -384,12 +429,29 @@ function rollbackTransition(state: RuntimeStateV2, target: XddStageName | undefi
 	return { state: stamp(state), effects };
 }
 
+function recordHealingClosure(state: RuntimeStateV2, caseId: string, closure: import("../types.ts").HealingClosureEvidence, effects: XddEffect[]): ControllerTransitionResult {
+	const healing = state.healingCases?.find((item) => item.id === caseId && item.id === state.activeHealingCaseId);
+	if (!healing) throw new ControllerError("HEALING_CASE_NOT_ACTIVE", `HealingCase ${caseId} 不存在或不是 active case`);
+	if (closure.stage !== healing.targetStage) throw new ControllerError("HEALING_STAGE_MISMATCH", `closure stage ${closure.stage} 不属于 ${healing.targetStage}`);
+	healing.closure = closure;
+	healing.status = "ready-for-reverify";
+	projectAuditEvent(state, { type: "esg_record", nodeType: "evidence", stage: closure.stage, label: `healing closure: ${caseId}`, data: closure });
+	return { state: stamp(state), effects };
+}
+
 function resetStageAttemptState(state: RuntimeStateV2, targetName: XddStageName): void {
 	if (!state.selfHealUsed) state.selfHealUsed = {};
 	state.selfHealUsed[targetName] = 0;
 	if (state.aiGateUsed) state.aiGateUsed[targetName] = 0;
 	if (state.lastSubmitFingerprint) delete state.lastSubmitFingerprint[targetName];
-	if (state.artifactFingerprints) delete state.artifactFingerprints[targetName];
+	if (state.lastAcceptedSubmissionFingerprint) delete state.lastAcceptedSubmissionFingerprint[targetName];
+	if (state.lastFailedSubmissionFingerprint) delete state.lastFailedSubmissionFingerprint[targetName];
+}
+
+function defaultOwnerScopes(stage: XddStageName): string[] {
+	if (stage === "execute") return ["src/**", "lib/**", "app/**", "test/**", "tests/**"];
+	if (stage === "plan") return [".xdd/runs/xdd_run/plan/**", ".xdd/runs/xdd_run/qa-plan*", ".xdd/runs/xdd_run/plan.md"];
+	return [`.xdd/design/${stage}/**`];
 }
 
 function recordArtifactReviewTransition(state: RuntimeStateV2, stage: XddStageName, artifacts: string[], selfAttack: string | undefined, effects: XddEffect[]): ControllerTransitionResult {
@@ -444,6 +506,12 @@ function minimalRuntime(runId: string, cwd: string, userInput: string): RuntimeS
 		maxSelfHealPerStage: 5,
 		flowRollbackCount: 0,
 		flowRollbackLimit: 7,
+		lifetimeRollbackCount: 0,
+		healingSequence: 0,
+		healingCases: [],
+		verifyGeneration: 0,
+		budgetResetHistory: [],
+		aiGateFindings: {},
 		rollbackCount: 0,
 		status: "running" as never,
 		submittedArtifacts: {},

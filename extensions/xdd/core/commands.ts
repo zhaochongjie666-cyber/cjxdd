@@ -1,5 +1,5 @@
 import type { XddAuditEvent } from "../audit/events.ts";
-import type { XddArtifactSubmission, XddDiagnose, XddEsgNodeType, XddSignal, XddStageName } from "../types.ts";
+import type { HealingBaseline, HealingClosureEvidence, HealingFailure, VerifyReceipt, XddArtifactSubmission, XddDiagnose, XddEsgNodeType, XddSignal, XddStageName } from "../types.ts";
 
 export type RunStatus = "idle" | "running" | "awaiting_approval" | "paused" | "reflecting" | "completed" | "failed";
 
@@ -17,7 +17,9 @@ export type XddCommand =
 	| { type: "ADVANCE" }
 	| { type: "APPROVE"; approvalId: string }
 	| { type: "DIAGNOSE"; diagnosis: XddDiagnose }
-	| { type: "ROLLBACK"; target?: XddStageName; reason: string }
+	| { type: "ROLLBACK"; target?: XddStageName; reason: string; failure?: Omit<HealingFailure, "signature">; ownerScopes?: string[]; closureCriteria?: string[]; baseline?: HealingBaseline }
+	| { type: "RECORD_HEALING_CLOSURE"; caseId: string; closure: HealingClosureEvidence }
+	| { type: "RECORD_VERIFY_RECEIPT"; receipt: VerifyReceipt }
 	| { type: "STOP"; source: "command" | "escape" }
 	| { type: "RESUME" }
 	| { type: "RECORD_ARTIFACT_REVIEW"; stage: XddStageName; artifacts: string[]; selfAttack?: string }

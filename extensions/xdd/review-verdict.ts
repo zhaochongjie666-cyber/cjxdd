@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { resolveGlobs, safeRealpath } from "./glob-resolver.ts";
+import { RuntimeStore } from "./storage/runtime-store.ts";
 
 export type ReviewType =
 	| "requirement"
@@ -42,6 +43,8 @@ export interface ReviewVerdict {
 	overrides: Array<{ actor: string; reason: string; at: string }>;
 	/** Historical bug patterns actually injected into this isolated review. */
 	preventionPatternIds?: string[];
+	verifyGeneration?: number;
+	healingCaseId?: string;
 }
 
 export interface ReviewPolicy {
@@ -101,7 +104,16 @@ export function evaluateStoredReviewVerdict(cwd: string, stage: string, policy: 
 	const verdict = readReviewVerdict(cwd, stage);
 	if (!verdict) return { ok: false, reasons: ["缺少当前 run 的 review verdict"] };
 	if (!Array.isArray(verdict.artifactPaths)) return { ok: false, reasons: ["review verdict 缺少 artifact paths"] };
-	return evaluateReviewVerdict(verdict, digestReviewArtifactFiles(cwd, verdict.artifactPaths), policy);
+	const result = evaluateReviewVerdict(verdict, digestReviewArtifactFiles(cwd, verdict.artifactPaths), policy);
+	const runtime = new RuntimeStore(cwd).load();
+	if (runtime?.activeHealingCaseId) {
+		const healing = runtime.healingCases.find((item) => item.id === runtime.activeHealingCaseId);
+		const targetIndex = runtime.plan.findIndex((entry) => entry.stageName === healing?.targetStage);
+		const reviewIndex = runtime.plan.findIndex((entry) => entry.stageName === stage);
+		if (reviewIndex >= targetIndex && targetIndex >= 0 && (verdict.verifyGeneration !== runtime.verifyGeneration || verdict.healingCaseId !== runtime.activeHealingCaseId)) result.reasons.push("review verdict 已过期：verifyGeneration/healingCaseId 不匹配");
+	}
+	result.ok = result.reasons.length === 0;
+	return result;
 }
 
 export function evaluateReviewVerdict(

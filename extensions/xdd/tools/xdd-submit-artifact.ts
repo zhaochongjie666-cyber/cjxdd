@@ -9,12 +9,16 @@ import type { XddRunnerState, XddStageName } from "../types.ts";
 import { type EmptyDetails, type GetXddState, ok } from "./index.ts";
 import { runAIGate, formatAIGateResult, type AIGateResult } from "../aigate.ts";
 import { getAIGateLLM } from "../llm-ref.ts";
-import { evaluateVerifyEvidenceGateFull } from "../evidence/verify-gate.ts";
-import { routeVerifyFailure } from "../verify-failure-routing.ts";
+import { evaluateHealingFailureClosure, evaluateVerifyEvidenceGateFull, runHarnessWithReceipt } from "../evidence/verify-gate.ts";
+import { routeVerifyFailure, type VerifyFailureRoute } from "../verify-failure-routing.ts";
 import { startAIGateProgress } from "../aigate-progress.ts";
 import { digestReviewArtifactFiles, evaluateReviewVerdict, writeReviewVerdict, type ReviewType, type ReviewVerdict } from "../review-verdict.ts";
 import { codeReviewFromAIGate, writeCodeReviewReport } from "../code-review.ts";
 import { buildPreventionContext } from "../prevention-context.ts";
+import { computeCanonicalScopeDigest, computeScopeDigest } from "../healing/content-digest.ts";
+import { globToRegExp } from "../gate.ts";
+import { blockingFindings, reconcileStableFindings } from "../healing/stable-findings.ts";
+import { healingEnforced } from "../healing/mode.ts";
 import { changedProductionSources, evaluateProductionPathPolicy, formatMissingProductionSources, isReviewableProductionSource } from "../production-path-policy.ts";
 
 function elapsedMs(start: number): number {
@@ -34,8 +38,10 @@ function modelIdentity(model: unknown): string {
 	return [candidate.provider, candidate.id ?? candidate.name].filter(Boolean).map(String).join(":") || "configured-aigate-model";
 }
 
-function severityForAngle(name: string, findings: readonly string[]): "P1" | "P2" {
-	return /安全|权限|认证|越权|数据丢失|\bP[01]\b/i.test(`${name} ${findings.join(" ")}`) ? "P1" : "P2";
+function severityForAngle(name: string, findings: readonly string[]): "P0" | "P1" | "P2" {
+	const text = `${name} ${findings.join(" ")}`;
+	if (/\bP0\b/i.test(text)) return "P0";
+	return /安全|权限|认证|越权|数据丢失|\bP1\b/i.test(text) ? "P1" : "P2";
 }
 
 function persistAIGateReview(params: {
@@ -46,13 +52,14 @@ function persistAIGateReview(params: {
 	mechanicalReason?: string;
 	selfAttack: string;
 	result: AIGateResult;
-	status: ReviewVerdict["verdict"];
+	status: Exclude<ReviewVerdict["verdict"], "blocked">;
 	overrideReason?: string;
 	preventionPatternIds?: string[];
 }): void {
 	const { state, stage, model, artifacts, mechanicalReason, selfAttack, result, status, overrideReason, preventionPatternIds } = params;
 	const artifactPaths = [...(artifacts.length > 0 ? artifacts : stage.deliverablePaths)];
 	const artifactDigest = digestReviewArtifactFiles(state.cwd, artifactPaths);
+	const runtime = new RuntimeStore(state.cwd).load();
 	const reviewVerdict: ReviewVerdict = {
 		schemaVersion: 1,
 		reviewType: reviewTypeForStage(stage.name),
@@ -67,13 +74,15 @@ function persistAIGateReview(params: {
 		contextPolicy: "isolated",
 		verdict: status,
 		score: status === "pass" ? 100 : status === "inconclusive" ? 0 : 50,
-		findings: result.angles
-			.filter((angle) => angle.passed === false)
-			.map((angle, index) => ({ id: `AIG-${index + 1}`, severity: severityForAngle(angle.name, angle.findings), category: angle.name, evidence: angle.findings.join("；") || angle.name })),
+		findings: (runtime?.aiGateFindings?.[stage.name] ?? [])
+			.filter((finding) => finding.status === "open")
+			.map(({ id, severity, category, evidence }) => ({ id, severity, category, evidence })),
 		positivePathEvidence: [mechanicalReason ?? "机械 Gate 通过"],
 		fallbackAttackEvidence: [selfAttack],
 		overrides: overrideReason ? [{ actor: "xdd-aigate-budget-policy", reason: overrideReason, at: new Date().toISOString() }] : [],
 		preventionPatternIds,
+		verifyGeneration: runtime?.verifyGeneration ?? 0,
+		healingCaseId: runtime?.activeHealingCaseId,
 	};
 	const reviewPolicy = evaluateReviewVerdict(reviewVerdict, artifactDigest, {
 		requireIndependentReviewer: true,
@@ -111,6 +120,13 @@ const schema = Type.Object({
 		description: "本次 AIGate 提交对应的自我攻击结论；随 AIGate 每次语义审查提交，记录在 runtime，绝不写入 design",
 	})),
 	pass: Type.Optional(Type.Boolean({ description: "仅 verify 阶段：是否通过验证" })),
+	healing: Type.Optional(Type.Object({
+		failureId: Type.String(),
+		changedPaths: Type.Array(Type.String()),
+		commands: Type.Array(Type.String()),
+		evidencePaths: Type.Array(Type.String()),
+		summary: Type.String({ minLength: 20 }),
+	})),
 });
 
 export type XddSubmitArtifactInput = Static<typeof schema>;
@@ -139,9 +155,15 @@ function handleExhaustedVerifyFailure(
 	limit: number,
 	target: XddStageName,
 	detail = "",
+	route?: VerifyFailureRoute,
 ): AgentToolResult<EmptyDetails> {
 	const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage: plannedStage }) => plannedStage));
-	const rollback = controller.dispatch({ type: "ROLLBACK", target, reason: `verify ${gate} 预算耗尽：${reason}` });
+	const rollback = controller.dispatch({
+		type: "ROLLBACK", target, reason: `verify ${gate} 预算耗尽：${reason}`,
+		failure: route ? { code: /^(\w+):/.exec(reason)?.[1] ?? "VERIFY_FAILURE", gateKind: "verdict", summary: reason, reason, files: [], remediation: route.closureCriteria.join("；") } : undefined,
+		ownerScopes: route?.ownerScopes,
+		closureCriteria: route?.closureCriteria,
+	});
 	if (rollback.state.status === "failed") {
 		return {
 			content: [{ type: "text", text: `❌ [${gate} ${used}/${limit}] verify 未通过且自愈预算耗尽。${rollback.state.lastStageError ?? "流程预算耗尽，流程退出"}。${detail}` }],
@@ -174,7 +196,23 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			if (!stage) throw new Error("[xdd] 无活跃阶段");
 			const summary = String(params.summary ?? "");
 			const artifacts = params.artifacts ?? [];
+			let candidateFingerprint: string | undefined;
 			const selfAttack = params.selfAttack?.trim();
+			const runtime = new RuntimeStore(state.cwd).load();
+			const activeHealing = runtime?.healingCases?.find((item) => item.id === runtime.activeHealingCaseId && item.status !== "closed" && item.status !== "abandoned");
+			let healingClosure: import("../types.ts").HealingClosureEvidence | undefined;
+			if (healingEnforced() && activeHealing && stage.name === activeHealing.targetStage) {
+				if (!params.healing || params.healing.failureId !== activeHealing.id) throw new Error(`[xdd_submit_artifact] HEALING_CLOSURE_REQUIRED: active ${activeHealing.id} 必须提交 healing payload。请按 xdd_next_task 填写 failureId、changedPaths、commands、evidencePaths 和 summary。`);
+				const outside = params.healing.changedPaths.filter((path) => !activeHealing.ownerScopes.some((scope) => globToRegExp(scope.endsWith("/**") ? `${scope}/*` : scope).test(path)));
+				if (outside.length > 0) throw new Error(`[xdd_submit_artifact] HEALING_OWNER_SCOPE_MISMATCH: ${outside.join(", ")} 不在负责范围 ${activeHealing.ownerScopes.join(", ")}。请修改负责阶段产物，不要用无关文件绕过。`);
+				if (params.healing.changedPaths.length === 0 || params.healing.commands.length === 0 || params.healing.evidencePaths.length === 0) throw new Error("[xdd_submit_artifact] HEALING_EVIDENCE_INCOMPLETE: changedPaths、commands、evidencePaths 均不能为空；请执行原 failure 的机械检查并保存证据。");
+				const missingEvidence = params.healing.evidencePaths.filter((path) => !existsSync(join(state.cwd, path)) || !readFileSync(join(state.cwd, path), "utf8").includes(activeHealing.id));
+				if (missingEvidence.length > 0) throw new Error(`[xdd_submit_artifact] HEALING_FAILURE_ID_MISSING: evidence 必须存在并引用 ${activeHealing.id}：${missingEvidence.join(", ")}。`);
+				const ownerScopeDigest = computeScopeDigest(state.cwd, activeHealing.ownerScopes);
+				if (ownerScopeDigest === activeHealing.baseline.ownerScopeDigest) throw new Error(`[xdd_submit_artifact] ARTIFACT_NON_SUBSTANTIVE_CHANGE: ${activeHealing.id} 负责范围内容 digest 未变化；touch、时间戳或 owner scope 外变化不能关闭 failure。`);
+				if (activeHealing.baseline.ownerScopeCanonicalDigest && computeCanonicalScopeDigest(state.cwd, activeHealing.ownerScopes) === activeHealing.baseline.ownerScopeCanonicalDigest) throw new Error(`[xdd_submit_artifact] ARTIFACT_NON_SUBSTANTIVE_CHANGE: ${activeHealing.id} 仅检测到时间戳/generatedAt/格式变化；请修改负责范围的实质业务内容。`);
+				healingClosure = { submittedAt: new Date().toISOString(), stage: stage.name, changedPaths: params.healing.changedPaths, ownerScopeDigest, commands: params.healing.commands, evidencePaths: params.healing.evidencePaths, summary: params.healing.summary };
+			}
 			if (stage.name === "execute") {
 				const submitted = new Set(artifacts.filter(isReviewableProductionSource));
 				const omitted = changedProductionSources(state.cwd).filter((path) => !submitted.has(path));
@@ -233,8 +271,8 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			// pattern literal (which statSync would silently fail on).
 			if (artifacts.length > 0) {
 				const { computeArtifactFingerprint } = await import("./artifact-fingerprint.ts");
-				const fingerprint = computeArtifactFingerprint(state.cwd, artifacts);
-				const changed = state.checkAndRecordSubmitFingerprint(stage.name, fingerprint);
+				candidateFingerprint = computeArtifactFingerprint(state.cwd, artifacts);
+				const changed = state.checkAndRecordSubmitFingerprint(stage.name, candidateFingerprint);
 				if (!changed) {
 					throw new Error(
 						`[xdd_submit_artifact] 上次提交后磁盘产物未变化。请先产出/修改产物文件再重试，不要盲目重试相同内容。`,
@@ -242,6 +280,11 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 				}
 			}
 			dispatchToController(state, { type: "RECORD_ARTIFACT_REVIEW", stage: stage.name, artifacts });
+			if (stage.name === "verify" && activeHealing) {
+				const latest = new RuntimeStore(state.cwd).load();
+				const receipt = await runHarnessWithReceipt(state.cwd, latest?.verifyGeneration ?? 0, latest?.activeHealingCaseId);
+				dispatchToController(state, { type: "RECORD_VERIFY_RECEIPT", receipt });
+			}
 			const hardGateStartedAt = performance.now();
 			const mechanicalCheckResult = await stage.gate({ cwd: state.cwd, summary, desiredState: stage.desiredState });
 			const hardGateMs = elapsedMs(hardGateStartedAt);
@@ -249,6 +292,7 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 			// five-attempt budgets. A hard failure stops before AIGate so one
 			// submission can never consume both counters.
 			if (!mechanicalCheckResult.ok) {
+				if (candidateFingerprint) state.recordSubmitFingerprint(stage.name, candidateFingerprint, false);
 				const hardUsed = state.beginSelfHealAttempt(stage.name);
 				const hardBudget = state.stageSelfHealBudget(stage.name, "hard_gate");
 				const error = mechanicalCheckResult.reason ?? "硬 Gate 未通过";
@@ -262,7 +306,12 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 				if (stage.exit !== "verdict") {
 					return ok(`❌ [硬 Gate ${hardUsed}/${hardBudget.limit}] ${stage.name} 未通过且预算耗尽：${error}\n没有生成 review verdict，禁止软通过。请修复产物后重试，或诊断根因并回退到负责阶段。`);
 				}
-				return handleExhaustedVerifyFailure(state, error, "硬 Gate", hardUsed, hardBudget.limit, diagnosedVerifyRollbackTarget(state));
+				const route = routeVerifyFailure({ summary, gateReason: error, failure: (mechanicalCheckResult as import("../evidence/verify-gate.ts").VerifyEvidenceGateResult).failure });
+				return handleExhaustedVerifyFailure(state, error, "硬 Gate", hardUsed, hardBudget.limit, route.target, "", route);
+			}
+			if (activeHealing && healingClosure) {
+				const originalFailure = await evaluateHealingFailureClosure(state.cwd, activeHealing.failure.code);
+				if (!originalFailure.ok) throw new Error(`[xdd_submit_artifact] HEALING_ORIGINAL_FAILURE_OPEN: ${originalFailure.reason ?? activeHealing.failure.code}。请按 xdd_next_task 修复原 failure 并重跑指定命令。`);
 			}
 			// --- AIGate: semantic review after the hard Gate passes ---
 			const aiGateEnabled = stage.aiGate?.enabled !== false;
@@ -305,7 +354,11 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 						env: llmInfo.env,
 						stageName: stage.name,
 						skillName: stage.skill,
-						aigateStandard: [stage.aigateStandard, prevention.text].filter(Boolean).join("\n\n"),
+						aigateStandard: [
+							stage.aigateStandard,
+							prevention.text,
+							`稳定 finding 复核协议：先逐 ID 判断上一轮 open finding 是否 closed/still-open；新 P0/P1 可阻塞，新 P2 仅 backlog。上一轮：${(runtime?.aiGateFindings?.[stage.name] ?? []).filter((item) => item.status === "open").map((item) => `${item.id}:${item.category}`).join(", ") || "无"}。本轮 changed paths：${artifacts.join(", ") || "无文件产物"}。selfAttack 必须逐 ID 回答。`,
+						].filter(Boolean).join("\n\n"),
 						artifactPaths: artifacts.length > 0 ? artifacts : stage.deliverablePaths,
 						outputContract: stage.outputs,
 						mechanicalCheckResult,
@@ -352,10 +405,18 @@ ${angleText}
 						details: {},
 					};
 				}
+				const findingStore = new RuntimeStore(state.cwd);
+				const beforeFindings = findingStore.load()?.aiGateFindings?.[stage.name] ?? [];
+				const stableFindings = reconcileStableFindings(stage.name, beforeFindings, aiResult.angles.filter((angle) => angle.passed === false).map((angle) => ({ severity: severityForAngle(angle.name, angle.findings), category: angle.name, evidence: angle.findings.join("；") || angle.name })));
+				findingStore.update((current) => { current.aiGateFindings = { ...(current.aiGateFindings ?? {}), [stage.name]: stableFindings }; });
+				// On resubmission, newly discovered P2 findings are backlog only. Existing
+				// blockers and every new P0/P1 remain blocking, so the target converges.
+				if (blockingFindings(stableFindings).length === 0) aiResult = { ...aiResult, passed: true };
 				// AIGate produced a real verdict (not degraded infrastructure failure).
 				// Do not reset here: a failing verdict must accumulate toward the
 				// bounded retry limit. A successful verdict resets it below.
 				if (!aiResult.passed) {
+					if (candidateFingerprint) state.recordSubmitFingerprint(stage.name, candidateFingerprint, false);
 					// A semantic AIGate failure consumes only the AIGate retry budget.
 					const aiUsed = state.beginAiGateAttempt(stage.name);
 					const aiBudget = state.stageSelfHealBudget(stage.name, "ai_gate");
@@ -368,7 +429,7 @@ ${angleText}
 						: "";
 					if (aiBudget.exhausted) {
 						const hasPriorityBlocker = aiResult.angles.some((angle) =>
-							angle.passed === false && severityForAngle(angle.name, angle.findings) === "P1"
+							angle.passed === false && severityForAngle(angle.name, angle.findings) !== "P2"
 						);
 						if (hasPriorityBlocker) {
 							if (stage.exit === "verdict") {
@@ -399,6 +460,8 @@ ${angleText}
 			// so the stall counter could climb to 40+ without ever triggering the
 			// 3-turn escalation nudge.
 			state.resetAiGateBudget(stage.name);
+			if (activeHealing && healingClosure) dispatchToController(state, { type: "RECORD_HEALING_CLOSURE", caseId: activeHealing.id, closure: healingClosure });
+			if (candidateFingerprint) state.recordSubmitFingerprint(stage.name, candidateFingerprint, stage.exit !== "verdict" || Boolean(params.pass));
 			state.lastSubmitAt = Date.now();
 			if (stage.exit === "verdict") {
 				const pass = Boolean(params.pass);
@@ -418,7 +481,7 @@ ${angleText}
 							details: {},
 						};
 					}
-					return handleExhaustedVerifyFailure(state, route.reason, "verify verdict", hardUsed, hardBudget.limit, route.target);
+					return handleExhaustedVerifyFailure(state, route.reason, "verify verdict", hardUsed, hardBudget.limit, route.target, "", route);
 				}
 				dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: true } });
 				return ok(

@@ -151,3 +151,15 @@ const result = headless.dispatch({ type: "START", task, options: { cwd, runId } 
 覆盖：gate.ts（文件系统 gate）、observe-fs.ts（磁盘观测 + 追溯覆盖）、stage-diff.ts
 （真实 gate diff）、core/controller.ts（唯一状态转换）、adapters/headless-controller.ts（测试适配器）、stage-groups.ts（组级 Gate）、
 diagnosis.ts（根因分类）、xdd-trace.ts（追溯链工具）。T13 回归还覆盖空仓库/遗留仓库启动、understand 人审、provider error、verify 写保护、runtime 重启恢复、暂停恢复和 continuation lock 释放。
+
+## Verify 自愈闭环（runtime v4）
+
+verify 失败耗尽本地修复预算后，Controller 原子创建唯一 `HealingCase`，记录结构化 failure、负责范围、内容摘要 baseline、关闭条件和 generation。回炉后应先调用 `xdd_next_task`；它会把该 case 放在普通 desiredState 之前，并给出明确的正向修复入口。
+
+负责阶段提交时必须携带 `healing` payload：`failureId`、负责范围内的 `changedPaths`、实际运行的 `commands`、引用 failureId 的 `evidencePaths` 和修复摘要。仅 touch、更新时间戳、修改 cleanup evidence 或 owner scope 外文件会被拒绝。原机械检查通过后 case 才进入 `ready-for-reverify`。
+
+重新进入 verify 时，`xdd_submit_artifact` 由 Controller 重跑 Harness 并写入绑定 `verifyGeneration`、`healingCaseId` 和源码/设计/计划摘要的 `VerifyReceipt`。旧 evidence、旧 review 或 receipt 后源码变化都会返回可执行的 stale/subject-mismatch 修复动作。完整 verify 与 release checks 通过后，`xdd_advance` 才关闭 case。
+
+`xdd_reset_budget` 默认不恢复 rollback allowance。显式恢复必须提供至少 20 字符原因并确认风险；active HealingCase 存在时拒绝恢复。`lifetimeRollbackCount` 与 reset history 永不清零并进入质量评分。
+
+灰度开关 `XDD_HEALING_CASES=observe|enforce` 默认为 `enforce`。`observe` 仅降级 closure/freshness 的流程阻断，HealingCase、generation、摘要和审计仍持续写入；不得用开关恢复旧 evidence 的可信度。

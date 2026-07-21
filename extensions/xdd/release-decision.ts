@@ -12,6 +12,9 @@ import { evaluateQualityScoreGate } from "./quality-score.ts";
 import { evaluateLegacyQualityWaiver } from "./quality-migration.ts";
 import type { XddGateResult } from "./types.ts";
 import type { XddStageName } from "./types.ts";
+import { RuntimeStore } from "./storage/runtime-store.ts";
+import { verifyReceiptMatches } from "./healing/healing-case.ts";
+import { healingEnforced } from "./healing/mode.ts";
 
 export interface ReleaseCheck {
 	name: string;
@@ -25,6 +28,8 @@ export interface ReleaseDecision {
 	verdict: "release" | "block";
 	checks: ReleaseCheck[];
 	createdAt: string;
+	verifyGeneration?: number;
+	healingCaseId?: string;
 }
 
 const REQUIRED_REVIEW_STAGES = ["understand", "spec", "architecture", "resilience", "plan", "execute", "cleanup", "verify"] as const;
@@ -106,6 +111,7 @@ function check(name: string, result: XddGateResult): ReleaseCheck {
 }
 
 export async function buildReleaseDecision(cwd: string): Promise<ReleaseDecision> {
+	const runtime = new RuntimeStore(cwd).load();
 	const reviewPolicy = { requireIndependentReviewer: true, requirePositivePathEvidence: true, requireFallbackAttackEvidence: true, allowOverrides: true };
 	const reviewStages: string[] = [...REQUIRED_REVIEW_STAGES];
 	if (hasWireArtifacts(cwd)) reviewStages.splice(3, 0, "wire");
@@ -123,13 +129,36 @@ export async function buildReleaseDecision(cwd: string): Promise<ReleaseDecision
 	checks.push(check("runtime-observability", evaluateRuntimeObservabilityGate(cwd)));
 	checks.push(check("quality-score", evaluateQualityScoreGate(cwd)));
 	checks.push(check("verify-evidence", await evaluateVerifyEvidenceGateFull(cwd)));
+	checks.push(check("healing-state", evaluateHealingReleaseState(cwd)));
 	return {
 		schemaVersion: 1,
 		inputDigest: releaseInputDigest(cwd),
 		verdict: checks.every((item) => item.ok) ? "release" : "block",
 		checks,
 		createdAt: new Date().toISOString(),
+		verifyGeneration: runtime?.verifyGeneration ?? 0,
+		healingCaseId: runtime?.activeHealingCaseId,
 	};
+}
+
+function evaluateHealingReleaseState(cwd: string): XddGateResult {
+	const runtime = new RuntimeStore(cwd).load();
+	if (!runtime) return { ok: false, reason: "Release Healing Gate: runtime.json 缺失" };
+	if (!healingEnforced()) return { ok: true, soft: true, reason: `Release Healing Gate observe-only：active=${runtime.activeHealingCaseId ?? "none"}，审计保留但不阻断。` };
+	if (runtime.activeHealingCaseId) {
+		const active = runtime.healingCases.find((item) => item.id === runtime.activeHealingCaseId);
+		if (!active || active.status !== "ready-for-reverify") return { ok: false, reason: `Release Healing Gate: active HealingCase ${runtime.activeHealingCaseId} 尚未 ready-for-reverify` };
+		if (!runtime.lastVerifyReceipt) return { ok: false, reason: "Release Healing Gate: active case 缺少 verify receipt" };
+		const activeFreshness = verifyReceiptMatches(cwd, runtime.lastVerifyReceipt, runtime.verifyGeneration, runtime.activeHealingCaseId);
+		if (!activeFreshness.ok) return { ok: false, reason: `Release Healing Gate: ${activeFreshness.code} ${activeFreshness.reason}` };
+	}
+	if (runtime.verifyGeneration > 0) {
+		if (!runtime.lastVerifyReceipt) return { ok: false, reason: "Release Healing Gate: verify receipt 缺失" };
+		const freshness = verifyReceiptMatches(cwd, runtime.lastVerifyReceipt, runtime.verifyGeneration);
+		if (!freshness.ok) return { ok: false, reason: `Release Healing Gate: ${freshness.code} ${freshness.reason}` };
+	}
+	if (runtime.budgetResetHistory?.some((entry) => !entry.reason || entry.reason.length < 20)) return { ok: false, reason: "Release Healing Gate: 存在未审计 budget reset" };
+	return { ok: true };
 }
 
 export function writeReleaseDecision(cwd: string, decision: ReleaseDecision): string {
@@ -149,6 +178,8 @@ export function evaluateReleaseDecisionGate(cwd: string): XddGateResult {
 		return { ok: false, reason: "Release Decision Gate: 缺少或无法解析 release-decision.json" };
 	}
 	if (decision.inputDigest !== releaseInputDigest(cwd)) return { ok: false, reason: "Release Decision Gate: 上游 verdict/evidence/HEAD 已变化，旧决策失效" };
+	const runtime = new RuntimeStore(cwd).load();
+	if (runtime?.activeHealingCaseId && (decision.verifyGeneration !== runtime.verifyGeneration || decision.healingCaseId !== runtime.activeHealingCaseId)) return { ok: false, reason: "Release Decision Gate: verifyGeneration/healingCaseId 已过期" };
 	const failed = decision.checks?.filter((item) => !item.ok) ?? [];
 	if (decision.verdict !== "release" || failed.length > 0) return { ok: false, reason: `Release Decision Gate: BLOCK（${failed.map((item) => item.name).join(", ")}）` };
 	return { ok: true };

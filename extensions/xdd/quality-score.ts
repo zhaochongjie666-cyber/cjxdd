@@ -3,9 +3,10 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFile
 import { dirname, join } from "node:path";
 import { readBugKnowledgeBase } from "./bug-knowledge.ts";
 import type { XddGateResult } from "./types.ts";
+import { RuntimeStore } from "./storage/runtime-store.ts";
 
 export interface QualityMetric {
-	name: "recurrence-rate" | "escaped-defects" | "mean-time-to-repair" | "soft-overrides" | "evidence-coverage";
+	name: "recurrence-rate" | "escaped-defects" | "mean-time-to-repair" | "soft-overrides" | "evidence-coverage" | "healing-recurrences" | "budget-resets" | "invalid-submissions";
 	value: number | null;
 	unit: "percent" | "count" | "hours";
 	penalty: number;
@@ -68,6 +69,10 @@ export function buildQualityScore(cwd: string, now = new Date().toISOString()): 
 		Boolean(incident),
 	];
 	const evidenceCoverage = (evidenceChecks.filter(Boolean).length / evidenceChecks.length) * 100;
+	const runtime = new RuntimeStore(cwd).load();
+	const healingRecurrences = runtime?.healingCases?.reduce((sum, item) => sum + Math.max(0, item.recurrenceCount - 1), 0) ?? 0;
+	const budgetResets = runtime?.budgetResetHistory?.length ?? 0;
+	const invalidSubmissions = Object.keys(runtime?.lastFailedSubmissionFingerprint ?? {}).length;
 
 	let repairHours: number | null = null;
 	if (incident?.createdAt) {
@@ -82,6 +87,9 @@ export function buildQualityScore(cwd: string, now = new Date().toISOString()): 
 		{ name: "mean-time-to-repair", value: repairHours, unit: "hours", penalty: repairHours === null ? 0 : Math.min(15, Math.floor(repairHours / 24) * 3), detail: repairHours === null ? "暂无可关联的 incident→修复样本，不惩罚" : `平均 ${repairHours.toFixed(1)} 小时` },
 		{ name: "soft-overrides", value: overrides, unit: "count", penalty: Math.min(15, overrides * 3), detail: `${overrides} 次有审计记录的软 Gate override` },
 		{ name: "evidence-coverage", value: evidenceCoverage, unit: "percent", penalty: Math.round((100 - evidenceCoverage) * 0.2), detail: `${evidenceChecks.filter(Boolean).length}/${evidenceChecks.length} 类关键证据可用` },
+		{ name: "healing-recurrences", value: healingRecurrences, unit: "count", penalty: Math.min(15, healingRecurrences * 3), detail: `${healingRecurrences} 次相同 verify failure 复发` },
+		{ name: "budget-resets", value: budgetResets, unit: "count", penalty: Math.min(10, budgetResets * 2), detail: `${budgetResets} 次人工预算恢复` },
+		{ name: "invalid-submissions", value: invalidSubmissions, unit: "count", penalty: Math.min(10, invalidSubmissions * 2), detail: `${invalidSubmissions} 个阶段保留失败提交 fingerprint` },
 	];
 	const score = Math.max(0, 100 - metrics.reduce((sum, metric) => sum + metric.penalty, 0));
 	const recommendations = metrics.filter((metric) => metric.penalty > 0).sort((a, b) => b.penalty - a.penalty).map((metric) => `优先降低 ${metric.name}：${metric.detail}`);

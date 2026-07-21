@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync, type Stats } from "node:fs";
 import { join } from "node:path";
 import { globToRegExp, hasGlobMeta, walkRel } from "./gate.ts";
+import { RuntimeStore } from "./storage/runtime-store.ts";
 
 /**
  * Filesystem observation for the Controller cycle (core.md: observation = observe()).
@@ -46,6 +47,7 @@ export interface XddFsSnapshot {
 	featureFiles: number;
 	/** Plan task checkbox counts parsed from plan.md under .xdd/runs. */
 	planTasks: XddPlanTaskCounts;
+	activeHealing?: { id: string; failureCode: string; targetStage: string; status: string; generation: number; receiptFresh: boolean; closureCriteria: string[] };
 }
 
 const EMPTY_PLAN_TASKS: XddPlanTaskCounts = {
@@ -262,6 +264,8 @@ export function observeFilesystem(cwd: string, deliverablePaths: readonly string
 	const specDir = join(cwd, ".xdd", "design", "spec");
 	const { rxx: specRxx, features: featureFiles } = scanXddSpec(specDir);
 	const impls = scanImplements(cwd);
+	const runtime = new RuntimeStore(cwd).load();
+	const healing = runtime?.healingCases?.find((item) => item.id === runtime.activeHealingCaseId);
 
 	return {
 		deliverables,
@@ -271,12 +275,14 @@ export function observeFilesystem(cwd: string, deliverablePaths: readonly string
 		specRxx,
 		featureFiles,
 		planTasks: scanXddPlan(cwd),
+		activeHealing: healing ? { id: healing.id, failureCode: healing.failure.code, targetStage: healing.targetStage, status: healing.status, generation: runtime?.verifyGeneration ?? 0, receiptFresh: runtime?.lastVerifyReceipt?.generation === runtime?.verifyGeneration && runtime?.lastVerifyReceipt?.healingCaseId === healing.id, closureCriteria: healing.closureCriteria } : undefined,
 	};
 }
 
 /** Human-readable rendering of the snapshot, for the xdd_observe tool output. */
 export function renderFsSnapshot(snap: XddFsSnapshot): string {
 	const lines: string[] = ["文件系统观测 (真实工程状态):"];
+	if (snap.activeHealing) lines.push(`Active Healing: ${snap.activeHealing.id} ${snap.activeHealing.failureCode} → ${snap.activeHealing.targetStage} (${snap.activeHealing.status}) generation=${snap.activeHealing.generation} receipt=${snap.activeHealing.receiptFresh ? "fresh" : "stale/missing"}`, ...snap.activeHealing.closureCriteria.map((item) => `  closure: ${item}`));
 	if (snap.deliverables.length > 0) {
 		const dl = snap.deliverables
 			.map((d) => `  ${d.exists ? "[有]" : "[无]"} ${d.path}${d.exists ? ` (${d.bytes}B)` : ""}`)
