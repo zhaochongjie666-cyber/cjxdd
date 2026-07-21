@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { transition } from "./core/controller.ts";
-import { executePiEffects } from "./adapters/pi-effects.ts";
 import { pruneContextMessages, TEXT_CONTENT_STUB } from "./context-prune.ts";
 import type { RuntimeStateV2 } from "./storage/runtime-migrations.ts";
 
@@ -51,27 +50,12 @@ function runtimeState(): RuntimeStateV2 {
 }
 
 describe("Pipeline AI reuse for turn-loop context management", () => {
-	it("Controller only requests compaction; the adapter delegates the actual compressor to Pi ctx.compact", async () => {
+	it("Controller leaves threshold compaction to Pi instead of starting a competing compaction", async () => {
 		const transitioned = transition(runtimeState(), { type: "AGENT_ENDED", stopReason: "stop", contextUsagePercent: 72 });
 		expect(transitioned.effects).toHaveLength(1);
-		expect(transitioned.effects[0]).toMatchObject({ type: "COMPACT" });
-		expect(transitioned.state.continuationQueued).toBe(false);
-
-		let compactOptions: any;
-		await executePiEffects(transitioned.effects, {
-			pi: {},
-			ctx: {
-				compact: (options) => {
-					compactOptions = options;
-				},
-				ui: { notify: () => undefined },
-			},
-		});
-
-		expect(compactOptions?.customInstructions).toContain("stageEpoch: init:epoch:1");
-		expect(compactOptions?.customInstructions).toContain("Gate 失败原因");
-		expect(typeof compactOptions?.onComplete).toBe("function");
-		expect(typeof compactOptions?.onError).toBe("function");
+		expect(transitioned.effects[0]).toMatchObject({ type: "SEND_FOLLOWUP" });
+		expect(transitioned.effects).not.toContainEqual(expect.objectContaining({ type: "COMPACT" }));
+		expect(transitioned.state.continuationQueued).toBe(true);
 	});
 
 	it("uses Pi session_compact as a lifecycle completion signal instead of inventing a second completion channel", () => {

@@ -1,5 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
-import autoCompact, { compactBeforeInference, DEFAULT_AUTO_COMPACT_THRESHOLD, parseAutoCompactThreshold } from "./index.ts";
+import autoCompact, { DEFAULT_AUTO_COMPACT_THRESHOLD, isXddStageEnd, parseAutoCompactThreshold, triggerCompaction } from "./index.ts";
+
+function setup(percent = 0) {
+	const handlers: Record<string, Function> = {};
+	const commands: Record<string, Function> = {};
+	const compact = vi.fn(({ onComplete }) => onComplete());
+	const notify = vi.fn();
+	let currentPercent = percent;
+	autoCompact({
+		registerCommand: (name: string, spec: any) => { commands[name] = spec.handler; },
+		on: (name: string, handler: Function) => { handlers[name] = handler; },
+	} as any);
+	const ctx = { getContextUsage: () => ({ percent: currentPercent }), compact, ui: { notify }, hasUI: true };
+	return { handlers, commands, compact, notify, ctx, setPercent: (value: number) => { currentPercent = value; } };
+}
 
 describe("auto compact configuration", () => {
 	it("uses 90% by default and accepts percent syntax", () => {
@@ -11,53 +25,73 @@ describe("auto compact configuration", () => {
 		expect(parseAutoCompactThreshold("101")).toBeNull();
 	});
 
-	it("waits for Pi built-in compaction callback", async () => {
-		let finish: (() => void) | undefined;
-		const promise = compactBeforeInference({
-			compact: ({ onComplete }: any) => { finish = onComplete; },
-			getContextUsage: () => undefined,
-			ui: {} as any,
-		});
+	it("waits for Pi's compaction callback and supplies preservation instructions", async () => {
+		let options: any;
+		const promise = triggerCompaction({ compact: (value: any) => { options = value; }, ui: {} as any });
 		let settled = false;
 		void promise.then(() => { settled = true; });
 		await Promise.resolve();
 		expect(settled).toBe(false);
-		finish?.();
+		expect(options.customInstructions).toContain("关键决策");
+		options.onComplete();
 		await promise;
-		expect(settled).toBe(true);
 	});
 
-	it("compacts before inference only after the configured threshold", async () => {
-		const handlers: Record<string, Function> = {};
-		let command: Function = () => undefined;
-		const compact = vi.fn(({ onComplete }) => onComplete());
-		const notify = vi.fn();
-		autoCompact({
-			registerCommand: (_name: string, spec: any) => { command = spec.handler; },
-			on: (name: string, handler: Function) => { handlers[name] = handler; },
-		} as any);
-		const ctx = { getContextUsage: () => ({ percent: 89 }), compact, ui: { notify } };
-		await handlers.before_agent_start({}, ctx);
-		expect(compact).not.toHaveBeenCalled();
-		ctx.getContextUsage = () => ({ percent: 90 });
-		await handlers.before_agent_start({}, ctx);
-		expect(compact).toHaveBeenCalledOnce();
-
-		await command("95", ctx);
-		ctx.getContextUsage = () => ({ percent: 94 });
-		await handlers.before_agent_start({}, ctx);
-		expect(compact).toHaveBeenCalledOnce();
+	it("compacts at a successful xdd stage end, not at turn_end", async () => {
+		const harness = setup(89);
+		expect(harness.handlers.turn_end).toBeUndefined();
+		await harness.handlers.tool_result({
+			type: "tool_result",
+			toolName: "xdd_advance",
+			content: [{ type: "text", text: "[xdd_advance] spec 通过，进入下一阶段 architecture。" }],
+		}, harness.ctx);
+		expect(harness.compact).toHaveBeenCalledOnce();
+		await harness.handlers.tool_result({
+			type: "tool_result",
+			toolName: "xdd_advance",
+			isError: true,
+			content: [{ type: "text", text: "[xdd_advance] failed" }],
+		}, harness.ctx);
+		expect(harness.compact).toHaveBeenCalledOnce();
 	});
 
-	it("reports compaction failure and leaves Pi overflow fallback available", async () => {
-		const handlers: Record<string, Function> = {};
-		const notify = vi.fn();
-		autoCompact({ registerCommand: vi.fn(), on: (name: string, handler: Function) => { handlers[name] = handler; } } as any);
-		await handlers.before_agent_start({}, {
-			getContextUsage: () => ({ percent: 99 }),
-			compact: ({ onError }: any) => onError(new Error("provider unavailable")),
-			ui: { notify },
-		});
-		expect(notify).toHaveBeenCalledWith(expect.stringContaining("上下文溢出机制兜底"), "warning");
+	it("recognizes successful next, approval, and final stage boundaries", () => {
+		const event = (text: string) => ({ toolName: "xdd_advance", content: [{ type: "text", text }] });
+		expect(isXddStageEnd(event("[xdd_advance] init 通过，进入下一阶段 understand。"))).toBe(true);
+		expect(isXddStageEnd(event("[xdd_advance] spec 阶段完成，需要人类确认后才能进 architecture。"))).toBe(true);
+		expect(isXddStageEnd(event("[xdd_advance] 最终阶段 verify 通过，xdd run 完成 ✅。"))).toBe(true);
+		expect(isXddStageEnd(event("[xdd_advance] 当前阶段尚未声明完成"))).toBe(false);
+	});
+
+	it("compacts at agent_end when a long stage reaches the configured limit", async () => {
+		const harness = setup(89);
+		await harness.handlers.agent_end({}, harness.ctx);
+		expect(harness.compact).not.toHaveBeenCalled();
+		harness.setPercent(90);
+		await harness.handlers.agent_end({}, harness.ctx);
+		expect(harness.compact).toHaveBeenCalledOnce();
+		harness.setPercent(99);
+		await harness.handlers.agent_end({}, harness.ctx);
+		expect(harness.compact).toHaveBeenCalledOnce();
+		harness.setPercent(20);
+		await harness.handlers.agent_end({}, harness.ctx);
+		harness.setPercent(90);
+		await harness.handlers.agent_end({}, harness.ctx);
+		expect(harness.compact).toHaveBeenCalledTimes(2);
+	});
+
+	it("supports manual compaction with custom instructions", async () => {
+		const harness = setup();
+		await harness.commands["trigger-compact"]("只保留架构决策", harness.ctx);
+		expect(harness.compact).toHaveBeenCalledWith(expect.objectContaining({ customInstructions: "只保留架构决策" }));
+	});
+
+	it("reports callback failures without throwing into the turn loop", async () => {
+		const harness = setup(89);
+		harness.ctx.compact = vi.fn(({ onError }: any) => onError(new Error("provider unavailable")));
+		await harness.handlers.agent_end({}, harness.ctx);
+		harness.setPercent(90);
+		await harness.handlers.agent_end({}, harness.ctx);
+		expect(harness.notify).toHaveBeenCalledWith(expect.stringContaining("provider unavailable"), "warning");
 	});
 });

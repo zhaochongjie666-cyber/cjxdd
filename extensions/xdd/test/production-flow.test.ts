@@ -289,37 +289,25 @@ describe("production pi adapter lifecycle", () => {
 		expect(result.messages[6].content).toContain("current");
 	});
 
-	it("waits for Pi's compaction callback before queuing the continuation", async () => {
-		let compactOptions: any;
+	it("leaves compaction to Pi and queues the continuation directly", async () => {
 		harness.contextUsage = { percent: 72 };
-		harness.ctx.compact = (options: any) => {
-			harness.compactCalls.push(options);
-			compactOptions = options;
-		};
 		harness.controller.submitGatePassed();
 
 		await harness.emit("agent_end", {
 			messages: [{ role: "assistant", stopReason: "stop" }],
 		});
-		expect(harness.compactCalls).toHaveLength(1);
-		expect(harness.compactCalls[0]?.customInstructions).toContain("当前阶段");
-		expect(harness.sentMessages).toHaveLength(0);
-
-		compactOptions.onComplete({});
-		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(harness.compactCalls).toHaveLength(0);
 		expect(harness.sentMessages).toHaveLength(1);
 		expect(harness.sentMessages[0]?.text).toContain("xdd_advance");
 	});
 
-	it("high context usage compacts before sending a single continuation", async () => {
+	it("high context usage does not start a competing xdd compaction", async () => {
 		harness.contextUsage = { percent: 72 };
 		harness.controller.submitGatePassed();
 		await harness.emit("agent_end", {
 			messages: [{ role: "assistant", stopReason: "stop" }],
 		});
-		expect(harness.compactCalls).toHaveLength(1);
-		expect(harness.compactCalls[0].customInstructions).toContain("当前阶段");
-		expect(harness.compactCalls[0].customInstructions).toContain("tool_call 与 tool result 配对");
+		expect(harness.compactCalls).toHaveLength(0);
 		expect(harness.sentMessages).toHaveLength(1);
 		expect(harness.sentMessages[0]?.text).toContain("xdd_advance");
 		expect(harness.state.continuationQueued).toBe(true);

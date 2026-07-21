@@ -14,7 +14,6 @@ import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { XddRunnerState } from "./types.ts";
-import { COMPACTION_THRESHOLD_PERCENT } from "./core/controller.ts";
 import { createStateFixture, setStateFixturePlanIndex, startStateFixture } from "./test/state-fixture.ts";
 import { sliceByEpoch, EPOCH_MARKER_PREFIX } from "./epoch-slicer.ts";
 import { FakePiAdapterHarness } from "./test/pi-adapter-harness.ts";
@@ -144,25 +143,6 @@ describe("P28 sliceByEpoch", () => {
 	});
 });
 
-// ── P29: context usage check (unit-testable via stub) ────────────────
-
-describe("P29 context usage threshold contract", () => {
-	it("uses Pi's 0..100 percent scale with a 70% threshold", () => {
-		expect(COMPACTION_THRESHOLD_PERCENT).toBe(70);
-	});
-
-	it("dedup: lastCompactionAt < 30s ago -> skip retry (anti-loop)", () => {
-		// We can't directly test the time check without pi hooks, but we
-		// can verify the field semantics: setting lastCompactionAt to
-		// "now" means the next agent_end should not retrigger compaction
-		// within 30s.
-		state.lastCompactionAt = Date.now();
-		const now = Date.now();
-		const elapsed = now - state.lastCompactionAt;
-		expect(elapsed).toBeLessThan(30_000);
-	});
-});
-
 // ── P28: tool epoch writes ────────────────────────────────────────────
 
 describe("P28 tools write stageEpoch", () => {
@@ -198,7 +178,7 @@ describe("P28 tools write stageEpoch", () => {
 });
 
 
-describe("P29 compaction followUp dispatch compatibility", () => {
+describe("Pi-owned compaction followUp dispatch compatibility", () => {
 	it("does not call .catch on a synchronous sendUserMessage result", async () => {
 		const adapter = new FakePiAdapterHarness();
 		try {
@@ -207,9 +187,7 @@ describe("P29 compaction followUp dispatch compatibility", () => {
 			adapter.state.stageOutcome = "idle";
 
 			await adapter.emit("agent_end", { messages: [{ role: "assistant", stopReason: "stop" }] });
-			expect(adapter.compactCalls).toHaveLength(1);
-
-			expect(() => adapter.compactCalls[0].onError()).not.toThrow();
+			expect(adapter.compactCalls).toHaveLength(0);
 			expect(adapter.sentMessages).toHaveLength(1);
 			expect(adapter.sentMessages[0].options).toEqual({ deliverAs: "followUp" });
 		} finally {
