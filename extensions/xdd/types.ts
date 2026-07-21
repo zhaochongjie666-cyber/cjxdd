@@ -604,7 +604,11 @@ export class XddRunnerState {
 	recordEsgNode(type: XddEsgNodeType, stage: XddStageName, label: string, data?: unknown, parentId?: string): string {
 		const rt = this.loadRt();
 		if (!rt.esg) rt.esg = [];
-		const id = `esg-${rt.esg.length + 1}`;
+		const sequence = rt.esg.reduce((max, node) => {
+			const match = /^esg-(\d+)$/.exec(node.id);
+			return match ? Math.max(max, Number(match[1])) : max;
+		}, 0) + 1;
+		const id = `esg-${sequence}`;
 		rt.esg.push({ id, type, stage, label, data, parentId, at: new Date().toISOString() });
 		this.saveRt(rt);
 		return id;

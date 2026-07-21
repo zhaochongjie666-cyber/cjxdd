@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, openSync, readFileSync, renameSync, closeSync, f
 import { dirname, join } from "node:path";
 import type { XddCheckpointData } from "../types.ts";
 import { migrateRuntimeState, RUNTIME_SCHEMA_VERSION, type RuntimeStateV2 } from "./runtime-migrations.ts";
+import { compactRuntimeEsg } from "../audit/projector.ts";
 
 export interface RuntimeStoreSaveOptions {
 	/** Test hook: write + fsync the tmp file but throw before rename. */
@@ -52,6 +53,7 @@ export class RuntimeStore {
 
 	save(state: XddCheckpointData, options: RuntimeStoreSaveOptions = {}): RuntimeStateV2 {
 		const next = { ...state, schemaVersion: RUNTIME_SCHEMA_VERSION, at: new Date().toISOString() } as RuntimeStateV2;
+		compactRuntimeEsg(next);
 		atomicWriteJson(this.runtimePath, next, options);
 		return next;
 	}

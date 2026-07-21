@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { RuntimeStore } from "./runtime-store.ts";
 import { migrateRuntimeState } from "./runtime-migrations.ts";
 import type { XddCheckpointData } from "../types.ts";
+import { MAX_RUNTIME_ESG_NODES } from "../audit/projector.ts";
 
 let cwd = "";
 
@@ -81,6 +82,24 @@ describe("RuntimeStore", () => {
 		store.save(baseRuntime());
 		store.update((state) => { state.activeHealingCaseId = "HC-001"; });
 		expect(store.load()?.activeHealingCaseId).toBe("HC-001");
+	});
+
+	it("compacts legacy unbounded ESG history whenever runtime is saved", () => {
+		const store = new RuntimeStore(cwd);
+		const esg = Array.from({ length: MAX_RUNTIME_ESG_NODES + 25 }, (_, index) => ({
+			id: `esg-${index + 1}`,
+			type: "evidence" as const,
+			stage: "init" as const,
+			label: `event ${index + 1}`,
+			at: "2026-07-16T00:00:00.000Z",
+		}));
+
+		store.save({ ...baseRuntime(), esg });
+
+		const persisted = store.load()!.esg;
+		expect(persisted).toHaveLength(MAX_RUNTIME_ESG_NODES);
+		expect(persisted[0].id).toBe("esg-26");
+		expect(persisted.at(-1)?.id).toBe(`esg-${MAX_RUNTIME_ESG_NODES + 25}`);
 	});
 
 	it("migrates tiered flow rollback fields to one persisted limit", () => {
