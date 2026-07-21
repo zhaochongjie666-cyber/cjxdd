@@ -183,18 +183,19 @@ describe("AIGate retry loop", () => {
 		expect(steerBlock).toContain("deliverAs: \"steer\"");
 	});
 
-	it("AIGate degradation keeps the turn alive and uses bounded degraded budget", () => {
+	it("main-turn AIGate binds the review and validates the full angle contract", () => {
 		const submitSrc = readFileSync(join(SRC_DIR, "tools", "xdd-submit-artifact.ts"), "utf8");
-		const degradedBlock = submitSrc.slice(
-			submitSrc.indexOf("if (aiResult.degraded)"),
+		const reviewBlock = submitSrc.slice(
+			submitSrc.indexOf("const expectedToken = mainTurnReviewToken"),
 			submitSrc.indexOf("// A semantic AIGate failure"),
 		);
-		expect(degradedBlock).not.toContain("beginSelfHealAttempt");
-		expect(degradedBlock).toContain("beginAiGateAttempt");
-		expect(degradedBlock).toContain("degradedBudget.exhausted");
-		expect(degradedBlock).toContain("clearSubmitFingerprint");
-		expect(degradedBlock).toContain("无需修改产物");
-		expect(degradedBlock).not.toContain("terminate: true");
+		expect(reviewBlock).toContain("MAIN_TURN_REVIEW_STALE");
+		expect(reviewBlock).toContain("getAIGateAttackAngles");
+		expect(reviewBlock).toContain("missingNames");
+		expect(reviewBlock).toContain("unexpectedNames");
+		expect(reviewBlock).toContain("MAIN_TURN_REVIEW_EVIDENCE_MISSING");
+		expect(reviewBlock).toContain("MAIN_TURN_REVIEW_MECHANICAL_INVALID");
+		expect(reviewBlock).toContain("clearSubmitFingerprint");
 	});
 
 	it("exhausted AIGate budget records an audited soft-gate override", () => {

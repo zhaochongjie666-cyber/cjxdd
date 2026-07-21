@@ -145,23 +145,22 @@ describe("production pi adapter lifecycle", () => {
 		});
 	});
 
-	it("degraded AIGate infrastructure failure steers a bounded retry instead of idling", async () => {
-		harness.state.lastStageError = "[AIGate LLM 调用失败] LLM API 504";
-		harness.state.beginAiGateAttempt("init");
-
+	it("steers AIGate review into the main turn instead of a separate LLM", async () => {
 		await harness.emit("tool_result", {
 			type: "tool_result",
 			toolName: "xdd_submit_artifact",
-			content: [{ type: "text", text: "⚠️ [AIGate degraded 1/5] init 审查服务/响应格式异常（基础设施故障）：\n本 turn 继续。请恢复审查服务或模型配置后重新调用 xdd_submit_artifact；无需修改产物。" }],
+			content: [{ type: "text", text: "🔎 [AIGate 主 turn 待审] init 硬 Gate 已通过；工具未调用独立 LLM。" }],
 		});
 
 		expect(harness.sentMessages).toHaveLength(1);
 		expect(harness.sentMessages[0]).toMatchObject({
-			text: expect.stringContaining("立即重新调用 xdd_submit_artifact"),
+			text: expect.stringContaining("不要启动独立 LLM"),
 			options: { deliverAs: "steer" },
 		});
-		expect(harness.sentMessages[0]?.text).toContain("[xdd aigate steering]");
-		expect(harness.sentMessages[0]?.text).toContain("不要停在等待状态");
+		expect(harness.sentMessages[0]?.text).toContain("mainTurnReview");
+		expect(harness.sentMessages[0]?.text).toContain("reviewToken");
+		expect(harness.sentMessages[0]?.text).toContain("全部必审角度");
+		expect(harness.sentMessages[0]?.text).toContain("正向路径与兜底路径");
 	});
 
 	it("exhausted AIGate failure does not steer because it must diagnose or roll back", async () => {

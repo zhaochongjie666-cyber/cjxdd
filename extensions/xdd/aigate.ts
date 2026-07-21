@@ -85,10 +85,16 @@ export interface AIGateResult {
 
 // ── Attack angle definitions ────────────────────────────────────────────
 
-interface AttackAngle {
+export interface AttackAngle {
 	name: string;
 	description: string;
 	checks: string[];
+}
+
+/** Stable review contract shared by standalone reviewers and the main-turn AIGate. */
+export function getAIGateAttackAngles(stageName: string, mechanicalCheckResult: XddGateResult): AttackAngle[] {
+	return [mechanicalCheckAngle(mechanicalCheckResult), ...COMMON_ANGLES, ...(STAGE_ANGLES[stageName] ?? [])]
+		.map((angle) => ({ ...angle, checks: [...angle.checks] }));
 }
 
 /** Common angles applied to every stage. */
@@ -648,8 +654,7 @@ export async function runAIGate(input: AIGateInput): Promise<AIGateResult> {
 
 	// Build unified attack angles. The mechanical check is evidence and a
 	// required dimension of AIGate -- it no longer makes a separate verdict.
-	const stageAngles = STAGE_ANGLES[stageName] ?? [];
-	const angles = [mechanicalCheckAngle(mechanicalCheckResult), ...COMMON_ANGLES, ...stageAngles];
+	const angles = getAIGateAttackAngles(stageName, mechanicalCheckResult);
 
 	// Build user message
 	const userMessage = buildAttackUserMessage({

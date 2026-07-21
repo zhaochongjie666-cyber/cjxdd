@@ -52,9 +52,9 @@ Bug KB 中与当前阶段相关的 prevention rule 会自动进入 Agent/AIGate/
 
 xdd 默认把一个流程的 Pi 已报告 LLM 费用限制为 **$500 USD**。启动前可通过 `XDD_FLOW_BUDGET_USD` 配置，例如 `XDD_FLOW_BUDGET_USD=75 pi`。预算和已用 tokens/费用持久化在 `.xdd/runtime.json`，恢复时不会因环境变量变化而意外改变原 run 的上限；达到上限后流程暂停，不再自动发起下一轮模型调用。
 
-### AIGate 超时
+### AIGate 主 turn 审查
 
-审查请求默认最多等待 10 分钟。提交产物和跨阶段上下文会分别限制为 32,000 字符，审查响应限制为 12,000 tokens，以保留完整的架构审查信息。可设置 `XDD_AIGATE_TIMEOUT_MS`（15,000–600,000，单位毫秒）后再启动 pi。超时不会消耗自愈预算，也不会对同一个超时请求自动重试；请在服务恢复或调整超时后重新提交相同产物。
+`xdd_submit_artifact` 不再另起一次 LLM 请求。首次提交通过硬 Gate 后，工具输出包含提交声明、产物路径、机械结果、完整必审角度、历史 findings 和一次性 `reviewToken` 的 review summary；extension 以 `deliverAs: "steer"` 把攻击任务送回当前主 turn。主 turn 读取真实产物和跨阶段契约，逐项攻击正向与兜底后，以 `mainTurnReview` 重提。工具会校验 token 与当前阶段/声明/磁盘指纹的绑定，并拒绝缺少或重复角度、全部 `N/A`、无证据以及总判断和逐角度判断矛盾的 review，防止跳过 steer、复用旧审查或用 summary 自我宣布完成。
 
 ## 运行流程
 
@@ -66,7 +66,7 @@ agent 进入一个阶段（如 spec）
   ② xdd_desired_state      ← 拿到本阶段期望状态
   ③ xdd_difference         ← compare()：跑真实 stage.gate + 逐条分类，预检 diff
   ④ agent 按 diff 干活
-  ⑤ xdd_submit_artifact    ← 提交产物 + 自我攻击，再跑一次 Gate；通过则记录信号
+  ⑤ xdd_submit_artifact    ← 跑硬 Gate并生成 review summary；steer 在主 turn 完成攻击后携 mainTurnReview 重提
   ⑥ xdd_advance            ← 推进下一阶段（组末尾会跑组级 Gate）
      卡住：xdd_diagnose 记根因 -> xdd_rollback 回退 -> 沿链重做
   任意时刻：xdd_trace       ← 追溯链覆盖（design -> RXX -> @implements 健康度）
