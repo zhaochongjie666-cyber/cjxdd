@@ -53,9 +53,19 @@ describe("T10 context pruning", () => {
 	it("removes historical assistant thinking without touching normal content", () => {
 		const out = pruneContextMessages([
 			assistant("answer", { thinking: "hidden", content: [{ type: "thinking", text: "secret" }, { type: "text", text: "visible" }] }),
+			user("next turn"),
 		] as any);
 		expect((out[0] as any).thinking).toBeUndefined();
 		expect((out[0] as any).content).toEqual([{ type: "text", text: "visible" }]);
+		expect((out[1] as any).content).toBe("next turn");
+	});
+
+	it("preserves thinking blocks on the most recent assistant message for MiniMax/Anthropic compatibility", () => {
+		const out = pruneContextMessages([
+			assistant("answer", { thinking: "hidden", content: [{ type: "thinking", text: "secret" }, { type: "text", text: "visible" }] }),
+		] as any);
+		expect((out[0] as any).thinking).toBeUndefined();
+		expect((out[0] as any).content).toEqual([{ type: "thinking", text: "secret" }, { type: "text", text: "visible" }]);
 	});
 
 	it("combines epoch slicing, compaction summary, and pruning", () => {

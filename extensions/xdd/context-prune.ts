@@ -71,11 +71,15 @@ export function pruneContextMessages(
 	options: ContextPruneOptions = {},
 ): AgentMessage[] {
 	const currentTurnStartIndex = options.currentTurnStartIndex ?? findCurrentToolTurnStart(messages);
+	const trailingAssistantIndex = findTrailingAssistantIndex(messages);
 	const threshold = options.bashResultStubThreshold ?? 2_000;
 	const maxTotalTextChars = options.maxTotalTextChars ?? DEFAULT_CONTEXT_TEXT_BUDGET;
 	let changed = false;
 	const next = messages.map((message, index) => {
-		let pruned = stripAssistantThinking(message);
+		// Anthropic-compatible providers require the latest assistant thinking
+		// blocks to be passed back on the subsequent request.
+		const preserveThinking = index === trailingAssistantIndex;
+		let pruned = stripAssistantThinking(message, preserveThinking);
 		if (pruned !== message) changed = true;
 		if (isHistoricalToolResult(pruned, index, currentTurnStartIndex) && toolResultTextLength(pruned) > threshold) {
 			pruned = stubToolResult(pruned);
@@ -116,6 +120,12 @@ export function findCurrentToolTurnStart(messages: readonly AgentMessage[]): num
 		if (message?.role === "assistant" && hasToolCalls(message)) return i;
 	}
 	return messages.length;
+}
+
+/** Return the trailing model response, which may need provider replay. */
+function findTrailingAssistantIndex(messages: readonly AgentMessage[]): number {
+	const index = messages.length - 1;
+	return (messages[index] as any)?.role === "assistant" ? index : -1;
 }
 
 function hasToolCalls(message: any): boolean {
@@ -237,7 +247,7 @@ function toolResultAsPlainTextMessage(raw: any): AgentMessage {
 	};
 }
 
-function stripAssistantThinking(message: AgentMessage): AgentMessage {
+function stripAssistantThinking(message: AgentMessage, preserveThinking = false): AgentMessage {
 	const raw = message as any;
 	if (raw?.role !== "assistant") return message;
 	let changed = false;
@@ -248,6 +258,9 @@ function stripAssistantThinking(message: AgentMessage): AgentMessage {
 			changed = true;
 		}
 	}
+	// Top-level fields are Pi metadata and are always removed. Content blocks
+	// are retained only for the latest assistant response for provider replay.
+	if (preserveThinking) return changed ? copy : message;
 	if (Array.isArray(copy.content)) {
 		const filtered = copy.content.filter((part: any) => !THINKING_CONTENT_TYPES.has(String(part?.type ?? "")));
 		if (filtered.length !== copy.content.length) {
