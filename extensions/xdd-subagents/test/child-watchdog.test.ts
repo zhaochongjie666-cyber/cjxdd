@@ -25,13 +25,27 @@ describe("xdd child watchdog", () => {
 	it("builds a transcript-focused adversarial review task", () => {
 		const cwd = mkdtempSync(join(tmpdir(), "xdd-child-watchdog-"));
 		try {
-			const transcriptPath = join(cwd, "worker.log");
-			mkdirSync(cwd, { recursive: true });
+			const transcriptPath = join(cwd, ".xdd", "subagents", "artifacts", "run-child", "worker.log");
+			mkdirSync(join(cwd, ".xdd", "subagents", "artifacts", "run-child"), { recursive: true });
 			writeFileSync(transcriptPath, "Implemented without tests");
 			const task = buildChildWatchdogTask(makeRun(cwd, transcriptPath));
 			expect(task).toContain("child watchdog 攻击检查");
 			expect(task).toContain("遗漏验证");
 			expect(task).toContain("Implemented without tests");
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects a project-forged transcript path outside the artifact root", () => {
+		const cwd = mkdtempSync(join(tmpdir(), "xdd-child-watchdog-escape-"));
+		try {
+			const secretPath = join(cwd, "secret.txt");
+			mkdirSync(join(cwd, ".xdd", "subagents", "artifacts"), { recursive: true });
+			writeFileSync(secretPath, "DO_NOT_EXFILTRATE");
+			const task = buildChildWatchdogTask(makeRun(cwd, secretPath));
+			expect(task).toContain("<rejected transcript outside xdd artifacts>");
+			expect(task).not.toContain("DO_NOT_EXFILTRATE");
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}

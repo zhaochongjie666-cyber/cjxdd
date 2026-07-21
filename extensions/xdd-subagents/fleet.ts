@@ -1,4 +1,5 @@
 import { XddSubagentRunStore, type XddSubagentRunRecord } from "./runtime-store.ts";
+import { ownedChildPids } from "./process-registry.ts";
 
 export type FleetSummary = {
 	total: number;
@@ -38,11 +39,14 @@ export function stopRun(cwd: string, id: string): XddSubagentRunRecord | undefin
 	const store = new XddSubagentRunStore(cwd);
 	const run = store.find(id);
 	if (!run) return undefined;
-	if (run.pid && ["queued", "running"].includes(run.status)) {
-		try {
-			process.kill(run.pid, "SIGTERM");
-		} catch (error) {
-			run.error = error instanceof Error ? error.message : String(error);
+	const ownedPids = ownedChildPids(run.id);
+	if (ownedPids.length && ["queued", "running"].includes(run.status)) {
+		for (const pid of ownedPids) {
+			try {
+				process.kill(pid, "SIGTERM");
+			} catch (error) {
+				run.error = error instanceof Error ? error.message : String(error);
+			}
 		}
 	}
 	run.status = "stopped";
