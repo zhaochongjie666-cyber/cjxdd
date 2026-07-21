@@ -2,6 +2,9 @@ import type { RuntimeStateV2 } from "../storage/runtime-migrations.ts";
 import type { XddEsgNodeType, XddStageName } from "../types.ts";
 import type { XddAuditEvent } from "./events.ts";
 
+/** Keep runtime.json useful as a checkpoint instead of turning it into an event log. */
+export const MAX_RUNTIME_ESG_NODES = 500;
+
 export function projectAuditEvent(state: RuntimeStateV2, event: XddAuditEvent): RuntimeStateV2 {
 	const next = state;
 	switch (event.type) {
@@ -39,8 +42,28 @@ export function projectAuditEvent(state: RuntimeStateV2, event: XddAuditEvent): 
 
 export function appendEsg(state: RuntimeStateV2, type: XddEsgNodeType, stage: XddStageName, label: string, data?: unknown, parentId?: string): void {
 	if (!state.esg) state.esg = [];
-	const id = `esg-${state.esg.length + 1}`;
+	const id = nextEsgId(state.esg);
 	state.esg.push({ id, type, stage, label, data, parentId, at: new Date().toISOString() });
+	compactRuntimeEsg(state);
+}
+
+/**
+ * Retain only the recent audit working set. Durable evidence belongs in the
+ * submitted artifact files; runtime.json only needs enough history to explain
+ * the current checkpoint. This also compacts runtimes created by older builds.
+ */
+export function compactRuntimeEsg(state: Pick<RuntimeStateV2, "esg">): void {
+	if (state.esg && state.esg.length > MAX_RUNTIME_ESG_NODES) {
+		state.esg.splice(0, state.esg.length - MAX_RUNTIME_ESG_NODES);
+	}
+}
+
+function nextEsgId(nodes: readonly { id: string }[]): string {
+	const largest = nodes.reduce((max, node) => {
+		const match = /^esg-(\d+)$/.exec(node.id);
+		return match ? Math.max(max, Number(match[1])) : max;
+	}, 0);
+	return `esg-${largest + 1}`;
 }
 
 function appendLedger(state: RuntimeStateV2, stage: XddStageName, stageIndex: number, passed: boolean, artifacts?: string[]): void {
