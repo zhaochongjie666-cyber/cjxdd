@@ -40,6 +40,7 @@ const WRITE_TOOLS = ["write", "edit"] as const;
 
 const input = (pattern: string, description: string) => ({ pattern, required: true, description });
 const output = (pattern: string, description: string) => ({ pattern, required: true, description });
+const unrestrictedScopes = (): string[] => ["**"];
 
 const CONTRACT_META: Record<XddStageName, {
 	inputs: ReturnType<typeof input>[];
@@ -50,83 +51,71 @@ const CONTRACT_META: Record<XddStageName, {
 }> = {
 	init: {
 		inputs: [input("**/*.md", "仓库文档（如存在）"), input("**/*.png", "仓库图片参考（如存在）")],
-		// Init must not inspect implementation, but product documents and visual
-		// references may live outside README.md or docs/. Keep their extensions
-		// explicit so this remains a non-code allowlist instead of a broad read.
-		readScopes: [
-			"**/*.md", "**/*.mdx", "**/*.txt", "**/*.rst", "**/*.adoc", "**/*.asciidoc", "**/*.pdf", "**/*.doc", "**/*.docx",
-			"**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.svg", "**/*.avif", "**/*.bmp", "**/*.ico",
-			"package.json", "pyproject.toml", "Cargo.toml", ".xdd/**",
-		],
-		writeScopes: [".xdd/runs/xdd_run/init.md"],
+		readScopes: unrestrictedScopes(),
+		writeScopes: unrestrictedScopes(),
 		gatePolicy: "hard",
 		rollbackTarget: "none",
 	},
 	understand: {
 		inputs: [input("README*", "仓库 README/说明文档"), input("docs/**", "仓库文档"), input(".xdd/**", "既有 XDD 设计与运行状态")],
-		// Understand may use any Markdown document as product context, including
-		// root-level project notes. It must not inspect implementation source.
-		readScopes: ["**/*.md", ".xdd/**", "package.json", "pyproject.toml", "Cargo.toml"],
-		writeScopes: [".xdd/design/**", ".xdd/runs/**"],
+		readScopes: unrestrictedScopes(),
+		writeScopes: unrestrictedScopes(),
 		gatePolicy: "hard",
 		rollbackTarget: "init",
 	},
 	spec: {
 		inputs: [input(".xdd/design/design.md", "收敛设计决策"), input(".xdd/design/intent.md", "意图锚与成功标准")],
-		readScopes: [".xdd/design/**", ".xdd/runs/**"],
-		// Design is refinable: each design stage may refine any design artifact
-		// discovered to need improvement, without gaining access to source code
-		// or run-scoped implementation artifacts.
-		writeScopes: [".xdd/design/**"],
+		readScopes: unrestrictedScopes(),
+		writeScopes: unrestrictedScopes(),
 		gatePolicy: "hard",
 		rollbackTarget: "understand",
 	},
 	architecture: {
 		inputs: [input(".xdd/design/spec/**", "业务规则与验收场景")],
-		readScopes: [".xdd/design/**", "README*", "docs/**", "package.json", "pyproject.toml", "Cargo.toml"],
-		writeScopes: [".xdd/design/**"],
+		readScopes: unrestrictedScopes(),
+		writeScopes: unrestrictedScopes(),
 		gatePolicy: "hard",
 		rollbackTarget: "spec",
 	},
 	wire: {
 		inputs: [input(".xdd/design/spec/**", "页面/交互来源规则"), input(".xdd/design/architecture/**", "架构约束")],
-		readScopes: [".xdd/design/**"],
-		writeScopes: [".xdd/design/**"],
+		readScopes: unrestrictedScopes(),
+		writeScopes: unrestrictedScopes(),
 		gatePolicy: "hard",
 		rollbackTarget: "architecture",
 	},
 	resilience: {
 		inputs: [input(".xdd/design/spec/**", "规则与异常路径"), input(".xdd/design/architecture/**", "架构与失败模式")],
-		readScopes: [".xdd/design/**"],
-		writeScopes: [".xdd/design/**"],
+		readScopes: unrestrictedScopes(),
+		writeScopes: unrestrictedScopes(),
 		gatePolicy: "hard",
 		rollbackTarget: "architecture",
 	},
 	plan: {
 		inputs: [input(".xdd/design/**", "完整设计输入")],
-		readScopes: [".xdd/design/**", "README*", "docs/**", "package.json", "pyproject.toml", "Cargo.toml", "src/**", "lib/**", "app/**", "tests/**"],
-		writeScopes: [".xdd/runs/xdd_run/plan.md", ".xdd/runs/xdd_run/qa-plan.md"],
+		readScopes: unrestrictedScopes(),
+		writeScopes: unrestrictedScopes(),
 		gatePolicy: "hard",
 		rollbackTarget: "resilience",
 	},
 	execute: {
 		inputs: [input(".xdd/runs/xdd_run/plan.md", "当前 run 执行计划"), input(".xdd/runs/xdd_run/qa-plan.md", "实现前冻结的独立 QA 契约"), input(".xdd/design/**", "设计契约")],
-		readScopes: ["**"],
-		writeScopes: ["**"],
+		readScopes: unrestrictedScopes(),
+		writeScopes: unrestrictedScopes(),
 		gatePolicy: "hard",
 		rollbackTarget: "plan",
 	},
 	cleanup: {
 		inputs: [input(".xdd/runs/xdd_run/plan.md", "当前 run 执行计划"), input(".xdd/runs/xdd_run/qa-plan.md", "实现前冻结的独立 QA 契约"), input(".xdd/design/**", "设计契约")],
-		readScopes: ["**"],
-		writeScopes: ["**"],
+		readScopes: unrestrictedScopes(),
+		writeScopes: unrestrictedScopes(),
 		gatePolicy: "explicit-soft",
 		rollbackTarget: "execute",
 	},
 	verify: {
 		inputs: [input(".xdd/runs/xdd_run/plan.md", "当前 run 计划"), input(".xdd/runs/xdd_run/qa-plan.md", "实现前冻结的独立 QA 契约"), input(".xdd/design/spec/**", "业务验收规则"), input(".xdd/design/wire/**", "UI/Wire 证据要求")],
-		readScopes: ["**"],
-		writeScopes: [".xdd/runs/xdd_run/verify-report.md", ".xdd/runs/xdd_run/evidence/**", ".xdd/runs/xdd_run/release-decision.json", ".xdd/runs/xdd_run/quality-score.json", ".xdd/runs/xdd_run/runtime-observability/**", ".xdd/knowledge/**"],
+		readScopes: unrestrictedScopes(),
+		writeScopes: unrestrictedScopes(),
 		gatePolicy: "hard",
 		rollbackTarget: "execute",
 	},

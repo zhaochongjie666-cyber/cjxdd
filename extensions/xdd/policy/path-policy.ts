@@ -14,6 +14,8 @@ export interface PathPolicyResult {
 }
 
 const PROTECTED_WRITE_PREFIXES = [".git", ".pi", ".agents", "node_modules"];
+const SENSITIVE_PATH_SEGMENTS = [".env", ".env.local", ".env.production", "credentials", "credentials.json", "secrets", "secrets.json"];
+const SENSITIVE_FILE_SUFFIXES = [".pem", ".key", ".p12", ".pfx"];
 
 export function normalizeWorkspacePath(cwd: string, inputPath: string): PathPolicyResult {
 	const raw = inputPath.trim() || ".";
@@ -32,6 +34,9 @@ export function checkStagePathAccess(cwd: string, stage: XddStageSpec, inputPath
 	const normalized = normalizeWorkspacePath(cwd, inputPath);
 	if (!normalized.ok || !normalized.relativePath) return normalized;
 	const rel = normalized.relativePath === "." ? "" : normalized.relativePath;
+	if (isSensitivePath(rel)) {
+		return { ...normalized, ok: false, reason: `禁止访问敏感信息路径: ${normalized.relativePath}` };
+	}
 	if (kind === "write" && isProtectedWrite(rel)) {
 		return { ...normalized, ok: false, reason: `禁止写入受保护路径: ${normalized.relativePath}` };
 	}
@@ -56,15 +61,21 @@ function isProtectedWrite(relativePath: string): boolean {
 	return PROTECTED_WRITE_PREFIXES.some((prefix) => relativePath === prefix || relativePath.startsWith(`${prefix}/`));
 }
 
+function isSensitivePath(relativePath: string): boolean {
+	const segments = relativePath.toLowerCase().split("/");
+	return segments.some((segment) => SENSITIVE_PATH_SEGMENTS.includes(segment) || (segment.startsWith(".env.") && !/^(?:\.env\.(?:example|sample|template))$/.test(segment)))
+		|| SENSITIVE_FILE_SUFFIXES.some((suffix) => segments.at(-1)?.endsWith(suffix));
+}
+
 function canonicalizeWithExistingParent(path: string): string {
 	if (existsSync(path)) return realpathSync(path);
 	let parent = dirname(path);
-	const missing: string[] = [];
 	while (!existsSync(parent) && parent !== dirname(parent)) {
-		missing.unshift(parent.split(sep).at(-1) ?? "");
 		parent = dirname(parent);
 	}
 	const parentReal = existsSync(parent) ? realpathSync(parent) : parent;
-	const leaf = path.slice(parent.length).replace(/^[\/]+/, "");
-	return resolve(parentReal, ...missing, leaf);
+	// Resolve the complete suffix only once.  Accumulating each missing parent
+	// and then appending the original suffix duplicated nested paths such as
+	// `.xdd/runs/xdd_run` when the artifact had not been created yet.
+	return resolve(parentReal, relative(parent, path));
 }
