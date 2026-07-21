@@ -31,6 +31,14 @@ function field(block: string, name: string): string | undefined {
 	return block.match(new RegExp(`^- ${name}:\\s*\`?([^\`\\n]+)\`?\\s*$`, "mi"))?.[1]?.trim();
 }
 
+function duplicateFieldProblems(item: QaCase): string[] {
+	const fieldNames = ["Category", "Feature", "Entry", "Expected", "Automation", "Applicability", "Reason"];
+	return fieldNames.flatMap((name) => {
+		const count = [...item.block.matchAll(new RegExp(`^- ${name}:`, "gmi"))].length;
+		return count > 1 ? [`${item.id}.${name}：字段重复出现 ${count} 次；只保留一个权威值`] : [];
+	});
+}
+
 export function parseQaPlan(markdown: string): QaCase[] {
 	return markdown.split(/^###\s+(QA-[A-Z0-9-]+)\s*$/gm).slice(1).reduce<QaCase[]>((cases, value, index, parts) => {
 		if (index % 2 === 0) {
@@ -118,6 +126,8 @@ export function evaluateQaPlanGate(cwd: string): XddGateResult {
 	if (cases.length === 0) return { ok: false, reason: `QA Plan Gate: 没有识别到任何 \`### QA-XXX\` 标题。\n修复方向：把每个测试项标题改为三级标题（例如 \`### QA-001\`），再逐项填写字段。\n${QA_PLAN_FORMAT_HINT}` };
 	const duplicateIds = cases.filter((item, index) => cases.findIndex((candidate) => candidate.id === item.id) !== index).map((item) => item.id);
 	if (duplicateIds.length > 0) return { ok: false, reason: `QA Plan Gate: 测试 ID 重复。\n问题定位：${[...new Set(duplicateIds)].map((id) => `\`${id}\` 出现 ${cases.filter((item) => item.id === id).length} 次`).join("；")}。\n修复方向：为重复项分配唯一 QA-ID，并同步后续 verify-report 引用。` };
+	const duplicateFields = cases.flatMap(duplicateFieldProblems);
+	if (duplicateFields.length > 0) return { ok: false, reason: repairMessage("QA Plan Gate: 测试项字段重复", duplicateFields) };
 	const unknown = cases.filter((item) => !QA_CATEGORIES.includes(item.category as QaCategory));
 	if (unknown.length > 0) return { ok: false, reason: repairMessage("QA Plan Gate: Category 非法或缺失", unknown.map(categoryProblem)) };
 	const missingCategories = QA_CATEGORIES.filter((category) => !cases.some((item) => item.category === category));

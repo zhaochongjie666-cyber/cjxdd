@@ -21,6 +21,9 @@ const FORBIDDEN_BASH: Array<{ pattern: RegExp; reason: string }> = [
 	{ pattern: /\bdd\s+if=\/dev\/(zero|urandom)\s+of=\/dev\//, reason: "dd 到设备会清空磁盘" },
 	{ pattern: /\bmkfs(\.\w+)?\s+\/dev\//, reason: "mkfs 会格式化磁盘" },
 	{ pattern: />>?\s*\/(?!tmp\/)[^\s]+/, reason: "禁止通过 shell 重定向写 cwd 外绝对路径" },
+	{ pattern: /(?:^|[\s'"/])\.env(?:\.(?!(?:example|sample|template)(?:[\s'";|&]|$))[^\s'";|&]*)?(?=[\s'";|&]|$)/i, reason: "禁止通过 shell 访问敏感环境文件" },
+	{ pattern: /(?:^|[\s'"/])(?:credentials|secrets)(?:\.json)?(?=[\s'";|&]|$)/i, reason: "禁止通过 shell 访问凭据或密钥文件" },
+	{ pattern: /\.(?:pem|key|p12|pfx)(?=[\s'";|&]|$)/i, reason: "禁止通过 shell 访问私钥文件" },
 ];
 
 export function applyBashPolicy(input: BashPolicyInput): BashPolicyViolation | null {

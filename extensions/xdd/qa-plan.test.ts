@@ -53,6 +53,15 @@ describe("QA plan gate", () => {
 		expect(result.reason).toContain("QA-001.Automation：值 `sometimes` 非法");
 	});
 
+	it("rejects duplicate fields instead of silently accepting the first value", () => {
+		const broken = validPlan().replace("- Entry: POST /login", "- Entry: generic public API\n- Entry: POST /login");
+		writeFileSync(join(cwd, ".xdd/runs/xdd_run/qa-plan.md"), broken);
+		const result = evaluateQaPlanGate(cwd);
+		expect(result).toMatchObject({ ok: false });
+		expect(result.reason).toContain("QA Plan Gate: 测试项字段重复");
+		expect(result.reason).toContain("QA-001.Entry：字段重复出现 2 次");
+	});
+
 	it("accepts full scenario coverage and explicit six-category applicability decisions", () => {
 		writeFileSync(join(cwd, ".xdd/runs/xdd_run/qa-plan.md"), validPlan());
 		expect(evaluateQaPlanGate(cwd)).toEqual({ ok: true });

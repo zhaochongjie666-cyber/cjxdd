@@ -41,6 +41,9 @@ export function enforceToolCallPolicy(state: XddRunnerState, event: ToolCallEven
 
 function checkToolPaths(cwd: string, stage: XddStageSpec, input: unknown, kind: PathAccessKind, toolName: string): void {
 	const paths = extractPaths(input);
+	if (kind === "write" && paths.length === 0) {
+		throw new Error(`[xdd policy] ${stage.name}/${toolName}: 写工具调用缺少可校验的目标路径`);
+	}
 	for (const path of paths.length > 0 ? paths : ["."]) {
 		const result = checkStagePathAccess(cwd, stage, path, kind);
 		if (!result.ok) {
@@ -51,7 +54,7 @@ function checkToolPaths(cwd: string, stage: XddStageSpec, input: unknown, kind: 
 
 function extractPaths(input: unknown): string[] {
 	const record = ensureRecord(input);
-	const values = [record.path, record.file, record.filePath, record.dir, record.cwd, record.pattern, record.glob, record.paths, record.files].flat();
+	const values = [record.path, record.file, record.filePath, record.file_path, record.dir, record.directory, record.cwd, record.working_directory, record.pattern, record.glob, record.paths, record.files].flat();
 	return values.filter((value): value is string => typeof value === "string" && value.trim().length > 0);
 }
 

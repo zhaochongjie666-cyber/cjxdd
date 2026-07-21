@@ -11,6 +11,7 @@ import { ensureVerifySnapshot, diffVerifySnapshot } from "./verify-snapshot.ts";
 const verify = STAGES.find((stage) => stage.name === "verify")!;
 const spec = STAGES.find((stage) => stage.name === "spec")!;
 const init = STAGES.find((stage) => stage.name === "init")!;
+const plan = STAGES.find((stage) => stage.name === "plan")!;
 
 describe("xdd policy", () => {
 	it("enforces allowedTools for both xdd and Normal Flow controller namespaces", () => {
@@ -52,20 +53,41 @@ describe("xdd policy", () => {
 		}
 	});
 
-	it("enforces verify write scopes", () => {
+	it("removes stage scope restrictions while blocking sensitive information", () => {
 		const cwd = mkdtempSync(join(tmpdir(), "xdd-policy-"));
 		try {
-			expect(checkStagePathAccess(cwd, verify, "src/x.ts", "write").ok).toBe(false);
-			expect(checkStagePathAccess(cwd, verify, ".xdd/runs/xdd_run/evidence/out.txt", "write").ok).toBe(true);
+			for (const stage of STAGES) {
+				expect(stage.readScopes).toEqual(["**"]);
+				expect(stage.writeScopes).toEqual(["**"]);
+				expect(checkStagePathAccess(cwd, stage, "src/x.ts", "read").ok).toBe(true);
+				expect(checkStagePathAccess(cwd, stage, "src/x.ts", "write").ok).toBe(true);
+				expect(checkStagePathAccess(cwd, stage, ".env.production", "read").ok).toBe(false);
+				expect(checkStagePathAccess(cwd, stage, "config/service-account.pem", "write").ok).toBe(false);
+			}
+			expect(checkStagePathAccess(cwd, plan, ".env.example", "read").ok).toBe(true);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
 	});
 
-	it("gives verify a report writer without granting source write access", () => {
+	it("allows plan to read back both artifacts it is responsible for producing", () => {
+		const cwd = mkdtempSync(join(tmpdir(), "xdd-policy-"));
+		try {
+			for (const path of [".xdd/runs/xdd_run/qa-plan.md", ".xdd/runs/xdd_run/plan.md"]) {
+				expect(checkStagePathAccess(cwd, plan, path, "read").ok).toBe(true);
+				const state = { cwd, currentStage: () => plan } as any;
+				expect(() => enforceToolCallPolicy(state, { toolName: "read", input: { path } })).not.toThrow();
+			}
+			expect(checkStagePathAccess(cwd, plan, ".xdd/runs/xdd_run/verify-report.md", "read").ok).toBe(true);
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("gives verify unrestricted scopes and its reporting tools", () => {
 		expect(verify.allowedTools).toEqual(expect.arrayContaining(["write", "edit"]));
 		expect(verify.allowedTools).toEqual(expect.arrayContaining(["xdd_bug_learn", "xdd_quality_score"]));
-		expect(verify.writeScopes).toEqual(expect.arrayContaining([".xdd/knowledge/**", ".xdd/runs/xdd_run/quality-score.json"]));
+		expect(verify.writeScopes).toEqual(["**"]);
 		expect(verify.noCodeModification).toBe(true);
 	});
 
@@ -78,33 +100,33 @@ describe("xdd policy", () => {
 				expect(checkStagePathAccess(cwd, stage, ".xdd/design/intent.md", "write").ok).toBe(true);
 				expect(checkStagePathAccess(cwd, stage, ".xdd/design/architecture/overview.md", "write").ok).toBe(true);
 				expect(checkStagePathAccess(cwd, stage, ".xdd/design/personas/P3-项目主管.md", "read").ok).toBe(true);
-				expect(checkStagePathAccess(cwd, stage, "src/app.ts", "write").ok).toBe(false);
+				expect(checkStagePathAccess(cwd, stage, "src/app.ts", "write").ok).toBe(true);
 			}
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
 	});
 
-	it("allows understand to read Markdown context without allowing source reads", () => {
+	it("allows understand to read both documentation and source", () => {
 		const cwd = mkdtempSync(join(tmpdir(), "xdd-policy-"));
 		const understand = STAGES.find((stage) => stage.name === "understand")!;
 		try {
 			for (const path of ["context.md", "core.md", "MEMORY.md", "docs/guide.md"]) {
 				expect(checkStagePathAccess(cwd, understand, path, "read").ok).toBe(true);
 			}
-			expect(checkStagePathAccess(cwd, understand, "src/app.ts", "read").ok).toBe(false);
+			expect(checkStagePathAccess(cwd, understand, "src/app.ts", "read").ok).toBe(true);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
 	});
 
-	it("allows init to read product documents and image references without source reads", () => {
+	it("allows init to read product documents, images, and source", () => {
 		const cwd = mkdtempSync(join(tmpdir(), "xdd-policy-"));
 		try {
 			for (const path of ["prd.md", "product/brief.pdf", "assets/login-flow.png", "docs/logo.svg"]) {
 				expect(checkStagePathAccess(cwd, init, path, "read").ok).toBe(true);
 			}
-			expect(checkStagePathAccess(cwd, init, "src/app.ts", "read").ok).toBe(false);
+			expect(checkStagePathAccess(cwd, init, "src/app.ts", "read").ok).toBe(true);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
@@ -115,10 +137,10 @@ describe("xdd policy", () => {
 		expect(init.allowedTools).toContain("write");
 	});
 
-	it("blocks spec source reads by contract", () => {
+	it("allows spec source reads by contract", () => {
 		const cwd = mkdtempSync(join(tmpdir(), "xdd-policy-"));
 		try {
-			expect(checkStagePathAccess(cwd, spec, "src/app.ts", "read").ok).toBe(false);
+			expect(checkStagePathAccess(cwd, spec, "src/app.ts", "read").ok).toBe(true);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
@@ -136,6 +158,17 @@ describe("xdd policy", () => {
 		}
 	});
 
+	it("validates snake_case write paths and fails closed when a write target is absent", () => {
+		const cwd = mkdtempSync(join(tmpdir(), "xdd-policy-"));
+		const state = { cwd, currentStage: () => plan } as any;
+		try {
+			expect(() => enforceToolCallPolicy(state, { toolName: "edit", input: { file_path: ".env.local" } })).toThrow("敏感信息");
+			expect(() => enforceToolCallPolicy(state, { toolName: "edit", input: { replacement: "x" } })).toThrow("缺少可校验的目标路径");
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
 	it("adds bash timeout and rejects dangerous commands", () => {
 		const input: { command: string; timeout?: number } = { command: "npm test" };
 		expect(applyBashPolicy(input)).toBeNull();
@@ -143,16 +176,16 @@ describe("xdd policy", () => {
 		expect(applyBashPolicy({ command: "find / -name x" })?.reason).toContain("find /");
 		expect(applyBashPolicy({ command: "rm -rf /*" })?.reason).toContain("rm -rf /");
 		expect(applyBashPolicy({ command: "echo secret >> /etc/profile" })?.reason).toContain("重定向");
+		expect(applyBashPolicy({ command: "cat .env.production" })?.reason).toContain("敏感环境文件");
+		expect(applyBashPolicy({ command: "cp config/service.pem /tmp/service.pem" })?.reason).toContain("私钥文件");
+		expect(applyBashPolicy({ command: "cat .env.example" })).toBeNull();
 	});
 
-	it("does not let bash bypass scoped-stage write policy", () => {
+	it("allows workspace bash writes after scope restrictions are removed", () => {
 		expect(applyStageBashPolicy(verify, { command: "npm test" })).toBeNull();
-		expect(applyStageBashPolicy(verify, { command: "printf x > output" })?.reason).toContain("verify 阶段禁止");
-		expect(applyStageBashPolicy(verify, { command: "printf x > src/x.ts" })?.reason).toContain("verify 阶段禁止");
-		expect(applyStageBashPolicy(verify, { command: "echo x | tee .xdd/design/intent.md" })?.reason).toContain("verify 阶段禁止");
-
-		const state = { cwd: "/tmp/xdd-policy", currentStage: () => verify } as any;
-		expect(() => enforceToolCallPolicy(state, { toolName: "bash", input: { command: "printf x > src/x.ts" } })).toThrow("verify 阶段禁止");
+		expect(applyStageBashPolicy(verify, { command: "printf x > output" })).toBeNull();
+		expect(applyStageBashPolicy(verify, { command: "printf x > src/x.ts" })).toBeNull();
+		expect(applyStageBashPolicy(verify, { command: "echo x | tee .xdd/design/intent.md" })).toBeNull();
 	});
 });
 
