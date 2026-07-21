@@ -100,6 +100,17 @@ export function createXddNextTaskTool(getState: GetXddState): ToolDefinition {
 			}
 			const harnessCommands = new HarnessStore(state.cwd).load().验证命令;
 			const runtime = new RuntimeStore(state.cwd).load() ?? state.toCheckpoint(state.status, state.rollbackCount) as never;
+			const healing = runtime.healingCases?.find((item) => item.id === runtime.activeHealingCaseId && item.status !== "closed" && item.status !== "abandoned");
+			if (healing && healing.targetStage === stage.name) {
+				gaps = [
+					`Healing Case ${healing.id} / ${healing.failure.code}: ${healing.failure.summary}`,
+					...healing.closureCriteria.map((criterion) => `关闭条件: ${criterion}`),
+					`负责范围必须发生内容变化: ${healing.ownerScopes.join(", ")}`,
+					"禁止仅修改 cleanup evidence、无关文档、文件时间戳或 generatedAt 字段",
+					`closure evidence 必须引用 failureId ${healing.id} 并记录 changedPaths、验证命令和证据路径`,
+				];
+				action = `优先修复 ${healing.id}，运行原 failure 的机械检查并提交定向 closure evidence；普通 complete signal 不能关闭该 case`;
+			}
 			const auditStatus = renderAuditView(buildAuditView(runtime));
 			if (stage.name === "verify" && harnessCommands.length > 0 && !diff.gate.ok) {
 				gaps.unshift(`优先运行 Harness 验证命令: ${harnessCommands.join(" && ")}`);

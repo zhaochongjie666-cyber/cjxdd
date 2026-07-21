@@ -5,6 +5,7 @@ import type { XddRunnerState, XddStageName, XddStageSpec } from "./types.ts";
 import { HarnessStore } from "./harness/store.ts";
 import { conciseHarness } from "./harness/schema.ts";
 import { buildPreventionContext } from "./prevention-context.ts";
+import { RuntimeStore } from "./storage/runtime-store.ts";
 
 function readSkillContent(skills: Skill[], skillName: string): string | undefined {
 	const skill = skills.find((s) => s.name === skillName);
@@ -211,7 +212,7 @@ export function buildActiveStageSystemPrompt(state: XddRunnerState): string | un
 	if (state.mode === "reflect") {
 		return buildReflectSystemPrompt({ userInput: state.userInput, cwd: state.cwd });
 	}
-	return buildStageSystemPrompt({
+	const prompt = buildStageSystemPrompt({
 		cwd: state.cwd,
 		stage,
 		userInput: state.userInput,
@@ -219,4 +220,8 @@ export function buildActiveStageSystemPrompt(state: XddRunnerState): string | un
 		planIndex: state.planIndex,
 		planTotal: state.plan.length,
 	});
+	const runtime = new RuntimeStore(state.cwd).load();
+	const healing = runtime?.healingCases?.find((item) => item.id === runtime.activeHealingCaseId && item.targetStage === stage.name);
+	if (!healing) return prompt;
+	return `${prompt}\n\n[Healing 正向修复入口]\n先读取 failure ${healing.id}/${healing.failure.code}：${healing.failure.reason}\n负责范围：${healing.ownerScopes.join(", ")}\n关闭条件：${healing.closureCriteria.join("；")}\n修改实现并运行针对原 failure 的机械检查；证据文件必须引用 ${healing.id}。提交时填写 healing payload。禁止仅 touch、更新时间戳、修改 cleanup evidence 或无关文件。`;
 }

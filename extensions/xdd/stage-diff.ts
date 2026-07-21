@@ -82,6 +82,9 @@ export async function computeStageDifference(
 		item,
 		status: classifyDesiredStateItem(item, { fsSnap }),
 	}));
+	if (fsSnap.activeHealing && fsSnap.activeHealing.targetStage === stage.name) {
+		checks.unshift(...fsSnap.activeHealing.closureCriteria.map((item, index) => ({ index: -(index + 1), item: `Healing ${fsSnap.activeHealing!.id}: ${item}`, status: fsSnap.activeHealing!.status === "ready-for-reverify" ? "met" as const : "unmet" as const })));
+	}
 	const metCount = checks.filter((c) => c.status === "met").length;
 	const unmetCount = checks.filter((c) => c.status === "unmet").length;
 	const selfCheckCount = checks.filter((c) => c.status === "self-check").length;

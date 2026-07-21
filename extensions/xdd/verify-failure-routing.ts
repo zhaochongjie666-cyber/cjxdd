@@ -4,6 +4,9 @@ import type { XddStageName } from "./types.ts";
 export interface VerifyFailureRoute {
 	target: XddStageName;
 	reason: string;
+	ownerScopes: string[];
+	closureCriteria: string[];
+	invalidate: Array<"verify-evidence" | "review" | "release-decision">;
 }
 
 /**
@@ -22,20 +25,34 @@ export function routeVerifyFailure(input: {
 		.filter(Boolean)
 		.join("\n");
 	const files = evidence?.files ?? [];
-	const designTarget = targetFromDesignFiles(files) ?? targetFromText(detail);
+	const codeTarget = targetFromCode(evidence?.code);
+	const designTarget = codeTarget ?? targetFromDesignFiles(files) ?? targetFromText(detail);
 
 	if (designTarget) {
-		return { target: designTarget, reason: `${detail || "verify verdict failed"}\n路由: ${designTarget} 设计契约缺口。` };
+		return route(designTarget, `${detail || "verify verdict failed"}\n路由: ${designTarget}（结构化 failure code/负责范围）。`, evidence);
 	}
 	if (evidence) {
-		return { target: "execute", reason: `${detail}\n路由: execute（可观测验证/实现缺陷）。` };
+		return route("execute", `${detail}\n路由: execute（可观测验证/实现缺陷）。`, evidence);
 	}
 	if (/\b(test|tests?|harness|endpoint|api|code|bug|implementation|实现|测试|端点|接口|编译|构建)\b/i.test(detail)) {
-		return { target: "execute", reason: `${detail}\n路由: execute（实现缺陷）。` };
+		return route("execute", `${detail}\n路由: execute（实现缺陷）。`, evidence);
 	}
 	// Failing closed to execute is safe: it never skips verification and avoids
 	// asking the model to choose a rollback target without evidence.
-	return { target: "execute", reason: `${detail || "verify verdict failed; no diagnosable evidence"}\n路由: execute（无法定位时的安全默认）。` };
+	return route("execute", `${detail || "verify verdict failed; no diagnosable evidence"}\n路由: execute（无法定位时的安全默认）。`, evidence);
+}
+
+function targetFromCode(code?: string): XddStageName | undefined {
+	if (code === "PLAN_UNFINISHED" || code === "FEATURE_SCENARIO_GAP") return "plan";
+	if (code === "TRACE_GAP" || code === "VERIFY_COMMAND_FAILED" || code === "BLIND_JOURNEY_FAILED") return "execute";
+	return undefined;
+}
+
+function route(target: XddStageName, reason: string, failure?: EvidenceGateFailure): VerifyFailureRoute {
+	const ownerScopes = target === "execute" ? ["src/**", "lib/**", "app/**", "test/**", "tests/**"]
+		: target === "plan" ? [".xdd/runs/xdd_run/plan/**", ".xdd/runs/xdd_run/plan.md", ".xdd/runs/xdd_run/qa-plan*"]
+		: [`.xdd/design/${target}/**`];
+	return { target, reason, ownerScopes, closureCriteria: [failure?.remediation ?? `修复 ${target} 负责范围`, `${failure?.code ?? "原 verify failure"} 的机械检查转绿`], invalidate: ["verify-evidence", "review", "release-decision"] };
 }
 
 function targetFromDesignFiles(files: readonly string[]): XddStageName | undefined {

@@ -10,6 +10,12 @@ import { buildTraceCoverage, observeFilesystem } from "../observe-fs.ts";
 import { diffVerifySnapshot, formatVerifySnapshotDiff } from "../policy/verify-snapshot.ts";
 import { detectEvidenceCategories, extractEvidenceReferences, hasUnfinishedPlanCheckbox } from "./report-parser.ts";
 import { evaluateQaEvidenceGate } from "../qa-plan.ts";
+import { createHash } from "node:crypto";
+import { captureSubjectDigests } from "../healing/content-digest.ts";
+import type { VerifyReceipt } from "../types.ts";
+import { RuntimeStore } from "../storage/runtime-store.ts";
+import { verifyReceiptMatches } from "../healing/healing-case.ts";
+import { healingEnforced } from "../healing/mode.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -26,7 +32,9 @@ export type EvidenceGateFailureCode =
 	| "TRACE_GAP"
 	| "FEATURE_SCENARIO_GAP"
 	| "VERIFY_MUTATED_CONTRACT"
-	| "BLIND_JOURNEY_FAILED";
+	| "BLIND_JOURNEY_FAILED"
+	| "EVIDENCE_STALE_AFTER_ROLLBACK"
+	| "EVIDENCE_SUBJECT_MISMATCH";
 
 export interface EvidenceGateFailure {
 	code: EvidenceGateFailureCode;
@@ -70,6 +78,12 @@ export function evaluateVerifyEvidenceGate(cwd: string): VerifyEvidenceGateResul
 export async function evaluateVerifyEvidenceGateFull(cwd: string): Promise<VerifyEvidenceGateResult> {
 	const base = evaluateVerifyEvidenceGate(cwd);
 	if (!base.ok) return base;
+	const runtime = new RuntimeStore(cwd).load();
+	if (healingEnforced() && runtime?.activeHealingCaseId) {
+		if (!runtime.lastVerifyReceipt) return fail("EVIDENCE_STALE_AFTER_ROLLBACK", "verify Gate: rollback 后缺少 Controller VerifyReceipt", [".xdd/runtime.json"], "重新调用 xdd_submit_artifact；Controller 会重跑 Harness 并生成当前 generation 回执。");
+		const freshness = verifyReceiptMatches(cwd, runtime.lastVerifyReceipt, runtime.verifyGeneration, runtime.activeHealingCaseId);
+		if (!freshness.ok) return fail(freshness.code as EvidenceGateFailureCode, `verify Gate: ${freshness.reason}`, [".xdd/runtime.json", ".xdd/harness.yml"], freshness.reason ?? "重新运行 Harness。");
+	}
 	const mutation = evaluateVerifyMutation(cwd);
 	if (!mutation.ok) return mutation;
 	const trace = evaluateTraceCoverage(cwd);
@@ -83,6 +97,25 @@ export async function evaluateVerifyEvidenceGateFull(cwd: string): Promise<Verif
 	const blind = evaluateBlindJourneyFailure(cwd);
 	if (!blind.ok) return blind;
 	return { ok: true };
+}
+
+/** Re-run the exact mechanical predicate that opened a HealingCase. */
+export async function evaluateHealingFailureClosure(cwd: string, code: string): Promise<VerifyEvidenceGateResult> {
+	if (code === "TRACE_GAP") return evaluateTraceCoverage(cwd);
+	if (code === "FEATURE_SCENARIO_GAP") return evaluateFeatureScenarioCoverage(cwd);
+	if (code === "VERIFY_COMMAND_FAILED") return evaluateHarnessValidationCommands(cwd);
+	if (code === "BLIND_JOURNEY_FAILED") return evaluateBlindJourneyFailure(cwd);
+	// VERIFY_MUTATED_CONTRACT is closed by repairing in the owning stage and
+	// capturing a new verify-entry snapshot; evaluating the old snapshot here
+	// would incorrectly reject the intended repair itself.
+	if (code === "VERIFY_MUTATED_CONTRACT") return { ok: true, soft: true };
+	if (code === "PLAN_UNFINISHED") {
+		const runDir = currentRunDir(cwd);
+		if (!runDir) return fail("RUN_DIR_MISSING", "Healing Closure: 当前 run 目录缺失", [".xdd/runs/xdd_run"], "恢复当前 run plan 后重试。");
+		const unfinished = unfinishedPlanFiles(join(cwd, ".xdd", "runs", runDir), cwd);
+		return unfinished.length === 0 ? { ok: true } : fail("PLAN_UNFINISHED", "Healing Closure: plan 仍有未完成 checkbox", unfinished, "完成 plan checkbox 并保留 QA 契约。");
+	}
+	return { ok: true, soft: true };
 }
 
 export function evaluateVerifyMutation(cwd: string): VerifyEvidenceGateResult {
@@ -163,6 +196,26 @@ export async function evaluateHarnessValidationCommands(cwd: string): Promise<Ve
 		return fail("VERIFY_COMMAND_FAILED", `verify Gate: ${failures.length} 条 Harness 验证命令失败`, [".xdd/harness.yml"], `${failures.join("\n")}\n修复失败命令或用 xdd_harness_set 更新验证命令。`);
 	}
 	return { ok: true };
+}
+
+/** Controller-owned execution receipt. Evidence prose is never a substitute for this result. */
+export async function runHarnessWithReceipt(cwd: string, generation: number, healingCaseId?: string): Promise<VerifyReceipt> {
+	const store = new HarnessStore(cwd);
+	const configured = store.load().验证命令;
+	const commands = configured.length > 0 ? configured : discoverValidationCommands(cwd);
+	const receipts: VerifyReceipt["commands"] = [];
+	for (const command of commands) {
+		try {
+			const result = await execFileAsync("bash", ["-lc", command], { cwd, timeout: 180000, maxBuffer: 1024 * 1024, env: { ...process.env, CI: "true" } });
+			const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+			receipts.push({ command, exitCode: 0, outputDigest: `sha256:${createHash("sha256").update(output).digest("hex")}` });
+		} catch (error) {
+			const failed = error as { code?: number; stdout?: string | Buffer; stderr?: string | Buffer };
+			const output = `${failed.stdout ?? ""}\n${failed.stderr ?? ""}`;
+			receipts.push({ command, exitCode: typeof failed.code === "number" ? failed.code : 1, outputDigest: `sha256:${createHash("sha256").update(output).digest("hex")}` });
+		}
+	}
+	return { generation, healingCaseId, capturedAt: new Date().toISOString(), ...captureSubjectDigests(cwd), commands: receipts };
 }
 
 export function evaluateBlindJourneyFailure(cwd: string): VerifyEvidenceGateResult {

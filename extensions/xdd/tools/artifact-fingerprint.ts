@@ -15,8 +15,8 @@
  *
  * Extracted so unit tests can import it without pulling in pi-tui.
  */
-import { statSync } from "node:fs";
-import { join } from "node:path";
+import { closeSync, lstatSync, openSync, readFileSync, readSync, realpathSync } from "node:fs";
+import { extname, join, relative, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { resolveGlobs } from "../glob-resolver.ts";
 
@@ -24,23 +24,57 @@ export function computeArtifactFingerprint(cwd: string, artifactPaths: readonly 
 	// Expand all artifacts (literal + glob) to a sorted list of real files.
 	const expanded = resolveGlobs(cwd, artifactPaths);
 	expanded.sort();
-	const parts: string[] = [];
+	const root = realpathSync(cwd);
+	const aggregate = createHash("sha256");
 	for (const rel of expanded) {
 		try {
-			const st = statSync(join(cwd, rel));
-			const h = createHash("sha1");
-			h.update(`${rel}|${st.mtimeMs}|${st.size}`);
-			parts.push(h.digest("hex").slice(0, 16));
-		} catch {
-			parts.push(`${rel}:missing`);
+			const absolute = join(cwd, rel);
+			const st = lstatSync(absolute);
+			let digest: string;
+			if (st.isSymbolicLink()) {
+				const resolved = realpathSync(absolute);
+				if (relative(root, resolved).startsWith("..")) throw new Error(`symlink escapes project: ${rel}`);
+				digest = createHash("sha256").update(`symlink:${relative(root, resolved)}`).digest("hex");
+			} else {
+				digest = hashFile(absolute);
+			}
+			aggregate.update(rel).update("\0").update(digest).update("\0");
+		} catch (error) {
+			if (error instanceof Error && error.message.startsWith("symlink escapes project")) throw error;
+			aggregate.update(rel).update("\0missing\0");
 		}
 	}
-	if (parts.length === 0) {
+	if (expanded.length === 0) {
 		// Nothing expanded (e.g. all patterns matched zero files). Use
 		// the literal pattern list as a fingerprint of "intent" so the
 		// agent at least sees "your submit is identical to last time"
 		// instead of getting through silently.
 		return `empty:${[...artifactPaths].sort().join("|")}`;
 	}
-	return parts.join("|");
+	return aggregate.digest("hex");
 }
+
+function hashFile(path: string): string {
+	const hash = createHash("sha256");
+	const fd = openSync(path, "r");
+	const buffer = Buffer.allocUnsafe(64 * 1024);
+	try { for (let read = readSync(fd, buffer, 0, buffer.length, null); read > 0; read = readSync(fd, buffer, 0, buffer.length, null)) hash.update(buffer.subarray(0, read)); }
+	finally { closeSync(fd); }
+	return hash.digest("hex");
+}
+
+export function canonicalizeEvidence(path: string): string {
+	let text = readFileSync(path, "utf8").replace(/\r\n/g, "\n").replace(/[ \t]+$/gm, "");
+	if (extname(path).toLowerCase() === ".json") {
+		try { return JSON.stringify(sortJson(JSON.parse(text))); } catch { /* retain malformed text for a stable digest */ }
+	}
+	return text.replace(/\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z/g, "<TIMESTAMP>").replace(/(generatedAt\s*[:=]\s*)[^\s,]+/gi, "$1<TIMESTAMP>").replace(/(final\s*@\s*)[^\s]+/gi, "$1<TIMESTAMP>").trim();
+}
+
+export function computeCanonicalFingerprint(cwd: string, artifactPaths: readonly string[]): string {
+	const hash = createHash("sha256");
+	for (const rel of resolveGlobs(cwd, artifactPaths).sort()) hash.update(rel).update("\0").update(canonicalizeEvidence(resolve(cwd, rel))).update("\0");
+	return hash.digest("hex");
+}
+
+function sortJson(value: unknown): unknown { if (Array.isArray(value)) return value.map(sortJson); if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, sortJson(v)])); return value; }

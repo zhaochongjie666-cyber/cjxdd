@@ -58,8 +58,9 @@ export class RuntimeStore {
 
 	update(mutator: (state: RuntimeStateV2) => XddCheckpointData | RuntimeStateV2 | void, defaults: Partial<XddCheckpointData> = {}): RuntimeStateV2 {
 		const current = this.load(defaults) ?? ({ ...defaults, schemaVersion: RUNTIME_SCHEMA_VERSION } as RuntimeStateV2);
-		const maybeNext = mutator({ ...current });
-		return this.save((maybeNext ?? current) as XddCheckpointData);
+		const draft = structuredClone(current);
+		const maybeNext = mutator(draft);
+		return this.save((maybeNext ?? draft) as XddCheckpointData);
 	}
 }
 

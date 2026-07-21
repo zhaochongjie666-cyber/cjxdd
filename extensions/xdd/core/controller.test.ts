@@ -14,7 +14,7 @@ function started(): RuntimeStateV2 {
 describe("XddController transition", () => {
 	it("START creates a running v2 runtime and kickoff effects", () => {
 		const result = transition({} as RuntimeStateV2, { type: "START", task: "build", options: { cwd: "/tmp/x", runId: "r1" } });
-		expect(result.state.schemaVersion).toBe(3);
+		expect(result.state.schemaVersion).toBe(4);
 		expect(result.state.status).toBe("running");
 		expect(result.state.planIndex).toBe(0);
 		expect(result.effects.map((effect) => effect.type)).toEqual(["SET_ACTIVE_TOOLS", "SEND_FOLLOWUP"]);
@@ -233,6 +233,11 @@ describe("XddController transition", () => {
 		expect(result.state.rollbackOutcome).toMatchObject({ from: "verify", to: "spec" });
 		expect(result.state.stageOutcome).toBe("advanced");
 		expect(result.state.stageEpoch).toContain(":spec:");
+		expect(result.state.activeHealingCaseId).toBe("HC-001");
+		expect(result.state.healingCases).toHaveLength(1);
+		expect(result.state.healingCases[0]).toMatchObject({ targetStage: "spec", status: "open", sourceStage: "verify", recurrenceCount: 1 });
+		expect(result.state.verifyGeneration).toBe(1);
+		expect(result.state.lifetimeRollbackCount).toBe(1);
 	});
 	it("ROLLBACK resets target stage attempt counters and fingerprints", () => {
 		const state = started();

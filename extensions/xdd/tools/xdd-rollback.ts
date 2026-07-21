@@ -5,6 +5,7 @@ import { isStageName } from "../diagnosis.ts";
 import { XddController } from "../core/controller.ts";
 import { RuntimeStore } from "../storage/runtime-store.ts";
 import type { XddStageName } from "../types.ts";
+import { routeVerifyFailure } from "../verify-failure-routing.ts";
 import type { EmptyDetails, GetXddState } from "./index.ts";
 
 const schema = Type.Object({
@@ -51,7 +52,8 @@ export function createXddRollbackTool(getState: GetXddState): ToolDefinition {
 			}
 			const controller = new XddController(new RuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
 			try {
-				const rollback = controller.dispatch({ type: "ROLLBACK", target, reason: String(params.reason ?? "") });
+				const route = routeVerifyFailure({ summary: String(params.reason ?? "") });
+				const rollback = controller.dispatch({ type: "ROLLBACK", target, reason: String(params.reason ?? ""), failure: { code: "MANUAL_VERIFY_ROLLBACK", gateKind: "verdict", summary: String(params.reason ?? ""), reason: String(params.reason ?? ""), files: [], remediation: `按 ${target} 负责范围修复并重跑原验证` }, ownerScopes: target === route.target ? route.ownerScopes : undefined, closureCriteria: target === route.target ? route.closureCriteria : undefined });
 				if (rollback.state.status === "failed") {
 					return {
 						content: [{ type: "text", text: `[xdd_rollback] ${rollback.state.lastStageError ?? "流程预算耗尽，流程退出"}。` }],

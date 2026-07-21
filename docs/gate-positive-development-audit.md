@@ -29,6 +29,11 @@ Gate 是完成后的观察器，不是任务生成器。流程必须先把正向
 | Quality Score Gate | verify 先聚合真实证据并生成 score artifact | 仅排序改进项，不构成无限硬 Gate | 已配对 |
 | Release Decision Gate | verify 完成双契约证据、review 和工作树收敛后生成 decision | 每个 release check 回指负责产物 | 已配对 |
 | Stage Group Gate | 组内各阶段先逐一完成并提交 | 定位失败阶段后回炉，不让组 Gate 生成新任务 | 已配对 |
+| Healing Closure Gate | `xdd_next_task` 先给出 failureId、ownerScopes、closureCriteria、禁止动作和证据字段 | 返回具体越界路径、未变化 digest、缺失 failureId 或仍失败机械检查 | 已配对 |
+| Canonical Change Gate | 提交协议要求负责范围的实质内容变化 | 明示 timestamp/generatedAt/touch 被归一，要求修改负责产物 | 已配对 |
+| Evidence Freshness Gate | verify 提交时 Controller 重跑 Harness 并生成 VerifyReceipt | 返回 stale generation 或 subject mismatch，要求重跑 Harness | 已配对 |
+| Stable Finding Gate | AIGate 首轮冻结稳定 finding ID，重提逐 ID 关闭 | 返回 still-open P0/P1；新 P2 进入 backlog | 已配对 |
+| Budget Reset Gate | 工具 schema 明示 reason、resetFlowRollback、acknowledgeRisk | 明示缺少确认或 active HealingCase，拒绝静默清零历史 | 已配对 |
 
 ## 强制规则
 

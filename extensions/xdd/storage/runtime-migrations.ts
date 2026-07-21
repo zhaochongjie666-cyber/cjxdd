@@ -1,8 +1,8 @@
 import type { XddCheckpointData } from "../types.ts";
 
-export const RUNTIME_SCHEMA_VERSION = 3;
+export const RUNTIME_SCHEMA_VERSION = 4;
 
-export type RuntimeStateV2 = XddCheckpointData & { schemaVersion: 3 };
+export type RuntimeStateV2 = XddCheckpointData & { schemaVersion: 4 };
 
 export interface RuntimeMigrationResult {
 	state: RuntimeStateV2;
@@ -27,6 +27,12 @@ export function migrateRuntimeState(raw: unknown, defaults: Partial<XddCheckpoin
 	// budget. Do not carry legacy fields forward: every controller caller must
 	// observe and consume the same limit.
 	if (typeof state.flowRollbackLimit !== "number") state.flowRollbackLimit = 7;
+	if (!Array.isArray(state.healingCases)) state.healingCases = [];
+	if (!Array.isArray(state.budgetResetHistory)) state.budgetResetHistory = [];
+	if (typeof state.healingSequence !== "number") state.healingSequence = 0;
+	if (typeof state.verifyGeneration !== "number") state.verifyGeneration = 0;
+	if (typeof state.lifetimeRollbackCount !== "number") state.lifetimeRollbackCount = state.flowRollbackCount ?? 0;
+	if (!state.aiGateFindings || typeof state.aiGateFindings !== "object") state.aiGateFindings = {};
 	delete state.flowRollbackLimitTier1;
 	delete state.flowRollbackLimitTier2;
 	if (version === RUNTIME_SCHEMA_VERSION) return { state: state as RuntimeStateV2 };

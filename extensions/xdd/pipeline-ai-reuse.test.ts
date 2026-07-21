@@ -14,7 +14,7 @@ function read(rel: string): string {
 
 function runtimeState(): RuntimeStateV2 {
 	return {
-		schemaVersion: 3,
+		schemaVersion: 4,
 		runId: "run-pipeline-ai-reuse",
 		cwd: "/tmp/project",
 		userInput: "ship the feature",

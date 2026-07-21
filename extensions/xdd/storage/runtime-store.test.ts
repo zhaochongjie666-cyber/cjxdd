@@ -21,6 +21,12 @@ const baseRuntime = (): XddCheckpointData => ({
 	maxRollbacksPerStage: 2,
 	maxSelfHealPerStage: 5,
 	flowRollbackCount: 0,
+	lifetimeRollbackCount: 0,
+	healingSequence: 0,
+	healingCases: [],
+	verifyGeneration: 0,
+	budgetResetHistory: [],
+	aiGateFindings: {},
 	flowRollbackLimit: 7,
 	rollbackCount: 0,
 	status: "running",
@@ -47,11 +53,13 @@ describe("RuntimeStore", () => {
 		expect(store.load()?.runId).toBe("old");
 	});
 
-	it("migrates v1/no-schema runtime to schemaVersion 3 and writes a backup", () => {
+	it("migrates v1/no-schema runtime to schemaVersion 4 and writes a backup", () => {
 		const store = new RuntimeStore(cwd);
 		writeFileSync(store.runtimePath, JSON.stringify({ ...baseRuntime(), runId: "legacy" }, null, 2), "utf8");
 		const loaded = store.load();
-		expect(loaded?.schemaVersion).toBe(3);
+		expect(loaded?.schemaVersion).toBe(4);
+		expect(loaded?.healingCases).toEqual([]);
+		expect(loaded?.lifetimeRollbackCount).toBe(0);
 		expect(loaded?.runId).toBe("legacy");
 		expect(loaded?.qualityPipelineLegacyEligible).toBe(true);
 		expect(existsSync(store.v1BackupPath)).toBe(true);
@@ -64,8 +72,15 @@ describe("RuntimeStore", () => {
 	it("updates through a single RuntimeStore facade", () => {
 		const store = new RuntimeStore(cwd);
 		const updated = store.update((state) => ({ ...state, ...baseRuntime(), runId: "updated", planIndex: 3 }));
-		expect(updated.schemaVersion).toBe(3);
+		expect(updated.schemaVersion).toBe(4);
 		expect(JSON.parse(readFileSync(store.runtimePath, "utf8")).planIndex).toBe(3);
+	});
+
+	it("persists in-place mutations made by update callbacks", () => {
+		const store = new RuntimeStore(cwd);
+		store.save(baseRuntime());
+		store.update((state) => { state.activeHealingCaseId = "HC-001"; });
+		expect(store.load()?.activeHealingCaseId).toBe("HC-001");
 	});
 
 	it("migrates tiered flow rollback fields to one persisted limit", () => {
@@ -73,5 +88,13 @@ describe("RuntimeStore", () => {
 		expect(migrated.state.flowRollbackLimit).toBe(7);
 		expect(migrated.state).not.toHaveProperty("flowRollbackLimitTier1");
 		expect(migrated.state).not.toHaveProperty("flowRollbackLimitTier2");
+	});
+
+	it("migrates v3 without fabricating a healing case and preserves rollback history", () => {
+		const migrated = migrateRuntimeState({ ...baseRuntime(), schemaVersion: 3, flowRollbackCount: 6, healingCases: undefined, lifetimeRollbackCount: undefined });
+		expect(migrated.migratedFrom).toBe(3);
+		expect(migrated.state.healingCases).toEqual([]);
+		expect(migrated.state.activeHealingCaseId).toBeUndefined();
+		expect(migrated.state.lifetimeRollbackCount).toBe(6);
 	});
 });

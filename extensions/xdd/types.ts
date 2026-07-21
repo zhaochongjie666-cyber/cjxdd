@@ -329,6 +329,13 @@ export class XddRunnerState {
 	resetFlowRollbackBudget(): void {
 		this.flowRollbackCount = 0;
 	}
+	hasActiveHealingCase(): boolean { return Boolean(this.loadRt().activeHealingCaseId); }
+	recordBudgetReset(reason: string, previousFlowRollbackCount: number, actor = "tool:xdd_reset_budget"): void {
+		const rt = this.loadRt();
+		if (!rt.budgetResetHistory) rt.budgetResetHistory = [];
+		rt.budgetResetHistory.push({ at: new Date().toISOString(), actor, reason, previousFlowRollbackCount });
+		this.saveRt(rt);
+	}
 	/** Atomically reserve one flow rollback; false means the flow is exhausted. */
 	consumeFlowRollbackBudget(): boolean {
 		const rt = this.loadRt();
@@ -548,15 +555,21 @@ export class XddRunnerState {
 	}
 	checkAndRecordSubmitFingerprint(stage: XddStageName, fingerprint: string): boolean {
 		const rt = this.loadRt();
-		if (!rt.lastSubmitFingerprint) rt.lastSubmitFingerprint = {};
-		const last = rt.lastSubmitFingerprint[stage];
-		rt.lastSubmitFingerprint[stage] = fingerprint;
-		this.saveRt(rt);
+		const last = rt.lastAcceptedSubmissionFingerprint?.[stage] ?? rt.lastFailedSubmissionFingerprint?.[stage] ?? rt.lastSubmitFingerprint?.[stage];
 		return last !== fingerprint;
+	}
+	recordSubmitFingerprint(stage: XddStageName, fingerprint: string, accepted: boolean): void {
+		const rt = this.loadRt();
+		const key = accepted ? "lastAcceptedSubmissionFingerprint" : "lastFailedSubmissionFingerprint";
+		if (!rt[key]) rt[key] = {};
+		rt[key]![stage] = fingerprint;
+		if (accepted && rt.lastFailedSubmissionFingerprint) delete rt.lastFailedSubmissionFingerprint[stage];
+		this.saveRt(rt);
 	}
 	clearSubmitFingerprint(stage: XddStageName): void {
 		const rt = this.loadRt();
 		if (rt.lastSubmitFingerprint) delete rt.lastSubmitFingerprint[stage];
+		if (rt.lastFailedSubmissionFingerprint) delete rt.lastFailedSubmissionFingerprint[stage];
 		this.saveRt(rt);
 	}
 
@@ -792,6 +805,15 @@ export interface XddCheckpointData {
 	rollbackAttempts?: Record<string, number>;
 	maxSelfHealPerStage: number;
 	flowRollbackCount: number;
+	/** Monotonic audit counter. Budget recovery must never clear this value. */
+	lifetimeRollbackCount: number;
+	healingSequence: number;
+	activeHealingCaseId?: string;
+	healingCases: HealingCase[];
+	verifyGeneration: number;
+	lastVerifyReceipt?: VerifyReceipt;
+	budgetResetHistory: BudgetResetAudit[];
+	aiGateFindings: Partial<Record<XddStageName, StableFinding[]>>;
 	/** Flow-level rollback budget. `flowRollbackCount` records the used amount. */
 	flowRollbackLimit: number;
 	rollbackCount: number;
@@ -808,6 +830,8 @@ export interface XddCheckpointData {
 	signals?: XddSignal[];
 	diagnose?: XddDiagnose | null;
 	lastSubmitFingerprint?: Record<string, string>;
+	lastAcceptedSubmissionFingerprint?: Record<string, string>;
+	lastFailedSubmissionFingerprint?: Record<string, string>;
 	consecutiveStalls?: number;
 	lastAgentEndPlanIndex?: number;
 	lastSubmitAt?: number;
@@ -846,6 +870,15 @@ export interface XddCheckpointData {
 	provider429RetryCount?: number;
 }
 
+export type HealingCaseStatus = "open" | "repair-submitted" | "ready-for-reverify" | "closed" | "abandoned";
+export interface HealingFailure { code: string; gateKind: "hard_gate" | "ai_gate" | "verdict"; summary: string; reason: string; files: string[]; remediation: string; signature: string }
+export interface HealingBaseline { capturedAt: string; ownerScopeDigest: string; ownerScopeCanonicalDigest?: string; productionDigest: string; designDigest: string; planDigest: string; verifyEvidenceDigest: string }
+export interface HealingClosureEvidence { submittedAt: string; stage: XddStageName; changedPaths: string[]; ownerScopeDigest: string; commands: string[]; evidencePaths: string[]; summary: string }
+export interface HealingCase { id: string; sequence: number; sourceStage: "verify"; targetStage: XddStageName; openedAt: string; status: HealingCaseStatus; failure: HealingFailure; ownerScopes: string[]; closureCriteria: string[]; baseline: HealingBaseline; closure?: HealingClosureEvidence; recurrenceCount: number; closedAt?: string }
+export interface VerifyReceipt { generation: number; healingCaseId?: string; capturedAt: string; productionDigest: string; designDigest: string; planDigest: string; commands: Array<{ command: string; exitCode: number; outputDigest: string }> }
+export interface BudgetResetAudit { at: string; actor: string; reason: string; previousFlowRollbackCount: number }
+export interface StableFinding { id: string; severity: "P0" | "P1" | "P2"; category: string; evidence: string; status: "open" | "closed" | "backlog"; firstSeenAt: string; lastSeenAt: string; recurrenceCount: number }
+
 /**
  * Phase 2 (B): explicit StageOutcome. Replaces "guessing what happened from
  * self-heal budget" with a single typed value written by the tool that just
@@ -878,7 +911,7 @@ export type XddStageOutcome =
 /** Default runtime data for a fresh run. */
 function defaultRt(runId: string = ""): XddCheckpointData {
 	return {
-		schemaVersion: 3,
+		schemaVersion: 4,
 		qualityPipelineVersion: 1,
 		qualityPipelineLegacyEligible: false,
 		runId: "", userInput: "", cwd: "",
@@ -887,6 +920,8 @@ function defaultRt(runId: string = ""): XddCheckpointData {
 		maxRollbacksPerStage: 7, maxSelfHealPerStage: 5,
 		rollbackAttempts: {},
 		flowRollbackCount: 0, flowRollbackLimit: 7,
+		lifetimeRollbackCount: 0, healingSequence: 0, healingCases: [],
+		verifyGeneration: 0, budgetResetHistory: [], aiGateFindings: {},
 		rollbackCount: 0, status: "running",
 		submittedArtifacts: {}, selfAttackNotes: {}, esg: [],
 		at: new Date().toISOString(),
