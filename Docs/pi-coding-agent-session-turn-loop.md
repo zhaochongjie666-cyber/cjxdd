@@ -40,7 +40,8 @@ Pi 的 **Session** 是一段可持久化、可切换并可压缩的会话树；�
 | `tool_call` | 工具执行前 | 跑 `before_tools` hook，并执行阶段工具/路径策略。 |
 | `tool_result` | 工具执行后 | 跑 hook、记录 bash 遥测、检查 verify 只读契约；统一 AIGate 的可修复失败发送 repair steering。 |
 | `turn_end` | 每一个 LLM response + tools 后 | 跑 `turn_end` project hook；不运行 xdd scheduler。 |
-| `agent_end` | 低层 agent run 结束 | 转换为 `AGENT_ENDED`，由 Controller 决定 follow-up、compact、notify 或 abort。 |
+| `tool_result(xdd_advance)` | 成功推进阶段后 | `auto-compact` 将其作为 stage end，调用一次 Pi compaction；不以 `turn_end` 作为正常压缩点。 |
+| `agent_end` | 低层 agent run 结束 | 转换为 `AGENT_ENDED`，由 Controller 调度 continuation；若长阶段在结束前达到配置的模型窗口上限，`auto-compact` 在这里执行兜底压缩。 |
 | `session_compact` | manual/threshold/overflow compaction 后 | 作为 Pi 已完成压缩的生命周期信号；Controller 仅在未排队时恢复唯一 continuation。主动调用 `ctx.compact` 时必须通过 `onComplete` / `onError` 处理完成，不能把其同步返回值当作完成结果。 |
 | `input` | 输入解析、skill/template 展开前 | 丢弃暂停的 AIGate repair steering / xdd continuation；仅已交付的 follow-up continuation 清除 continuation lock。`input` handler 维持 `async`，以兼容 Pi 的异步 extension runner。 |
 | `session_before_tree` | `/tree` 导航前 | 提供当前 xdd 阶段摘要。 |
@@ -49,9 +50,9 @@ Pi 的 **Session** 是一段可持久化、可切换并可压缩的会话树；�
 
 xdd **不实现自己的对话压缩器**，也不调用外部总结模型来重写历史上下文；压缩能力由 Pi/Pipeline AI 的 session pipeline 拥有：
 
-- 主动压缩：`XddController` 只在 `agent_end` 看到 Pi 暴露的 `ctx.getContextUsage().percent` 达到阈值后发出 `COMPACT` effect；adapter 调用 Pi 的 `ctx.compact({ customInstructions, onComplete, onError })`。
-- 完成信号：无论主动压缩还是 Pi manual/threshold/overflow compaction，xdd 都只消费 `session_compact` / callback 完成信号，再向 Controller 派发 `COMPACTION_DONE`。
-- 压缩内容：xdd 只提供 `customInstructions`，说明必须保留目标、阶段、`stageEpoch`、Gate 失败、已修改文件、未完成任务和 Harness 变化；实际摘要/压缩由 Pi Pipeline AI 完成。
+- 主动压缩：`XddController` 不在 `agent_end` 再调用 `ctx.compact`，避免与 Pi threshold/overflow compaction 或独立 `auto-compact` 扩展竞争并触发 `Already compacted`；Controller 直接排队 continuation，由 Pi 在下一次推理前决定是否压缩。
+- 完成信号：Pi manual/threshold/overflow compaction 完成后，xdd 只消费 `session_compact` 生命周期信号，再向 Controller 派发 `COMPACTION_DONE`；它不会借该信号启动第二次压缩。
+- 压缩内容：实际摘要/压缩由 Pi Pipeline AI 完成；xdd 把必须跨压缩保留的目标、阶段、Gate 失败、已修改文件和未完成任务持久化到 runtime/checkpoint 与阶段产物，而不是再发起一次带 `customInstructions` 的压缩。
 - 长上下文裁剪：`context` hook 中的 `sliceByEpoch` + `pruneContextMessages` 是进入 Pi LLM context 前的安全适配层，只做“按阶段 epoch 截取、去掉历史 thinking、把历史大 bash/text 输出替换成 stub、修复孤儿 tool_result”。它不总结语义，不替代 Pi compaction，也不删除工具配对元数据。
 - 状态来源：xdd 的可修复点在 runtime/checkpoint、Controller command/effect、阶段产物与 Gate 证据中；聊天上下文只承载当前 turn 的执行材料。因此 XDD 失败应回到对应阶段/Gate/Controller 修，而不是在自建压缩摘要里找原因。
 

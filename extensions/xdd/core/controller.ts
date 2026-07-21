@@ -12,9 +12,6 @@ export interface ControllerTransitionResult {
 	effects: XddEffect[];
 }
 
-/** Pi's getContextUsage().percent is expressed on a 0..100 scale. */
-export const COMPACTION_THRESHOLD_PERCENT = 70;
-
 export class ControllerError extends Error {
 	readonly code: string;
 	constructor(code: string, message: string) {
@@ -239,11 +236,11 @@ function agentEndedTransition(
 		return { state: stamp(state), effects };
 	}
 	if (state.continuationQueued) return { state: stamp(state), effects };
-	if (shouldCompactBeforeContinuation(state, command.contextUsagePercent)) {
-		state.lastCompactionAt = Date.now();
-		effects.push({ type: "COMPACT", instructions: buildControllerCompactionInstructions(state, stages) });
-		return { state: stamp(state), effects };
-	}
+	// Pi (and the separately installed auto-compact extension) owns compaction.
+	// Requesting another compaction from agent_end races Pi's threshold/overflow
+	// compaction and can fail with "Already compacted".  Queue the continuation;
+	// Pi will compact, when necessary, before the next inference and report the
+	// lifecycle through session_compact.
 	queueFollowUp(state, effects, state.stageOutcome ?? "idle", currentStageName(state, stages));
 	return { state: stamp(state), effects };
 }
@@ -252,30 +249,6 @@ function isContinuationBoundary(outcome: XddStageOutcome | undefined): boolean {
 	return outcome === "gate_passed" || outcome === "advanced";
 }
 
-
-function shouldCompactBeforeContinuation(state: RuntimeStateV2, contextUsagePercent: number | null | undefined): boolean {
-	if (!Number.isFinite(contextUsagePercent) || contextUsagePercent < COMPACTION_THRESHOLD_PERCENT) return false;
-	const last = state.lastCompactionAt ?? 0;
-	return Date.now() - last >= 30_000;
-}
-
-function buildControllerCompactionInstructions(state: RuntimeStateV2, stages: readonly XddStageSpec[]): string {
-	const stage = currentStageName(state, stages) ?? "?";
-	const lines = [
-		"[xdd compaction instructions]",
-		`目标: ${state.userInput ?? ""}`,
-		`当前阶段: ${stage}`,
-		`stageEpoch: ${state.stageEpoch ?? ""}`,
-		"必须保留: 当前目标、阶段、已修改文件、Gate 失败原因、未完成任务、Harness 变化。",
-		"不要复制整份设计正文；设计已落盘，只保留文件路径和关键决策索引。",
-		"保持 assistant tool_call 与 tool result 配对，不要删除单侧工具消息。",
-	];
-	if (state.lastStageError) lines.push(`Gate 失败原因: ${state.lastStageError}`);
-	if (state.submittedArtifacts?.[stage as XddStageName]?.length) {
-		lines.push(`当前阶段产物: ${state.submittedArtifacts[stage as XddStageName]?.join(", ")}`);
-	}
-	return lines.join("\n");
-}
 
 function submitTransition(state: RuntimeStateV2, passed: boolean, error: string | undefined, gateKind: "hard_gate" | "ai_gate" | undefined, stages: readonly XddStageSpec[], effects: XddEffect[]): ControllerTransitionResult {
 	const stage = currentStageName(state, stages) ?? "init";

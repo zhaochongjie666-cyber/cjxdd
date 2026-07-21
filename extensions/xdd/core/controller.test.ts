@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RuntimeStore } from "../storage/runtime-store.ts";
 import { STAGES } from "../stages.ts";
-import { COMPACTION_THRESHOLD_PERCENT, transition, XddController, schedulerText, ControllerError, provider429RetryDelayMs, isProvider429InsufficientBalance, isProviderProtocolTermination } from "./controller.ts";
+import { transition, XddController, schedulerText, ControllerError, provider429RetryDelayMs, isProvider429InsufficientBalance, isProviderProtocolTermination } from "./controller.ts";
 import type { RuntimeStateV2 } from "../storage/runtime-migrations.ts";
 
 function started(): RuntimeStateV2 {
@@ -157,21 +157,20 @@ describe("XddController transition", () => {
 	});
 
 
-	it("high context usage requests compaction before continuation", () => {
+	it("high context usage leaves compaction to Pi and queues the continuation", () => {
 		const state = started();
 		state.stageOutcome = "gate_passed";
 		const result = transition(state, { type: "AGENT_ENDED", stopReason: "stop", contextUsagePercent: 71 });
-		expect(result.effects[0]).toMatchObject({ type: "COMPACT" });
-		expect(result.effects[0]?.type === "COMPACT" ? result.effects[0].instructions : "").toContain("tool_call 与 tool result 配对");
-		expect(result.state.continuationQueued).toBeFalsy();
-		expect(result.state.lastCompactionAt).toBeGreaterThan(0);
+		expect(result.effects[0]).toMatchObject({ type: "SEND_FOLLOWUP" });
+		expect(result.effects).not.toContainEqual(expect.objectContaining({ type: "COMPACT" }));
+		expect(result.state.continuationQueued).toBe(true);
+		expect(result.state.lastCompactionAt).toBeFalsy();
 	});
 
 	it("does not compact a short session when Pi reports fractional usage", () => {
 		const state = started();
 		state.stageOutcome = "gate_passed";
 		const result = transition(state, { type: "AGENT_ENDED", stopReason: "stop", contextUsagePercent: 0.72 });
-		expect(COMPACTION_THRESHOLD_PERCENT).toBe(70);
 		expect(result.effects[0]).toMatchObject({ type: "SEND_FOLLOWUP" });
 	});
 
