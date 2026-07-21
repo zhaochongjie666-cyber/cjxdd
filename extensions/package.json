@@ -2,6 +2,7 @@
   "type": "module",
   "pi": {
     "extensions": [
+      "./dynamic-tools/index.ts",
       "./read-dir/index.ts",
       "./xdd/index.ts",
       "./normal-flow/index.ts",
