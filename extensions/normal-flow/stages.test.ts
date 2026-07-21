@@ -97,30 +97,26 @@ describe("Normal Flow traceability gates", () => {
 		return cwd;
 	}
 
-	it("rejects spec without an attack or negative-path contract", async () => {
+	it("does not use literal attack words as a substitute for semantic review", async () => {
 		const cwd = fixture();
 		try {
-			writeFileSync(join(cwd, ".xdd", "design", "spec", "b01", "rules.md"), "| ID | Rule |\n| R01 | Only happy path |\n".repeat(8));
-			writeFileSync(join(cwd, ".xdd", "design", "spec", "b01", "flow.feature"), "Feature: traceability @covers-R01\nScenario: success\n");
+			writeFileSync(join(cwd, ".xdd", "design", "spec", "b01", "rules.md"), "| ID | Rule |\n| R01 | A request outside the account scope leaves stored state unchanged |\n".repeat(8));
+			writeFileSync(join(cwd, ".xdd", "design", "spec", "b01", "flow.feature"), "Feature: traceability @covers-R01\nScenario: an outsider attempts the operation\nThen the prior state remains unchanged\n");
 			const spec = NF_STAGES.find((stage) => stage.name === "spec")!;
-			await expect(spec.gate({ cwd, summary: "", desiredState: spec.desiredState })).resolves.toMatchObject({
-				ok: false,
-				reason: expect.stringContaining("攻击"),
-			});
+			expect(spec.desiredState.join("\n")).toContain("异常 Scenario");
+			await expect(spec.gate({ cwd, summary: "", desiredState: spec.desiredState })).resolves.toMatchObject({ ok: true });
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
 	});
 
-	it("rejects plan when attack/TDD/Gate coordination fields are missing", async () => {
+	it("accepts semantically equivalent plan prose without prescribed English labels", async () => {
 		const cwd = fixture();
 		try {
-			writeFileSync(join(cwd, ".xdd", "runs", "normal_run", "plan.md"), "# Plan\n**回指 RXX:** R01\n".repeat(10));
+			writeFileSync(join(cwd, ".xdd", "runs", "normal_run", "plan.md"), "# 计划\nR01 先用越界请求证明原状态不变，再修改 src/app.ts，运行 npm test 期望通过。\n".repeat(8));
 			const plan = NF_STAGES.find((stage) => stage.name === "plan")!;
-			await expect(plan.gate({ cwd, summary: "", desiredState: plan.desiredState })).resolves.toMatchObject({
-				ok: false,
-				reason: expect.stringContaining("Gate"),
-			});
+			expect(plan.desiredState.join("\n")).toContain("攻击用例");
+			await expect(plan.gate({ cwd, summary: "", desiredState: plan.desiredState })).resolves.toMatchObject({ ok: true });
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
