@@ -341,16 +341,14 @@ export function createXddSubmitArtifactTool(getState: GetXddState): ToolDefiniti
 					state.clearSubmitFingerprint(stage.name);
 					const degradedUsed = state.beginAiGateAttempt(stage.name);
 					const degradedBudget = state.stageSelfHealBudget(stage.name, "ai_gate");
-					const aiError = aiResult.issues.join("; ") || "AIGate 服务或响应格式异常";
-					const angleText = formatAIGateResult(aiResult);
+					const aiError = aiResult.issues[0] || "AIGate 服务或响应格式异常";
 					if (degradedBudget.exhausted) {
 						persistAIGateReview({ state, stage, model: llmInfo.model, artifacts, mechanicalReason: mechanicalCheckResult.reason, selfAttack: selfAttack!, result: aiResult, status: "inconclusive", overrideReason: `AIGate 基础设施连续 ${degradedUsed} 次不可用；保留审查记录并按软 Gate 策略放行，后续阶段继续攻击。`, preventionPatternIds: prevention.patternIds });
 						const softPass = stage.exit !== "verdict" || Boolean(params.pass);
 						dispatchToController(state, { type: "RECORD_SIGNAL", signal: stage.exit === "verdict" ? (softPass ? "verdict_pass" : "verdict_fail") : "complete" });
 						dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: softPass } });
-						return ok(`⚠️ [AIGate ${degradedUsed}/${degradedBudget.limit}] ${stage.name} 审查连续不可用（基础设施故障），已记录 inconclusive verdict 与软 Gate override。
+						return ok(`⚠️ [AIGate ${degradedUsed}/${degradedBudget.limit}] ${stage.name} 审查连续不可用（基础设施故障），已按软 Gate 策略放行。
 原因：${aiError}
-${angleText}
 硬 Gate 已通过；不再为审查基础设施无限卡住流程。${formatSubmitTimings({ hardGateMs, aiGateMs, aiGateEnabled })}。请调用 xdd_advance 继续。`);
 					}
 					dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, selfAttack, pass: false, error: aiError } });
@@ -358,10 +356,9 @@ ${angleText}
 						? "审查请求已超时；请稍后重试，或调整 XDD_AIGATE_TIMEOUT_MS（15,000–600,000 毫秒）后重试；无需修改产物。"
 						: "请恢复审查服务或模型配置后重新调用 xdd_submit_artifact；无需修改产物。";
 					return {
-						content: [{ type: "text", text: `⚠️ [AIGate degraded ${degradedUsed}/${degradedBudget.limit}] ${stage.name} 审查服务/响应格式异常（基础设施故障）：
+						content: [{ type: "text", text: `⚠️ [AIGate degraded ${degradedUsed}/${degradedBudget.limit}] ${stage.name} 审查服务不可用（基础设施故障）。
 原因：${aiError}
-${angleText}
-剩余 degraded 预算：${degradedBudget.remaining}/${degradedBudget.limit}（耗尽后记录 override 并软放行）
+剩余 degraded 预算：${degradedBudget.remaining}/${degradedBudget.limit}（耗尽后软放行）
 本 turn 继续。${formatSubmitTimings({ hardGateMs, aiGateMs, aiGateEnabled })}。${retryAdvice}` }],
 						details: {},
 					};
