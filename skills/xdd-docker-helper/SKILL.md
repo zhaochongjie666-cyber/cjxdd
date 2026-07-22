@@ -4,7 +4,7 @@ description: |
   Docker 中国区助手 — 配置中国镜像源 (阿里云/腾讯云/中科大/网易云), 通过镜像代理拉 Docker Hub 镜像,
   基于 Ubuntu 官方镜像构建带中国 apt 源的 Dockerfile, 提供常用基础镜像的快速拉取方案.
   触发: Docker 镜像、拉取镜像、docker pull、镜像源、registry mirror、中国 Docker、dockerfile、构建镜像、apt 源、Ubuntu 镜像、基础镜像、docker mirror、docker 代理、拉不到镜像、镜像加速.
-  也覆盖拉 PostgreSQL/Redis/Nginx/Go/Node/Python/MySQL/MongoDB 等常用镜像.
+  也覆盖私有 Hub、本地镜像复用，以及前后端项目 prodapp.sh/devapp.sh、Nginx API 代理、热更新与依赖缓存配置.
 ---
 
 # Docker Helper — 中国区 Docker 镜像助手
@@ -16,22 +16,25 @@ description: |
 - `xdd-execute` / `xdd-verify` 任何 `docker pull` 失败时
 - 用户提到 "Docker 镜像"、"拉不到镜像"、"中国 Docker"、"docker 代理" 时
 
-本 skill 提供 4 类能力：
+本 skill 提供 5 类能力：
 
 1. **镜像源配置** — 检测当前环境，配置最优的中国区 Docker Registry 镜像源
 2. **镜像代理拉取** — 通过可用的镜像代理拉取 Docker Hub 镜像
 3. **Ubuntu 基础镜像构建** — 生成带中国 apt 源的 Ubuntu Dockerfile
 4. **常用镜像快速拉取** — 一键拉取常用基础镜像（PG、Redis、Nginx、Go 等）
+5. **应用环境脚手架** — 按 `references/app-environment.md` 为前后端项目配置生产构建、开发热更新、Nginx/API 代理和持久依赖缓存
 
 ## 怎么做
 
 ```
 work():
-  1. 环境检测  -> scripts/probe-registry.sh 探 GFW/代理可达性（退出码 0/1/2/3）
-  2. 配镜像源  -> daemon.json 加可用镜像源（见下「镜像源与代理清单」）
-  3. 拉镜像    -> daemon.json 不通则用代理前缀直接拉（docker pull <prefix>/image）
-  4. 构基础镜像 -> 生成带中国 apt 源的 Ubuntu Dockerfile
-  5. 输清单    -> 给出本次配置的镜像源/代理 + 拉取结果
+  1. 环境检测  -> 必须先 docker images，再用 probe-registry.sh 探可达性
+  2. 选镜像    -> 本地缓存 > DOCKER_PRIVATE_REGISTRY 私有 Hub > Docker Hub > 代理
+  3. 配镜像源  -> daemon.json 加可用镜像源（见下「镜像源与代理清单」）
+  4. 拉镜像    -> pull-common-images.sh；私有 Hub 认证失败要给出 docker login 动作
+  5. 配应用环境 -> 前后端项目按 references/app-environment.md 产出 prodapp.sh/devapp.sh 等文件
+  6. 构基础镜像 -> 生成带中国 apt 源的 Ubuntu Dockerfile
+  7. 输清单    -> 给出镜像来源、缓存命中、启动与攻击检查结果
 ```
 
 > 详细分步见文末「工作流程」。下面「镜像源与代理清单」是配置时查的参考表。
@@ -80,6 +83,15 @@ docker info 2>&1 | head -5
 cat /etc/docker/daemon.json 2>/dev/null
 docker images
 ```
+
+`docker images` 不是可选诊断：已有满足版本约束的本地镜像必须直接复用。若配置了私有 Hub，先 `docker login "$DOCKER_PRIVATE_REGISTRY"`，再运行：
+
+```bash
+DOCKER_PRIVATE_REGISTRY=registry.example.com \
+  bash scripts/pull-common-images.sh nginx:alpine node:22-alpine
+```
+
+脚本只处理显式传入的项目镜像；无参数才预热默认清单。拉取优先级固定为本地、私有 Hub、直连、代理。
 
 ### 2. 配置镜像源
 
@@ -132,9 +144,11 @@ docker tag docker.1ms.run/library/redis:7-alpine redis:7-alpine
 
 #### 拉取策略
 
-1. 先尝试直接 `docker pull`（走 daemon.json 镜像源）
-2. 如果失败（超时或 403），自动切换到 `docker.1ms.run/` 代理前缀
-3. 代理前缀也失败时，尝试其他可用代理或建议用户配置 VPN
+1. 本地镜像存在时跳过拉取
+2. 配置 `DOCKER_PRIVATE_REGISTRY` 时优先从私有 Hub 拉取并重打项目使用的 tag
+3. 私有 Hub 未配置或镜像不存在时，尝试直接 `docker pull`（走 daemon.json 镜像源）
+4. 直连失败（超时或 403）时，自动切换到 `docker.1ms.run/` 代理前缀
+5. 所有来源失败时输出逐项证据与精确修复命令；认证失败不能伪装成网络故障
 
 ### 4. 基于 Ubuntu 构建镜像
 
@@ -241,4 +255,7 @@ docker system prune -a -f
 □ 走代理前缀拉的镜像重新打了 tag（去掉前缀，避免后续引用带前缀）？
 □ Ubuntu 基础镜像 Dockerfile 处理了新旧两种 apt 源格式（sources.list / ubuntu.sources）？
 □ 拉取失败的归因有证据链（docker pull 输出 / 网络探测），不是"网络问题"空话？
+□ 前后端项目已按 references/app-environment.md 生成并验证 prodapp.sh/devapp.sh？
+□ dev 依赖使用命名卷 + BuildKit 缓存，第二次启动没有重复复制或安装？
+□ 生产 Nginx 能托管前端并代理后端 API，后端中断与私有 Hub 认证失败均攻击过？
 ```
