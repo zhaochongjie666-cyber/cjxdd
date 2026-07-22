@@ -121,6 +121,7 @@ xdd 有两种执行模型，颗粒度不同但流程对齐：
 
 - **P3 Evidence First**：ESG（Engineering State Graph）记 decision/evidence/review/finding/task/checkpoint。
 - **P5 Recoverability**：`checkpoint.ts` 持久化 `.xdd/checkpoint.json`，`resumeFromCheckpoint` 续跑。
+- **上下文溢出恢复**：Pi 仍负责判断压缩时机与保留最近消息；活跃 xdd run 在 `session_before_compact` 从持久化流程状态生成有界、无需模型请求的 handoff，避免提供商已拒绝超长上下文时压缩请求再次失败。
 - **P6 Runtime Independence**：通过 `XddRuntime` adapter 接入，不直接依赖 pi 内部。
 - **P7 Human Governance**：`humanApprovalHook` 在 gate 失败 / 组回退 / verify 裁决时暂停等人审。
 

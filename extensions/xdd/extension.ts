@@ -22,6 +22,7 @@ import type { XddAuditEvent } from "./audit/events.ts";
 import { HookRunner } from "./hooks/runner.ts";
 import type { HookPayload, HookPoint, HookRunResult } from "./hooks/protocol.ts";
 import { assistantFlowUsage } from "./flow-budget.ts";
+import { buildXddCompaction } from "./xdd-compaction.ts";
 
 /**
  * Module-level shared state. The InlineExtension factory registers tools and
@@ -461,9 +462,22 @@ export const xddInlineExtension: InlineExtension = {
 			}
 		});
 
-		// Conversation context, tool results, and compaction are owned entirely by
-		// Pi. XDD only contributes the current stage system prompt and persisted
-		// workflow state; it never rewrites Pi's message history.
+		// Keep Pi in charge of the cut point and session rewrite, but provide a
+		// local handoff for active xdd runs. If the provider has already rejected
+		// an oversized context, using it again to summarize can fail and leave the
+		// UI at "Auto-compaction cancelled". Persisted xdd state is sufficient to
+		// produce a bounded recovery summary without another provider request.
+		pi.on("session_before_compact", async (event) => {
+			if (!stateRef) return undefined;
+			const stage = stateRef.currentStage();
+			if (!stage) return undefined;
+			return {
+				compaction: buildXddCompaction(
+					event.preparation,
+					buildStageSummary(stateRef.cwd, stateRef, stage),
+				),
+			};
+		});
 
 		// Phase 1 P24: turn_end no longer runs xdd scheduler followUps.
 		// T8 project hooks may request a bounded followUp prompt, but they
