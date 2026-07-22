@@ -390,6 +390,7 @@ export const STAGES: readonly XddStageSpec[] = [
 			"计划的范围、顺序和依赖必须以已批准的 spec/architecture/wire/resilience 与当前仓库事实为依据；不得用无依据的日期、容量或假设制造假精确",
 			"每个任务声明可观察的完成证据；计划整体为适用的正向行为配对失败/拒绝/依赖不可用任务或处理，不适用时写明具体理由",
 			"并行任务不得产生隐式文件写冲突；发现契约、依赖、文件范围或验收标准变化时，必须给出回到 plan 或上游设计阶段的可执行重规划动作",
+			"每个实现 task 都按 RED（先运行公开入口验收测试并预期因缺少行为而失败）→ GREEN（最小生产实现后通过）→ REFACTOR（重构后回归仍通过）编排，并声明精确命令、Expected 与 Evidence 落点",
 		],
 		deliverablePaths: [".xdd/runs/xdd_run/plan.md", ".xdd/runs/xdd_run/qa-plan.md"],
 		aigateStandard: `审查 plan 阶段：
@@ -405,7 +406,8 @@ export const STAGES: readonly XddStageSpec[] = [
 10. 每个 task 是否定义可观察完成证据，不能把“代码已写”当作功能完成
 11. 正向路径与失败/拒绝/依赖不可用路径是否都有实施与验证动作；不适用项是否有具体理由
 12. 计划是否在输入、契约或仓库状态变化时给出可执行的重规划/回炉动作，而不是静默改写或继续执行旧假设
-13. 是否在缺少 effort/capacity/calendar 输入时编造具体日期或关键路径时长`,
+13. 是否在缺少 effort/capacity/calendar 输入时编造具体日期或关键路径时长
+14. 每个实现 task 是否明确编排 RED→GREEN→REFACTOR，包含精确命令、Expected 和 Evidence 落点，而不是只写“补测试”`,
 				gate: async ({ cwd }) => {
 					const plan = await requireGlobsWithMinSize(cwd, [".xdd/runs/xdd_run/plan.md"], 100);
 					if (!plan.ok) return plan;
@@ -420,6 +422,8 @@ export const STAGES: readonly XddStageSpec[] = [
 		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, "bash", ...CONTROLLER_TOOLS, "xdd_commit_review"],
 		desiredState: [
 			"已按 plan 工作项完成实现",
+			"每个 task 都留下真实 RED 失败证据、GREEN 通过证据和 REFACTOR 后回归证据；禁止先写实现后补测试或用伪失败冒充 RED",
+			"正向路径已由公开入口跑通，兜底路径已攻击失败/拒绝/边界/无权限/依赖不可用中的适用项；失败证据已推动 execute 修复或回炉到 plan/spec/architecture/resilience",
 			"生产代码目录按领域能力命名；BXX 只用于 .xdd 设计与追踪，不得成为源码/服务/包目录前缀",
 			"实现与测试遵守冻结 qa-plan.md；不得为了迁就实现而改写 QA Entry/Expected",
 			"已将生产源码路径提交给只读 Code Reviewer，生成 run-scoped code-review.json，覆盖空值/并发/资源/授权注入/错误处理/架构漂移",
@@ -429,15 +433,17 @@ export const STAGES: readonly XddStageSpec[] = [
 		],
 		deliverablePaths: [],
 		aigateStandard: `审查 execute 阶段（最严格）：
-1. 代码是否有 @implements RXX 标注（每条RXX都有对应实现）
-2. @implements RXX 的代码是否真的实现了RXX规则（不是假标注）
-3. 测试是否覆盖了异常路径（不能只测happy path）
-4. 测试断言是否有具体值（不能是 expect(true).toBe(true) 这种 trivial）
-5. 代码是否跟spec的BDD场景对应（When/Then有代码实现）
-6. 有无TODO/占位/FIXME未完成（不通过）
-7. 代码是否跟architecture的模块划分一致
-8. 只读 Code Reviewer 六维检查是否逐项给出判断，findings 是否引用实际代码证据
-9. BXX 是否仅作为设计追踪编号；若出现 backend/services/b01-auth、src/B02-project 等代码目录，必须回炉改为 auth-service、project-service 等领域能力名称`,
+1. 每个 task 是否有真实 RED→GREEN→REFACTOR 命令证据；RED 必须因目标行为尚未实现而失败，禁止先实现后补测
+2. 正向是否从公开入口跑通，兜底是否攻击适用的失败/拒绝/边界/无权限/依赖不可用路径，失败是否产生修复或明确回炉动作
+3. 代码是否有 @implements RXX 标注（每条RXX都有对应实现）
+4. @implements RXX 的代码是否真的实现了RXX规则（不是假标注）
+5. 测试是否覆盖了异常路径（不能只测happy path）
+6. 测试断言是否有具体值（不能是 expect(true).toBe(true) 这种 trivial）
+7. 代码是否跟spec的BDD场景对应（When/Then有代码实现）
+8. 有无TODO/占位/FIXME未完成（不通过）
+9. 代码是否跟architecture的模块划分一致
+10. 只读 Code Reviewer 六维检查是否逐项给出判断，findings 是否引用实际代码证据
+11. BXX 是否仅作为设计追踪编号；若出现 backend/services/b01-auth、src/B02-project 等代码目录，必须回炉改为 auth-service、project-service 等领域能力名称`,
 				gate: async ({ cwd }) => {
 			const pathPolicy = evaluateProductionPathPolicy(cwd);
 			if (!pathPolicy.ok) return pathPolicy;
