@@ -83,20 +83,33 @@ describe("XddController transition", () => {
 		expect(second.effects).toHaveLength(0);
 	});
 
-	it("provider errors do not queue followups and make Pi retry ownership visible", () => {
+	it("pauses a settled provider failure without queueing a competing followup", () => {
 		const result = transition(started(), { type: "AGENT_ENDED", stopReason: "error", providerError: "rate limit" });
 		expect(result.state.stageOutcome).toBe("provider_error");
-		expect(result.effects).toEqual([expect.objectContaining({ type: "NOTIFY", text: expect.stringContaining("等待 Pi 内建重试") })]);
+		expect(result.state.status).toBe("paused");
+		expect(result.state.paused).toBe(true);
+		expect(result.state.continuationQueued).toBe(false);
+		expect(result.effects).toEqual([expect.objectContaining({ type: "NOTIFY", text: expect.stringContaining("Pi 自动恢复已结束") })]);
 	});
 
-	it("does not blindly retry malformed provider streams", () => {
+	it("pauses instead of blindly retrying a settled malformed provider stream", () => {
 		const result = transition(started(), { type: "AGENT_ENDED", stopReason: "error", providerError: "Stream ended without finish_reason" });
 		expect(result.state.stageOutcome).toBe("provider_error");
+		expect(result.state.status).toBe("paused");
+		expect(result.state.paused).toBe(true);
 		expect(result.state.continuationQueued).toBe(false);
 		expect(result.effects).toEqual([
-			expect.objectContaining({ type: "NOTIFY", text: expect.stringContaining("核对模型 api 与代理 SSE 格式") }),
+			expect.objectContaining({ type: "NOTIFY", text: expect.stringContaining("提供商流协议仍未正常结束") }),
 		]);
 		expect(result.effects[0]?.type === "NOTIFY" ? result.effects[0].text : "").toContain("checkpoint 与已有产物已保留");
+	});
+
+	it("restores the pre-error stage boundary after resuming a settled provider failure", () => {
+		const gatePassed = transition(started(), { type: "SUBMIT", submission: { summary: "ready", artifacts: [], selfAttack: "positive and fallback checked", pass: true } }).state;
+		const failed = transition(gatePassed, { type: "AGENT_ENDED", stopReason: "error", providerError: "504 Gateway Time-out" });
+		const resumed = transition(failed.state, { type: "RESUME" });
+		expect(resumed.state.stageOutcome).toBe("gate_passed");
+		expect(resumed.effects[0]?.type === "SEND_FOLLOWUP" ? resumed.effects[0].text : "").toContain("xdd_advance");
 	});
 
 	it("only classifies explicit incomplete-stream protocol errors", () => {
@@ -118,6 +131,9 @@ describe("XddController transition", () => {
 			expect.objectContaining({ type: "SEND_FOLLOWUP", delayMs: 3_000, text: expect.stringContaining("不要退出") }),
 		]);
 		expect(first.effects.map((effect) => "text" in effect ? effect.text : "").join("\n")).not.toContain("推理");
+		const recovered = transition(first.state, { type: "AGENT_ENDED", stopReason: "stop" });
+		expect(recovered.state.stageOutcome).toBe("working");
+		expect(recovered.state.lastStageError).toBeNull();
 
 		const later = transition({ ...first.state, provider429RetryCount: 10 }, { type: "AGENT_ENDED", stopReason: "error", providerError: "429 余额不足" });
 		expect(later.state.provider429RetryCount).toBe(11);
@@ -266,13 +282,13 @@ describe("XddController transition", () => {
 		let state = started();
 		state.maxRollbacksPerStage = 2;
 		state.planIndex = 9; // verify
-		state = transition(state, { type: "ROLLBACK", target: "spec", reason: "first" }).state;
+		state = transition(state, { type: "ROLLBACK", target: "spec", reason: "same unresolved failure" }).state;
 		expect(state.rollbackAttempts?.spec).toBe(1);
 		state.planIndex = 9; // simulate re-entering verify after repair
-		state = transition(state, { type: "ROLLBACK", target: "spec", reason: "second" }).state;
+		state = transition(state, { type: "ROLLBACK", target: "spec", reason: "same unresolved failure" }).state;
 		expect(state.rollbackAttempts?.spec).toBe(2);
 		state.planIndex = 9;
-		expect(() => transition(state, { type: "ROLLBACK", target: "spec", reason: "third" }))
+		expect(() => transition(state, { type: "ROLLBACK", target: "spec", reason: "same unresolved failure" }))
 			.toThrow(/ROLLBACK_LIMIT_REACHED|reached its limit/);
 	});
 
@@ -281,11 +297,31 @@ describe("XddController transition", () => {
 		state.maxRollbacksPerStage = 20;
 		for (let attempt = 1; attempt <= 7; attempt += 1) {
 			state.planIndex = 9; // verify; the controller must own each increment
-			state = transition(state, { type: "ROLLBACK", target: "spec", reason: `retry ${attempt}` }).state;
+			state = transition(state, { type: "ROLLBACK", target: "spec", reason: "same unresolved failure" }).state;
 			expect(state.flowRollbackLimit).toBe(7);
 			expect(state.flowRollbackCount).toBe(attempt);
 			expect(state.status).toBe("running");
 		}
+	});
+
+	it("starts a fresh rollback window for a newly diagnosed verify failure", () => {
+		let state = started();
+		state.planIndex = 9;
+		state.maxRollbacksPerStage = 7;
+		state.flowRollbackCount = 7;
+		state.lifetimeRollbackCount = 7;
+		state.rollbackAttempts = { execute: 7 };
+		state.healingCases = [{
+			id: "HC-007", sequence: 7, sourceStage: "verify", targetStage: "execute", openedAt: new Date().toISOString(), status: "open",
+			failure: { code: "UI_EVIDENCE_MISSING", gateKind: "verdict", summary: "UI evidence missing", reason: "UI evidence missing", files: [], remediation: "capture UI evidence", signature: "old-signature" },
+			ownerScopes: ["src/**"], closureCriteria: ["capture evidence"], baseline: { ownerScopeDigest: "sha256:old", subjectDigests: {} }, recurrenceCount: 1,
+		}];
+		state.activeHealingCaseId = "HC-007";
+		const result = transition(state, { type: "ROLLBACK", target: "execute", reason: "AIGate P1 budget exhausted" });
+		expect(result.state.status).toBe("running");
+		expect(result.state.flowRollbackCount).toBe(1);
+		expect(result.state.rollbackAttempts?.execute).toBe(1);
+		expect(result.state.lifetimeRollbackCount).toBe(8);
 	});
 
 	it("terminates the runtime instead of allowing an eighth flow rollback", () => {

@@ -60,6 +60,10 @@ xdd 默认把一个流程的 Pi 已报告 LLM 费用限制为 **$500 USD**。启
 
 ## 运行流程
 
+### Pi Coding Agent turn/retry 边界
+
+Pi 的低层 `agent_end` 后仍可能自动 retry、overflow compaction 或消费 extension follow-up；只有 `agent_settled` 表示 Pi 不会再自动继续。XDD 因此在 `agent_end(error)` 只暂存 provider error，retry 成功即清除；到 `agent_settled` 仍失败才由 Controller 原子暂停并提示 `/xdd-resume`。正常非错误 `agent_end` 仍负责阶段 continuation。完整时序见 [`Docs/pi-coding-agent-session-turn-loop.md`](../../Docs/pi-coding-agent-session-turn-loop.md)。
+
 ### 单次控制循环（core.md 的 while 落地）
 
 ```
@@ -121,7 +125,8 @@ xdd 有两种执行模型，颗粒度不同但流程对齐：
 
 - **P3 Evidence First**：ESG（Engineering State Graph）记 decision/evidence/review/finding/task/checkpoint。
 - **P5 Recoverability**：`checkpoint.ts` 持久化 `.xdd/checkpoint.json`，`resumeFromCheckpoint` 续跑。
-- **上下文溢出恢复**：Pi 仍负责判断压缩时机与保留最近消息；活跃 xdd run 在 `session_before_compact` 从持久化流程状态生成有界、无需模型请求的 handoff，避免提供商已拒绝超长上下文时压缩请求再次失败。
+- **上下文溢出恢复**：Pi 仍负责判断压缩时机、cut point、保留最近消息和 compact 后 retry；活跃 xdd run 在 `session_before_compact` 从持久化流程状态生成有界、无需模型请求的 handoff，避免提供商已拒绝超长上下文时压缩请求再次失败。
+- **Provider error 最终化**：`agent_end(error)` 是暂态低层失败；XDD 仅在 `agent_settled` 仍失败时进入 `paused + provider_error`。
 - **P6 Runtime Independence**：通过 `XddRuntime` adapter 接入，不直接依赖 pi 内部。
 - **P7 Human Governance**：`humanApprovalHook` 在 gate 失败 / 组回退 / verify 裁决时暂停等人审。
 

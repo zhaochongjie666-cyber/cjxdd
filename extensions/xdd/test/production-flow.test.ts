@@ -80,6 +80,53 @@ describe("production pi adapter lifecycle", () => {
 		expect(harness.sentMessages[0]?.text).toContain("请注意使用node");
 	});
 
+	it("keeps retryable provider errors transient until Pi settles", async () => {
+		await harness.emit("agent_end", { messages: [{ role: "assistant", stopReason: "error", errorMessage: "terminated" }] });
+		expect(harness.state.paused).toBe(false);
+		expect(harness.state.stageOutcome).toBe("idle");
+		expect(harness.notifications).toHaveLength(0);
+		expect(harness.sentMessages).toHaveLength(0);
+	});
+
+	it("pauses once at agent_settled and /xdd-resume restarts provider-error work", async () => {
+		await harness.emit("agent_end", { messages: [{ role: "assistant", stopReason: "error", errorMessage: "504 Gateway Time-out" }] });
+		await harness.emit("agent_settled");
+		expect(harness.state.paused).toBe(true);
+		expect(harness.state.stageOutcome).toBe("provider_error");
+		expect(harness.notifications).toHaveLength(1);
+		await harness.command("xdd-resume", "从中断的计划编辑继续");
+		expect(harness.state.paused).toBe(false);
+		expect(harness.state.stageOutcome).toBe("working");
+		expect(harness.sentMessages[0]?.text).toContain("从中断的计划编辑继续");
+	});
+
+	it("clears a transient provider error when Pi retry succeeds", async () => {
+		await harness.emit("agent_end", { messages: [{ role: "assistant", stopReason: "error", errorMessage: "terminated" }] });
+		await harness.emit("agent_end", { messages: [{ role: "assistant", stopReason: "stop" }] });
+		await harness.emit("agent_settled");
+		expect(harness.state.paused).toBe(false);
+		expect(harness.state.stageOutcome).not.toBe("provider_error");
+		expect(harness.notifications).toHaveLength(0);
+	});
+
+	it("does not overwrite a user stop when a transient provider error settles", async () => {
+		await harness.emit("agent_end", { messages: [{ role: "assistant", stopReason: "error", errorMessage: "terminated" }] });
+		await harness.command("xdd-stop");
+		await harness.emit("agent_settled");
+		expect(harness.state.paused).toBe(true);
+		expect(harness.state.stageOutcome).toBe("paused");
+		expect(harness.notifications).toHaveLength(1);
+	});
+
+	it("drops a stale provider error after the workflow stage epoch changes", async () => {
+		await harness.emit("agent_end", { messages: [{ role: "assistant", stopReason: "error", errorMessage: "terminated" }] });
+		harness.controller.startAdvancedAt("understand");
+		await harness.emit("agent_settled");
+		expect(harness.state.currentStageName()).toBe("understand");
+		expect(harness.state.paused).toBe(false);
+		expect(harness.notifications).toHaveLength(0);
+	});
+
 
 	it("normal agent_end queues exactly one continuation", async () => {
 		harness.controller.submitGatePassed();

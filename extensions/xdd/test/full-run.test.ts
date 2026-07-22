@@ -80,15 +80,18 @@ describe("T13 full run regression", () => {
 		}
 	});
 
-	it("classifies provider errors without consuming gate attempts or sending xdd followups", () => {
+	it("pauses settled provider errors without consuming gate attempts or sending xdd followups", () => {
 		const cwd = tmpCwd("xdd-full-provider-");
 		try {
 			const { headless } = startLikeProduction(cwd);
 			const before = headless.load()?.selfHealUsed?.init ?? 0;
 			const result = headless.dispatch({ type: "AGENT_ENDED", stopReason: "error", providerError: "rate limit" });
 			expect(result.state.stageOutcome).toBe("provider_error");
+			expect(result.state.status).toBe("paused");
+			expect(result.state.paused).toBe(true);
 			expect(result.state.lastStageError).toBe("rate limit");
-			expect(result.effects).toHaveLength(0);
+			expect(result.effects.filter((effect) => effect.type === "SEND_FOLLOWUP")).toHaveLength(0);
+			expect(result.effects.filter((effect) => effect.type === "NOTIFY")).toHaveLength(1);
 			expect(result.state.selfHealUsed?.init ?? 0).toBe(before);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });

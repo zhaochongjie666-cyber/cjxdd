@@ -813,7 +813,7 @@ export interface XddCheckpointData {
 	lastVerifyReceipt?: VerifyReceipt;
 	budgetResetHistory: BudgetResetAudit[];
 	aiGateFindings: Partial<Record<XddStageName, StableFinding[]>>;
-	/** Flow-level rollback budget. `flowRollbackCount` records the used amount. */
+	/** Current unresolved-failure rollback budget; a new failure signature starts a fresh window. */
 	flowRollbackLimit: number;
 	rollbackCount: number;
 	status: XddStatus;
@@ -850,6 +850,8 @@ export interface XddCheckpointData {
 	continuationQueued?: boolean;
 	// Phase 2 (B): explicit stage outcome
 	stageOutcome?: XddStageOutcome;
+	/** Stage boundary to restore after a settled provider-error pause or 429 retry. */
+	providerErrorResumeOutcome?: XddStageOutcome;
 	lastStageError?: string;
 	continuationReason?: string;
 	continuationStage?: XddStageName;

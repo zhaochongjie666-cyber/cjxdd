@@ -169,9 +169,19 @@ function resumeTransition(state: RuntimeStateV2, effects: XddEffect[]): Controll
 	state.paused = false;
 	state.stopRequested = false;
 	state.pauseNotified = false;
+	const resumeOutcome = state.providerErrorResumeOutcome ?? "working";
+	state.stageOutcome = resumeOutcome;
+	delete state.providerErrorResumeOutcome;
+	state.lastStageError = null;
+	state.continuationReason = null;
+	state.continuationStage = null;
 	state.continuationEpoch = (state.continuationEpoch ?? 0) + 1;
 	state.continuationQueued = true;
-	effects.push({ type: "SEND_FOLLOWUP", text: `[xdd 自动推进] 恢复 ${currentStageName(state, STAGES) ?? "当前"} 阶段。请调 xdd_next_task 继续。`, epoch: state.continuationEpoch });
+	const resumeInstruction = resumeOutcome === "working"
+		? `[xdd 自动推进] 恢复 ${currentStageName(state, STAGES) ?? "当前"} 阶段。请调 xdd_next_task 继续。`
+		: schedulerText(resumeOutcome, currentStageName(state, STAGES))
+			?? `[xdd 自动推进] 恢复 ${currentStageName(state, STAGES) ?? "当前"} 阶段。请调 xdd_next_task 继续。`;
+	effects.push({ type: "SEND_FOLLOWUP", text: resumeInstruction, epoch: state.continuationEpoch });
 	return { state: stamp(state), effects };
 }
 
@@ -182,18 +192,16 @@ function agentEndedTransition(
 	effects: XddEffect[],
 ): ControllerTransitionResult {
 	if (command.stopReason === "error") {
+		if (state.stageOutcome !== "provider_error") state.providerErrorResumeOutcome = providerErrorResumeOutcome(state.stageOutcome);
 		state.stageOutcome = "provider_error";
 		state.lastStageError = command.providerError ?? "LLM provider error";
 		projectAuditEvent(state, { type: "provider_error", stage: currentStageName(state, stages) ?? "?", message: state.lastStageError });
 		if (isProviderProtocolTermination(state.lastStageError)) {
-			// A malformed/incomplete SSE stream is a provider compatibility problem,
-			// not evidence that another identical model turn will succeed. Do not
-			// create an unbounded retry loop: preserve the checkpoint and tell the
-			// user to repair the provider protocol/model limit before resuming.
+			pauseAfterSettledProviderError(state);
 			effects.push({
 				type: "NOTIFY",
 				level: "warning",
-				text: `[xdd] 提供商流协议未正常结束：${state.lastStageError}。请核对模型 api 与代理 SSE 格式，并适当降低模型 maxTokens；修复后使用 /xdd-resume，checkpoint 与已有产物已保留。`,
+				text: `[xdd] Pi 自动恢复已结束；提供商流协议仍未正常结束：${state.lastStageError}。流程已暂停。请核对模型 api、代理 SSE 格式和 maxTokens；修复后使用 /xdd-resume，checkpoint 与已有产物已保留。`,
 			});
 			return { state: stamp(state), effects };
 		}
@@ -219,13 +227,16 @@ function agentEndedTransition(
 			return { state: stamp(state), effects };
 		}
 		state.provider429RetryCount = 0;
-		// Pi owns other provider retries. XDD deliberately does not enqueue another
-		// model turn here: that could race Pi's retry/backoff policy. Make the
-		// wait visible to the user so an exhausted Pi retry can be resumed.
-		effects.push({ type: "NOTIFY", level: "warning", text: `[xdd] 模型提供商错误：${state.lastStageError}。等待 Pi 内建重试；若 Pi 未继续，请使用 /xdd-resume。` });
+		pauseAfterSettledProviderError(state);
+		effects.push({ type: "NOTIFY", level: "warning", text: `[xdd] Pi 自动恢复已结束，模型提供商仍失败：${state.lastStageError}。流程已暂停；请修复提供商连接后使用 /xdd-resume。` });
 		return { state: stamp(state), effects };
 	}
 	state.provider429RetryCount = 0;
+	if (!state.paused && state.stageOutcome === "provider_error" && state.providerErrorResumeOutcome) {
+		state.stageOutcome = state.providerErrorResumeOutcome;
+		delete state.providerErrorResumeOutcome;
+		state.lastStageError = null;
+	}
 	if (command.stopReason === "aborted") return stopTransition(state, effects);
 	if (command.hasPendingMessages) return { state: stamp(state), effects };
 	// A terminating tool result makes Pi report `toolUse` as the stop reason.
@@ -247,6 +258,22 @@ function agentEndedTransition(
 
 function isContinuationBoundary(outcome: XddStageOutcome | undefined): boolean {
 	return outcome === "gate_passed" || outcome === "advanced";
+}
+
+function providerErrorResumeOutcome(outcome: XddStageOutcome | undefined): XddStageOutcome {
+	return outcome === undefined || outcome === "idle" || outcome === "paused" || outcome === "provider_error"
+		? "working"
+		: outcome;
+}
+
+function pauseAfterSettledProviderError(state: RuntimeStateV2): void {
+	state.status = "paused" as never;
+	state.paused = true;
+	state.stopRequested = false;
+	state.pauseNotified = true;
+	state.continuationQueued = false;
+	state.continuationReason = null;
+	state.continuationStage = null;
 }
 
 
@@ -328,6 +355,16 @@ function rollbackTransition(state: RuntimeStateV2, command: Extract<XddCommand, 
 	const targetName = target ?? defaultRollbackTarget(state, stages);
 	const idx = state.plan.findIndex((entry) => entry.stageName === targetName);
 	if (idx < 0 || idx >= state.planIndex) throw new ControllerError("INVALID_ROLLBACK", `rollback target ${targetName} must be earlier than current stage`);
+	const files = command.failure?.files ?? [];
+	const signature = healingSignature({ code: command.failure?.code ?? "VERIFY_FAILURE", reason, files }, targetName);
+	const activeHealing = state.healingCases?.find((item) => item.id === state.activeHealingCaseId);
+	// Recovery limits bound repeated attempts for one unresolved defect, not the
+	// entire run. A newly diagnosed failure starts a fresh recovery window while
+	// lifetimeRollbackCount continues to provide a monotonic audit trail.
+	if (activeHealing && activeHealing.failure.signature !== signature) {
+		state.flowRollbackCount = 0;
+		if (state.rollbackAttempts) state.rollbackAttempts[targetName] = 0;
+	}
 	const flowRollbackCount = state.flowRollbackCount ?? 0;
 	const flowRollbackLimit = state.flowRollbackLimit ?? 7;
 	if (flowRollbackCount >= flowRollbackLimit) {
@@ -361,8 +398,6 @@ function rollbackTransition(state: RuntimeStateV2, command: Extract<XddCommand, 
 	state.verifyGeneration = (state.verifyGeneration ?? 0) + 1;
 	state.healingSequence = (state.healingSequence ?? 0) + 1;
 	if (!state.healingCases) state.healingCases = [];
-	const files = command.failure?.files ?? [];
-	const signature = healingSignature({ code: command.failure?.code ?? "VERIFY_FAILURE", reason, files }, targetName);
 	const recurring = [...state.healingCases].reverse().find((item) => item.failure.signature === signature);
 	const priorActive = state.healingCases.find((item) => item.id === state.activeHealingCaseId);
 	if (priorActive) priorActive.status = "abandoned";
