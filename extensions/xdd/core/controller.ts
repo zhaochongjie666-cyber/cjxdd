@@ -328,6 +328,16 @@ function rollbackTransition(state: RuntimeStateV2, command: Extract<XddCommand, 
 	const targetName = target ?? defaultRollbackTarget(state, stages);
 	const idx = state.plan.findIndex((entry) => entry.stageName === targetName);
 	if (idx < 0 || idx >= state.planIndex) throw new ControllerError("INVALID_ROLLBACK", `rollback target ${targetName} must be earlier than current stage`);
+	const files = command.failure?.files ?? [];
+	const signature = healingSignature({ code: command.failure?.code ?? "VERIFY_FAILURE", reason, files }, targetName);
+	const activeHealing = state.healingCases?.find((item) => item.id === state.activeHealingCaseId);
+	// Recovery limits bound repeated attempts for one unresolved defect, not the
+	// entire run. A newly diagnosed failure starts a fresh recovery window while
+	// lifetimeRollbackCount continues to provide a monotonic audit trail.
+	if (activeHealing && activeHealing.failure.signature !== signature) {
+		state.flowRollbackCount = 0;
+		if (state.rollbackAttempts) state.rollbackAttempts[targetName] = 0;
+	}
 	const flowRollbackCount = state.flowRollbackCount ?? 0;
 	const flowRollbackLimit = state.flowRollbackLimit ?? 7;
 	if (flowRollbackCount >= flowRollbackLimit) {
@@ -361,8 +371,6 @@ function rollbackTransition(state: RuntimeStateV2, command: Extract<XddCommand, 
 	state.verifyGeneration = (state.verifyGeneration ?? 0) + 1;
 	state.healingSequence = (state.healingSequence ?? 0) + 1;
 	if (!state.healingCases) state.healingCases = [];
-	const files = command.failure?.files ?? [];
-	const signature = healingSignature({ code: command.failure?.code ?? "VERIFY_FAILURE", reason, files }, targetName);
 	const recurring = [...state.healingCases].reverse().find((item) => item.failure.signature === signature);
 	const priorActive = state.healingCases.find((item) => item.id === state.activeHealingCaseId);
 	if (priorActive) priorActive.status = "abandoned";

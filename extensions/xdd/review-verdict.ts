@@ -66,13 +66,16 @@ export interface ReviewPolicyResult {
  * cannot make the verdict (or code-review report) digest its own output.
  */
 export function selectReviewArtifactPaths(cwd: string, patterns: readonly string[]): string[] {
-	return resolveGlobs(cwd, patterns).filter((path) => {
+	return filterReviewInputs(resolveGlobs(cwd, patterns));
+}
+
+function filterReviewInputs(paths: readonly string[]): string[] {
+	return paths.filter((path) => {
 		const normalized = path.replace(/\\/g, "/");
 		return normalized !== ".xdd/runtime.json"
-			&& normalized !== ".xdd/runs/xdd_run/runtime.json"
-			&& normalized !== ".xdd/runs/xdd_run/code-review.json"
-			&& normalized !== ".xdd/runs/xdd_run/commit-review.json"
-			&& !/^\.xdd\/runs\/xdd_run\/reviews\/[^/]+\.json$/.test(normalized);
+			&& !/^\.xdd\/runs\/[^/]+\/runtime\.json$/.test(normalized)
+			&& !/^\.xdd\/runs\/[^/]+\/(?:code|commit)-review\.json$/.test(normalized)
+			&& !/^\.xdd\/runs\/[^/]+\/reviews\/[^/]+\.json$/.test(normalized);
 	});
 }
 
@@ -91,7 +94,10 @@ export function digestReviewArtifacts(artifacts: Readonly<Record<string, string 
 
 export function digestReviewArtifactFiles(cwd: string, patterns: readonly string[]): string {
 	const artifacts: Record<string, Uint8Array> = {};
-	for (const relativePath of resolveGlobs(cwd, patterns)) {
+	// Filter here as well as at selection time.  Stored verdicts and callers from
+	// older versions may contain broad globs or explicit controller output paths.
+	// A review must never invalidate itself merely by persisting its verdict.
+	for (const relativePath of filterReviewInputs(resolveGlobs(cwd, patterns))) {
 		const absolutePath = safeRealpath(cwd, relativePath);
 		if (absolutePath) artifacts[relativePath] = readFileSync(absolutePath);
 	}

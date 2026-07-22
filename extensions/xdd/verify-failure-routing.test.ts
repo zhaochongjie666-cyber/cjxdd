@@ -30,10 +30,10 @@ describe("verify failure routing", () => {
 		let state = transition({} as RuntimeStateV2, { type: "START", task: "t", options: { cwd: "/tmp/x", runId: "route-budget", initialStage: "verify" } }).state;
 		state.maxRollbacksPerStage = 99;
 		for (let attempt = 1; attempt <= MAX_FLOW_ROLLBACKS; attempt++) {
-			state = transition(state, { type: "ROLLBACK", target: "execute", reason: `failure ${attempt}` }).state;
+			state = transition(state, { type: "ROLLBACK", target: "execute", reason: "same unresolved failure" }).state;
 			state.planIndex = 9; // simulate completing execute..verify before the next failed verdict
 		}
-		const exhausted = transition(state, { type: "ROLLBACK", target: "execute", reason: "failure 8" });
+		const exhausted = transition(state, { type: "ROLLBACK", target: "execute", reason: "same unresolved failure" });
 		expect(exhausted.state.flowRollbackCount).toBe(MAX_FLOW_ROLLBACKS);
 		expect(exhausted.state.status).toBe("failed");
 		expect(exhausted.state.stageOutcome).toBe("failed");
