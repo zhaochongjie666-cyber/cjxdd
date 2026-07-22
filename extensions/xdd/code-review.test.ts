@@ -72,4 +72,14 @@ describe("read-only code review gate", () => {
 		})).toEqual({ ok: true, reasons: [] });
 		expect(evaluateCodeReviewGate(cwd)).toEqual({ ok: true });
 	});
+
+	it("keeps a digest stable when legacy broad globs include controller outputs", () => {
+		mkdirSync(join(cwd, ".xdd/runs/custom-run/reviews"), { recursive: true });
+		const patterns = ["src/app.ts", ".xdd/**/*.json"];
+		const before = digestReviewArtifactFiles(cwd, patterns);
+		writeFileSync(join(cwd, ".xdd/runtime.json"), '{"attempt":27}\n');
+		writeFileSync(join(cwd, ".xdd/runs/custom-run/runtime.json"), '{"attempt":30}\n');
+		writeFileSync(join(cwd, ".xdd/runs/custom-run/reviews/execute.json"), '{"verdict":"pass"}\n');
+		expect(digestReviewArtifactFiles(cwd, patterns)).toBe(before);
+	});
 });

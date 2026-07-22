@@ -266,13 +266,13 @@ describe("XddController transition", () => {
 		let state = started();
 		state.maxRollbacksPerStage = 2;
 		state.planIndex = 9; // verify
-		state = transition(state, { type: "ROLLBACK", target: "spec", reason: "first" }).state;
+		state = transition(state, { type: "ROLLBACK", target: "spec", reason: "same unresolved failure" }).state;
 		expect(state.rollbackAttempts?.spec).toBe(1);
 		state.planIndex = 9; // simulate re-entering verify after repair
-		state = transition(state, { type: "ROLLBACK", target: "spec", reason: "second" }).state;
+		state = transition(state, { type: "ROLLBACK", target: "spec", reason: "same unresolved failure" }).state;
 		expect(state.rollbackAttempts?.spec).toBe(2);
 		state.planIndex = 9;
-		expect(() => transition(state, { type: "ROLLBACK", target: "spec", reason: "third" }))
+		expect(() => transition(state, { type: "ROLLBACK", target: "spec", reason: "same unresolved failure" }))
 			.toThrow(/ROLLBACK_LIMIT_REACHED|reached its limit/);
 	});
 
@@ -281,11 +281,31 @@ describe("XddController transition", () => {
 		state.maxRollbacksPerStage = 20;
 		for (let attempt = 1; attempt <= 7; attempt += 1) {
 			state.planIndex = 9; // verify; the controller must own each increment
-			state = transition(state, { type: "ROLLBACK", target: "spec", reason: `retry ${attempt}` }).state;
+			state = transition(state, { type: "ROLLBACK", target: "spec", reason: "same unresolved failure" }).state;
 			expect(state.flowRollbackLimit).toBe(7);
 			expect(state.flowRollbackCount).toBe(attempt);
 			expect(state.status).toBe("running");
 		}
+	});
+
+	it("starts a fresh rollback window for a newly diagnosed verify failure", () => {
+		let state = started();
+		state.planIndex = 9;
+		state.maxRollbacksPerStage = 7;
+		state.flowRollbackCount = 7;
+		state.lifetimeRollbackCount = 7;
+		state.rollbackAttempts = { execute: 7 };
+		state.healingCases = [{
+			id: "HC-007", sequence: 7, sourceStage: "verify", targetStage: "execute", openedAt: new Date().toISOString(), status: "open",
+			failure: { code: "UI_EVIDENCE_MISSING", gateKind: "verdict", summary: "UI evidence missing", reason: "UI evidence missing", files: [], remediation: "capture UI evidence", signature: "old-signature" },
+			ownerScopes: ["src/**"], closureCriteria: ["capture evidence"], baseline: { ownerScopeDigest: "sha256:old", subjectDigests: {} }, recurrenceCount: 1,
+		}];
+		state.activeHealingCaseId = "HC-007";
+		const result = transition(state, { type: "ROLLBACK", target: "execute", reason: "AIGate P1 budget exhausted" });
+		expect(result.state.status).toBe("running");
+		expect(result.state.flowRollbackCount).toBe(1);
+		expect(result.state.rollbackAttempts?.execute).toBe(1);
+		expect(result.state.lifetimeRollbackCount).toBe(8);
 	});
 
 	it("terminates the runtime instead of allowing an eighth flow rollback", () => {

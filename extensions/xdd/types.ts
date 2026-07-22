@@ -813,7 +813,7 @@ export interface XddCheckpointData {
 	lastVerifyReceipt?: VerifyReceipt;
 	budgetResetHistory: BudgetResetAudit[];
 	aiGateFindings: Partial<Record<XddStageName, StableFinding[]>>;
-	/** Flow-level rollback budget. `flowRollbackCount` records the used amount. */
+	/** Current unresolved-failure rollback budget; a new failure signature starts a fresh window. */
 	flowRollbackLimit: number;
 	rollbackCount: number;
 	status: XddStatus;
