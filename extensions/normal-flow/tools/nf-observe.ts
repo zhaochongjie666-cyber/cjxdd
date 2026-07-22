@@ -32,7 +32,7 @@ export function createNfObserveTool(getState: GetNfState): ToolDefinition {
 			const harnessCommands = new HarnessStore(state.cwd).load().验证命令;
 			const lines = [
 				`run: ${state.runId}`,
-				`阶段: ${stage.name}（第 ${state.planIndex + 1}/${state.plan.length} 个，Normal Flow 5 阶段）`,
+				`阶段: ${stage.name}（第 ${state.planIndex + 1}/${state.plan.length} 个，Normal Flow 3 阶段）`,
 				`信号: ${signals}`,
 				`产物闸门(任一): ${stage.deliverablePaths.length > 0 ? stage.deliverablePaths.join(", ") : "(软通过)"}`,
 				`已提交产物: ${artifacts}`,
@@ -40,7 +40,7 @@ export function createNfObserveTool(getState: GetNfState): ToolDefinition {
 				// flowRollbackLimitTier2 是目前唯一能读到 flowRollbackLimit 的访问器
 				// （@deprecated，但没有非 deprecated 替代——只读展示，不受影响）。
 				`Flow 回退预算: ${state.remainingFlowRollbackBudget()}/${state.flowRollbackLimitTier2}`,
-				`验证命令: ${harnessCommands.length > 0 ? harnessCommands.join(" | ") : "未配置（implement/verify 阶段会自动探测 npm/go/make test）"}`,
+				`验证命令: ${harnessCommands.length > 0 ? harnessCommands.join(" | ") : "未配置（scenarios/verify 阶段会自动探测 npm/go/make test）"}`,
 				"",
 				renderFsSnapshot(fsSnap),
 			];

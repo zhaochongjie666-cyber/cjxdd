@@ -87,7 +87,7 @@ describe("Normal Flow RuntimeStore", () => {
 		});
 		state.plan = NF_STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
 
-		expect(state.currentStage()?.name).toBe("understand");
+		expect(state.currentStage()?.name).toBe("architecture");
 		expect(state.getSignals().has("complete")).toBe(true);
 	});
 });
