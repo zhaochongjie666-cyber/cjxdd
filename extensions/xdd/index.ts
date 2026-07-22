@@ -4,7 +4,7 @@ export { activateXddExtension, deactivateXddExtension, xddInlineExtension } from
 // pi ExtensionAPI expects a default-exported factory function.
 export default xddInlineExtension.factory;
 export { runXdd, continueXdd, resumeXdd, xddStatus, archiveXdd } from "./run.ts";
-export { digestReviewArtifactFiles, digestReviewArtifacts, evaluateReviewVerdict, evaluateStoredReviewVerdict, readReviewVerdict, writeReviewVerdict } from "./review-verdict.ts";
+export { digestReviewArtifactFiles, digestReviewArtifacts, evaluateReviewVerdict, evaluateStoredReviewVerdict, readReviewVerdict, selectReviewArtifactPaths, writeReviewVerdict } from "./review-verdict.ts";
 export { evaluateQaEvidenceGate, evaluateQaPlanGate, parseQaPlan, QA_CATEGORIES } from "./qa-plan.ts";
 export type { QaCategory } from "./qa-plan.ts";
 export { CODE_REVIEW_ANGLES, codeReviewFromAIGate, evaluateCodeReviewGate, writeCodeReviewReport } from "./code-review.ts";

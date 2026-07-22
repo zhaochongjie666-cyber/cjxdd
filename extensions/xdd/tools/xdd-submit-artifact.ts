@@ -11,7 +11,7 @@ import { type EmptyDetails, type GetXddState, ok } from "./index.ts";
 import { formatAIGateResult, getAIGateAttackAngles, type AIGateResult } from "../aigate.ts";
 import { evaluateHealingFailureClosure, evaluateVerifyEvidenceGateFull, runHarnessWithReceipt } from "../evidence/verify-gate.ts";
 import { routeVerifyFailure, type VerifyFailureRoute } from "../verify-failure-routing.ts";
-import { digestReviewArtifactFiles, evaluateReviewVerdict, writeReviewVerdict, type ReviewType, type ReviewVerdict } from "../review-verdict.ts";
+import { digestReviewArtifactFiles, evaluateReviewVerdict, selectReviewArtifactPaths, writeReviewVerdict, type ReviewType, type ReviewVerdict } from "../review-verdict.ts";
 import { codeReviewFromAIGate, writeCodeReviewReport } from "../code-review.ts";
 import { buildPreventionContext } from "../prevention-context.ts";
 import { computeCanonicalScopeDigest, computeScopeDigest } from "../healing/content-digest.ts";
@@ -56,7 +56,7 @@ function persistAIGateReview(params: {
 	preventionPatternIds?: string[];
 }): void {
 	const { state, stage, model, artifacts, mechanicalReason, selfAttack, result, status, overrideReason, preventionPatternIds } = params;
-	const artifactPaths = [...(artifacts.length > 0 ? artifacts : stage.deliverablePaths)];
+	const artifactPaths = selectReviewArtifactPaths(state.cwd, artifacts.length > 0 ? artifacts : stage.deliverablePaths);
 	const artifactDigest = digestReviewArtifactFiles(state.cwd, artifactPaths);
 	const runtime = new RuntimeStore(state.cwd).load();
 	const reviewVerdict: ReviewVerdict = {
