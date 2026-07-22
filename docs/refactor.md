@@ -90,8 +90,8 @@ The current implementation has **25+ real issues** ranging from "paper gate" (ex
 
 | # | Issue | File:line | Impact |
 |---|-------|-----------|--------|
-| 22 | Test files `phase0/1/3/4/5/6/78` reflect refactor history | `*.test.ts` | New devs confused |
-| 23 | `runner.e2e.test.ts` is 51 lines | `runner.e2e.test.ts` | E2E under-covered |
+| 22 | ~~Test files `phase0/1/3/4/5/6/78` reflect refactor history~~ | Removed; coverage lives in feature- and component-named suites | Resolved |
+| 23 | ~~`runner.e2e.test.ts` is 51 lines~~ | Removed; controller, adapter, harness, and production-flow suites own this coverage | Resolved |
 | 24 | Soft-pass in stage `gate: async () => softPass()` invisible to callers | `stages.ts` init, cleanup | Quiet leniency |
 | 25 | `xdd_submit_artifact` is 200 LoC function body | `tools/xdd-submit-artifact.ts` | Maintenance hazard |
 
@@ -469,7 +469,7 @@ Total: ~4 weeks (1 engineer, full-time).
 | 1 | Refactor `XddRunnerState` to cache + dirty flag | `types.ts` |
 | 1 | Add `flush()` calls at lifecycle hooks | `extension.ts` (4 sites) |
 | 2 | Remove `mutRt()` indirection | `types.ts` |
-| 2 | Migrate tests | `state.test.ts`, `phase0.test.ts`, etc. |
+| 2 | Migrate tests | `state.test.ts` and feature-/component-named suites |
 | 3 | Performance benchmark (before/after read count) | new `bench/` script |
 
 **Acceptance:**
