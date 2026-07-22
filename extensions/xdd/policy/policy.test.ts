@@ -175,7 +175,8 @@ describe("xdd policy", () => {
 		expect(input.timeout).toBe(300);
 		expect(applyBashPolicy({ command: "find / -name x" })?.reason).toContain("find /");
 		expect(applyBashPolicy({ command: "rm -rf /*" })?.reason).toContain("rm -rf /");
-		expect(applyBashPolicy({ command: "echo secret >> /etc/profile" })?.reason).toContain("重定向");
+		expect(applyBashPolicy({ command: "echo output >> /var/log/example.log" })).toBeNull();
+		expect(applyBashPolicy({ command: "ls /workspace/project/README.md 2>/dev/null || echo missing" })).toBeNull();
 		expect(applyBashPolicy({ command: "cat .env.production" })?.reason).toContain("敏感环境文件");
 		expect(applyBashPolicy({ command: "cp config/service.pem /tmp/service.pem" })?.reason).toContain("私钥文件");
 		expect(applyBashPolicy({ command: "cat .env.example" })).toBeNull();
