@@ -28,10 +28,10 @@ const NF_PREAMBLE = `[Normal Flow · reconcile 范式]
   2. 按差距工作
   3. nf_submit_artifact -- 提交产物，触发硬 Gate（不调用 AIGate；语义质量由 verify 阶段的证据审查负责）
   4. Gate 通过后调 nf_advance 推进到下一阶段
-失败时：Gate 未通过先按错误指向的正向动作修复。verify 默认回 scenarios 继续 TDD；若证据证明架构错误则显式回 architecture 重搭框架。其他阶段在本阶段修复，不生成 plan，也不跳到 execute。
+失败时：Gate 未通过先按错误指向的正向动作修复。verify 默认回 scenarios 继续 TDD；框架装配错误显式回 architecture；需求、规格、架构、交互或韧性设计错误显式回 understand/design 补齐完整设计链。其他阶段在本阶段修复，不生成 plan，也不跳到 execute。
 
 [职责解耦]
-每个阶段都会标注你的角色（Architect / API Designer / Auditor）。同一模型切换 focus；不要用另一个角色的方式做这一阶段的事。
+每个阶段都会标注你的角色（Designer / Architect / Implementer / Auditor）。同一模型切换 focus；不要用另一个角色的方式做这一阶段的事。
 
 铁律：
 1. 只在当前阶段允许的工具范围内工作。
@@ -48,6 +48,17 @@ function readSkillContent(skills: Skill[], skillName: string): string | undefine
 	} catch {
 		return undefined;
 	}
+}
+
+function stageSkillContent(skills: Skill[], stage: XddStageSpec): string | undefined {
+	const names = stage.name === "understand"
+		? ["xdd-brainstorm", "xdd-spec", "xdd-architecture", "xdd-wire", "xdd-resilience"]
+		: [stage.skill];
+	const bodies = names.map((name) => {
+		const body = readSkillContent(skills, name);
+		return body ? `## ${name}\n${body}` : "";
+	}).filter(Boolean);
+	return bodies.length > 0 ? bodies.join("\n\n") : undefined;
 }
 
 function buildHarnessPromptSection(cwd: string): string {
@@ -73,7 +84,7 @@ export interface BuildNfStagePromptArgs {
 
 export function buildNfStageSystemPrompt(args: BuildNfStagePromptArgs): string {
 	const { cwd, stage, userInput, skills, planIndex, planTotal } = args;
-	const skillBody = readSkillContent(skills, stage.skill);
+	const skillBody = stageSkillContent(skills, stage);
 	const sections: string[] = [];
 	sections.push(NF_PREAMBLE);
 	sections.push(ANTI_AI_CONSTRAINT);

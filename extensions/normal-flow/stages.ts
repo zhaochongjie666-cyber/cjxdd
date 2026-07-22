@@ -1,6 +1,6 @@
 /**
- * Normal Flow 的三阶段正向入口：拿架构文档搭框架 → TDD 完成全部 Scenario → 攻击验证。
- * 刻意不设置 plan/execute 阶段；scenario 阶段既维护可追溯场景，也逐个执行红绿重构。
+ * Normal Flow 的四阶段正向入口：完整设计链 → 搭框架 → TDD 完成全部 Scenario → 攻击验证。
+ * 刻意不设置 plan/execute 阶段；design 在一个阶段内生成与 xdd 同形的持久设计产物。
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -17,7 +17,7 @@ export const WRITE_TOOLS = ["write", "edit"] as const;
 const input = (pattern: string, description: string): ArtifactRule => ({ pattern, required: true, description });
 const output = (pattern: string, description: string): ArtifactRule => ({ pattern, required: true, description });
 
-type NfXddStageName = "architecture" | "spec" | "verify";
+type NfXddStageName = "understand" | "architecture" | "spec" | "verify";
 interface NfContractMeta {
 	inputs: ArtifactRule[];
 	readScopes: string[];
@@ -25,14 +25,20 @@ interface NfContractMeta {
 	rollbackTarget: XddStageName | "none";
 }
 const NF_CONTRACT_META: Record<NfXddStageName, NfContractMeta> = {
-	architecture: {
-		inputs: [input("README*", "仓库说明及用户提供的架构文档（如存在）")],
+	understand: {
+		inputs: [input("README*", "仓库说明与用户需求（如存在）")],
 		readScopes: ["**"],
-		writeScopes: ["**"],
+		writeScopes: [".xdd/design/**", ".xdd/runs/normal_run/**"],
 		rollbackTarget: "none",
 	},
+	architecture: {
+		inputs: [input(".xdd/design/**", "完整设计链")],
+		readScopes: ["**"],
+		writeScopes: ["**"],
+		rollbackTarget: "understand",
+	},
 	spec: {
-		inputs: [input(".xdd/design/architecture/normal/architecture.md", "框架所依据的架构决策")],
+		inputs: [input(".xdd/design/**", "场景实现所依据的完整设计链")],
 		readScopes: ["**"],
 		writeScopes: ["**"],
 		rollbackTarget: "architecture",
@@ -73,13 +79,33 @@ function withNfStageContract(stage: XddStageSpec): XddStageSpec {
 		writeScopes: meta.writeScopes,
 		gatePolicy: "hard",
 		hardGate: stage.gate,
-		rollbackPolicy: { target: meta.rollbackTarget, reason: meta.rollbackTarget === "none" ? "framework 是首阶段" : `${stage.name} 默认回退到 ${meta.rollbackTarget}` },
+		rollbackPolicy: { target: meta.rollbackTarget, reason: meta.rollbackTarget === "none" ? "design 是首阶段" : `${stage.name} 默认回退到 ${meta.rollbackTarget}` },
 	};
 }
 
+const designGate: XddGate = async ({ cwd }) => {
+	const checks: Array<[string[], string]> = [
+		[[".xdd/design/intent.md", ".xdd/design/design.md", ".xdd/design/personas/_index.md"], "需求意图、收敛决策或角色设计"],
+		[[".xdd/design/spec/**/rules.md", ".xdd/design/spec/**/*.feature"], "RXX 规则或 Gherkin Scenario"],
+		[[".xdd/design/architecture/**/architecture.md", ".xdd/design/architecture/module-landscape.md", ".xdd/design/architecture/event-contract.md", ".xdd/design/architecture/aggregate-landscape.md"], "架构、模块、事件或聚合设计"],
+		[[".xdd/design/wire/*.md"], "交互线框与操作状态设计"],
+		[[".xdd/design/architecture/**/resilience/failure-modes.md", ".xdd/design/architecture/**/resilience/failsafe-design.md", ".xdd/design/architecture/**/resilience/resilience-test-plan.md"], "失败模式、兜底或韧性测试设计"],
+	];
+	for (const [patterns, label] of checks) {
+		for (const pattern of patterns) {
+			const result = await requireGlobs(cwd, [pattern]);
+			if (!result.ok) return { ok: false, reason: `design Gate: 缺少${label}；请按 understand→spec→architecture→wire→resilience 的正向顺序补齐：${pattern}` };
+		}
+	}
+	const personaFiles = matchingFiles(cwd, [".xdd/design/personas/*.md"])
+		.filter((path) => !path.endsWith("/_index.md"));
+	if (personaFiles.length === 0) return { ok: false, reason: "design Gate: personas 只有索引而没有角色档案；请按 xdd understand 正向动作补至少一个具体角色的深度档案" };
+	return { ok: true };
+};
+
 const frameworkGate: XddGate = async ({ cwd }) => {
-	const doc = await requireGlobsWithMinSize(cwd, [".xdd/design/architecture/normal/architecture.md"], 100);
-	if (!doc.ok) return { ok: false, reason: "framework Gate: 请先读取架构输入，产出 architecture.md，再按其端点搭建可运行代码框架" };
+	const doc = await requireGlobsWithMinSize(cwd, [".xdd/design/architecture/**/architecture.md"], 100);
+	if (!doc.ok) return { ok: false, reason: "framework Gate: 完整设计链中的 architecture.md 缺失或过短；请先回 design 补齐，再按其端点搭建框架" };
 	const framework = await requireGlobs(cwd, ["src/**", "lib/**", "app/**", "cmd/**"]);
 	if (!framework.ok) return { ok: false, reason: "framework Gate: 架构文档已有，但缺少 src/lib/app/cmd 中的代码框架；请回到正向动作搭建架构端点" };
 	return { ok: true };
@@ -114,14 +140,34 @@ const verifyGate: XddGate = async ({ cwd }) => {
 
 export const NF_STAGES: readonly XddStageSpec[] = [
 	{
+		name: "understand", role: roleFor("understand"), skill: "xdd-brainstorm", exit: "goal_complete",
+		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, ...NF_CONTROLLER_TOOLS],
+		desiredState: [
+			"已生成与 xdd 同形的完整持久设计链，而不是简化版 architecture/spec",
+			"需求层已完成 intent.md、design.md 与 personas；规格层已完成 RXX rules.md 与全部正向/兜底 Feature Scenario",
+			"架构层已完成各业务 architecture.md、module-landscape.md、event-contract.md 与 aggregate-landscape.md",
+			"交互层已完成 wire 页面及空/加载/错误/成功/确认/边界状态；韧性层已完成 failure-modes、failsafe-design 与 resilience-test-plan",
+			"各层通过 RXX 保持追溯，正向设计和失败兜底均可供后续 framework/scenarios 直接消费",
+		],
+		deliverablePaths: [
+			".xdd/design/intent.md", ".xdd/design/design.md", ".xdd/design/personas/_index.md",
+			".xdd/design/spec/**/rules.md", ".xdd/design/spec/**/*.feature",
+			".xdd/design/architecture/**/architecture.md", ".xdd/design/architecture/module-landscape.md",
+			".xdd/design/architecture/event-contract.md", ".xdd/design/architecture/aggregate-landscape.md",
+			".xdd/design/wire/*.md", ".xdd/design/architecture/**/resilience/failure-modes.md",
+			".xdd/design/architecture/**/resilience/failsafe-design.md", ".xdd/design/architecture/**/resilience/resilience-test-plan.md",
+		],
+		aigateStandard: NF_NO_AIGATE_STANDARD, gate: designGate, noCodeReading: true,
+	},
+	{
 		name: "architecture", role: roleFor("architecture"), skill: "xdd-architecture", exit: "goal_complete",
 		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, "bash", ...NF_CONTROLLER_TOOLS],
 		desiredState: [
-			"已读取用户给出的架构文档、README 与现有工程约束，并将采用的端点/模块/依赖记录到 .xdd/design/architecture/normal/architecture.md",
-			"已按架构文档搭出可运行的代码框架，而不是只写另一份计划",
+			"已读取 design 阶段的 intent/spec/architecture/wire/resilience 完整设计链",
+			"已按完整架构文档搭出可运行的代码框架，而不是重写设计或补计划",
 			"框架包含后续 Scenario 所需的端点与测试接缝，并完成最小启动/编译自检",
 		],
-		deliverablePaths: [".xdd/design/architecture/normal/architecture.md"], aigateStandard: NF_NO_AIGATE_STANDARD, gate: frameworkGate,
+		deliverablePaths: [], aigateStandard: NF_NO_AIGATE_STANDARD, gate: frameworkGate,
 	},
 	{
 		name: "spec", role: roleFor("spec"), skill: "xdd-execute", exit: "goal_complete",

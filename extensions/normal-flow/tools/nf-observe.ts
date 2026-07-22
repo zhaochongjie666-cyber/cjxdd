@@ -32,7 +32,7 @@ export function createNfObserveTool(getState: GetNfState): ToolDefinition {
 			const harnessCommands = new HarnessStore(state.cwd).load().验证命令;
 			const lines = [
 				`run: ${state.runId}`,
-				`阶段: ${stage.name}（第 ${state.planIndex + 1}/${state.plan.length} 个，Normal Flow 3 阶段）`,
+				`阶段: ${stage.name}（第 ${state.planIndex + 1}/${state.plan.length} 个，Normal Flow 4 阶段）`,
 				`信号: ${signals}`,
 				`产物闸门(任一): ${stage.deliverablePaths.length > 0 ? stage.deliverablePaths.join(", ") : "(软通过)"}`,
 				`已提交产物: ${artifacts}`,

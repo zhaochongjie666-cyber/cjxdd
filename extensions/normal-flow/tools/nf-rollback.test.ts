@@ -10,7 +10,8 @@ describe("nf_rollback source contract", () => {
 		expect(SRC).toContain('if (from !== "verify")');
 		expect(SRC).toContain("Normal Flow 只允许 verify 阶段跨流程回退自愈");
 		expect(SRC).toContain('verify: "spec"');
-		expect(SRC).toContain("可显式回 architecture 重搭框架");
+		expect(SRC).toContain("可回 architecture 重搭框架");
+		expect(SRC).toContain("设计根因回 understand");
 		expect(SRC).not.toContain('verify: "execute"');
 	});
 });

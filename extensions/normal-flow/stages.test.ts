@@ -7,7 +7,7 @@ import { NF_STAGES } from "./stages.ts";
 import { NF_STAGE_NAMES } from "./types.ts";
 
 describe("Normal Flow stage contracts", () => {
-	it("has exactly the 3 NF stages in order, reusing xdd stage names", () => {
+	it("has exactly the 4 NF stages in order, reusing xdd stage names", () => {
 		expect(NF_STAGES.map((s) => s.name)).toEqual([...NF_STAGE_NAMES]);
 	});
 
@@ -15,11 +15,13 @@ describe("Normal Flow stage contracts", () => {
 		expect(() => compileStageContracts(NF_STAGES)).not.toThrow();
 	});
 
-	it("framework is the first stage and scenarios/verify have actionable rollback targets", () => {
+	it("design is first and every later stage has an actionable rollback target", () => {
+		const design = NF_STAGES.find((s) => s.name === "understand");
 		const framework = NF_STAGES.find((s) => s.name === "architecture");
 		const scenarios = NF_STAGES.find((s) => s.name === "spec");
 		const verify = NF_STAGES.find((s) => s.name === "verify");
-		expect(framework?.rollbackPolicy?.target).toBe("none");
+		expect(design?.rollbackPolicy?.target).toBe("none");
+		expect(framework?.rollbackPolicy?.target).toBe("understand");
 		expect(scenarios?.rollbackPolicy?.target).toBe("architecture");
 		expect(verify?.rollbackPolicy?.target).toBe("spec");
 		expect(NF_STAGES.some((s) => s.name === "plan" || s.name === "execute")).toBe(false);
@@ -39,6 +41,33 @@ describe("Normal Flow stage contracts", () => {
 		expect(framework?.writeScopes).toContain("**");
 		const verify = NF_STAGES.find((s) => s.name === "verify");
 		expect(verify?.writeScopes).toContain(".xdd/runs/normal_run/verify-report.md");
+	});
+
+	it("requires the complete xdd-shaped design chain before framework", async () => {
+		const cwd = mkdtempSync(join(tmpdir(), "normal-flow-design-"));
+		try {
+			const write = (rel: string, body = "complete design evidence ".repeat(8)) => {
+				mkdirSync(join(cwd, rel, ".."), { recursive: true });
+				writeFileSync(join(cwd, rel), body);
+			};
+			write(".xdd/design/intent.md"); write(".xdd/design/design.md"); write(".xdd/design/personas/_index.md"); write(".xdd/design/personas/p01-user.md");
+			write(".xdd/design/spec/b01/rules.md", "R01 complete business rule ".repeat(8));
+			write(".xdd/design/spec/b01/flow.feature", "@covers-R01 Feature: complete\nScenario: happy\nScenario: rejected\n");
+			write(".xdd/design/architecture/b01/architecture.md");
+			write(".xdd/design/architecture/module-landscape.md"); write(".xdd/design/architecture/event-contract.md");
+			write(".xdd/design/architecture/aggregate-landscape.md"); write(".xdd/design/wire/home.md");
+			write(".xdd/design/architecture/b01/resilience/failure-modes.md");
+			write(".xdd/design/architecture/b01/resilience/failsafe-design.md");
+			const design = NF_STAGES.find((stage) => stage.name === "understand")!;
+			await expect(design.gate({ cwd, summary: "", desiredState: design.desiredState })).resolves.toMatchObject({
+				ok: false,
+				reason: expect.stringContaining("resilience-test-plan.md"),
+			});
+			write(".xdd/design/architecture/b01/resilience/resilience-test-plan.md");
+			await expect(design.gate({ cwd, summary: "", desiredState: design.desiredState })).resolves.toMatchObject({ ok: true });
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
 	});
 
 	it("lets verify write its report while keeping source modification disabled", () => {
