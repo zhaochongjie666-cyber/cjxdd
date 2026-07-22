@@ -1,70 +1,97 @@
-# Pi Coding Agent：Session Loop、Turn Loop 与 xdd 事件接入
+# Pi Coding Agent：Session、Agent Run、Turn 与 XDD 接入
 
-> **维护约定**：修改 `extensions/xdd/` 的 Pi 生命周期、消息投递、自动推进或上下文管理前，先阅读本文；并以本机安装的 Pi 版本的 `docs/extensions.md` 和类型声明为准。本文依据 `@earendil-works/pi-coding-agent` **0.80.8** 整理。
+> **维护约定**：修改 `extensions/xdd/` 的 Pi 生命周期、消息投递、provider error、自动推进或上下文管理前，先读本文；并以本机安装版本的 `docs/extensions.md`、`dist/core/agent-session.js` 和 `pi-agent-core/dist/agent-loop.js` 为准。本文依据 `@earendil-works/pi-coding-agent` **0.80.10** 整理。
 
-## 1. 两层循环：Session 与 Agent/Turn
+## 1. 四个边界不能混用
 
-Pi 的 **Session** 是一段可持久化、可切换并可压缩的会话树；扩展在 session 生命周期中初始化或释放会话范围的资源。一次用户输入（含 extension 注入消息）会启动一个低层 **agent run**。agent run 又由一个或多个 **turn** 构成：一个 turn 是“一次 LLM 响应及其工具调用”。因此：
+Pi 由内向外有四个边界：Provider request、Turn、low-level agent run，以及负责 retry、compaction 和 extension continuation 的 AgentSession recovery cycle。
 
-- `turn_end` 不等价于任务停止；它只标志当前模型响应和其工具结果结束。
-- `agent_end` 表示当前低层 agent run 结束，但 Pi 仍可能自动重试、压缩后重试，或消费已排队的 follow-up 消息。
-- `agent_end` 不是“Pi 绝不会继续”的信号；xdd 在这里仅在没有 pending message 时安排自己的 follow-up，并把 provider retry 交给 Pi。若 Pi API 提供 `agent_settled`，它适合做纯观测，不应与 xdd continuation 双重调度。
-- xdd 的持久状态不依赖聊天上下文，而写入 runtime/checkpoint；这使上下文裁剪与 compaction 可以安全地发生。
+- `turn_end` 只说明当前响应及工具执行结束。
+- `agent_end` 只说明一个 low-level run 结束；Pi 仍可能 retry、compact 后 retry 或消费 follow-up。
+- `agent_settled` 才说明 Pi 不会再自动 retry、compact 或消费 continuation。
+- XDD 阶段状态持久化在 `.xdd/runtime.json`，不依赖聊天上下文。
 
-推荐的 xdd 控制闭环是：**Pi lifecycle event → `XddCommand` → `XddController` → `XddEffect` → Pi adapter**。Controller 是状态转换唯一入口；extension 负责把 Pi 事件转译为命令和执行 effect。
+推荐接入链：`Pi lifecycle event → XddCommand → XddController → XddEffect → Pi adapter`。
 
-## 2. 消息队列：Steering 与 Follow-up
+## 2. Pi 的 turn loop
 
-`pi.sendUserMessage()` 注入一条真正的 user message，并且总会触发 agent turn。正在 streaming 时必须指定 `deliverAs`：
+```text
+user / continuation → agent_start → turn_start → provider request
+  ├─ toolUse → toolCall/toolResult → turn_end → 下一 turn
+  ├─ stop/length → turn_end，按队列继续或结束
+  └─ error/aborted → 不执行 error message 中的 toolCall → agent_end
+```
 
-| 模式 | 何时交付 | xdd 用途 |
+工具的 `toolResult(isError=true)` 不是 provider error：它会进入上下文，模型在下一 turn 修正工具调用。流式响应最终为 error 时，半截 toolCall 不执行；retry 是新的 provider request。
+
+### 2.1 Steering 与 follow-up
+
+| 模式 | 交付点 | XDD 用途 |
 |---|---|---|
-| `steer` | 当前 assistant turn 完成其工具调用后、**下一次 LLM 调用前** | 统一 AIGate 对产物作出“未通过、仍可修复” verdict 时，强制下一次模型调用进入修复路径。 |
-| `followUp` | agent 不再有工具调用、整个 agent run 结束后 | 阶段通过后的推进、正常的 scheduler 续跑。 |
+| `steer` | 当前工具执行完、下一 provider request 前 | AIGate 可修复失败。 |
+| `followUp` | agent 原本将结束时 | 阶段推进和 scheduler continuation。 |
 
-不要把两者混用：`followUp` 不能保证下一次 LLM 调用前纠偏；`steer` 不应用于阶段推进。Pi 的 `input` event 会暴露 `source: "extension"` 及 `streamingBehavior: "steer" | "followUp"`；xdd 用它丢弃暂停期间的 AIGate repair steering 或 continuation，且只在已投递 continuation 时释放 continuation lock。
+`ctx.ui.notify` 不进入模型上下文，不能代替 steer/follow-up。
 
-### 统一 AIGate 失败规则
+## 3. Pi 的外层恢复循环
 
-`xdd_submit_artifact` 将机械检查结果作为统一 AIGate 的必需输入；机械检查不再单独产生 `[gate N/M]` verdict。AIGate 是唯一的分支决策者：通过 verdict 走正常 `agent_end` + follow-up，模型调用 `xdd_advance` 进入下一阶段；未通过且仍有预算时，extension 从 `tool_result` 识别 `[AIGate N/M]` 并立即发送 `deliverAs: "steer"`。这条 repair steering 必须包含当前阶段、`lastStageError`，并要求阅读审查建议、修复产物后重新调用 `xdd_submit_artifact`，不得推进下一阶段。
+```typescript
+await agent.prompt(messages);
+while (await handlePostAgentRun()) await agent.continue();
+await emitAgentSettled();
+```
 
-语义失败会消耗该阶段的 AIGate 预算；模型/网络/格式等审查基础设施失败不会消耗预算。预算耗尽时，verdict 阶段要求诊断或回退；非 verdict 阶段当前产品策略为记录告警后软通过。该策略不是“已经自动修复成功”。
+处理顺序是 provider retry、retry exhausted、overflow/threshold compaction、extension 消息，最后才发 `agent_settled`。默认普通 retry 为 3 次，延迟 2s、4s、8s。明确的 context overflow 走 compact 后至多一次重试；429、overloaded 和普通 5xx 先走普通 retry。XDD 的 `session_before_compact` 只提供本地有界 handoff，不决定 cut point 或 retry。
 
-## 3. xdd 当前使用的 Pi 事件
+## 4. Provider error 的 XDD 正确接法
 
-| Pi 事件 | 时机/用途 | xdd 行为 |
-|---|---|---|
-| `session_start` | session startup、reload、new、resume 或 fork | 检查未完成 checkpoint，并仅用 UI 通知提示恢复。 |
-| `before_agent_start` | 用户输入后、agent loop 前 | 注入当前阶段 system prompt，记录 model 引用；verify 时建立只读快照。 |
-| `tool_call` | 工具执行前 | 跑 `before_tools` hook，并执行阶段工具/路径策略。 |
-| `tool_result` | 工具执行后 | 跑 hook、记录 bash 遥测、检查 verify 只读契约；统一 AIGate 的可修复失败发送 repair steering。 |
-| `turn_end` | 每一个 LLM response + tools 后 | 跑 `turn_end` project hook；不运行 xdd scheduler。 |
-| `agent_end` | 低层 agent run 结束 | 转换为 `AGENT_ENDED`，由 Controller 调度 continuation。 |
-| `input` | 输入解析、skill/template 展开前 | 丢弃暂停的 AIGate repair steering / xdd continuation；仅已交付的 follow-up continuation 清除 continuation lock。`input` handler 维持 `async`，以兼容 Pi 的异步 extension runner。 |
-| `session_before_tree` | `/tree` 导航前 | 提供当前 xdd 阶段摘要。 |
+不得在 extension `agent_end(error)` 中宣布最终失败、暂停或提示 `/xdd-resume`，因为 Pi 外层恢复尚未结束。当前实现采用两段式处理：
 
-## 4. 上下文边界：完全使用 Pi 原生能力
+```text
+agent_end(error) → 内存缓存 pendingProviderError，不改阶段状态
+agent_end(non-error) → 清暂态错误，正常调度
+agent_settled + pendingProviderError → Controller 最终化 provider error 并原子暂停
+```
 
-XDD 不注册 `context` 或 `session_compact` hook，不读取上下文占用率，不调用 `ctx.compact`，也不截断、替换、清空或修复对话与工具结果。Pi 原生负责：
+最终状态为 `status=paused`、`paused=true`、`stageOutcome=provider_error`、`continuationQueued=false`。`RESUME` 恢复 provider error 前的阶段边界，清除错误并只排一个匹配边界的 follow-up。
 
-- 接近窗口上限时的主动压缩，以及溢出后的自动压缩与重试；
-- `/compact [prompt]` 手动压缩和 `/settings` 中的压缩配置；
-- 工具调用/结果历史、provider 协议转换和完整 JSONL session 保存；
-- `/tree`、`/fork`、`/clone` 提供的历史浏览与分支能力。
+### 4.1 429/余额不足例外
 
-XDD 只持久化工作流状态、阶段产物和 Gate 证据，并通过 `before_agent_start` 提供阶段 system prompt。上下文失真、工具结果协议、压缩时机等问题应交由 Pi 修复，XDD 不再维护第二套兜底逻辑。
+匹配 `429 + insufficient balance/quota/credits` 时，XDD 保留无限延迟重试策略：在 low-level `agent_end` 交给 Controller 排 follow-up，3 秒指数退避并封顶 3 分钟。普通 rate limit 仍由 Pi 原生 retry/settled 处理。
 
-## 5. 实现与审查清单
+## 5. XDD 当前使用的 Pi 事件
 
-1. **不要在 `turn_end` 重复调度**：它是 turn 粒度，可能导致重复 continuation；使用 `agent_end` + `continuationQueued` 去重。
-2. **优先在 Controller 变更状态**：工具、command 和 event handler 不应各自复制状态机判断。
-3. **发送消息前检查队列/暂停/epoch**：follow-up 必须遵守 continuation lock；AIGate steering 只能用于当前可修复的失败，且不释放该锁。
-4. **不要用 `ctx.ui.notify` 代替 steering**：notify 不进入模型上下文，无法把 AIGate repair 强制放到下一次 LLM 调用前。
-5. **不要用 steering 代替停止**：用户 `/xdd-stop` 应 abort 并暂停，不能再注入工作指令。
-6. **验证时覆盖实际生命周期**：至少测试 AIGate 可修复失败触发 `deliverAs: "steer"`、AIGate 通过的正常 `agent_end` follow-up、预算耗尽不误 steering、以及 Controller 对所有 rollback 入口执行同一上限。
+| Pi 事件 | XDD 行为 |
+|---|---|
+| `session_start` | 检查未完成 runtime/checkpoint，只做 UI 提示。 |
+| `before_agent_start` | 注入阶段 prompt；verify 建快照。 |
+| `tool_call` / `tool_result` | 执行策略、遥测、写保护和 AIGate steer。 |
+| `turn_end` | 只跑 project hook，不调 scheduler。 |
+| `agent_end(error)` | 暂存错误；余额不足例外按 XDD 策略入队。 |
+| `agent_end(non-error)` | 清暂态错误并正常 continuation。 |
+| `agent_settled` | 最终化仍存在的 provider error。 |
+| `input` | 丢弃暂停或过期 continuation，按 epoch 释放锁。 |
+| `session_before_compact` | 提供 provider-free handoff。 |
+| `session_before_tree` | 提供阶段摘要。 |
 
-## 6. 一手参考
+## 6. 实现与审查清单
 
-- Pi extension lifecycle 与消息 API：<https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md>
-- Pi agent/core 类型（消息队列与 session）：<https://github.com/earendil-works/pi/tree/main/packages>
-- 本项目接入点：`extensions/xdd/extension.ts`、`extensions/xdd/adapters/pi-effects.ts`、`extensions/xdd/core/controller.ts`。
+1. 不在 `turn_end` 调 scheduler。
+2. 不在 `agent_end(error)` 宣布最终失败。
+3. retry 成功必须清除暂态错误。
+4. 用户 stop 优先于随后到达的 `agent_settled`。
+5. provider pause 与 `/xdd-resume` 必须成对测试并保留阶段边界。
+6. error assistant message 中的 partial toolCall 不得执行。
+7. follow-up 必须遵守 paused、epoch 和 continuation lock。
+8. AIGate repair 用 steer，阶段推进用 followUp，UI 信息用 notify。
+9. compaction 时机只由 Pi 决定。
+10. 覆盖暂态错误、settled 暂停、retry 成功、用户 stop、resume、阶段变更、429 例外测试。
+
+## 7. 一手参考
+
+- Pi lifecycle/API：本机 `@earendil-works/pi-coding-agent/docs/extensions.md`
+- Pi 外层恢复：`dist/core/agent-session.js`
+- Pi 低层 turn loop：`node_modules/@earendil-works/pi-agent-core/dist/agent-loop.js`
+- XDD 接入：`extensions/xdd/extension.ts`
+- XDD 状态转换：`extensions/xdd/core/controller.ts`
+- XDD effect 投递：`extensions/xdd/adapters/pi-effects.ts`

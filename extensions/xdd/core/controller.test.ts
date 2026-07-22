@@ -83,20 +83,33 @@ describe("XddController transition", () => {
 		expect(second.effects).toHaveLength(0);
 	});
 
-	it("provider errors do not queue followups and make Pi retry ownership visible", () => {
+	it("pauses a settled provider failure without queueing a competing followup", () => {
 		const result = transition(started(), { type: "AGENT_ENDED", stopReason: "error", providerError: "rate limit" });
 		expect(result.state.stageOutcome).toBe("provider_error");
-		expect(result.effects).toEqual([expect.objectContaining({ type: "NOTIFY", text: expect.stringContaining("等待 Pi 内建重试") })]);
+		expect(result.state.status).toBe("paused");
+		expect(result.state.paused).toBe(true);
+		expect(result.state.continuationQueued).toBe(false);
+		expect(result.effects).toEqual([expect.objectContaining({ type: "NOTIFY", text: expect.stringContaining("Pi 自动恢复已结束") })]);
 	});
 
-	it("does not blindly retry malformed provider streams", () => {
+	it("pauses instead of blindly retrying a settled malformed provider stream", () => {
 		const result = transition(started(), { type: "AGENT_ENDED", stopReason: "error", providerError: "Stream ended without finish_reason" });
 		expect(result.state.stageOutcome).toBe("provider_error");
+		expect(result.state.status).toBe("paused");
+		expect(result.state.paused).toBe(true);
 		expect(result.state.continuationQueued).toBe(false);
 		expect(result.effects).toEqual([
-			expect.objectContaining({ type: "NOTIFY", text: expect.stringContaining("核对模型 api 与代理 SSE 格式") }),
+			expect.objectContaining({ type: "NOTIFY", text: expect.stringContaining("提供商流协议仍未正常结束") }),
 		]);
 		expect(result.effects[0]?.type === "NOTIFY" ? result.effects[0].text : "").toContain("checkpoint 与已有产物已保留");
+	});
+
+	it("restores the pre-error stage boundary after resuming a settled provider failure", () => {
+		const gatePassed = transition(started(), { type: "SUBMIT", submission: { summary: "ready", artifacts: [], selfAttack: "positive and fallback checked", pass: true } }).state;
+		const failed = transition(gatePassed, { type: "AGENT_ENDED", stopReason: "error", providerError: "504 Gateway Time-out" });
+		const resumed = transition(failed.state, { type: "RESUME" });
+		expect(resumed.state.stageOutcome).toBe("gate_passed");
+		expect(resumed.effects[0]?.type === "SEND_FOLLOWUP" ? resumed.effects[0].text : "").toContain("xdd_advance");
 	});
 
 	it("only classifies explicit incomplete-stream protocol errors", () => {
@@ -118,6 +131,9 @@ describe("XddController transition", () => {
 			expect.objectContaining({ type: "SEND_FOLLOWUP", delayMs: 3_000, text: expect.stringContaining("不要退出") }),
 		]);
 		expect(first.effects.map((effect) => "text" in effect ? effect.text : "").join("\n")).not.toContain("推理");
+		const recovered = transition(first.state, { type: "AGENT_ENDED", stopReason: "stop" });
+		expect(recovered.state.stageOutcome).toBe("working");
+		expect(recovered.state.lastStageError).toBeNull();
 
 		const later = transition({ ...first.state, provider429RetryCount: 10 }, { type: "AGENT_ENDED", stopReason: "error", providerError: "429 余额不足" });
 		expect(later.state.provider429RetryCount).toBe(11);

@@ -15,7 +15,7 @@ import { agentEndCommandFromPi, PiControllerAdapter } from "./adapters/pi-contro
 import { enforceToolCallPolicy } from "./policy/tool-policy.ts";
 import { diffVerifySnapshot, ensureVerifySnapshot, formatVerifySnapshotDiff } from "./policy/verify-snapshot.ts";
 import { evidenceFailureToGateResult, type EvidenceGateFailure } from "./evidence/verify-gate.ts";
-import { XddController } from "./core/controller.ts";
+import { isProvider429InsufficientBalance, XddController } from "./core/controller.ts";
 import { RuntimeStore } from "./storage/runtime-store.ts";
 import { projectAuditEvent } from "./audit/projector.ts";
 import type { XddAuditEvent } from "./audit/events.ts";
@@ -270,6 +270,11 @@ function buildStageSummary(cwd: string, state: XddRunnerState, stage: XddStageSp
 export const xddInlineExtension: InlineExtension = {
 	name: "xdd",
 	factory(pi) {
+		let pendingProviderError: {
+			command: NonNullable<ReturnType<typeof agentEndCommandFromPi>>;
+			runId: string;
+			stageEpoch: string;
+		} | null = null;
 		for (const tool of createXddTools(getState)) {
 			pi.registerTool(tool);
 		}
@@ -525,16 +530,43 @@ ${hookResult.prompt}`;
 			if (!stateRef) return;
 			stateRef.recordFlowUsage(assistantFlowUsage(event.messages));
 			if (stateRef.flowBudgetExhausted) {
+				pendingProviderError = null;
 				stateRef.paused = true;
 				ctx.ui.notify(`[xdd] 流程预算已耗尽：$${stateRef.flowCostUsd.toFixed(2)}/$${stateRef.flowBudgetUsd.toFixed(2)}（${stateRef.flowTokensUsed} tokens）。流程已暂停；提高 XDD_FLOW_BUDGET_USD 后启动新的 run。`, "warning");
 				return;
 			}
-			if (stateRef.runComplete) return;
+			if (stateRef.runComplete) {
+				pendingProviderError = null;
+				return;
+			}
 			const command = agentEndCommandFromPi(event);
 			if (!command) return;
+			if (command.type === "AGENT_ENDED" && command.stopReason === "error") {
+				if (isProvider429InsufficientBalance(command.providerError)) {
+					pendingProviderError = null;
+					const adapter = new PiControllerAdapter({ pi, ctx, getState: () => stateRef });
+					await adapter.dispatch(command);
+					return;
+				}
+				pendingProviderError = { command, runId: stateRef.runId, stageEpoch: stateRef.stageEpoch };
+				return;
+			}
+			pendingProviderError = null;
 			if (typeof ctx.hasPendingMessages === "function") {
 				command.hasPendingMessages = ctx.hasPendingMessages();
 			}
+			const adapter = new PiControllerAdapter({ pi, ctx, getState: () => stateRef });
+			await adapter.dispatch(command);
+		});
+
+		pi.on("agent_settled", async (_event, ctx) => {
+			if (!stateRef || stateRef.runComplete || !pendingProviderError) return;
+			if (stateRef.paused || stateRef.stopRequested || pendingProviderError.runId !== stateRef.runId || pendingProviderError.stageEpoch !== stateRef.stageEpoch) {
+				pendingProviderError = null;
+				return;
+			}
+			const { command } = pendingProviderError;
+			pendingProviderError = null;
 			const adapter = new PiControllerAdapter({ pi, ctx, getState: () => stateRef });
 			await adapter.dispatch(command);
 		});

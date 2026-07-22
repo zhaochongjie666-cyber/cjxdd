@@ -850,6 +850,8 @@ export interface XddCheckpointData {
 	continuationQueued?: boolean;
 	// Phase 2 (B): explicit stage outcome
 	stageOutcome?: XddStageOutcome;
+	/** Stage boundary to restore after a settled provider-error pause or 429 retry. */
+	providerErrorResumeOutcome?: XddStageOutcome;
 	lastStageError?: string;
 	continuationReason?: string;
 	continuationStage?: XddStageName;

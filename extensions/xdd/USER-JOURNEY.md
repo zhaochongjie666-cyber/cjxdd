@@ -289,7 +289,8 @@ xdd_load_skill("xdd-frontend")  // 把前端规范注入当前阶段 prompt
 | **组级 Gate 通过** | pendingGroupApproval 设了，agent 自动停 | `/xdd-continue` |
 | **用户主动 `/xdd-status`** | 看到当前阶段 + 剩余 + 已完成 | `/xdd-continue` 推进 / `/xdd-archive` 归档 |
 | **agent_end 3 轮无进展**（不会发生，新版改"升级策略"非"停止"）| n/a | n/a |
-| **pi 误关** | checkpoint 在盘上 | 重新开 pi，`session_start` hook 自动通知 `/xdd-resume` |
+| **pi 误关** | `.xdd/runtime.json` 在盘上 | 重新开 pi，`session_start` hook 自动通知 `/xdd-resume` |
+| **provider retry 最终失败** | Pi 已完成 retry/compaction 并发出 `agent_settled`；XDD 状态为 paused/provider_error | 修复网络、模型或代理后执行 `/xdd-resume` |
 
 ### 5.2 恢复流程
 
@@ -319,11 +320,14 @@ xdd_load_skill("xdd-frontend")  // 把前端规范注入当前阶段 prompt
 ```
 场景 3：提供商流缺少 finish_reason / message_stop
 
-  xdd 保留 checkpoint 和已有产物，但不盲目重复同一请求
+  low-level agent_end(error) 只是暂态：Pi 先按原生策略 retry/compact
+  XDD 此时不改阶段、不重复报警，也不与 Pi 抢着排 continuation
+  retry 成功：后续 non-error agent_end 清除暂态错误，流程继续
+  retry 最终失败：agent_settled 后 XDD 原子写 paused + provider_error，保留 runtime 和已有产物
   用户核对用户级 models.json 中的 api 是否符合代理实际 SSE 协议
   Anthropic Messages 代理必须正常发送 message_stop；OpenAI-compatible 流必须发送 finish_reason
   若代理会在输出过长时非标准截断，降低该模型的 maxTokens
-  修复提供商配置后执行 /xdd-resume
+  修复提供商配置后执行 /xdd-resume；此时状态保证可恢复
 ```
 
 ### 5.3 状态查询（`/xdd-status`）的真实输出
@@ -398,7 +402,7 @@ attempt 2: agent 修了 3 个实现 bug → 重提 → exit 0 → PASS
 
 ### 6.2 agent 卡住（3+ 轮无进展）
 
-xdd 的 `agent_end` hook 现在**不会停**（"升级策略"非"停止"）：
+正常非错误 `agent_end` 可驱动升级策略；provider error 不在这里判最终失败，而等 Pi `agent_settled`：
 
 | stalls 计数 | 行为 |
 |------------|------|
@@ -410,9 +414,9 @@ xdd 的 `agent_end` hook 现在**不会停**（"升级策略"非"停止"）：
 
 ### 6.3 pi 崩溃
 
-- checkpoint.json 每阶段写一次（在 `.xdd/runs/xdd_run/checkpoint.json` 或项目根 `.xdd/checkpoint.json`）
+- `.xdd/runtime.json` 是原子写入的当前 checkpoint；旧 `.xdd/checkpoint.json` 仅作迁移兼容
 - session_start hook 启动时检测 → 通知用户 → 用户调 `/xdd-resume`
-- run 状态完全可恢复（planIndex / stage / 通过的 gate / signal / pendingGroupApproval）
+- run 状态可恢复（planIndex / stage / gate / signal / pendingGroupApproval / provider_error pause）
 
 ### 6.4 阶段跑过头（execute 太多轮）
 
@@ -467,8 +471,8 @@ agent 用它做 Gate 前的预检；用户用 `/xdd-status` 看高层。
 
 | 承诺 | 实现机制 |
 |------|---------|
-| **没完成不退出** | `agent_end` 自动推进 + 升级策略（永不停止）|
-| **状态永远可恢复** | 每阶段 checkpoint + `session_start` 检测 + `/xdd-resume` |
+| **没完成不误判退出** | 正常 `agent_end` 自动推进；provider error 等 `agent_settled` 才最终化 |
+| **状态永远可恢复** | `.xdd/runtime.json` 原子 checkpoint + `session_start` 检测 + `/xdd-resume` |
 | **不污染仓库** | runs/ 完成后自动归档 + 删除；design/ 永久保留 |
 | **硬 Gate 真把门** | `requireTestsPass` 跑真实 `npm test`/`go test`/`make test`，exit code 判断 |
 | **组级必有人审** | `pendingGroupApproval` + `before_agent_start` "do not continue" prompt |
