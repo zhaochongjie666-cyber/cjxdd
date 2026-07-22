@@ -21,8 +21,8 @@ function dispatchToController(state: XddRunnerState, command: Parameters<XddCont
 	return controller.dispatch(command);
 }
 
-/** verify 硬 Gate/verdict 自愈预算耗尽后自动回退的目标——NF 只有一条：verify -> execute（implement）。 */
-const VERIFY_ROLLBACK_TARGET: XddStageName = "execute";
+/** verify 失败回到 scenarios，在同一阶段继续按 TDD 修复场景。 */
+const VERIFY_ROLLBACK_TARGET: XddStageName = "spec";
 
 /**
  * nf_submit_artifact：跟 xdd_submit_artifact 的关键区别——不调用 AIGate，只有
@@ -101,7 +101,7 @@ export function createNfSubmitArtifactTool(getState: GetNfState): ToolDefinition
 						`⚠️ [硬 Gate ${used}/${budget.limit}] ${stage.name} 未通过且预算耗尽：${error}\n硬 Gate 告警已记录，现软通过；请调用 nf_advance 自动推进。`,
 					);
 				}
-				// verify 阶段不能软通过：自动消耗流程回退预算，回退到 implement。
+				// verify 阶段不能软通过：自动消耗流程回退预算，回退到 scenarios。
 				const rollback = dispatchToController(state, {
 					type: "ROLLBACK",
 					target: VERIFY_ROLLBACK_TARGET,

@@ -74,7 +74,7 @@ export function gotoNormalFlowStage(
 	notify(`[normal-flow-goto-${NF_DISPLAY_NAME[stageName]}] 已从 ${from} 跳转到 ${stageName} 阶段 (${targetIndex + 1}/${stateRef.plan.length})；流程状态: running。`, "info");
 }
 
-/** cwd 上的 normal-flow-runtime.json 是否属于 Normal Flow（阶段名全部落在 NF 的 5 阶段集合内）。 */
+/** cwd 上的 normal-flow-runtime.json 是否属于 Normal Flow（阶段名严格匹配 NF 的 4 阶段集合）。 */
 export function isNfOwnedRuntime(cwd: string): boolean {
 	const rt = createNormalFlowRuntimeStore(cwd).load();
 	if (!rt) return false;

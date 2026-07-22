@@ -1,7 +1,7 @@
 /**
  * Normal Flow 的 /normal-flow、/normal-flow-resume 命令。跟
  * extensions/xdd/run.ts 的 runXdd/resumeXdd 同样的思路（Controller START/RESUME
- * + 加载技能 + activate extension + 把任务发给模型），但只用 NF 自己的 5 阶段
+ * + 加载技能 + activate extension + 把任务发给模型），但只用 NF 自己的 4 阶段
  * stages 数组，且不 import/不修改 xdd 的 run.ts——避免任何一侧的隐式 STAGES
  * 依赖漏到另一侧（Docs/normal-flow.md §3 的"显式前提"）。
  */
@@ -48,7 +48,7 @@ export async function startNormalFlow(args: string, cwd: string, pi: ExtensionAP
 	}
 	const runId = `nf-${Date.now()}`;
 	// NF 没有 init 阶段：用跟 xdd 一样的 Controller-owned 骨架脚本先建好 .xdd/
-	// 目录，模型不需要用 bash 建目录，直接从 explore 阶段开始写 intent.md/design.md。
+	// 目录，模型不需要用 bash 建目录，直接从 framework 阶段读取架构输入并搭建代码框架。
 	const scaffold = controllerInitScaffold(cwd, NORMAL_FLOW_RUN_DIR);
 	const controller = new XddController(createNormalFlowRuntimeStore(cwd), NF_STAGES);
 	controller.dispatch({ type: "START", task, options: { cwd, runId } });
@@ -63,7 +63,7 @@ export async function startNormalFlow(args: string, cwd: string, pi: ExtensionAP
 		? `已 scaffold ${scaffold.created.length} 个目录（${scaffold.created.join(", ")}）。`
 		: "所有目录已存在，无新创建。";
 	await pi.sendUserMessage(
-		`${task}\n\n[normal-flow] run ${runId} 启动。${scaffoldMsg}加载了 ${n} 个技能。当前阶段: explore。用 nf_observe 查看状态，nf_submit_artifact 提交产物。随时 /normal-flow-stop 中断（可 /normal-flow-resume 恢复）。`,
+		`${task}\n\n[normal-flow] run ${runId} 启动。${scaffoldMsg}加载了 ${n} 个技能。当前阶段: design。先生成完整设计链，再搭框架并 TDD 完成场景。用 nf_observe 查看状态，nf_submit_artifact 提交产物。随时 /normal-flow-stop 中断（可 /normal-flow-resume 恢复）。`,
 	);
 }
 
@@ -103,7 +103,7 @@ export async function resumeNormalFlow(args: string, cwd: string, pi: ExtensionA
 	}
 	const newState = new XddRunnerState({ runId: rt.runId, cwd, userInput: rt.userInput, runtimeStoreOptions: { runtimeFileName: NORMAL_FLOW_RUNTIME_FILE, legacyCheckpointFileName: false, v1BackupFileName: NORMAL_FLOW_V1_BACKUP_FILE } });
 	newState.skills = loadXddSkills(cwd);
-	// 强制注入 NF 自己的 5 阶段 plan，绝不落到 xdd 固定的 STAGES。
+	// 强制注入 NF 自己的 4 阶段 plan，绝不落到 xdd 固定的 STAGES。
 	newState.plan = NF_STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
 	newState.restoreFromCheckpoint(rt);
 	activateNormalFlowExtension(newState);

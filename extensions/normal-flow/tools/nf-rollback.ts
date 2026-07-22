@@ -9,7 +9,7 @@ import type { EmptyDetails, GetNfState } from "./index.ts";
 
 const schema = Type.Object({
 	targetStage: Type.Optional(Type.String({
-		description: "回退目标阶段名。Normal Flow 只允许 verify 阶段回退；不传默认 verify→execute，也可显式回 understand/spec/plan 修正设计或计划。",
+		description: "回退目标阶段名。Normal Flow 只允许 verify 阶段回退；不传默认 verify→spec，也可回 architecture 重搭框架或 understand 补完整设计。",
 	})),
 	reason: Type.String({ description: "回退根因（具体、可操作）" }),
 });
@@ -21,15 +21,15 @@ function isNfStageName(value: string): value is XddStageName {
 }
 
 const DEFAULT_ROLLBACK_TARGET: Readonly<Partial<Record<XddStageName, XddStageName>>> = {
-	verify: "execute",
+	verify: "spec",
 };
 
-/** nf_rollback：NF 只允许 verify 阶段把验证失败回流到 execute/spec/understand 等早期阶段。 */
+/** nf_rollback：NF 只允许 verify 阶段把验证失败回流到 spec/architecture。 */
 export function createNfRollbackTool(getState: GetNfState): ToolDefinition {
 	return {
 		name: "nf_rollback",
 		label: "normal-flow: rollback verify to earlier stage",
-		description: "仅 verify 阶段可用：验证发现实现、规格或需求设计错误时，可回退到 execute、spec、understand 等早期阶段自愈。非 verify 阶段请在本阶段预算内修复，预算耗尽后按 NF 规则软通过并记录告警。",
+		description: "仅 verify 阶段可用：场景实现错误回 spec，框架错误回 architecture，设计根因回 understand。非 verify 阶段请在本阶段预算内修复。",
 		parameters: schema,
 		async execute(_toolCallId, params: NfRollbackInput): Promise<AgentToolResult<EmptyDetails>> {
 			const state = getState();
@@ -45,7 +45,7 @@ export function createNfRollbackTool(getState: GetNfState): ToolDefinition {
 				}
 				target = params.targetStage;
 			} else {
-				target = DEFAULT_ROLLBACK_TARGET[from] ?? "understand";
+				target = DEFAULT_ROLLBACK_TARGET[from] ?? "architecture";
 			}
 			const controller = new XddController(createNormalFlowRuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
 			try {

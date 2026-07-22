@@ -6,7 +6,7 @@ import { activateNormalFlowExtension, deactivateNormalFlowExtension, gotoNormalF
 describe("Normal Flow stage navigation", () => {
 	afterEach(() => deactivateNormalFlowExtension());
 
-	it("jumps directly to plan and clears stale lifecycle state without steering", () => {
+	it("jumps directly to framework and clears stale lifecycle state without steering", () => {
 		const state = new XddRunnerState({ runId: "nf-goto", cwd: process.cwd(), userInput: "test" });
 		state.plan = NF_STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
 		state.paused = true;
@@ -16,20 +16,20 @@ describe("Normal Flow stage navigation", () => {
 		activateNormalFlowExtension(state);
 		const notify = vi.fn();
 
-		gotoNormalFlowStage("plan", notify);
+		gotoNormalFlowStage("architecture", notify);
 
-		expect(state.currentStageName()).toBe("plan");
+		expect(state.currentStageName()).toBe("architecture");
 		expect(state.status).toBe("running");
 		expect(state.paused).toBe(false);
 		expect(state.stopRequested).toBe(false);
 		expect(state.continuationQueued).toBe(false);
 		expect(state.lastStageError).toBeNull();
-		expect(notify).toHaveBeenCalledWith(expect.stringContaining("normal-flow-goto-plan"), "info");
+		expect(notify).toHaveBeenCalledWith(expect.stringContaining("normal-flow-goto-framework"), "info");
 	});
 
 	it("warns and preserves the absence of state when no run is active", () => {
 		const notify = vi.fn();
-		gotoNormalFlowStage("plan", notify);
+		gotoNormalFlowStage("architecture", notify);
 		expect(notify).toHaveBeenCalledWith(expect.stringContaining("无活跃 Normal Flow run"), "warning");
 	});
 });

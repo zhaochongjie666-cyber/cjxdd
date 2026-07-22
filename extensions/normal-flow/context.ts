@@ -6,12 +6,11 @@
  * 工具，硬改字符串会很脆（依赖 xdd 具体措辞不变，参见 xdd-text-bridge.ts 顶部
  * 注释里的耦合风险）。这里为 NF 写一份等价但准确的 preamble + 阶段 prompt。
  *
- * 复用 xdd 的通用、非 xdd 专属片段：NO_CODE_CONSTRAINT / ANTI_AI_CONSTRAINT /
- * NO_CODE_STAGES（这些不提具体工具名，只描述"这阶段能不能读代码/文风要求"）。
+ * 复用 xdd 的通用、非 xdd 专属片段：ANTI_AI_CONSTRAINT（这些不提具体工具名，只描述"这阶段能不能读代码/文风要求"）。
  */
 import { readFileSync } from "node:fs";
 import type { Skill } from "@earendil-works/pi-coding-agent";
-import { ANTI_AI_CONSTRAINT, NO_CODE_CONSTRAINT, NO_CODE_STAGES } from "../xdd/context.ts";
+import { ANTI_AI_CONSTRAINT } from "../xdd/context.ts";
 import { HarnessStore } from "../xdd/harness/store.ts";
 import { conciseHarness } from "../xdd/harness/schema.ts";
 import type { XddRunnerState, XddStageSpec } from "../xdd/types.ts";
@@ -29,10 +28,10 @@ const NF_PREAMBLE = `[Normal Flow · reconcile 范式]
   2. 按差距工作
   3. nf_submit_artifact -- 提交产物，触发硬 Gate（不调用 AIGate；语义质量由 verify 阶段的证据审查负责）
   4. Gate 通过后调 nf_advance 推进到下一阶段
-失败时：Gate 未通过可在预算内反复修复重提；预算耗尽后，只有 verify 阶段可以跳回前序流程自愈（不传 targetStage 默认回 execute/implement；若验证证明规格或需求设计错误，可显式回 spec 或 understand；每次消耗一次流程回退预算）。其他阶段不会跨阶段回退，预算耗尽后自动软通过并记录告警。
+失败时：Gate 未通过先按错误指向的正向动作修复。verify 默认回 scenarios 继续 TDD；框架装配错误显式回 architecture；需求、规格、架构、交互或韧性设计错误显式回 understand/design 补齐完整设计链。其他阶段在本阶段修复，不生成 plan，也不跳到 execute。
 
 [职责解耦]
-每个阶段都会标注你的角色（Requirements Analyst / API Designer / Project Manager / Implementer / Auditor）。同一模型切换 focus；不要用另一个角色的方式做这一阶段的事。
+每个阶段都会标注你的角色（Designer / Architect / Implementer / Auditor）。同一模型切换 focus；不要用另一个角色的方式做这一阶段的事。
 
 铁律：
 1. 只在当前阶段允许的工具范围内工作。
@@ -49,6 +48,17 @@ function readSkillContent(skills: Skill[], skillName: string): string | undefine
 	} catch {
 		return undefined;
 	}
+}
+
+function stageSkillContent(skills: Skill[], stage: XddStageSpec): string | undefined {
+	const names = stage.name === "understand"
+		? ["xdd-brainstorm", "xdd-spec", "xdd-architecture", "xdd-wire", "xdd-resilience"]
+		: [stage.skill];
+	const bodies = names.map((name) => {
+		const body = readSkillContent(skills, name);
+		return body ? `## ${name}\n${body}` : "";
+	}).filter(Boolean);
+	return bodies.length > 0 ? bodies.join("\n\n") : undefined;
 }
 
 function buildHarnessPromptSection(cwd: string): string {
@@ -74,13 +84,10 @@ export interface BuildNfStagePromptArgs {
 
 export function buildNfStageSystemPrompt(args: BuildNfStagePromptArgs): string {
 	const { cwd, stage, userInput, skills, planIndex, planTotal } = args;
-	const skillBody = readSkillContent(skills, stage.skill);
+	const skillBody = stageSkillContent(skills, stage);
 	const sections: string[] = [];
 	sections.push(NF_PREAMBLE);
 	sections.push(ANTI_AI_CONSTRAINT);
-	if (NO_CODE_STAGES.has(stage.name)) {
-		sections.push(NO_CODE_CONSTRAINT);
-	}
 	sections.push(`[阶段角色] ${stage.role}——仅按本角色视角行事`);
 	sections.push(`[当前阶段] ${displayName(stage)}（第 ${planIndex + 1} / ${planTotal} 阶段，Normal Flow）`);
 	sections.push(`[用户原始需求] ${userInput}`);
