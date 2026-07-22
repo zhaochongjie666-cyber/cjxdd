@@ -57,12 +57,28 @@ export const ANTI_AI_CONSTRAINT =
 	"  - 句式有节奏：长句接短句、重要结论单独成段、不必每节都写三点\n" +
 	"判断标准：有具体细节 + 有明确取舍 + 有真实限制 + 有作者自己的判断 = 没有 AI 味。";
 
+const TDD_STAGES = new Set<XddStageName>(["plan", "execute"]);
+
+export const TDD_CONSTRAINT = `[TDD 强制契约]
+TDD 必须成为可执行证据链，而不是“先写测试”的口号：
+1. PLAN：每个 task 先声明公开入口验收测试、精确命令和 Expected；顺序固定为 RED（测试因缺少目标行为而失败）→ GREEN（最小生产实现后通过）→ REFACTOR（不改变行为并重跑通过）。
+2. EXECUTE：先运行并记录 RED 的真实失败及失败原因，再写生产实现；没有 RED 证据不得声称 GREEN，不得先写实现后补测。
+3. 正向与兜底必须配对：happy path 跑通，同时主动攻击失败、拒绝、边界、无权限或依赖不可用路径；不适用时写具体理由。
+4. 每轮把精确命令、关键输出和 PASS/FAIL 写回当前 task Evidence；REFACTOR 后重跑 task 测试及受影响回归测试。
+5. 失败证据必须推动修复：实现错误留在 execute 修；契约、任务、架构或韧性假设错误则停止迁就代码，回炉到 plan/spec/architecture/resilience。`;
+
+function tddConstraintFor(stage: XddStageSpec): string | undefined {
+	return TDD_STAGES.has(stage.name) ? TDD_CONSTRAINT : undefined;
+}
+
 export function buildStageSystemPrompt(args: BuildStagePromptArgs): string {
 	const { cwd, stage, userInput, skills, planIndex, planTotal } = args;
 	const skillBody = readSkillContent(skills, stage.skill);
 	const sections: string[] = [];
 	sections.push(XDD_PREAMBLE);
 	sections.push(ANTI_AI_CONSTRAINT);
+	const tddConstraint = tddConstraintFor(stage);
+	if (tddConstraint) sections.push(tddConstraint);
 	if (NO_CODE_STAGES.has(stage.name)) {
 		sections.push(NO_CODE_CONSTRAINT);
 	}
@@ -134,6 +150,8 @@ export function buildSeed(stage: XddStageSpec, userInput: string): string {
 		`完成方式：先按 desiredState 和阶段 skill 做完正向开发与自检，再调 ${gateHint}。未修改产物时禁止原样重提；Gate 未达标先执行 finding 指向的修复，通过后调 xdd_advance，预算耗尽再调 xdd_diagnose 回炉。`,
 		`Controller 工具：xdd_observe（观察状态）/ xdd_desired_state（查看目标）/ xdd_difference（计算差距）/ xdd_next_task（获取下一步指令）。`,
 	];
+	const tddConstraint = tddConstraintFor(stage);
+	if (tddConstraint) lines.splice(1, 0, tddConstraint);
 	// P16: bash timeout hint for stages that use bash
 	if (stage.allowedTools.includes("bash")) {
 		lines.push(

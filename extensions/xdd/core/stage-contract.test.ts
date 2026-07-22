@@ -38,9 +38,22 @@ describe("compileStageContracts", () => {
 		expect(plan?.desiredState.join("\n")).toContain("字段名和值必须同处一行");
 		expect(plan?.desiredState.join("\n")).toContain("失败/拒绝/依赖不可用任务或处理");
 		expect(plan?.desiredState.join("\n")).toContain("可执行重规划动作");
+		expect(plan?.desiredState.join("\n")).toContain("RED");
+		expect(plan?.desiredState.join("\n")).toContain("GREEN");
 		expect(plan?.aigateStandard).toContain("过度设计");
 		expect(plan?.aigateStandard).toContain("可观察完成证据");
 		expect(plan?.aigateStandard).toContain("依赖不可用路径");
+	});
+
+	it("pairs the execute Gate with observable TDD evidence and fallback attacks", () => {
+		const execute = compileStageContracts(STAGES).find((stage) => stage.name === "execute");
+		const desired = execute?.desiredState.join("\n") ?? "";
+		expect(desired).toContain("RED");
+		expect(desired).toContain("GREEN");
+		expect(desired).toContain("REFACTOR");
+		expect(desired).toContain("正向");
+		expect(desired).toContain("兜底");
+		expect(desired).toContain("回炉");
 	});
 
 	it("rejects required outputs not covered by writeScopes", () => {
