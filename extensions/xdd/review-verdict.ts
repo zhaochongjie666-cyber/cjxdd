@@ -59,6 +59,23 @@ export interface ReviewPolicyResult {
 	reasons: string[];
 }
 
+/**
+ * Controller-owned state and review outputs are mutable consequences of a
+ * submission, not review inputs.  Resolve declarations to a concrete,
+ * immutable file set before persisting a verdict so a broad artifact glob
+ * cannot make the verdict (or code-review report) digest its own output.
+ */
+export function selectReviewArtifactPaths(cwd: string, patterns: readonly string[]): string[] {
+	return resolveGlobs(cwd, patterns).filter((path) => {
+		const normalized = path.replace(/\\/g, "/");
+		return normalized !== ".xdd/runtime.json"
+			&& normalized !== ".xdd/runs/xdd_run/runtime.json"
+			&& normalized !== ".xdd/runs/xdd_run/code-review.json"
+			&& normalized !== ".xdd/runs/xdd_run/commit-review.json"
+			&& !/^\.xdd\/runs\/xdd_run\/reviews\/[^/]+\.json$/.test(normalized);
+	});
+}
+
 /** A content or path change invalidates every verdict for the old artifact set. */
 export function digestReviewArtifacts(artifacts: Readonly<Record<string, string | Uint8Array>>): string {
 	const hash = createHash("sha256");
