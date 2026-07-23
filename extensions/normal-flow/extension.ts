@@ -3,6 +3,7 @@ import { buildActiveNfStageSystemPrompt } from "./context.ts";
 import { createNfTools } from "./tools/index.ts";
 import { compileStageContracts } from "../xdd/core/stage-contract.ts";
 import { agentEndCommandFromPi } from "../xdd/adapters/pi-controller.ts";
+import { isProvider429InsufficientBalance } from "../xdd/core/controller.ts";
 import { enforceToolCallPolicy } from "../xdd/policy/tool-policy.ts";
 import { createNormalFlowRuntimeStore } from "./runtime-store.ts";
 import { assistantFlowUsage } from "../xdd/flow-budget.ts";
@@ -130,6 +131,14 @@ async function sendNfAdvanceNextStageSteering(
 export const normalFlowInlineExtension: InlineExtension = {
 	name: "normal-flow",
 	factory(pi) {
+		// Pi may emit one or more transient agent_end(error) events while its
+		// built-in provider retry loop is still running.  Do not turn those into
+		// a workflow pause until agent_settled confirms that Pi has given up.
+		let pendingProviderError: {
+			command: NonNullable<ReturnType<typeof agentEndCommandFromPi>>;
+			runId: string;
+			stageEpoch: string;
+		} | null = null;
 		for (const tool of createNfTools(getState)) {
 			pi.registerTool(tool);
 		}
@@ -238,6 +247,7 @@ export const normalFlowInlineExtension: InlineExtension = {
 			if (!stateRef) return;
 			stateRef.recordFlowUsage(assistantFlowUsage(event.messages));
 			if (stateRef.flowBudgetExhausted) {
+				pendingProviderError = null;
 				stateRef.paused = true;
 				ctx.ui.notify(
 					`[normal-flow] 流程预算已耗尽：$${stateRef.flowCostUsd.toFixed(2)}/$${stateRef.flowBudgetUsd.toFixed(2)}（${stateRef.flowTokensUsed} tokens）。流程已暂停；提高 XDD_FLOW_BUDGET_USD 后启动新的 run。`,
@@ -245,12 +255,44 @@ export const normalFlowInlineExtension: InlineExtension = {
 				);
 				return;
 			}
-			if (stateRef.runComplete) return;
+			if (stateRef.runComplete) {
+				pendingProviderError = null;
+				return;
+			}
 			const command = agentEndCommandFromPi(event);
 			if (!command) return;
+			if (command.type === "AGENT_ENDED" && command.stopReason === "error") {
+				// Balance/quota errors are Controller-owned delayed retries and must
+				// be dispatched immediately. Other provider errors remain transient
+				// until Pi declares the agent settled.
+				if (isProvider429InsufficientBalance(command.providerError)) {
+					pendingProviderError = null;
+					await dispatchNfCommand(stateRef, command, { pi, ctx, getState: () => stateRef });
+					return;
+				}
+				pendingProviderError = { command, runId: stateRef.runId, stageEpoch: stateRef.stageEpoch };
+				return;
+			}
+			pendingProviderError = null;
 			if (typeof ctx.hasPendingMessages === "function") {
 				command.hasPendingMessages = ctx.hasPendingMessages();
 			}
+			await dispatchNfCommand(stateRef, command, { pi, ctx, getState: () => stateRef });
+		});
+
+		pi.on("agent_settled", async (_event, ctx) => {
+			if (!stateRef || stateRef.runComplete || !pendingProviderError) return;
+			if (
+				stateRef.paused ||
+				stateRef.stopRequested ||
+				pendingProviderError.runId !== stateRef.runId ||
+				pendingProviderError.stageEpoch !== stateRef.stageEpoch
+			) {
+				pendingProviderError = null;
+				return;
+			}
+			const { command } = pendingProviderError;
+			pendingProviderError = null;
 			await dispatchNfCommand(stateRef, command, { pi, ctx, getState: () => stateRef });
 		});
 
