@@ -46,7 +46,7 @@ const NF_CONTRACT_META: Record<NfXddStageName, NfContractMeta> = {
 	verify: {
 		inputs: [input(".xdd/design/spec/**", "已实现的业务场景与规则")],
 		readScopes: ["**"],
-		writeScopes: [".xdd/runs/normal_run/verify-report.md"],
+		writeScopes: [".xdd/runs/normal_run/*.md"],
 		rollbackTarget: "spec",
 	},
 };
@@ -86,8 +86,13 @@ function withNfStageContract(stage: XddStageSpec): XddStageSpec {
 const designGate: XddGate = async ({ cwd }) => {
 	const checks: Array<[string[], string]> = [
 		[[".xdd/design/intent.md", ".xdd/design/design.md", ".xdd/design/personas/_index.md"], "需求意图、收敛决策或角色设计"],
+		[[".xdd/design/business-process.md"], "用户与管理员端到端业务流程"],
+		[[".xdd/design/experience.md"], "用户体验与前端视觉设计"],
+		[[".xdd/design/operations.md"], "运维监控、诊断与人工/AI 接管设计"],
+		[[".xdd/design/test-environment.md"], "Docker 测试环境、数据库与依赖准备设计"],
 		[[".xdd/design/spec/**/rules.md", ".xdd/design/spec/**/*.feature"], "RXX 规则或 Gherkin Scenario"],
 		[[".xdd/design/architecture/**/architecture.md", ".xdd/design/architecture/module-landscape.md", ".xdd/design/architecture/event-contract.md", ".xdd/design/architecture/aggregate-landscape.md"], "架构、模块、事件或聚合设计"],
+		[[".xdd/design/architecture/performance.md"], "性能目标、容量模型与性能验证设计"],
 		[[".xdd/design/wire/*.md"], "交互线框与操作状态设计"],
 		[[".xdd/design/architecture/**/resilience/failure-modes.md", ".xdd/design/architecture/**/resilience/failsafe-design.md", ".xdd/design/architecture/**/resilience/resilience-test-plan.md"], "失败模式、兜底或韧性测试设计"],
 	];
@@ -100,14 +105,48 @@ const designGate: XddGate = async ({ cwd }) => {
 	const personaFiles = matchingFiles(cwd, [".xdd/design/personas/*.md"])
 		.filter((path) => !path.endsWith("/_index.md"));
 	if (personaFiles.length === 0) return { ok: false, reason: "design Gate: personas 只有索引而没有角色档案；请按 xdd understand 正向动作补至少一个具体角色的深度档案" };
+	const designDimensions: Array<[string, RegExp, string]> = [
+		[".xdd/design/business-process.md", /用户|customer|user/i, "用户目标与旅程"],
+		[".xdd/design/business-process.md", /管理员|admin/i, "管理员流程与权限"],
+		[".xdd/design/experience.md", /页面|视觉|布局|交互|frontend|UI/i, "页面视觉与交互状态"],
+		[".xdd/design/operations.md", /监控|指标|日志|trace|告警/i, "监控与可观测性"],
+		[".xdd/design/operations.md", /debug|诊断|排障|runbook/i, "高效诊断与排障路径"],
+		[".xdd/design/operations.md", /人工|AI|接管|handoff/i, "人工或 AI 运维接管边界"],
+		[".xdd/design/architecture/performance.md", /性能|延迟|吞吐|并发|容量|SLO/i, "可度量的性能要求"],
+		[".xdd/design/test-environment.md", /Docker|container|compose/i, "容器化测试拓扑"],
+		[".xdd/design/test-environment.md", /数据库|database|postgres|mysql|mongo|redis|无需数据库/i, "测试数据库与依赖决策"],
+		[".xdd/design/test-environment.md", /migration|迁移|seed|种子|fixture/i, "数据库初始化与测试数据"],
+		[".xdd/design/test-environment.md", /health|健康|ready|就绪|wait/i, "依赖就绪检查"],
+		[".xdd/design/test-environment.md", /隔离|清理|reset|volume|独立/i, "测试隔离与清理策略"],
+	];
+	for (const [path, pattern, label] of designDimensions) {
+		const substantial = await requireGlobsWithMinSize(cwd, [path], 100);
+		if (!substantial.ok || !pattern.test(readMatchedText(cwd, [path]))) {
+			return { ok: false, reason: `design Gate: ${path} 缺少可执行的${label}；请先完成对应正向设计，不得带着设计缺口进入代码实现` };
+		}
+	}
 	return { ok: true };
 };
 
 const frameworkGate: XddGate = async ({ cwd }) => {
 	const doc = await requireGlobsWithMinSize(cwd, [".xdd/design/architecture/**/architecture.md"], 100);
 	if (!doc.ok) return { ok: false, reason: "framework Gate: 完整设计链中的 architecture.md 缺失或过短；请先回 design 补齐，再按其端点搭建框架" };
-	const framework = await requireGlobs(cwd, ["src/**", "lib/**", "app/**", "cmd/**"]);
-	if (!framework.ok) return { ok: false, reason: "framework Gate: 架构文档已有，但缺少 src/lib/app/cmd 中的代码框架；请回到正向动作搭建架构端点" };
+	const frameworkChecks = await Promise.all(["src/**/*", "lib/**/*", "app/**/*", "cmd/**/*"].map((pattern) => requireGlobs(cwd, [pattern])));
+	if (!frameworkChecks.some((result) => result.ok)) return { ok: false, reason: "framework Gate: 架构文档已有，但缺少 src/lib/app/cmd 任一惯用目录中的代码框架；请回到正向动作搭建架构端点" };
+	const dockerfile = await requireGlobsWithMinSize(cwd, ["Dockerfile.test"], 50);
+	if (!dockerfile.ok) return { ok: false, reason: "framework Gate: 缺少可复现的 Dockerfile.test；请按 test-environment.md 封装测试运行时、依赖安装与测试入口" };
+	const compose = await requireGlobsWithMinSize(cwd, ["compose.test.yaml"], 100);
+	if (!compose.ok) return { ok: false, reason: "framework Gate: 缺少 compose.test.yaml；请声明 test 服务、数据库/外部依赖、healthcheck 和隔离 volume/network" };
+	const composeText = readMatchedText(cwd, ["compose.test.yaml"]);
+	const composeRequirements: Array<[RegExp, string]> = [
+		[/services\s*:/i, "services"], [/test\s*:/i, "test runner 服务"],
+		[/healthcheck\s*:/i, "数据库或依赖 healthcheck"], [/depends_on\s*:/i, "依赖就绪关系"],
+	];
+	for (const [pattern, label] of composeRequirements) {
+		if (!pattern.test(composeText)) return { ok: false, reason: `framework Gate: compose.test.yaml 缺少 ${label}；请回到 Docker 测试环境正向动作补齐` };
+	}
+	const testScript = await requireGlobsWithMinSize(cwd, ["scripts/test-in-docker"], 30);
+	if (!testScript.ok) return { ok: false, reason: "framework Gate: 缺少 scripts/test-in-docker；请提供一条可重复启动依赖、执行测试并清理环境的入口" };
 	return { ok: true };
 };
 
@@ -129,6 +168,11 @@ const scenariosGate: XddGate = async ({ cwd }) => {
 const verifyGate: XddGate = async ({ cwd }) => {
 	const report = await requireGlobsWithMinSize(cwd, [".xdd/runs/normal_run/verify-report.md"], 100);
 	if (!report.ok) return { ok: false, reason: "verify Gate: 缺少逐 Scenario 的攻击验证报告" };
+	const reportText = readMatchedText(cwd, [".xdd/runs/normal_run/verify-report.md"]);
+	if (!/scripts\/test-in-docker|docker\s+compose/i.test(reportText)) return { ok: false, reason: "verify Gate: verify-report.md 缺少 Docker 一键测试命令与结果；请从干净容器环境重跑并记录证据" };
+	if (!/数据库|database|migration|seed|无需数据库/i.test(reportText)) return { ok: false, reason: "verify Gate: verify-report.md 缺少测试数据库初始化/隔离证据或无需数据库的明确说明" };
+	const handoff = await requireGlobsWithMinSize(cwd, [".xdd/runs/normal_run/operations-handoff.md"], 100);
+	if (!handoff.ok) return { ok: false, reason: "verify Gate: 缺少 operations-handoff.md；请记录部署、监控、告警、debug/runbook、回滚及人工/AI 运维接管方式" };
 	const tests = await requireTestsPass(cwd);
 	if (!tests.ok) return tests;
 	const coverage = buildTraceCoverage(observeFilesystem(cwd, []));
@@ -143,7 +187,12 @@ export const NF_STAGES: readonly XddStageSpec[] = [
 		name: "understand", role: roleFor("understand"), skill: "xdd-brainstorm", exit: "goal_complete",
 		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, ...NF_CONTROLLER_TOOLS],
 		desiredState: [
-			"已生成与 xdd 同形的完整持久设计链，而不是简化版 architecture/spec",
+			"已把用户希望获得的结果、端到端业务流程与体验旅程设计清楚，而不是让代码实现反推产品需求",
+			"已设计前端页面的信息层级、视觉方向、组件和空/加载/错误/成功/确认/边界状态，明确什么叫好看且可用",
+			"已设计管理员的审核、配置、权限、异常处理和审计流程",
+			"已定义架构约束与可度量的性能预算、容量假设、降级策略和验证方法",
+			"已设计运维工程师的指标、日志、trace、告警、debug/runbook、回滚，以及人工或 AI 接管边界",
+			"已设计 Docker 测试拓扑、测试数据库和外部依赖、migration/seed、healthcheck、隔离清理与一键执行方式",
 			"需求层已完成 intent.md、design.md 与 personas；规格层已完成 RXX rules.md 与全部正向/兜底 Feature Scenario",
 			"架构层已完成各业务 architecture.md、module-landscape.md、event-contract.md 与 aggregate-landscape.md",
 			"交互层已完成 wire 页面及空/加载/错误/成功/确认/边界状态；韧性层已完成 failure-modes、failsafe-design 与 resilience-test-plan",
@@ -151,9 +200,10 @@ export const NF_STAGES: readonly XddStageSpec[] = [
 		],
 		deliverablePaths: [
 			".xdd/design/intent.md", ".xdd/design/design.md", ".xdd/design/personas/_index.md",
+			".xdd/design/business-process.md", ".xdd/design/experience.md", ".xdd/design/operations.md", ".xdd/design/test-environment.md",
 			".xdd/design/spec/**/rules.md", ".xdd/design/spec/**/*.feature",
 			".xdd/design/architecture/**/architecture.md", ".xdd/design/architecture/module-landscape.md",
-			".xdd/design/architecture/event-contract.md", ".xdd/design/architecture/aggregate-landscape.md",
+			".xdd/design/architecture/event-contract.md", ".xdd/design/architecture/aggregate-landscape.md", ".xdd/design/architecture/performance.md",
 			".xdd/design/wire/*.md", ".xdd/design/architecture/**/resilience/failure-modes.md",
 			".xdd/design/architecture/**/resilience/failsafe-design.md", ".xdd/design/architecture/**/resilience/resilience-test-plan.md",
 		],
@@ -166,8 +216,9 @@ export const NF_STAGES: readonly XddStageSpec[] = [
 			"已读取 design 阶段的 intent/spec/architecture/wire/resilience 完整设计链",
 			"已按完整架构文档搭出可运行的代码框架，而不是重写设计或补计划",
 			"框架包含后续 Scenario 所需的端点与测试接缝，并完成最小启动/编译自检",
+			"已按 test-environment.md 生成 Dockerfile.test、compose.test.yaml 与 scripts/test-in-docker，数据库/依赖具备 healthcheck、migration/seed 和隔离清理",
 		],
-		deliverablePaths: [], aigateStandard: NF_NO_AIGATE_STANDARD, gate: frameworkGate,
+		deliverablePaths: ["Dockerfile.test", "compose.test.yaml", "scripts/test-in-docker"], aigateStandard: NF_NO_AIGATE_STANDARD, gate: frameworkGate,
 	},
 	{
 		name: "spec", role: roleFor("spec"), skill: "xdd-execute", exit: "goal_complete",
@@ -175,6 +226,7 @@ export const NF_STAGES: readonly XddStageSpec[] = [
 		desiredState: [
 			"已从需求与架构能力列全 RXX 和 Gherkin Scenario，正向与失败/拒绝/冲突/无权限/边界兜底都不遗漏",
 			"已按 Scenario 逐个执行红→绿→重构：先看到失败测试，再写最小实现，再跑回归",
+			"测试通过 scripts/test-in-docker 在隔离容器中运行，真实使用已准备的测试数据库和外部依赖，而不是依赖开发机偶然状态",
 			"每条 RXX 都有测试证据和源码 @implements RXX，全部 Scenario 测试通过",
 			"失败 Gate 能指出具体 RXX/Scenario，并直接给出回炉动作，而不是要求补 plan",
 		],
@@ -186,8 +238,10 @@ export const NF_STAGES: readonly XddStageSpec[] = [
 		desiredState: [
 			"已逐 Scenario 重跑测试并主动攻击正向与兜底路径",
 			"verify-report.md 记录命令、失败证据、P0/P1、追溯覆盖及回炉去向",
+			"已从干净环境执行 scripts/test-in-docker，验证镜像构建、依赖 healthcheck、migration/seed、数据库隔离和失败清理",
+			"operations-handoff.md 已把部署、可观测性、告警、debug/runbook、回滚和人工/AI 接管方式交付清楚",
 			"实现问题可回 scenarios 继续 TDD；架构问题可回 framework 重搭框架",
 		],
-		deliverablePaths: [".xdd/runs/normal_run/verify-report.md"], aigateStandard: NF_NO_AIGATE_STANDARD, gate: verifyGate,
+		deliverablePaths: [".xdd/runs/normal_run/verify-report.md", ".xdd/runs/normal_run/operations-handoff.md"], aigateStandard: NF_NO_AIGATE_STANDARD, gate: verifyGate,
 	},
 ].map(withNfStageContract);
