@@ -7,6 +7,7 @@ import { XddController } from "../../xdd/core/controller.ts";
 import { createNormalFlowRuntimeStore } from "../runtime-store.ts";
 import type { XddRunnerState, XddStageName } from "../../xdd/types.ts";
 import { type EmptyDetails, type GetNfState, ok } from "./index.ts";
+import { canSoftPassExhaustedStage } from "../policy.ts";
 
 const schema = Type.Object({
 	summary: Type.String({ description: "本阶段完成内容与产物路径摘要" }),
@@ -95,10 +96,21 @@ export function createNfSubmitArtifactTool(getState: GetNfState): ToolDefinition
 					};
 				}
 				if (stage.exit !== "verdict") {
+					// design 是后续实现的冻结契约，不能带病软通过；即使三次快速
+					// 自愈预算耗尽，也必须按 Gate 的正向动作补齐后再提交。
+					if (!canSoftPassExhaustedStage(stage.name)) {
+						return {
+							content: [{
+								type: "text",
+								text: `❌ [设计 Gate ${used}/${budget.limit}] design 未达到可实现状态：${error}\n设计是业务、体验、运维与架构的冻结契约，不能软通过。请按上述缺口完善设计并提交有实质变化的产物。`,
+							}],
+							details: {},
+						};
+					}
 					dispatchToController(state, { type: "RECORD_SIGNAL", signal: "complete" });
 					dispatchToController(state, { type: "SUBMIT", submission: { summary, artifacts, pass: true } });
 					return ok(
-						`⚠️ [硬 Gate ${used}/${budget.limit}] ${stage.name} 未通过且预算耗尽：${error}\n硬 Gate 告警已记录，现软通过；请调用 nf_advance 自动推进。`,
+						`⚠️ [硬 Gate ${used}/${budget.limit}] ${stage.name} 未通过且预算耗尽：${error}\n问题已记录并将带到下一阶段，现软通过；请调用 nf_advance 单向推进。`,
 					);
 				}
 				// verify 阶段不能软通过：自动消耗流程回退预算，回退到 scenarios。

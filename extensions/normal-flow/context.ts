@@ -52,8 +52,10 @@ function readSkillContent(skills: Skill[], skillName: string): string | undefine
 
 function stageSkillContent(skills: Skill[], stage: XddStageSpec): string | undefined {
 	const names = stage.name === "understand"
-		? ["xdd-brainstorm", "xdd-spec", "xdd-architecture", "xdd-wire", "xdd-resilience"]
-		: [stage.skill];
+		? ["xdd-brainstorm", "xdd-spec", "xdd-architecture", "xdd-frontend", "xdd-wire", "xdd-resilience"]
+		: stage.name === "architecture"
+			? [stage.skill, "xdd-docker-helper"]
+			: [stage.skill];
 	const bodies = names.map((name) => {
 		const body = readSkillContent(skills, name);
 		return body ? `## ${name}\n${body}` : "";

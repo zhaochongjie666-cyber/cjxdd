@@ -40,7 +40,7 @@ describe("Normal Flow stage contracts", () => {
 		const framework = NF_STAGES.find((s) => s.name === "architecture");
 		expect(framework?.writeScopes).toContain("**");
 		const verify = NF_STAGES.find((s) => s.name === "verify");
-		expect(verify?.writeScopes).toContain(".xdd/runs/normal_run/verify-report.md");
+		expect(verify?.writeScopes).toContain(".xdd/runs/normal_run/*.md");
 	});
 
 	it("requires the complete xdd-shaped design chain before framework", async () => {
@@ -51,11 +51,16 @@ describe("Normal Flow stage contracts", () => {
 				writeFileSync(join(cwd, rel), body);
 			};
 			write(".xdd/design/intent.md"); write(".xdd/design/design.md"); write(".xdd/design/personas/_index.md"); write(".xdd/design/personas/p01-user.md");
+			write(".xdd/design/business-process.md", "用户 user 管理员 admin 审核 权限 审计 ".repeat(8));
+			write(".xdd/design/experience.md", "页面 视觉 布局 交互 UI 空 加载 错误 成功 ".repeat(8));
+			write(".xdd/design/operations.md", "监控 指标 日志 trace 告警 debug 排障 runbook 回滚 人工 AI 接管 ".repeat(8));
+			write(".xdd/design/test-environment.md", "Docker compose 数据库 migration seed healthcheck 就绪 隔离 reset volume 一键测试 ".repeat(8));
 			write(".xdd/design/spec/b01/rules.md", "R01 complete business rule ".repeat(8));
 			write(".xdd/design/spec/b01/flow.feature", "@covers-R01 Feature: complete\nScenario: happy\nScenario: rejected\n");
 			write(".xdd/design/architecture/b01/architecture.md");
 			write(".xdd/design/architecture/module-landscape.md"); write(".xdd/design/architecture/event-contract.md");
 			write(".xdd/design/architecture/aggregate-landscape.md"); write(".xdd/design/wire/home.md");
+			write(".xdd/design/architecture/performance.md", "性能 延迟 吞吐 并发 容量 SLO 降级 验证 ".repeat(8));
 			write(".xdd/design/architecture/b01/resilience/failure-modes.md");
 			write(".xdd/design/architecture/b01/resilience/failsafe-design.md");
 			const design = NF_STAGES.find((stage) => stage.name === "understand")!;
@@ -70,11 +75,37 @@ describe("Normal Flow stage contracts", () => {
 		}
 	});
 
+	it("pairs the Docker test-environment gate with actionable framework artifacts", async () => {
+		const cwd = mkdtempSync(join(tmpdir(), "normal-flow-docker-"));
+		try {
+			const write = (rel: string, body: string) => {
+				mkdirSync(join(cwd, rel, ".."), { recursive: true });
+				writeFileSync(join(cwd, rel), body);
+			};
+			write(".xdd/design/architecture/app/architecture.md", "architecture endpoint contract ".repeat(8));
+			write("src/core/app.ts", "export const app = true;\n");
+			write("lib/core.ts", "export const core = true;\n");
+			write("app/main.ts", "export const main = true;\n");
+			write("cmd/start.ts", "export const start = true;\n");
+			const framework = NF_STAGES.find((stage) => stage.name === "architecture")!;
+			await expect(framework.gate({ cwd, summary: "", desiredState: framework.desiredState })).resolves.toMatchObject({
+				ok: false,
+				reason: expect.stringContaining("Dockerfile.test"),
+			});
+			write("Dockerfile.test", "FROM node:22-alpine\nWORKDIR /app\nCOPY . .\nRUN npm ci\nCMD [\"npm\",\"test\"]\n");
+			write("compose.test.yaml", "services:\n  db:\n    image: postgres:17\n    healthcheck:\n      test: [CMD-SHELL, pg_isready]\n  test:\n    build:\n      dockerfile: Dockerfile.test\n    depends_on:\n      db:\n        condition: service_healthy\n");
+			write("scripts/test-in-docker", "#!/bin/sh\nset -eu\ndocker compose -f compose.test.yaml up --build --abort-on-container-exit --exit-code-from test\ndocker compose -f compose.test.yaml down -v\n");
+			await expect(framework.gate({ cwd, summary: "", desiredState: framework.desiredState })).resolves.toMatchObject({ ok: true });
+		} finally {
+			rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
 	it("lets verify write its report while keeping source modification disabled", () => {
 		const verify = NF_STAGES.find((s) => s.name === "verify");
 		expect(verify?.allowedTools).toEqual(expect.arrayContaining(["write", "edit"]));
 		expect(verify?.noCodeModification).toBe(true);
-		expect(verify?.writeScopes).toEqual([".xdd/runs/normal_run/verify-report.md"]);
+		expect(verify?.writeScopes).toEqual([".xdd/runs/normal_run/*.md"]);
 	});
 });
 
@@ -83,7 +114,11 @@ describe("Normal Flow traceability gates", () => {
 		mkdirSync(join(cwd, ".xdd", "runs", "normal_run"), { recursive: true });
 		writeFileSync(
 			join(cwd, ".xdd", "runs", "normal_run", "verify-report.md"),
-			"攻击 Attack 失败假设 P0 P1 证据 spec↔code ".repeat(8),
+			"攻击 Attack 失败假设 P0 P1 证据 spec↔code scripts/test-in-docker 数据库 migration seed 隔离 ".repeat(8),
+		);
+		writeFileSync(
+			join(cwd, ".xdd", "runs", "normal_run", "operations-handoff.md"),
+			"部署 监控 指标 日志 trace 告警 debug runbook 回滚 人工 AI 接管 ".repeat(8),
 		);
 	}
 

@@ -15,15 +15,14 @@ import { XddController } from "../xdd/core/controller.ts";
 import { createNormalFlowRuntimeStore, NORMAL_FLOW_RUNTIME_FILE, NORMAL_FLOW_V1_BACKUP_FILE } from "./runtime-store.ts";
 import { configuredFlowBudgetUsd } from "../xdd/flow-budget.ts";
 import { dispatchNfCommand } from "./adapter.ts";
+import { NF_MAX_FLOW_RETRIES, NF_MAX_SELF_HEAL_PER_STAGE } from "./policy.ts";
 
 /**
  * NF 自愈预算，比 xdd 的默认值（5）更紧凑（Docs/normal-flow.md §9.5）。Flow
- * 回退预算沿用 xdd 的默认值 7，不需要覆盖。`StartOptions`（xdd/core/commands.ts）
+ * 回退预算是 8 次完整迭代。`StartOptions`（xdd/core/commands.ts）
  * 没有预算字段——这里照抄 runXdd() 对 flowBudgetUsd 的做法：dispatch(START) 之
  * 后直接用 XddRunnerState 的属性 setter 覆盖。
  */
-const NF_MAX_SELF_HEAL_PER_STAGE = 3;
-
 /** cwd 上已有一个非 NF（即 xdd）的未完成 run 时，返回冲突提示；否则 undefined。 */
 function nfStartConflictMessage(cwd: string): string | undefined {
 	const rt = createNormalFlowRuntimeStore(cwd).load();
@@ -55,6 +54,8 @@ export async function startNormalFlow(args: string, cwd: string, pi: ExtensionAP
 	const state = new XddRunnerState({ runId, cwd, userInput: task, runtimeStoreOptions: { runtimeFileName: NORMAL_FLOW_RUNTIME_FILE, legacyCheckpointFileName: false, v1BackupFileName: NORMAL_FLOW_V1_BACKUP_FILE } });
 	state.flowBudgetUsd = configuredFlowBudgetUsd();
 	state.maxSelfHealPerStage = NF_MAX_SELF_HEAL_PER_STAGE;
+	state.flowRollbackLimit = NF_MAX_FLOW_RETRIES;
+	state.maxRollbacksPerStage = NF_MAX_FLOW_RETRIES;
 	state.skills = loadXddSkills(cwd);
 	state.plan = NF_STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
 	activateNormalFlowExtension(state);
@@ -106,6 +107,10 @@ export async function resumeNormalFlow(args: string, cwd: string, pi: ExtensionA
 	// 强制注入 NF 自己的 4 阶段 plan，绝不落到 xdd 固定的 STAGES。
 	newState.plan = NF_STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
 	newState.restoreFromCheckpoint(rt);
+	// 策略属于当前版本契约，不沿用旧 checkpoint 中的默认预算。
+	newState.maxSelfHealPerStage = NF_MAX_SELF_HEAL_PER_STAGE;
+	newState.flowRollbackLimit = NF_MAX_FLOW_RETRIES;
+	newState.maxRollbacksPerStage = NF_MAX_FLOW_RETRIES;
 	activateNormalFlowExtension(newState);
 	if (newState.paused) {
 		await dispatchNfCommand(newState, { type: "RESUME" }, {
