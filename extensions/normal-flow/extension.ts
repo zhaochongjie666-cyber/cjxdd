@@ -125,7 +125,7 @@ async function sendNfAdvanceNextStageSteering(
 ): Promise<void> {
 	const stage = state.currentStageName() ?? "当前";
 	const stageSpecific = stage === "verify"
-		? `已进入 verify 阶段。这不是只跑单元测试。你要：1) 确保所有 Feature 都有真实实现（无桩/占位）；2) 从不同用户角色（管理员/普通用户/审批者等）视角，通过 HTTP 端点或浏览器端到端验收每个 Feature 场景；3) 正向路径（用户能完成业务目标）和兜底路径（拒绝/失败/无权限/边界）都要端到端验证；4) 把每个角色的用户旅程、命令输出、问题记录到 verify-report.md。立即调用 nf_observe、nf_desired_state、nf_difference 开始。`
+		? `已进入 verify 阶段。verify 的作用是防止偷工减料，不是写个报告说通过就通过。你要：1) 确保所有 Feature 都有真实实现（无桩/占位/注释）；2) 从不同用户角色（管理员/普通用户/审批者等）视角，通过 HTTP 端点或浏览器端到端验收每个 Feature 场景；3) 每个用户旅程都要截图（.png/.jpg），放在 .xdd/runs/normal_run/screenshots/ 下；4) 正向路径和兜底路径（拒绝/失败/无权限/边界）都要端到端验证；5) verify-report.md 必须明确声明 P0=0、P1=0、P2=0；有未解决问题必须回 scenarios 重做，不能带病通过；6) 所有用户旅途必须走通，走不通 = P0 = 回炉。立即调用 nf_observe、nf_desired_state、nf_difference 开始。`
 		: `已进入 ${stage} 阶段。立即自动执行下一步：调用 nf_observe、nf_desired_state、nf_difference，按差距完成阶段产物；不要停下来只汇报已推进。`;
 	await pi.sendUserMessage?.(
 		`[normal-flow advance steering] ${stageSpecific}`,

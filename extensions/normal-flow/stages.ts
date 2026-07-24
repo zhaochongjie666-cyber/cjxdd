@@ -250,6 +250,33 @@ const verifyGate: NfGate = async ({ cwd }) => {
 	const handoff = await requireGlobsWithMinSize(cwd, [".xdd/runs/normal_run/operations-handoff.md"], 500);
 	if (!handoff.ok) return { ok: false, reason: "verify Gate: 缺少 operations-handoff.md（至少 500 字节）；请记录部署、监控、告警、debug/runbook、回滚及人工/AI 运维接管方式" };
 
+	// 11. 必须有截图证据（实际文件存在，不是文字声称）
+	const screenshots = matchingFiles(cwd, [".xdd/runs/normal_run/screenshots/*.png", ".xdd/runs/normal_run/screenshots/*.jpg", ".xdd/runs/normal_run/screenshots/*.webp", ".xdd/runs/normal_run/*.png", ".xdd/runs/normal_run/*.jpg"]);
+	if (screenshots.length === 0) {
+		return { ok: false, reason: "verify Gate: 缺少截图证据；每个用户旅程必须有实际截图文件（.png/.jpg/.webp），放在 .xdd/runs/normal_run/screenshots/ 下。没有截图 = 没验证" };
+	}
+
+	// 12. 报告必须明确声明 P0=0（有 P0 必须回 scenarios 重做，不能带病通过）
+	if (!/P0.*[:：]\s*0|P0.*无|无\s*P0|P0.*0\s*个|0\s*个\s*P0|P0.*未发现|P0.*零/i.test(reportText)) {
+		return { ok: false, reason: "verify Gate: verify-report.md 未明确声明 P0=0；有 P0 问题必须回 scenarios 重做，不能带病通过" };
+	}
+
+	// 13. 报告必须明确声明 P1=0
+	if (!/P1.*[:：]\s*0|P1.*无|无\s*P1|P1.*0\s*个|0\s*个\s*P1|P1.*未发现|P1.*零/i.test(reportText)) {
+		return { ok: false, reason: "verify Gate: verify-report.md 未明确声明 P1=0；有 P1 问题必须回 scenarios 修复后重交" };
+	}
+
+	// 14. 报告必须明确声明 P2=0
+	if (!/P2.*[:：]\s*0|P2.*无|无\s*P2|P2.*0\s*个|0\s*个\s*P2|P2.*未发现|P2.*零/i.test(reportText)) {
+		return { ok: false, reason: "verify Gate: verify-report.md 未明确声明 P2=0；有 P2 问题必须修复后重交" };
+	}
+
+	// 15. 报告不能有未通过的用户旅途（走不通 = P0 = 必须回炉）
+	if (/旅途.*失败|journey.*fail|用户.*走不通|无法完成|未通过.*旅途|旅途.*未通过|旅途.*阻塞|journey.*blocked/i.test(reportText)) {
+		return { ok: false, reason: "verify Gate: verify-report.md 记录了未通过的用户旅途；用户旅途走不通是 P0 问题，必须回 scenarios 重做，不能带病通过" };
+	}
+
+
 	return { ok: true };
 };
 
@@ -310,11 +337,14 @@ export const NF_STAGES: readonly NfStageSpec[] = [
 			"已确保所有 Feature（Scenario）都有真实实现代码，不是桩/占位/注释；构建通过、单元/集成测试通过",
 			"已从不同用户角色（如管理员/普通用户/审批者）视角，通过 HTTP 端点或浏览器端到端验证每个 Feature 场景的正向路径",
 			"已端到端验证兜底路径：拒绝/失败/无权限/冲突/边界，每个都有真实执行证据",
-			"verify-report.md 记录每个角色的用户旅程、命令输出/截图/日志、P0/P1 问题及回炉去向",
+			"每个用户旅程都有截图证据（.png/.jpg），放在 .xdd/runs/normal_run/screenshots/ 下；没有截图 = 没验证",
+			"verify-report.md 记录每个角色的用户旅程、命令输出、截图引用、P0/P1/P2 问题清单",
+			"verify-report.md 明确声明 P0=0、P1=0、P2=0；有任何未解决问题必须回 scenarios 重做，不能带病通过",
+			"所有用户旅途必须走通；走不通 = P0 = 必须回炉重做",
 			"已从干净环境执行 scripts/test-in-docker，验证镜像构建、依赖 healthcheck、migration/seed、数据库隔离和失败清理",
 			"operations-handoff.md 已把部署、可观测性、告警、debug/runbook、回滚和人工/AI 接管方式交付清楚",
 			"实现问题可回 scenarios 继续 TDD；架构问题可回 framework 重搭框架",
 		],
-		deliverablePaths: [".xdd/runs/normal_run/verify-report.md", ".xdd/runs/normal_run/operations-handoff.md"], aigateStandard: NF_NO_AIGATE_STANDARD, gate: verifyGate,
+		deliverablePaths: [".xdd/runs/normal_run/verify-report.md", ".xdd/runs/normal_run/operations-handoff.md", ".xdd/runs/normal_run/screenshots/"], aigateStandard: NF_NO_AIGATE_STANDARD, gate: verifyGate,
 	},
 ].map(withNfStageContract);
