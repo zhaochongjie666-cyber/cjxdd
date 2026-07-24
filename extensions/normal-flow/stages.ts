@@ -210,10 +210,10 @@ const verifyGate: NfGate = async ({ cwd }) => {
 	const git = await gitHasChanges(cwd);
 	if (!git.ok) return { ok: false, reason: `verify Gate: ${git.reason}` };
 
-	// 4. spec↔code 追溯必须闭合
+	// 4. P0 硬检查：所有 Scenario 必须已实现（有 Scenario 没做 = P0 = 必须回 scenarios 重做）
 	const coverage = buildTraceCoverage(observeFilesystem(cwd, []));
-	if (coverage.specRxx.length === 0) return { ok: false, reason: "verify Gate: spec 中无 RXX 规则；请回 scenarios 阶段补业务规则" };
-	if (coverage.unimplemented.length > 0) return { ok: false, reason: `verify Gate: spec↔code 未闭合（未实现: ${coverage.unimplemented.join(", ")}）；实现问题回 scenarios` };
+	if (coverage.specRxx.length === 0) return { ok: false, reason: "P0: spec 中无 RXX 规则，即所有 Scenario 未实现；请回 scenarios 阶段补业务规则并实现" };
+	if (coverage.unimplemented.length > 0) return { ok: false, reason: `P0: 有 Scenario 未实现（${coverage.unimplemented.join(", ")}）；未实现的 Scenario 就是 P0，必须回 scenarios 重做，不能带病通过` };
 	if (coverage.orphan.length > 0) return { ok: false, reason: `verify Gate: 代码中有无 spec 对应的 @implements（孤儿: ${coverage.orphan.join(", ")}）；请补 spec 或删除标注` };
 
 	// 5. verify-report.md 必须存在且内容充实（至少 1000 字节）
@@ -254,11 +254,6 @@ const verifyGate: NfGate = async ({ cwd }) => {
 	const screenshots = matchingFiles(cwd, [".xdd/runs/normal_run/screenshots/*.png", ".xdd/runs/normal_run/screenshots/*.jpg", ".xdd/runs/normal_run/screenshots/*.webp", ".xdd/runs/normal_run/*.png", ".xdd/runs/normal_run/*.jpg"]);
 	if (screenshots.length === 0) {
 		return { ok: false, reason: "verify Gate: 缺少截图证据；每个用户旅程必须有实际截图文件（.png/.jpg/.webp），放在 .xdd/runs/normal_run/screenshots/ 下。没有截图 = 没验证" };
-	}
-
-	// 12. 报告必须明确声明 P0=0（有 P0 必须回 scenarios 重做，不能带病通过）
-	if (!/P0.*[:：]\s*0|P0.*无|无\s*P0|P0.*0\s*个|0\s*个\s*P0|P0.*未发现|P0.*零/i.test(reportText)) {
-		return { ok: false, reason: "verify Gate: verify-report.md 未明确声明 P0=0；有 P0 问题必须回 scenarios 重做，不能带病通过" };
 	}
 
 	// 13. 报告必须明确声明 P1=0
@@ -339,7 +334,7 @@ export const NF_STAGES: readonly NfStageSpec[] = [
 			"已端到端验证兜底路径：拒绝/失败/无权限/冲突/边界，每个都有真实执行证据",
 			"每个用户旅程都有截图证据（.png/.jpg），放在 .xdd/runs/normal_run/screenshots/ 下；没有截图 = 没验证",
 			"verify-report.md 记录每个角色的用户旅程、命令输出、截图引用、P0/P1/P2 问题清单",
-			"verify-report.md 明确声明 P0=0、P1=0、P2=0；有任何未解决问题必须回 scenarios 重做，不能带病通过",
+			"P0 = 有 Scenario 没做（trace coverage 硬检查）；P1/P2 由报告声明，必须为 0；有任何未解决问题必须回 scenarios 重做，不能带病通过",
 			"所有用户旅途必须走通；走不通 = P0 = 必须回炉重做",
 			"已从干净环境执行 scripts/test-in-docker，验证镜像构建、依赖 healthcheck、migration/seed、数据库隔离和失败清理",
 			"operations-handoff.md 已把部署、可观测性、告警、debug/runbook、回滚和人工/AI 接管方式交付清楚",
