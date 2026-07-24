@@ -17,4 +17,3 @@ export default normalFlowInlineExtension.factory;
 export { resumeNormalFlow, startNormalFlow } from "./flow.ts";
 export { NF_STAGES } from "./stages.ts";
 export { NF_DISPLAY_NAME, NF_STAGE_NAMES, planStageNamesAreNf } from "./types.ts";
-export { translateXddText } from "./xdd-text-bridge.ts";

@@ -165,9 +165,16 @@ function scanXddSpec(specDir: string): { rxx: string[]; features: number } {
 			} else if (name === "rules.md") {
 				try {
 					const content = readFileSync(full, "utf8");
+					// Infer the business-line prefix (BXX) from the spec directory path
+					// so bare RXX ids (e.g. "R01") are canonicalised to "BXX-R01",
+					// matching the @implements BXX-RXX markers in source code.
+					const bxxMatch = full.match(/[\\/]spec[\\/](B\d{2})-/);
+					const bxxPrefix = bxxMatch?.[1];
 					for (const m of content.matchAll(RULES_RXX_RE)) {
-						const id = m[0].slice(1).trim();
-						if (id) rxx.add(id);
+						let id = m[0].slice(1).trim();
+						if (!id) continue;
+						if (bxxPrefix && /^R\d{2}$/.test(id)) id = `${bxxPrefix}-${id}`;
+						rxx.add(id);
 					}
 				} catch {
 					// ignore unreadable rules.md

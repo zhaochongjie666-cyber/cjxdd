@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { compileStageContracts } from "../xdd/core/stage-contract.ts";
+import { compileStageContracts } from "./stage-contract.ts";
 import { NF_STAGES } from "./stages.ts";
 import { NF_STAGE_NAMES } from "./types.ts";
 

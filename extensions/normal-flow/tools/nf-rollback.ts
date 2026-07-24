@@ -1,9 +1,9 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { type Static, Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { XddController } from "../../xdd/core/controller.ts";
+import { NfController } from "../core/controller.ts";
 import { createNormalFlowRuntimeStore } from "../runtime-store.ts";
-import type { XddStageName } from "../../xdd/types.ts";
+import type { NfStageName } from "../types.ts";
 import { NF_STAGE_NAMES } from "../types.ts";
 import type { EmptyDetails, GetNfState } from "./index.ts";
 
@@ -16,11 +16,11 @@ const schema = Type.Object({
 
 export type NfRollbackInput = Static<typeof schema>;
 
-function isNfStageName(value: string): value is XddStageName {
+function isNfStageName(value: string): value is NfStageName {
 	return (NF_STAGE_NAMES as readonly string[]).includes(value);
 }
 
-const DEFAULT_ROLLBACK_TARGET: Readonly<Partial<Record<XddStageName, XddStageName>>> = {
+const DEFAULT_ROLLBACK_TARGET: Readonly<Partial<Record<NfStageName, NfStageName>>> = {
 	verify: "spec",
 };
 
@@ -38,7 +38,7 @@ export function createNfRollbackTool(getState: GetNfState): ToolDefinition {
 			if (from !== "verify") {
 				throw new Error(`[nf_rollback] Normal Flow 只允许 verify 阶段跨流程回退自愈；当前阶段 ${from} 不能跳回前序流程。请在本阶段修复后重新提交，或让预算耗尽后按非 verify 规则软通过。`);
 			}
-			let target: XddStageName;
+			let target: NfStageName;
 			if (params.targetStage) {
 				if (!isNfStageName(params.targetStage)) {
 					throw new Error(`[nf_rollback] 未知或超出 Normal Flow 范围的阶段名: ${params.targetStage}`);
@@ -47,7 +47,7 @@ export function createNfRollbackTool(getState: GetNfState): ToolDefinition {
 			} else {
 				target = DEFAULT_ROLLBACK_TARGET[from] ?? "architecture";
 			}
-			const controller = new XddController(createNormalFlowRuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
+			const controller = new NfController(createNormalFlowRuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
 			try {
 				const rollback = controller.dispatch({ type: "ROLLBACK", target, reason: String(params.reason ?? "") });
 				if (rollback.state.status === "failed") {

@@ -1,5 +1,5 @@
 import type { AgentToolResult, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { XddRunnerState } from "../../xdd/types.ts";
+import type { NfRunnerState } from "../types.ts";
 
 export type EmptyDetails = Record<string, never>;
 
@@ -7,7 +7,7 @@ export function ok(text: string): AgentToolResult<EmptyDetails> {
 	return { content: [{ type: "text", text }], details: {} };
 }
 
-export type GetNfState = () => XddRunnerState;
+export type GetNfState = () => NfRunnerState;
 
 import { createNfObserveTool } from "./nf-observe.ts";
 import { createNfDesiredStateTool } from "./nf-desired-state.ts";

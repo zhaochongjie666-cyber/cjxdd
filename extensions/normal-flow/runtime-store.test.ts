@@ -2,14 +2,14 @@ import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { RuntimeStore } from "../xdd/storage/runtime-store.ts";
-import { XddRunnerState, type XddCheckpointData } from "../xdd/types.ts";
+import { RuntimeStore } from "./storage/runtime-store.ts";
+import { NfRunnerState, type NfCheckpointData } from "./types.ts";
 import { createNormalFlowRuntimeStore, NORMAL_FLOW_RUNTIME_FILE, NORMAL_FLOW_V1_BACKUP_FILE } from "./runtime-store.ts";
 import { NF_STAGES } from "./stages.ts";
 
 let cwd = "";
 
-const baseRuntime = (runId: string): XddCheckpointData => ({
+const baseRuntime = (runId: string): NfCheckpointData => ({
 	runId,
 	userInput: "test",
 	cwd,
@@ -26,7 +26,6 @@ const baseRuntime = (runId: string): XddCheckpointData => ({
 	rollbackCount: 0,
 	status: "running",
 	submittedArtifacts: {},
-	selfAttackNotes: {},
 	esg: [],
 	at: "2026-07-16T00:00:00.000Z",
 });
@@ -75,7 +74,7 @@ describe("Normal Flow RuntimeStore", () => {
 			signals: [],
 		});
 
-		const state = new XddRunnerState({
+		const state = new NfRunnerState({
 			runId: "nf-run",
 			cwd,
 			userInput: "test",

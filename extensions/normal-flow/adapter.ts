@@ -1,36 +1,68 @@
-/**
- * NF 版的 Controller dispatch 适配器。跟 extensions/xdd/adapters/pi-controller.ts
- * 的 PiControllerAdapter 同样的职责（dispatch command -> 执行 effects），但会
- * 先把 effect 文案里 xdd 专属的品牌/工具名改写成 NF 的（见 xdd-text-bridge.ts）
- * 再执行。不能直接复用 PiControllerAdapter：它内部写死调用
- * `executePiEffects(result.effects, ...)`，没有给改写文案留口子，而且它总是
- * 用 `state.plan` 里的 stages 构造 Controller——这点其实和这里一致，因为
- * XddController 全程按传入的 stages 数组工作（见 Docs/normal-flow.md §3/§9.3）。
- */
-import { XddController } from "../xdd/core/controller.ts";
-import type { XddCommand } from "../xdd/core/commands.ts";
-import type { XddEffect } from "../xdd/core/effects.ts";
+/** NF 自包含 Pi 适配器：dispatch NfCommand + 执行 NfEffect。不依赖 xdd。 */
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { NfController } from "./core/controller.ts";
+import type { NfCommand } from "./core/commands.ts";
+import type { NfEffect } from "./core/effects.ts";
 import { createNormalFlowRuntimeStore } from "./runtime-store.ts";
-import { executePiEffects, type PiEffectRuntime } from "../xdd/adapters/pi-effects.ts";
-import type { XddRunnerState } from "../xdd/types.ts";
-import { translateXddText } from "./xdd-text-bridge.ts";
+import { RuntimeStore } from "./storage/runtime-store.ts";
+import type { NfRunnerState } from "./types.ts";
 
-function translateEffects(effects: readonly XddEffect[]): XddEffect[] {
-	return effects.map((effect) => {
-		if (effect.type === "SEND_FOLLOWUP" || effect.type === "NOTIFY") {
-			return { ...effect, text: translateXddText(effect.text) };
-		}
-		return effect;
-	});
+export interface NfEffectRuntime {
+	pi: ExtensionAPI;
+	steeringInput?: string;
+	ctx: { ui?: { notify?: (text: string, level?: string) => unknown }; abort?: () => unknown; isIdle?: () => boolean; hasPendingMessages?: () => boolean };
+	getState?: () => NfRunnerState | null | undefined;
 }
 
-/** dispatch 一个 XddCommand，并把返回的 effects（改写文案后）交给 Pi 执行。 */
-export async function dispatchNfCommand(
-	state: XddRunnerState,
-	command: XddCommand,
-	runtime: PiEffectRuntime,
-): Promise<void> {
-	const controller = new XddController(createNormalFlowRuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
+export async function dispatchNfCommand(state: NfRunnerState, command: NfCommand, runtime: NfEffectRuntime): Promise<void> {
+	const controller = new NfController(createNormalFlowRuntimeStore(state.cwd), state.plan.map(({ stage }) => stage));
 	const result = controller.dispatch(command);
-	await executePiEffects(translateEffects(result.effects), runtime);
+	await executeNfEffects(result.effects, runtime);
 }
+
+export function agentEndCommandFromPi(event: { messages?: Array<{ role?: string; stopReason?: string; errorMessage?: string }> }): NfCommand | null {
+	const messages = event.messages ?? [];
+	const last = messages[messages.length - 1];
+	if (!last || last.role !== "assistant") return null;
+	return { type: "AGENT_ENDED", stopReason: last.stopReason ?? "stop", providerError: last.errorMessage };
+}
+
+export async function executeNfEffects(effects: readonly NfEffect[], runtime: NfEffectRuntime): Promise<void> {
+	for (const effect of effects) {
+		try {
+			switch (effect.type) {
+				case "SEND_FOLLOWUP":
+					await sendFollowUp(effect.text, effect.epoch, runtime, effect.delayMs);
+					break;
+				case "NOTIFY":
+					runtime.ctx.ui?.notify?.(effect.text, effect.level);
+					break;
+				case "ABORT_AGENT":
+					if (!runtime.ctx.isIdle?.()) runtime.ctx.abort?.();
+					break;
+				case "SET_ACTIVE_TOOLS":
+				case "RUN_HOOK":
+				case "APPEND_SESSION_ENTRY":
+					break;
+			}
+		} catch { /* best-effort */ }
+	}
+}
+
+async function sendFollowUp(text: string, epoch: number, runtime: NfEffectRuntime, delayMs = 0): Promise<void> {
+	const state = runtime.getState?.();
+	if (state) { if (state.paused || state.stopRequested) return; if (state.continuationEpoch !== epoch) return; }
+	if (runtime.ctx.hasPendingMessages?.()) return;
+	if (delayMs > 0) { await sleep(delayMs); const s = runtime.getState?.(); if (s && (s.paused || s.stopRequested || s.continuationEpoch !== epoch)) return; }
+	try {
+		const input = runtime.steeringInput?.trim();
+		const full = input ? `${text}\n\n${input}` : text;
+		await runtime.pi.sendUserMessage?.(full, { deliverAs: "followUp" });
+	} catch (error) {
+		// 释放 continuation lock
+		const state = runtime.getState?.();
+		if (state) { try { new NfController(new RuntimeStore(state.cwd), state.plan.map(({ stage }) => stage)).dispatch({ type: "RELEASE_CONTINUATION", reason: error instanceof Error ? error.message : String(error) }); } catch { /* */ } }
+	}
+}
+
+function sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }

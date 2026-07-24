@@ -4,13 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { canSoftPassExhaustedStage, NF_MAX_FLOW_RETRIES, NF_MAX_SELF_HEAL_PER_STAGE } from "./policy.ts";
 import { NF_STAGES } from "./stages.ts";
-import { XddRunnerState } from "./types.ts";
+import { NfRunnerState } from "./types.ts";
 
 describe("Normal Flow prototype-to-iteration policy", () => {
 	it("uses three local attempts and eight complete-flow retries", () => {
 		const cwd = mkdtempSync(join(tmpdir(), "nf-policy-"));
 		try {
-			const state = new XddRunnerState({ runId: "nf-policy", cwd, userInput: "先做原型再迭代" });
+			const state = new NfRunnerState({ runId: "nf-policy", cwd, userInput: "先做原型再迭代" });
 			state.plan = NF_STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
 			state.maxSelfHealPerStage = NF_MAX_SELF_HEAL_PER_STAGE;
 			state.flowRollbackLimit = NF_MAX_FLOW_RETRIES;

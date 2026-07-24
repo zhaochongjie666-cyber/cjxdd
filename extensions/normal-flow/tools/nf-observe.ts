@@ -1,8 +1,8 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { observeFilesystem, renderFsSnapshot } from "../../xdd/observe-fs.ts";
-import { HarnessStore } from "../../xdd/harness/store.ts";
+import { observeFilesystem, renderFsSnapshot } from "../observe-fs.ts";
+import { HarnessStore } from "../harness.ts";
 import { type EmptyDetails, type GetNfState, ok } from "./index.ts";
 
 const schema = Type.Object({});
@@ -37,9 +37,7 @@ export function createNfObserveTool(getState: GetNfState): ToolDefinition {
 				`产物闸门(任一): ${stage.deliverablePaths.length > 0 ? stage.deliverablePaths.join(", ") : "(软通过)"}`,
 				`已提交产物: ${artifacts}`,
 				`自愈预算(当前阶段): ${state.remainingSelfHealBudget(stage.name)}/${state.maxSelfHealPerStage}`,
-				// flowRollbackLimitTier2 是目前唯一能读到 flowRollbackLimit 的访问器
-				// （@deprecated，但没有非 deprecated 替代——只读展示，不受影响）。
-				`Flow 回退预算: ${state.remainingFlowRollbackBudget()}/${state.flowRollbackLimitTier2}`,
+				`Flow 回退预算: ${state.remainingFlowRollbackBudget()}/${state.flowRollbackLimit}`,
 				`验证命令: ${harnessCommands.length > 0 ? harnessCommands.join(" | ") : "未配置（scenarios/verify 阶段会自动探测 npm/go/make test）"}`,
 				"",
 				renderFsSnapshot(fsSnap),

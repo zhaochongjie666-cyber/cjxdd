@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { XddRunnerState } from "./types.ts";
+import { NfRunnerState } from "./types.ts";
 import { NF_STAGES } from "./stages.ts";
 import { activateNormalFlowExtension, deactivateNormalFlowExtension, gotoNormalFlowStage } from "./extension.ts";
 
@@ -7,7 +7,7 @@ describe("Normal Flow stage navigation", () => {
 	afterEach(() => deactivateNormalFlowExtension());
 
 	it("jumps directly to framework and clears stale lifecycle state without steering", () => {
-		const state = new XddRunnerState({ runId: "nf-goto", cwd: process.cwd(), userInput: "test" });
+		const state = new NfRunnerState({ runId: "nf-goto", cwd: process.cwd(), userInput: "test" });
 		state.plan = NF_STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
 		state.paused = true;
 		state.stopRequested = true;

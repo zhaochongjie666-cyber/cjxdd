@@ -7,13 +7,13 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { NF_STAGES } from "./stages.ts";
-import { NF_STAGE_NAMES, planStageNamesAreNf, XddRunnerState } from "./types.ts";
+import { NF_STAGE_NAMES, planStageNamesAreNf, NfRunnerState } from "./types.ts";
 import { activateNormalFlowExtension, getState } from "./extension.ts";
-import { loadXddSkills } from "../xdd/skill-loader.ts";
-import { NORMAL_FLOW_RUN_DIR, controllerInitScaffold } from "../xdd/init-scaffold.ts";
-import { XddController } from "../xdd/core/controller.ts";
+import { loadNfSkills } from "./infra.ts";
+import { NORMAL_FLOW_RUN_DIR, controllerInitScaffold } from "./infra.ts";
+import { NfController } from "./core/controller.ts";
 import { createNormalFlowRuntimeStore, NORMAL_FLOW_RUNTIME_FILE, NORMAL_FLOW_V1_BACKUP_FILE } from "./runtime-store.ts";
-import { configuredFlowBudgetUsd } from "../xdd/flow-budget.ts";
+import { configuredFlowBudgetUsd } from "./infra.ts";
 import { dispatchNfCommand } from "./adapter.ts";
 import { NF_MAX_FLOW_RETRIES, NF_MAX_SELF_HEAL_PER_STAGE } from "./policy.ts";
 
@@ -21,7 +21,7 @@ import { NF_MAX_FLOW_RETRIES, NF_MAX_SELF_HEAL_PER_STAGE } from "./policy.ts";
  * NF 自愈预算，比 xdd 的默认值（5）更紧凑（Docs/normal-flow.md §9.5）。Flow
  * 回退预算是 8 次完整迭代。`StartOptions`（xdd/core/commands.ts）
  * 没有预算字段——这里照抄 runXdd() 对 flowBudgetUsd 的做法：dispatch(START) 之
- * 后直接用 XddRunnerState 的属性 setter 覆盖。
+ * 后直接用 NfRunnerState 的属性 setter 覆盖。
  */
 /** cwd 上已有一个非 NF（即 xdd）的未完成 run 时，返回冲突提示；否则 undefined。 */
 function nfStartConflictMessage(cwd: string): string | undefined {
@@ -49,14 +49,14 @@ export async function startNormalFlow(args: string, cwd: string, pi: ExtensionAP
 	// NF 没有 init 阶段：用跟 xdd 一样的 Controller-owned 骨架脚本先建好 .xdd/
 	// 目录，模型不需要用 bash 建目录，直接从 framework 阶段读取架构输入并搭建代码框架。
 	const scaffold = controllerInitScaffold(cwd, NORMAL_FLOW_RUN_DIR);
-	const controller = new XddController(createNormalFlowRuntimeStore(cwd), NF_STAGES);
+	const controller = new NfController(createNormalFlowRuntimeStore(cwd), NF_STAGES);
 	controller.dispatch({ type: "START", task, options: { cwd, runId } });
-	const state = new XddRunnerState({ runId, cwd, userInput: task, runtimeStoreOptions: { runtimeFileName: NORMAL_FLOW_RUNTIME_FILE, legacyCheckpointFileName: false, v1BackupFileName: NORMAL_FLOW_V1_BACKUP_FILE } });
+	const state = new NfRunnerState({ runId, cwd, userInput: task, runtimeStoreOptions: { runtimeFileName: NORMAL_FLOW_RUNTIME_FILE, legacyCheckpointFileName: false, v1BackupFileName: NORMAL_FLOW_V1_BACKUP_FILE } });
 	state.flowBudgetUsd = configuredFlowBudgetUsd();
 	state.maxSelfHealPerStage = NF_MAX_SELF_HEAL_PER_STAGE;
 	state.flowRollbackLimit = NF_MAX_FLOW_RETRIES;
 	state.maxRollbacksPerStage = NF_MAX_FLOW_RETRIES;
-	state.skills = loadXddSkills(cwd);
+	state.skills = loadNfSkills(cwd);
 	state.plan = NF_STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
 	activateNormalFlowExtension(state);
 	const n = state.skills.length;
@@ -71,7 +71,7 @@ export async function startNormalFlow(args: string, cwd: string, pi: ExtensionAP
 /** /normal-flow-resume -- 从同会话暂停状态或跨进程 checkpoint 恢复。 */
 export async function resumeNormalFlow(args: string, cwd: string, pi: ExtensionAPI): Promise<void> {
 	// 同会话优先：stateRef 还在内存里。
-	let state: XddRunnerState | undefined;
+	let state: NfRunnerState | undefined;
 	try {
 		state = getState();
 	} catch {
@@ -102,8 +102,8 @@ export async function resumeNormalFlow(args: string, cwd: string, pi: ExtensionA
 		await pi.sendUserMessage(`[normal-flow] cwd 上的 checkpoint 属于另一个流程 run（${rt.runId}）。Normal Flow 不会调用或提示 xdd 工具；请在对应流程中恢复该 run，或换一个 cwd 后再使用 /normal-flow-resume。`);
 		return;
 	}
-	const newState = new XddRunnerState({ runId: rt.runId, cwd, userInput: rt.userInput, runtimeStoreOptions: { runtimeFileName: NORMAL_FLOW_RUNTIME_FILE, legacyCheckpointFileName: false, v1BackupFileName: NORMAL_FLOW_V1_BACKUP_FILE } });
-	newState.skills = loadXddSkills(cwd);
+	const newState = new NfRunnerState({ runId: rt.runId, cwd, userInput: rt.userInput, runtimeStoreOptions: { runtimeFileName: NORMAL_FLOW_RUNTIME_FILE, legacyCheckpointFileName: false, v1BackupFileName: NORMAL_FLOW_V1_BACKUP_FILE } });
+	newState.skills = loadNfSkills(cwd);
 	// 强制注入 NF 自己的 4 阶段 plan，绝不落到 xdd 固定的 STAGES。
 	newState.plan = NF_STAGES.map((stage, originalIndex) => ({ stage, originalIndex }));
 	newState.restoreFromCheckpoint(rt);

@@ -1,16 +1,8 @@
-import { RuntimeStore } from "../xdd/storage/runtime-store.ts";
-
-export const NORMAL_FLOW_RUNTIME_FILE = "normal-flow-runtime.json";
-export const NORMAL_FLOW_V1_BACKUP_FILE = "normal-flow-runtime.v1.backup.json";
-
-/**
- * Normal Flow has its own checkpoint file so switching between /xdd and
- * /normal-flow never overwrites or resumes the other flow's runtime state.
- */
+/** Re-export 自 storage/，保持旧 import 路径兼容。 */
+export { RuntimeStore, type RuntimeStoreOptions, type RuntimeStoreSaveOptions, atomicWriteJson } from "./storage/runtime-store.ts";
+export { NORMAL_FLOW_RUNTIME_FILE, NORMAL_FLOW_V1_BACKUP_FILE } from "./runtime-store-constants.ts";
+import { RuntimeStore } from "./storage/runtime-store.ts";
+import { NORMAL_FLOW_RUNTIME_FILE, NORMAL_FLOW_V1_BACKUP_FILE } from "./runtime-store-constants.ts";
 export function createNormalFlowRuntimeStore(cwd: string): RuntimeStore {
-	return new RuntimeStore(cwd, {
-		runtimeFileName: NORMAL_FLOW_RUNTIME_FILE,
-		legacyCheckpointFileName: false,
-		v1BackupFileName: NORMAL_FLOW_V1_BACKUP_FILE,
-	});
+	return new RuntimeStore(cwd, { runtimeFileName: NORMAL_FLOW_RUNTIME_FILE, legacyCheckpointFileName: false, v1BackupFileName: NORMAL_FLOW_V1_BACKUP_FILE });
 }

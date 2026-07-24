@@ -2,11 +2,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { XddController } from "../xdd/core/controller.ts";
+import { NfController } from "./core/controller.ts";
 import { activateNormalFlowExtension, deactivateNormalFlowExtension, normalFlowInlineExtension } from "./extension.ts";
 import { createNormalFlowRuntimeStore, NORMAL_FLOW_RUNTIME_FILE, NORMAL_FLOW_V1_BACKUP_FILE } from "./runtime-store.ts";
 import { NF_STAGES } from "./stages.ts";
-import { XddRunnerState } from "./types.ts";
+import { NfRunnerState } from "./types.ts";
 
 type Handler = (event?: any, ctx?: any) => unknown;
 
@@ -21,12 +21,12 @@ function createHarness() {
 	const cwd = mkdtempSync(join(tmpdir(), "normal-flow-provider-"));
 	cleanups.push(() => rmSync(cwd, { recursive: true, force: true }));
 	const runId = "nf-provider-test";
-	new XddController(createNormalFlowRuntimeStore(cwd), NF_STAGES).dispatch({
+	new NfController(createNormalFlowRuntimeStore(cwd), NF_STAGES).dispatch({
 		type: "START",
 		task: "exercise provider lifecycle",
 		options: { cwd, runId },
 	});
-	const state = new XddRunnerState({
+	const state = new NfRunnerState({
 		runId,
 		cwd,
 		userInput: "exercise provider lifecycle",

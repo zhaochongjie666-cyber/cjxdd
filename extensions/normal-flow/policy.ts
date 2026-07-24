@@ -1,10 +1,25 @@
-/** 单阶段快速本地修复次数；design 耗尽后仍不允许带病推进。 */
-export const NF_MAX_SELF_HEAL_PER_STAGE = 3;
+/** NF 极简工具策略：只拦危险命令 + 阶段允许工具，不做写范围限制（vibe coding）。 */
+import type { NfRunnerState } from "./types.ts";
 
-/** verify 可触发的完整流程回炉次数。 */
-export const NF_MAX_FLOW_RETRIES = 8;
+const FORBIDDEN: Array<{ pattern: RegExp; reason: string }> = [
+	{ pattern: /\bfind\s+\/\s*(?!-)/, reason: "find / 会扫描整个文件系统" },
+	{ pattern: /\bfind\s+\/\s*-/, reason: "find /<args> 会扫描整个文件系统" },
+	{ pattern: /\brm\s+(-[a-zA-Z]*\s+)*\/(?:\s*(?:-|$|\.)|[*?])/, reason: "rm -rf / 会删除整个系统" },
+	{ pattern: /\bdd\s+if=\/dev\/(zero|urandom)\s+of=\/dev\//, reason: "dd 到设备会清空磁盘" },
+	{ pattern: /\bmkfs(\.\w+)?\s+\/dev\//, reason: "mkfs 会格式化磁盘" },
+];
 
-/** 设计必须先冻结；只有代码实现阶段允许带着已记录的问题继续形成原型。 */
-export function canSoftPassExhaustedStage(stageName: string): boolean {
-	return stageName !== "understand" && stageName !== "verify";
+export function enforceToolCallPolicy(state: NfRunnerState, event: { toolName?: string; name?: string; input?: unknown }): void {
+	const stage = state.currentStage();
+	if (!stage) return;
+	const toolName = String(event.toolName ?? event.name ?? "");
+	if (!toolName) return;
+	if ((toolName.startsWith("nf_")) && !stage.allowedTools.includes(toolName)) {
+		throw new Error(`[nf policy] ${stage.name} 阶段不允许工具 ${toolName}；allowedTools=${stage.allowedTools.join(", ")}`);
+	}
+	if (toolName === "bash") {
+		const input = event.input as Record<string, unknown> ?? {};
+		const cmd = String(input.command ?? "");
+		for (const f of FORBIDDEN) { if (f.pattern.test(cmd)) throw new Error(`[nf policy] 禁止的 bash 命令 (${f.reason}): ${cmd.slice(0, 160)}`); }
+	}
 }

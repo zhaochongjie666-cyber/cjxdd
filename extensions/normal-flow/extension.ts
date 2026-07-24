@@ -1,14 +1,13 @@
 import type { InlineExtension } from "@earendil-works/pi-coding-agent";
 import { buildActiveNfStageSystemPrompt } from "./context.ts";
 import { createNfTools } from "./tools/index.ts";
-import { compileStageContracts } from "../xdd/core/stage-contract.ts";
-import { agentEndCommandFromPi } from "../xdd/adapters/pi-controller.ts";
-import { isProvider429InsufficientBalance } from "../xdd/core/controller.ts";
-import { enforceToolCallPolicy } from "../xdd/policy/tool-policy.ts";
+import { compileStageContracts } from "./stage-contract.ts";
+import { agentEndCommandFromPi } from "./adapter.ts";
+import { enforceToolCallPolicy } from "./policy.ts";
 import { createNormalFlowRuntimeStore } from "./runtime-store.ts";
-import { assistantFlowUsage } from "../xdd/flow-budget.ts";
-import { archiveRun } from "../xdd/archive.ts";
-import type { XddRunnerState } from "../xdd/types.ts";
+import { assistantFlowUsage } from "./infra.ts";
+import { archiveRun } from "./infra.ts";
+import type { NfRunnerState } from "./types.ts";
 import { dispatchNfCommand } from "./adapter.ts";
 import { NF_DISPLAY_NAME, type NfStageName, planStageNamesAreNf } from "./types.ts";
 import { NF_STAGES } from "./stages.ts";
@@ -19,7 +18,7 @@ import { NF_STAGES } from "./stages.ts";
  * 并存而不互相覆盖对方的 stateRef。真正的隔离边界是 cwd 上的 .xdd/normal-flow-runtime.json
  * ——见 planStageNamesAreNf() 和 flow.ts 里的启动/恢复冲突检查。
  */
-let stateRef: XddRunnerState | null = null;
+let stateRef: NfRunnerState | null = null;
 
 type NormalFlowCommandContext = {
 	cwd: string;
@@ -27,7 +26,7 @@ type NormalFlowCommandContext = {
 	ui: { notify: (message: string, level?: "info" | "warning" | "error") => void };
 } & Record<string, unknown>;
 
-export function activateNormalFlowExtension(state: XddRunnerState): void {
+export function activateNormalFlowExtension(state: NfRunnerState): void {
 	compileStageContracts(state.plan.map(({ stage }) => stage));
 	stateRef = state;
 }
@@ -36,7 +35,7 @@ export function deactivateNormalFlowExtension(): void {
 	stateRef = null;
 }
 
-export function getState(): XddRunnerState {
+export function getState(): NfRunnerState {
 	if (!stateRef) {
 		throw new Error("[normal-flow] 无活跃 Normal Flow run（state 未注入）");
 	}
@@ -90,7 +89,7 @@ function toolResultText(event: { content?: Array<{ type?: string; text?: string 
 		.join("\n");
 }
 
-function isNfSubmitReadyToAdvance(event: { type?: string }, toolName: string, state: XddRunnerState): boolean {
+function isNfSubmitReadyToAdvance(event: { type?: string }, toolName: string, state: NfRunnerState): boolean {
 	if (event.type !== "tool_result" || toolName !== "nf_submit_artifact") return false;
 	if (state.runComplete || state.paused || state.stopRequested) return false;
 	const stage = state.currentStage();
@@ -99,7 +98,7 @@ function isNfSubmitReadyToAdvance(event: { type?: string }, toolName: string, st
 	return stage.exit === "verdict" ? signals.has("verdict_pass") : signals.has("complete");
 }
 
-function isNfAdvanceNextStage(event: { type?: string; content?: Array<{ type?: string; text?: string }> }, toolName: string, state: XddRunnerState): boolean {
+function isNfAdvanceNextStage(event: { type?: string; content?: Array<{ type?: string; text?: string }> }, toolName: string, state: NfRunnerState): boolean {
 	if (event.type !== "tool_result" || toolName !== "nf_advance") return false;
 	if (state.runComplete || state.paused || state.stopRequested) return false;
 	const text = toolResultText(event);
@@ -108,22 +107,28 @@ function isNfAdvanceNextStage(event: { type?: string; content?: Array<{ type?: s
 
 async function sendNfSubmitAdvanceSteering(
 	pi: { sendUserMessage?: (text: string, options?: unknown) => Promise<unknown> | unknown },
-	state: XddRunnerState,
+	state: NfRunnerState,
+	event: { content?: Array<{ type?: string; text?: string }> },
 ): Promise<void> {
 	const stage = state.currentStageName() ?? "当前";
-	await pi.sendUserMessage?.(
-		`[normal-flow submit steering] ${stage} 阶段产物已通过。立即调用 nf_advance 推进；不要停下来只汇报已提交。`,
-		{ deliverAs: "steer" },
-	);
+	const text = toolResultText(event);
+	const isSoftPass = text.includes("软通过") || text.includes("预算耗尽");
+	const message = isSoftPass
+		? `[normal-flow submit steering] ${stage} 阶段硬 Gate 未通过但自愈预算耗尽，已软通过。问题已记录带到下一阶段。请调用 nf_advance 推进；不要停下来只汇报。`
+		: `[normal-flow submit steering] ${stage} 阶段产物已通过。立即调用 nf_advance 推进；不要停下来只汇报已提交。`;
+	await pi.sendUserMessage?.(message, { deliverAs: "steer" });
 }
 
 async function sendNfAdvanceNextStageSteering(
 	pi: { sendUserMessage?: (text: string, options?: unknown) => Promise<unknown> | unknown },
-	state: XddRunnerState,
+	state: NfRunnerState,
 ): Promise<void> {
 	const stage = state.currentStageName() ?? "当前";
+	const stageSpecific = stage === "verify"
+		? `已进入 verify 阶段。这不是只跑单元测试。你要：1) 确保所有 Feature 都有真实实现（无桩/占位）；2) 从不同用户角色（管理员/普通用户/审批者等）视角，通过 HTTP 端点或浏览器端到端验收每个 Feature 场景；3) 正向路径（用户能完成业务目标）和兜底路径（拒绝/失败/无权限/边界）都要端到端验证；4) 把每个角色的用户旅程、命令输出、问题记录到 verify-report.md。立即调用 nf_observe、nf_desired_state、nf_difference 开始。`
+		: `已进入 ${stage} 阶段。立即自动执行下一步：调用 nf_observe、nf_desired_state、nf_difference，按差距完成阶段产物；不要停下来只汇报已推进。`;
 	await pi.sendUserMessage?.(
-		`[normal-flow advance steering] 已进入 ${stage} 阶段。立即自动执行下一步：调用 nf_observe、nf_desired_state、nf_difference，按差距完成阶段产物；不要停下来只汇报已推进。`,
+		`[normal-flow advance steering] ${stageSpecific}`,
 		{ deliverAs: "steer" },
 	);
 }
@@ -216,15 +221,15 @@ export const normalFlowInlineExtension: InlineExtension = {
 			if (!stateRef) return;
 			const toolName = String(event.toolName ?? event.name ?? "?");
 			if (isNfSubmitReadyToAdvance(event, toolName, stateRef)) {
-				await sendNfSubmitAdvanceSteering(pi, stateRef);
+				await sendNfSubmitAdvanceSteering(pi, stateRef, event);
 			}
 			if (isNfAdvanceNextStage(event, toolName, stateRef)) {
 				await sendNfAdvanceNextStageSteering(pi, stateRef);
 			}
 		});
 
-		// 阶段感知的工具/路径/bash 策略，直接复用 xdd 的实现（跟 stage 名无关，
-		// 只依赖传入的 XddStageSpec）。
+		// 阶段感知的工具/bash 策略（NF 自包含 policy.ts），
+		// 只依赖传入的 NfStageSpec。
 		pi.on("tool_call", async (event) => {
 			if (!stateRef) return;
 			enforceToolCallPolicy(stateRef, event);
@@ -262,14 +267,7 @@ export const normalFlowInlineExtension: InlineExtension = {
 			const command = agentEndCommandFromPi(event);
 			if (!command) return;
 			if (command.type === "AGENT_ENDED" && command.stopReason === "error") {
-				// Balance/quota errors are Controller-owned delayed retries and must
-				// be dispatched immediately. Other provider errors remain transient
-				// until Pi declares the agent settled.
-				if (isProvider429InsufficientBalance(command.providerError)) {
-					pendingProviderError = null;
-					await dispatchNfCommand(stateRef, command, { pi, ctx, getState: () => stateRef });
-					return;
-				}
+				// NF 不做 429 重试：所有 provider error 都先暂存，等 Pi settled 后再暂停。
 				pendingProviderError = { command, runId: stateRef.runId, stageEpoch: stateRef.stageEpoch };
 				return;
 			}

@@ -4,27 +4,27 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { requireGlobs, requireGlobsWithMinSize, requireTestsPass } from "./gate.ts";
-import { buildTraceCoverage, observeFilesystem } from "../xdd/observe-fs.ts";
-import { globToRegExp, hasGlobMeta, walkRel } from "../xdd/gate.ts";
-import { STAGE_ROLES } from "../xdd/types.ts";
-import type { ArtifactRule, XddGate, XddStageName, XddStageSpec } from "../xdd/types.ts";
+import { requireGlobs, requireGlobsWithMinSize, requireTestsPass, runBuild, gitHasChanges } from "./gate.ts";
+import { buildTraceCoverage, observeFilesystem } from "./observe-fs.ts";
+import { globToRegExp, hasGlobMeta, walkRel } from "./gate.ts";
+import { STAGE_ROLES } from "./types.ts";
+import type { NfArtifactRule, NfGate, NfStageName, NfStageSpec } from "./types.ts";
 
-const roleFor = (name: XddStageName): string => STAGE_ROLES[name];
+const roleFor = (name: NfStageName): string => STAGE_ROLES[name];
 export const NF_CONTROLLER_TOOLS = ["nf_observe", "nf_desired_state", "nf_difference", "nf_submit_artifact", "nf_advance", "nf_rollback"] as const;
 export const READ_TOOLS = ["read", "grep", "find", "ls"] as const;
 export const WRITE_TOOLS = ["write", "edit"] as const;
-const input = (pattern: string, description: string): ArtifactRule => ({ pattern, required: true, description });
-const output = (pattern: string, description: string): ArtifactRule => ({ pattern, required: true, description });
+const input = (pattern: string, description: string): NfArtifactRule => ({ pattern, required: true, description });
+const output = (pattern: string, description: string): NfArtifactRule => ({ pattern, required: true, description });
 
-type NfXddStageName = "understand" | "architecture" | "spec" | "verify";
+type NfLocalStageName = "understand" | "architecture" | "spec" | "verify";
 interface NfContractMeta {
-	inputs: ArtifactRule[];
+	inputs: NfArtifactRule[];
 	readScopes: string[];
 	writeScopes: string[];
-	rollbackTarget: XddStageName | "none";
+	rollbackTarget: NfStageName | "none";
 }
-const NF_CONTRACT_META: Record<NfXddStageName, NfContractMeta> = {
+const NF_CONTRACT_META: Record<NfLocalStageName, NfContractMeta> = {
 	understand: {
 		inputs: [input("README*", "仓库说明与用户需求（如存在）")],
 		readScopes: ["**"],
@@ -68,8 +68,8 @@ function readMatchedText(cwd: string, patterns: readonly string[]): string {
 		try { return readFileSync(join(cwd, rel), "utf8"); } catch { return ""; }
 	}).join("\n");
 }
-function withNfStageContract(stage: XddStageSpec): XddStageSpec {
-	const meta = NF_CONTRACT_META[stage.name as NfXddStageName];
+function withNfStageContract(stage: NfStageSpec): NfStageSpec {
+	const meta = NF_CONTRACT_META[stage.name as NfLocalStageName];
 	if (!meta) throw new Error(`[normal-flow] stage ${stage.name} 缺少 NF_CONTRACT_META 条目`);
 	return {
 		...stage,
@@ -83,7 +83,7 @@ function withNfStageContract(stage: XddStageSpec): XddStageSpec {
 	};
 }
 
-const designGate: XddGate = async ({ cwd }) => {
+const designGate: NfGate = async ({ cwd }) => {
 	const checks: Array<[string[], string]> = [
 		[[".xdd/design/intent.md", ".xdd/design/design.md", ".xdd/design/personas/_index.md"], "需求意图、收敛决策或角色设计"],
 		[[".xdd/design/business-process.md"], "用户与管理员端到端业务流程"],
@@ -125,10 +125,27 @@ const designGate: XddGate = async ({ cwd }) => {
 			return { ok: false, reason: `design Gate: ${path} 缺少可执行的${label}；请先完成对应正向设计，不得带着设计缺口进入代码实现` };
 		}
 	}
+
+	// 攻击检查 1: .feature 必须包含兜底场景（失败/拒绝/无权限/边界），不能只有 happy path
+	const featureText = readMatchedText(cwd, [".xdd/design/spec/**/*.feature"]);
+	if (featureText && !/失败|拒绝|无权限|未授权|边界|invalid|unauthorized|forbidden|denied|error|conflict|不存在|超时|timeout|exceed|limit/i.test(featureText)) {
+		return { ok: false, reason: "design Gate: .feature 只有正向场景，缺少兜底场景（失败/拒绝/无权限/边界）；正向和兜底都要设计" };
+	}
+
+	// 攻击检查 2: resilience 文件必须有实质内容（不只是存在）
+	const resilienceText = readMatchedText(cwd, [".xdd/design/architecture/**/resilience/failure-modes.md"]);
+	if (resilienceText && resilienceText.length < 200) {
+		return { ok: false, reason: "design Gate: failure-modes.md 内容过短（<200 字节），缺少实质的失败模式分析" };
+	}
+	const failsafeText = readMatchedText(cwd, [".xdd/design/architecture/**/resilience/failsafe-design.md"]);
+	if (failsafeText && failsafeText.length < 200) {
+		return { ok: false, reason: "design Gate: failsafe-design.md 内容过短（<200 字节），缺少实质的兜底设计" };
+	}
+
 	return { ok: true };
 };
 
-const frameworkGate: XddGate = async ({ cwd }) => {
+const frameworkGate: NfGate = async ({ cwd }) => {
 	const doc = await requireGlobsWithMinSize(cwd, [".xdd/design/architecture/**/architecture.md"], 100);
 	if (!doc.ok) return { ok: false, reason: "framework Gate: 完整设计链中的 architecture.md 缺失或过短；请先回 design 补齐，再按其端点搭建框架" };
 	const frameworkChecks = await Promise.all(["src/**/*", "lib/**/*", "app/**/*", "cmd/**/*"].map((pattern) => requireGlobs(cwd, [pattern])));
@@ -146,11 +163,16 @@ const frameworkGate: XddGate = async ({ cwd }) => {
 		if (!pattern.test(composeText)) return { ok: false, reason: `framework Gate: compose.test.yaml 缺少 ${label}；请回到 Docker 测试环境正向动作补齐` };
 	}
 	const testScript = await requireGlobsWithMinSize(cwd, ["scripts/test-in-docker"], 30);
+
+	// 攻击检查: 框架必须能编译（不能是只有空目录）
+	const build = await runBuild(cwd);
+	if (!build.ok && build.reason) return { ok: false, reason: `framework Gate: 框架代码编译失败 -- ${build.reason}；请确保框架有真实的入口文件和依赖声明，不是空目录` };
+
 	if (!testScript.ok) return { ok: false, reason: "framework Gate: 缺少 scripts/test-in-docker；请提供一条可重复启动依赖、执行测试并清理环境的入口" };
 	return { ok: true };
 };
 
-const scenariosGate: XddGate = async ({ cwd }) => {
+const scenariosGate: NfGate = async ({ cwd }) => {
 	const rules = await requireGlobsWithMinSize(cwd, [".xdd/design/spec/**/rules.md"], 100);
 	if (!rules.ok) return { ok: false, reason: "scenarios Gate: 缺少规则锚；请从架构能力提取 RXX 并写入 rules.md" };
 	const features = await requireGlobs(cwd, [".xdd/design/spec/**/*.feature"]);
@@ -160,29 +182,78 @@ const scenariosGate: XddGate = async ({ cwd }) => {
 	const text = readMatchedText(cwd, [".xdd/design/spec/**/rules.md", ".xdd/design/spec/**/*.feature"]);
 	if (!/(@covers-)?(?:B\d{2}-)?R\d{2}/.test(text)) return { ok: false, reason: "scenarios Gate: Scenario 未绑定 RXX" };
 	if (coverage.unimplemented.length > 0) return { ok: false, reason: `scenarios Gate: 以下规则尚未完成红→绿 TDD 或缺少 @implements：${coverage.unimplemented.join(", ")}` };
+
+	// 攻击检查 1: .feature 必须包含兜底场景，不能只有 happy path
+	if (!/失败|拒绝|无权限|未授权|边界|invalid|unauthorized|forbidden|denied|error|conflict|不存在|超时|timeout|exceed|limit/i.test(text)) {
+		return { ok: false, reason: "scenarios Gate: .feature 只有正向场景，缺少兜底场景（失败/拒绝/无权限/边界）；每个 Feature 都要有正向和兜底 Scenario" };
+	}
+
+	// 攻击检查 2: 构建必须通过（代码能编译）
+	const build = await runBuild(cwd);
+	if (!build.ok) return { ok: false, reason: `scenarios Gate: 构建失败 -- ${build.reason}` };
+
 	const tests = await requireTestsPass(cwd);
 	if (!tests.ok) return { ok: false, reason: `scenarios Gate: 测试未通过；回到对应 Scenario 的失败测试并完成最小实现。${tests.reason ?? ""}` };
 	return { ok: true };
 };
 
-const verifyGate: XddGate = async ({ cwd }) => {
-	const report = await requireGlobsWithMinSize(cwd, [".xdd/runs/normal_run/verify-report.md"], 100);
-	if (!report.ok) return { ok: false, reason: "verify Gate: 缺少逐 Scenario 的攻击验证报告" };
-	const reportText = readMatchedText(cwd, [".xdd/runs/normal_run/verify-report.md"]);
-	if (!/scripts\/test-in-docker|docker\s+compose/i.test(reportText)) return { ok: false, reason: "verify Gate: verify-report.md 缺少 Docker 一键测试命令与结果；请从干净容器环境重跑并记录证据" };
-	if (!/数据库|database|migration|seed|无需数据库/i.test(reportText)) return { ok: false, reason: "verify Gate: verify-report.md 缺少测试数据库初始化/隔离证据或无需数据库的明确说明" };
-	const handoff = await requireGlobsWithMinSize(cwd, [".xdd/runs/normal_run/operations-handoff.md"], 100);
-	if (!handoff.ok) return { ok: false, reason: "verify Gate: 缺少 operations-handoff.md；请记录部署、监控、告警、debug/runbook、回滚及人工/AI 运维接管方式" };
+const verifyGate: NfGate = async ({ cwd }) => {
+	// 1. 构建必须通过（代码能编译）
+	const build = await runBuild(cwd);
+	if (!build.ok) return { ok: false, reason: `verify Gate: 构建失败 -- ${build.reason}` };
+
+	// 2. 测试必须通过
 	const tests = await requireTestsPass(cwd);
 	if (!tests.ok) return tests;
+
+	// 3. Git 必须有代码改动（有真实实现，不是只写了文档）
+	const git = await gitHasChanges(cwd);
+	if (!git.ok) return { ok: false, reason: `verify Gate: ${git.reason}` };
+
+	// 4. spec↔code 追溯必须闭合
 	const coverage = buildTraceCoverage(observeFilesystem(cwd, []));
-	if (coverage.specRxx.length === 0 || coverage.unimplemented.length > 0 || coverage.orphan.length > 0) {
-		return { ok: false, reason: `verify Gate: spec↔code 未闭合（未实现: ${coverage.unimplemented.join(", ") || "无"}；孤儿: ${coverage.orphan.join(", ") || "无"}）；实现问题回 scenarios，架构根因回 framework` };
+	if (coverage.specRxx.length === 0) return { ok: false, reason: "verify Gate: spec 中无 RXX 规则；请回 scenarios 阶段补业务规则" };
+	if (coverage.unimplemented.length > 0) return { ok: false, reason: `verify Gate: spec↔code 未闭合（未实现: ${coverage.unimplemented.join(", ")}）；实现问题回 scenarios` };
+	if (coverage.orphan.length > 0) return { ok: false, reason: `verify Gate: 代码中有无 spec 对应的 @implements（孤儿: ${coverage.orphan.join(", ")}）；请补 spec 或删除标注` };
+
+	// 5. verify-report.md 必须存在且内容充实（至少 1000 字节）
+	const report = await requireGlobsWithMinSize(cwd, [".xdd/runs/normal_run/verify-report.md"], 1000);
+	if (!report.ok) return { ok: false, reason: "verify Gate: 缺少 verify-report.md（至少 1000 字节，须含真实执行证据而非关键词）" };
+	const reportText = readMatchedText(cwd, [".xdd/runs/normal_run/verify-report.md"]);
+
+	// 6. 报告必须包含真实测试通过证据（exit code / PASS，不只是提到测试）
+	if (!/exit\s*code\s*[:=]?\s*0|✅|PASS|测试通过|tests?\s+passed/i.test(reportText)) {
+		return { ok: false, reason: "verify Gate: verify-report.md 缺少测试通过证据（exit code 0 / PASS / 测试通过）；请记录真实执行结果，不要只写关键词" };
 	}
+
+	// 7. 报告必须记录 Docker 一键测试的执行输出
+	if (!/scripts\/test-in-docker|docker\s+compose/i.test(reportText)) {
+		return { ok: false, reason: "verify Gate: verify-report.md 缺少 Docker 一键测试执行记录；请从干净容器环境重跑并粘贴输出" };
+	}
+
+	// 8. 报告必须记录数据库初始化/隔离证据
+	if (!/数据库|database|migration|seed|无需数据库/i.test(reportText)) {
+		return { ok: false, reason: "verify Gate: verify-report.md 缺少测试数据库初始化/隔离证据或无需数据库的明确说明" };
+	}
+
+	// 9. 报告必须记录攻击/兜底验证（不只是 happy path）
+	if (!/攻击|attack|逆向|reverse|兜底|fallback|失败|fail|边界|edge|拒绝|deny/i.test(reportText)) {
+		return { ok: false, reason: "verify Gate: verify-report.md 缺少攻击/兜底/失败路径验证记录；verify 不是只跑 happy path" };
+	}
+
+	// 9.5 报告必须记录端到端用户旅程验证（从不同角色视角验收，不是只跑单元测试）
+	if (!/角色|用户.*视角|管理员|普通用户|端到端|end.?to.?end|用户旅程|user.?journey|browser|浏览器|curl|HTTP/i.test(reportText)) {
+		return { ok: false, reason: "verify Gate: verify-report.md 缺少端到端用户旅程验证记录；须从不同用户角色视角通过 HTTP/浏览器验收每个 Feature，不是只跑单元测试" };
+	}
+
+	// 10. operations-handoff.md 必须存在且内容充实（至少 500 字节）
+	const handoff = await requireGlobsWithMinSize(cwd, [".xdd/runs/normal_run/operations-handoff.md"], 500);
+	if (!handoff.ok) return { ok: false, reason: "verify Gate: 缺少 operations-handoff.md（至少 500 字节）；请记录部署、监控、告警、debug/runbook、回滚及人工/AI 运维接管方式" };
+
 	return { ok: true };
 };
 
-export const NF_STAGES: readonly XddStageSpec[] = [
+export const NF_STAGES: readonly NfStageSpec[] = [
 	{
 		name: "understand", role: roleFor("understand"), skill: "xdd-brainstorm", exit: "goal_complete",
 		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, ...NF_CONTROLLER_TOOLS],
@@ -234,10 +305,12 @@ export const NF_STAGES: readonly XddStageSpec[] = [
 	},
 	{
 		name: "verify", role: roleFor("verify"), skill: "xdd-verify", exit: "verdict",
-		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, "bash", ...NF_CONTROLLER_TOOLS], noCodeModification: true,
+		allowedTools: [...READ_TOOLS, ...WRITE_TOOLS, "bash", ...NF_CONTROLLER_TOOLS],
 		desiredState: [
-			"已逐 Scenario 重跑测试并主动攻击正向与兜底路径",
-			"verify-report.md 记录命令、失败证据、P0/P1、追溯覆盖及回炉去向",
+			"已确保所有 Feature（Scenario）都有真实实现代码，不是桩/占位/注释；构建通过、单元/集成测试通过",
+			"已从不同用户角色（如管理员/普通用户/审批者）视角，通过 HTTP 端点或浏览器端到端验证每个 Feature 场景的正向路径",
+			"已端到端验证兜底路径：拒绝/失败/无权限/冲突/边界，每个都有真实执行证据",
+			"verify-report.md 记录每个角色的用户旅程、命令输出/截图/日志、P0/P1 问题及回炉去向",
 			"已从干净环境执行 scripts/test-in-docker，验证镜像构建、依赖 healthcheck、migration/seed、数据库隔离和失败清理",
 			"operations-handoff.md 已把部署、可观测性、告警、debug/runbook、回滚和人工/AI 接管方式交付清楚",
 			"实现问题可回 scenarios 继续 TDD；架构问题可回 framework 重搭框架",

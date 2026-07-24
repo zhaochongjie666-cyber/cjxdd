@@ -1,8 +1,8 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { computeStageDifference, renderStageDifference } from "../../xdd/stage-diff.ts";
-import { XddController } from "../../xdd/core/controller.ts";
+import { computeStageDifference, renderStageDifference } from "../infra.ts";
+import { NfController } from "../core/controller.ts";
 import { createNormalFlowRuntimeStore } from "../runtime-store.ts";
 import { type EmptyDetails, type GetNfState, ok } from "./index.ts";
 
@@ -27,11 +27,11 @@ export function createNfDifferenceTool(getState: GetNfState): ToolDefinition {
 			const artifacts = state.getSubmittedArtifactsForStage(stage.name) ?? [];
 			const remaining = state.remainingSelfHealBudget(stage.name);
 			const diff = await computeStageDifference(state.cwd, stage, { artifacts });
-			new XddController(createNormalFlowRuntimeStore(state.cwd), state.plan.map(({ stage: plannedStage }) => plannedStage)).dispatch({
+			new NfController(createNormalFlowRuntimeStore(state.cwd), state.plan.map(({ stage: plannedStage }) => plannedStage)).dispatch({
 				type: "RECORD_ESG",
 				nodeType: "task",
 				stage: stage.name,
-				label: `difference: gate ${diff.gate.ok ? "ok" : "fail"}, ${diff.metCount}/${diff.checks.length} met`,
+				label: `difference: gate ${diff.gate.ok ? "ok" : "fail"}, ${diff.metCount}/${diff.metCount + diff.unmetCount + diff.selfCheckCount} met`,
 			});
 			const text = renderStageDifference(diff, {
 				artifacts,
